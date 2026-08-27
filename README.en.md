@@ -1,29 +1,33 @@
-<div align="center">
+<p align="center">
+  <img src="assets/banner.svg" alt="AI CLI Control Plane Banner" width="100%">
+</p>
 
-# 🧠 AI CLI Control Plane
+<p align="center">
+  <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.22%2B-00ADD8?style=for-the-badge&logo=go" alt="Go Version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" alt="License: MIT"></a>
+  <a href="https://kernel.org"><img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Platform"></a>
+  <img src="https://img.shields.io/badge/Providers-Codex%20%7C%20AGY%20%7C%20Claude%20%7C%20OpenCode%20%7C%20Gemini-7C3AED?style=for-the-badge" alt="Supported Providers">
+</p>
 
-**The Intelligent Local Control Plane for AI Coding CLIs**  
-*Multiple Identities · Multi-Provider · Strict Isolation · Real Quotas · Smart Selection · Anti-Rate-Limit*
+<p align="center">
+  <a href="README.md">🇧🇷 Português (Brasil)</a> &nbsp;|&nbsp; <strong>🇬🇧 English</strong>
+</p>
+
+<h3 align="center">
+  ⚡ Intelligent Local Control Plane, Credential Isolation &amp; Quota Supervisor for AI Coding CLIs
+</h3>
 
 ---
 
-[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://golang.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Release](https://img.shields.io/badge/Release-v0.3.0-blue.svg)](https://github.com/kivervinicius/ai-cli/releases)
-[![Architecture](https://img.shields.io/badge/Architecture-Control%20Plane-green.svg)](docs/ARCHITECTURE.md)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey.svg)]()
+**AI CLI (`ai`)** is a high-performance local **Control Plane** built in Go for developers and teams using multiple AI coding assistants in their terminal (including **OpenAI Codex**, **Google AGY / Antigravity**, **Anthropic Claude Code**, **OpenCode**, and **Google Gemini CLI**).
 
-[**Português**](README.md) • [**English**](README.en.md)
-
-</div>
+It securely manages multiple account identities, isolates authentication credentials in dedicated per-profile sandboxes, tracks honest usage quotas without fabricated data, automatically selects the optimal account for each execution via multi-factor scoring, and seamlessly resumes conversations across accounts without rate-limit disruptions (429).
 
 ---
 
-## 📖 Overview
+## 📸 Interactive Terminal User Interface (TUI)
 
-**AI CLI** is a lightweight local **Control Plane** built in Go for developers and teams using multiple AI coding assistants in their terminal (including **OpenAI Codex**, **Google AGY / Antigravity**, **Claude Code**, **OpenCode**, and **Gemini CLI**).
-
-It securely manages multiple account identities, isolates authentication credentials in dedicated per-profile sandboxes, tracks honest usage quotas, automatically selects the optimal account for each execution, and resumes conversations across accounts without rate-limit disruptions.
+Launch the interactive control plane at any time by running `ai`:
 
 ```text
  ┌────────────────────────────────────────────────────────────────────────────────────────┐

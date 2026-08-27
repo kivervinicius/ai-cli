@@ -1,29 +1,33 @@
-<div align="center">
+<p align="center">
+  <img src="assets/banner.svg" alt="AI CLI Control Plane Banner" width="100%">
+</p>
 
-# 🧠 AI CLI Control Plane
+<p align="center">
+  <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.22%2B-00ADD8?style=for-the-badge&logo=go" alt="Versão Go"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" alt="Licença: MIT"></a>
+  <a href="https://kernel.org"><img src="https://img.shields.io/badge/Plataforma-Linux%20%7C%20macOS%20%7C%20Windows-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Plataforma"></a>
+  <img src="https://img.shields.io/badge/Providers-Codex%20%7C%20AGY%20%7C%20Claude%20%7C%20OpenCode%20%7C%20Gemini-7C3AED?style=for-the-badge" alt="Provedores Suportados">
+</p>
 
-**O Control Plane Local Inteligente para Coding CLIs de IA**  
-*Múltiplas Identidades · Multi-Provedor · Isolamento Estrito · Quotas Reais · Seleção Inteligente · Anti-Rate-Limit*
+<p align="center">
+  <strong>🇧🇷 Português (Brasil)</strong> &nbsp;|&nbsp; <a href="README.en.md">🇬🇧 English</a>
+</p>
+
+<h3 align="center">
+  ⚡ Control Plane Local Inteligente, Isolamento de Credenciais &amp; Supervisor de Quotas para Coding CLIs de IA
+</h3>
 
 ---
 
-[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://golang.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Release](https://img.shields.io/badge/Release-v0.3.0-blue.svg)](https://github.com/kivervinicius/ai-cli/releases)
-[![Architecture](https://img.shields.io/badge/Architecture-Control%20Plane-green.svg)](docs/ARCHITECTURE.md)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey.svg)]()
+O **AI CLI (`ai`)** é um **Control Plane local** de alta performance desenvolvido em Go para desenvolvedores e equipes que utilizam múltiplos assistentes e CLIs de IA no terminal (como **OpenAI Codex**, **Google AGY / Antigravity**, **Anthropic Claude Code**, **OpenCode** e **Google Gemini CLI**).
 
-[**Português**](README.md) • [**English**](README.en.md)
-
-</div>
+Ele gerencia de forma inteligente e segura múltiplas contas, isola autenticações e credenciais em sandboxes dedicados por perfil, monitora quotas de uso reais e autênticas sem dados fictícios, seleciona automaticamente a melhor conta para cada execução via pontuação multi-fator e retoma conversas entre contas sem bloqueios de rate limit (429).
 
 ---
 
-## 📖 Visão Geral
+## 📸 Interface de Terminal Interativa (TUI)
 
-O **AI CLI** é um **Control Plane local** desenvolvido em Go para desenvolvedores e equipes que utilizam múltiplos assistentes e CLIs de IA no terminal (como **OpenAI Codex**, **Google AGY / Antigravity**, **Claude Code**, **OpenCode** e **Gemini CLI**).
-
-Ele gerencia de forma inteligente e segura múltiplas contas, isola autenticações e credenciais em sandboxes dedicados, monitora quotas de uso reais e autênticas, e seleciona automaticamente a melhor conta para cada execução ou retoma conversas sem bloqueios de rate limit.
+Inicie o painel interativo a qualquer momento executando `ai`:
 
 ```text
  ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -57,10 +61,10 @@ Ele gerencia de forma inteligente e segura múltiplas contas, isola autenticaç�
 ## 🌟 Principais Recursos
 
 ### 1. 🛡️ Sandbox Multi-Conta & Isolamento de Credenciais
-- **Estado Estritamente Isolado:** Cada perfil possui seu próprio diretório `HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, sessão privada D-Bus e cofre `gnome-keyring-daemon` dedicado.
+- **Estado Isolado:** Cada perfil possui seu próprio diretório `HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, sessão privada D-Bus e cofre `gnome-keyring-daemon` dedicado.
 - **Zero Colisão de Tokens:** Tokens OAuth do Google, credenciais OpenAI, Anthropic e chaves de API ficam estritamente isolados em sua pasta de perfil com permissões restritas `0600`.
 - **Presets de Isolamento Configuráveis:** Escolha entre `developer` (compartilha dotfiles e contexto de git), `strict` (sandbox hermético) e `compat`.
-- **Preservação de Contexto de Projeto:** Mantém seu diretório de trabalho (`CWD`), usuário UID/GID, configurações locais e repositórios intactos.
+- **Preservação de Contexto de Projeto:** Mantém seu diretório de trabalho (`CWD`), usuário UID/GID, configurações locais (`.gitconfig`, `.ssh`) e repositórios intactos.
 
 ### 2. 🧠 Seleção Inteligente de Contas (Smart Account Selector)
 O motor de agendamento avalia múltiplos fatores em tempo real para escolher a conta ideal:
