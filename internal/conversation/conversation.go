@@ -1,175 +1,102 @@
 package conversation
 
 import (
-	"bufio"
-	"encoding/json"
-	"os"
-	"path/filepath"
-	"sort"
-	"strings"
+	"context"
 	"time"
+
+	"github.com/kivervinicius/ai-cli/internal/core/model"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/agy"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/claude"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/codex"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/gemini"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/opencode"
+	"github.com/kivervinicius/ai-cli/internal/core/session"
+	"github.com/kivervinicius/ai-cli/internal/profile"
 )
 
 type Conversation struct {
 	ID           string    `json:"id"`
 	Title        string    `json:"title"`
 	Provider     string    `json:"provider"`
+	Profile      string    `json:"profile,omitempty"`
 	Workspace    string    `json:"workspace"`
 	LastModified time.Time `json:"last_modified"`
 }
 
-// ListRecent returns unique recent conversations from AGY and Codex.
+// ListRecent returns unique recent conversations across all providers and profile stores.
 func ListRecent(limit int, workspaceFilter string) []Conversation {
-	convs := make(map[string]*Conversation)
+	ctx := context.Background()
+	var allSessions []model.Session
 
-	// 1. Discover AGY conversations
-	loadAgyConversations(convs)
+	profs, _ := profile.List()
 
-	// 2. Discover Codex conversations
-	loadCodexConversations(convs)
+	// 1. Query for each configured profile
+	codexAdapter := codex.New()
+	agyAdapter := agy.New()
+	claudeAdapter := claude.New()
+	opencodeAdapter := opencode.New()
+	geminiAdapter := gemini.New()
 
-	var list []Conversation
-	for _, c := range convs {
-		if c.ID == "" {
-			continue
-		}
-		list = append(list, *c)
-	}
-
-	// Prioritize current workspace, then sort by LastModified descending
-	cwd, _ := os.Getwd()
-	sort.Slice(list, func(i, j int) bool {
-		iCwd := cwd != "" && (list[i].Workspace == cwd || strings.HasPrefix(cwd, list[i].Workspace))
-		jCwd := cwd != "" && (list[j].Workspace == cwd || strings.HasPrefix(cwd, list[j].Workspace))
-		if iCwd != jCwd {
-			return iCwd
-		}
-		return list[i].LastModified.After(list[j].LastModified)
-	})
-
-	if limit > 0 && len(list) > limit {
-		list = list[:limit]
-	}
-	return list
-}
-
-func loadAgyConversations(convs map[string]*Conversation) {
-	homeCandidates := []string{
-		os.Getenv("AI_REAL_HOME"),
-		"/home/desenvolvedor",
-	}
-	if h, err := os.UserHomeDir(); err == nil {
-		homeCandidates = append(homeCandidates, h)
-	}
-
-	for _, h := range homeCandidates {
-		if h == "" {
-			continue
-		}
-		histFile := filepath.Join(h, ".gemini", "antigravity-cli", "history.jsonl")
-		f, err := os.Open(histFile)
-		if err != nil {
-			continue
-		}
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line == "" {
-				continue
+	for _, p := range profs {
+		switch p.Provider {
+		case "codex":
+			if list, err := codexAdapter.ListConversations(ctx, p, workspaceFilter); err == nil {
+				allSessions = append(allSessions, list...)
 			}
-			var entry struct {
-				Display        string `json:"display"`
-				Timestamp      int64  `json:"timestamp"`
-				Workspace      string `json:"workspace"`
-				ConversationID string `json:"conversationId"`
-				Type           string `json:"type"`
+		case "agy":
+			if list, err := agyAdapter.ListConversations(ctx, p, workspaceFilter); err == nil {
+				allSessions = append(allSessions, list...)
 			}
-			if err := json.Unmarshal([]byte(line), &entry); err == nil && entry.ConversationID != "" {
-				t := time.UnixMilli(entry.Timestamp)
-				c, exists := convs[entry.ConversationID]
-				if !exists {
-					title := entry.Display
-					if strings.HasPrefix(title, "/") {
-						title = "Conversation " + entry.ConversationID[:8]
-					}
-					if len(title) > 60 {
-						title = title[:57] + "..."
-					}
-					convs[entry.ConversationID] = &Conversation{
-						ID:           entry.ConversationID,
-						Title:        title,
-						Provider:     "agy",
-						Workspace:    entry.Workspace,
-						LastModified: t,
-					}
-				} else {
-					if t.After(c.LastModified) {
-						c.LastModified = t
-					}
-					if c.Title == "" || strings.HasPrefix(c.Title, "Conversation ") {
-						if !strings.HasPrefix(entry.Display, "/") && entry.Display != "" {
-							title := entry.Display
-							if len(title) > 60 {
-								title = title[:57] + "..."
-							}
-							c.Title = title
-						}
-					}
-				}
+		case "claude":
+			if list, err := claudeAdapter.ListConversations(ctx, p, workspaceFilter); err == nil {
+				allSessions = append(allSessions, list...)
+			}
+		case "opencode":
+			if list, err := opencodeAdapter.ListConversations(ctx, p, workspaceFilter); err == nil {
+				allSessions = append(allSessions, list...)
+			}
+		case "gemini":
+			if list, err := geminiAdapter.ListConversations(ctx, p, workspaceFilter); err == nil {
+				allSessions = append(allSessions, list...)
 			}
 		}
-		f.Close()
-		break // Found valid history
-	}
-}
-
-func loadCodexConversations(convs map[string]*Conversation) {
-	homeCandidates := []string{
-		os.Getenv("AI_REAL_HOME"),
-		"/home/desenvolvedor",
-	}
-	if h, err := os.UserHomeDir(); err == nil {
-		homeCandidates = append(homeCandidates, h)
 	}
 
-	for _, h := range homeCandidates {
-		if h == "" {
-			continue
-		}
-		indexFile := filepath.Join(h, ".codex", "session_index.jsonl")
-		f, err := os.Open(indexFile)
-		if err != nil {
-			continue
-		}
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line == "" {
-				continue
-			}
-			var entry struct {
-				ID         string `json:"id"`
-				ThreadName string `json:"thread_name"`
-				UpdatedAt  string `json:"updated_at"`
-			}
-			if err := json.Unmarshal([]byte(line), &entry); err == nil && entry.ID != "" {
-				t, _ := time.Parse(time.RFC3339, entry.UpdatedAt)
-				title := entry.ThreadName
-				if title == "" {
-					title = "Codex Thread " + entry.ID[:8]
-				}
-				if len(title) > 60 {
-					title = title[:57] + "..."
-				}
-				convs[entry.ID] = &Conversation{
-					ID:           entry.ID,
-					Title:        title,
-					Provider:     "codex",
-					LastModified: t,
-				}
-			}
-		}
-		f.Close()
-		break
+	// 2. Query host-level default directories as fallback
+	dummyProf := model.Profile{Name: "default"}
+	if list, err := codexAdapter.ListConversations(ctx, dummyProf, workspaceFilter); err == nil {
+		allSessions = append(allSessions, list...)
 	}
+	if list, err := agyAdapter.ListConversations(ctx, dummyProf, workspaceFilter); err == nil {
+		allSessions = append(allSessions, list...)
+	}
+	if list, err := claudeAdapter.ListConversations(ctx, dummyProf, workspaceFilter); err == nil {
+		allSessions = append(allSessions, list...)
+	}
+	if list, err := opencodeAdapter.ListConversations(ctx, dummyProf, workspaceFilter); err == nil {
+		allSessions = append(allSessions, list...)
+	}
+	if list, err := geminiAdapter.ListConversations(ctx, dummyProf, workspaceFilter); err == nil {
+		allSessions = append(allSessions, list...)
+	}
+
+	store := session.NewStore()
+	aggregated := store.Aggregate(allSessions, workspaceFilter)
+
+	var result []Conversation
+	for _, s := range aggregated {
+		result = append(result, Conversation{
+			ID:           s.ID,
+			Title:        s.Title,
+			Provider:     s.ProviderID,
+			Profile:      s.ProfileID,
+			Workspace:    s.Workspace,
+			LastModified: s.UpdatedAt,
+		})
+	}
+
+	if limit > 0 && len(result) > limit {
+		result = result[:limit]
+	}
+	return result
 }

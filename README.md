@@ -1,50 +1,55 @@
-<p align="center">
-  <img src="assets/banner.svg" alt="AI Manager Banner" width="100%">
-</p>
+<div align="center">
 
-<p align="center">
-  <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.22%2B-00ADD8?style=for-the-badge&logo=go" alt="Versão Go"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" alt="Licença: MIT"></a>
-  <a href="https://kernel.org"><img src="https://img.shields.io/badge/Plataforma-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux"></a>
-  <img src="https://img.shields.io/badge/Providers-OpenAI%20Codex%20%7C%20Google%20AGY-7C3AED?style=for-the-badge" alt="Provedores Suportados">
-</p>
+# 🧠 AI CLI Control Plane
 
-<p align="center">
-  <strong>Português (Brasil)</strong> &nbsp;|&nbsp; <a href="README.en.md">🇬🇧 English</a>
-</p>
-
-<h3 align="center">
-  ⚡ Gerenciador Multi-Contas Isolado &amp; Supervisor de Quotas em Tempo Real para OpenAI Codex e Google AGY
-</h3>
+**O Control Plane Local Inteligente para Coding CLIs de IA**  
+*Múltiplas Identidades · Multi-Provedor · Isolamento Estrito · Quotas Reais · Seleção Inteligente · Anti-Rate-Limit*
 
 ---
 
-O **AI Manager (`ai`)** é um gerenciador multi-contas ultra rápido, inicializador em sandbox e supervisor contra bloqueios de rate limit (429) para o **OpenAI Codex** e **Google Antigravity (AGY)** no Linux.
+[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://golang.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Release](https://img.shields.io/badge/Release-v0.3.0-blue.svg)](https://github.com/kivervinicius/ai-cli/releases)
+[![Architecture](https://img.shields.io/badge/Architecture-Control%20Plane-green.svg)](docs/ARCHITECTURE.md)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey.svg)]()
 
-Ele permite gerenciar múltiplas contas de IA de forma totalmente isolada, alternar contas em tempo real **sem sair da sessão ativa do chat**, monitorar cotas **5 Horas e Semanais** ao vivo e continuar conversas entre diferentes contas em menos de 0,5s quando o limite esgota.
+[**Português**](README.md) • [**English**](README.en.md)
+
+</div>
 
 ---
 
-## 📸 Interface de Terminal Interativa (TUI)
+## 📖 Visão Geral
 
-Inicie o painel interativo a qualquer momento executando `ai`:
+O **AI CLI** é um **Control Plane local** desenvolvido em Go para desenvolvedores e equipes que utilizam múltiplos assistentes e CLIs de IA no terminal (como **OpenAI Codex**, **Google AGY / Antigravity**, **Claude Code**, **OpenCode** e **Gemini CLI**).
+
+Ele gerencia de forma inteligente e segura múltiplas contas, isola autenticações e credenciais em sandboxes dedicados, monitora quotas de uso reais e autênticas, e seleciona automaticamente a melhor conta para cada execução ou retoma conversas sem bloqueios de rate limit.
 
 ```text
-┌──────────────────────────────────────────────────────────────────────────────────────────────┐
-│ AI Manager v0.2.0                                                   [Projeto: backend-api]   │
-│  Abas:   [ 1. Contas & Perfis ]    [ 2. Conversas Recentes ]                                 │
-├──────────────────────────────────────────────────────────────────────────────────────────────┤
-│  CONTAS & PERFIS CONFIGURADOS:                                                               │
-│                                                                                              │
-│ > [1] AGY   google-work            work.team@gmail.com              Google AI Pro   ★ (Padrão)│
-│   [2] AGY   google-personal        alex.dev@gmail.com               Google AI Pro            │
-│   [3] CODEX openai-work            alex@company.com                 ChatGPT Plus    ★ (Padrão)│
-│   [4] CODEX openai-personal        alex.personal@gmail.com          ChatGPT Plus             │
-│                                                                                              │
-├──────────────────────────────────────────────────────────────────────────────────────────────┤
-│  [Enter] Iniciar   [c] Continuar Última   [d] Tornar Padrão   [s] Ver Quotas & /usage        │
-│  [Tab] Conversas    [↑/↓] Navegar            [1-9] Seleção Rápida   [q] Sair                  │
-└──────────────────────────────────────────────────────────────────────────────────────────────┘
+ ┌────────────────────────────────────────────────────────────────────────────────────────┐
+ │  AI CLI Control Plane v0.3.0                             Workspace: ~/tools/ai-manager │
+ ├─────────────────────────┬──────────────────────────────────────────────────────────────┤
+ │ Providers               │ Accounts (Codex)                                             │
+ │                         │                                                              │
+ │ ▸ ● Codex             2 │ ▸ ● [1] openai-work          ChatGPT Plus  [███████░░░] 70% ★│
+ │   ● AGY               2 │   ● [2] openai-personal      ChatGPT Plus  [██████████] 100% │
+ │   ○ Claude            0 │                                                              │
+ │   ○ OpenCode          0 │                                                              │
+ │   ○ Gemini            0 │                                                              │
+ ├─────────────────────────┴──────────────────────────────────────────────────────────────┤
+ │ Recent Sessions (Universal Index)                                                      │
+ │                                                                                        │
+ │ ▸ [1] há 12 min  # REFACTOR CONTROL PLANE                 [AGY   ]  ~/tools/ai-manager │
+ │   [2] ontem      Verificar tipagem e lint                [CODEX ]  ~/tools/ai-manager   │
+ │   [3] há 2 dias  Corrigir problemas de concorrência      [CODEX ]  ~/tools/ai-manager   │
+ │   [4] há 3 dias  Auditoria de segurança                  [AGY   ]  ~/projetos           │
+ ├────────────────────────────────────────────────────────────────────────────────────────┤
+ │ Selected: Codex / openai-work  [Authenticated]                                         │
+ │ Actions:  [Enter/1-9] Run  [c] Continue Latest  [r] Resume Modal  [s] Quotas  [l] Login│
+ │ AUTO: openai-personal (100% capacity) is optimal for new sessions                     │
+ ├────────────────────────────────────────────────────────────────────────────────────────┤
+ │ [↑/↓] Navegar  [←/→/Tab] Alternar Caixa  [1-9] Disparo Rápido  [/] Buscar  [q/Esc] Sair│
+ └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -52,112 +57,172 @@ Inicie o painel interativo a qualquer momento executando `ai`:
 ## 🌟 Principais Recursos
 
 ### 1. 🛡️ Sandbox Multi-Conta & Isolamento de Credenciais
-- **Estado Isolado:** Cada perfil tem seu próprio `HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, sessão privada D-Bus e cofre `gnome-keyring-daemon` dedicado.
-- **Zero Colisão de Tokens:** Tokens OAuth do Google e tokens de autenticação da OpenAI ficam estritamente isolados em sua pasta de perfil, eliminando sobrescritas acidentais de sessão.
-- **Contexto de Projeto Compartilhado:** Preserva exatamente seu diretório de trabalho atual (`CWD`), usuário UID/GID, dotfiles (`.bashrc`, `.zshrc`, `.gitconfig`, `.ssh`) e o contexto compartilhado dos seus repositórios.
+- **Estado Estritamente Isolado:** Cada perfil possui seu próprio diretório `HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, sessão privada D-Bus e cofre `gnome-keyring-daemon` dedicado.
+- **Zero Colisão de Tokens:** Tokens OAuth do Google, credenciais OpenAI, Anthropic e chaves de API ficam estritamente isolados em sua pasta de perfil com permissões restritas `0600`.
+- **Presets de Isolamento Configuráveis:** Escolha entre `developer` (compartilha dotfiles e contexto de git), `strict` (sandbox hermético) e `compat`.
+- **Preservação de Contexto de Projeto:** Mantém seu diretório de trabalho (`CWD`), usuário UID/GID, configurações locais e repositórios intactos.
 
-### 2. ⚡ Troca de Contas Durante a Sessão (Skill `/switch`)
-Alterne perfis de autenticação diretamente de dentro do chat **sem precisar fechar o terminal ou reiniciar o CLI**:
-```text
-User: /switch google-personal
-Agent: ✓ Alternado com sucesso para AGY:google-personal (alex.dev@gmail.com - Google AI Pro).
-       As próximas mensagens continuarão com a quota desta conta.
-```
-
-### 3. 🔄 Continuação Instantânea de Conversas (Anti-Rate-Limit)
-Quando o limite de quota de uma conta esgotar:
-- Pressione `[Tab]` na TUI para ver as **Conversas Recentes**.
-- Selecione qualquer conversa recente e aperte `[Enter]` para continuá-la de onde parou com outra conta que possua saldo.
-- Comando direto via CLI:
+### 2. 🧠 Seleção Inteligente de Contas (Smart Account Selector)
+O motor de agendamento avalia múltiplos fatores em tempo real para escolher a conta ideal:
+- **Pontuação Multi-Fator:** Avalia capacidade restante de quota, bindings de workspace, perfil padrão, prioridade manual configurada e planos Pro.
+- **Transparência Total (`ai explain <provider>`):** Entenda exatamente por que uma conta foi escolhida:
   ```bash
-  ai resume <conversation-id> agy:google-personal
+  $ ai explain agy
+  === Smart Account Selection Explanation: AGY ===
+  Evaluation of all candidate profiles:
+
+  Optimal Choice: google-work (Reason: authenticated, 92% capacity (+73.9), default profile (+25.0), pro tier (+15.0))
+
+  PROFILE            ELIGIBLE   SCORE    BREAKDOWN / REJECTION
+  google-work        YES        213.9    authenticated, 92% capacity (+73.9), default profile (+25.0), pro tier (+15.0)
+  google-personal    YES        195.0    authenticated, 100% capacity (+80.0), pro tier (+15.0)
   ```
 
-### 4. 📊 Monitor de Quotas Unificado em Tempo Real (`ai usage`)
-Exibe com precisão as cotas de 5 Horas e Semanais compatíveis com os painéis oficiais do Google AGY (`/usage`) e OpenAI Codex (`/status`):
+### 3. ⚡ Fallback Automático & Cooldown Anti-Rate-Limit
+- **Recuperação de Ciclo Seguro:** Quando uma conta atinge HTTP 429 ou esgota a quota durante uma execução, o AI CLI intercepta a falha, registra o cooldown e realiza fallback transparente para a próxima conta disponível com saldo.
+- **Prevenção de Loops:** O sistema garante que cada conta só seja testada uma vez por ciclo de fallback.
+
+### 4. 📊 Monitor de Quotas Reais e Honesto (`ai usage`)
+- **Zero Quotas Fictícias:** Elimina suposições de 100%. Exibe com precisão o estado real da quota: `LIVE` (obtida via API/CLI), `CACHED` (estado local recente), `RATE_LIMITED` ou `UNKNOWN`.
+- **Limites de 5 Horas e Semanais:** Visualização clara das janelas de reset de cada modelo.
 
 ```bash
 $ ai usage
 ```
 ```text
-PROVIDER PROFILE              ACCOUNT                        PLAN             5H LIMIT                     WEEKLY LIMIT
-agy      google-work          work.team@gmail.com            Google AI Pro    [████████████░░] 92%         [███████████░░░] 83%
-agy      google-personal      alex.dev@gmail.com             Google AI Pro    [██████████████] 100%        [██████████████] 100%
-codex    openai-work          alex@company.com               ChatGPT Plus     [██████████░░░░] 70%         [█████████████░] 95%
-codex    openai-personal      alex.personal@gmail.com        ChatGPT Plus     [██████████████] 100%        [██████████████] 100%
+PROVIDER   PROFILE          ACCOUNT                  PLAN             CAPACITY / 5H                STATUS
+agy        google-work      work@company.com         Google AI Pro    [█████████░] 92%             CACHED
+agy        google-personal  dev@gmail.com            Google AI Pro    [██████████] 100%            CACHED
+codex      openai-work      work@company.com         ChatGPT Plus     [███████░░░] 70%             CACHED
+codex      openai-personal  dev@gmail.com            ChatGPT Plus     [██████████] 100%            CACHED
 ```
 
-#### Cartões Detalhados Oficiais do CLI (`ai usage <provider> <perfil>` ou tecla `[s]` na TUI):
+### 5. 🔄 Retomada Universal de Sessões (Session Handoff)
+- **Índice Unificado:** Descubra e pesquise instantaneamente conversas de todos os provedores (`ai sessions` ou `/` na TUI).
+- **Handoff Entre Contas:** Continue uma conversa existente com outra conta que possua limite disponível:
+  ```bash
+  ai resume <session-id> [provider:profile]
+  ```
+- **Modal Interativo na TUI:** Pressione `[r]` ou `[Enter]` numa sessão recente para escolher a conta com sugestão automática do Smart Selector.
 
-```text
-╭────────────────────────────────────────────────────────────────────────────────╮
-│  >_ OpenAI Codex Status & Quota — openai-work                                  │
-│                                                                                │
-│ Visite https://chatgpt.com/codex/settings/usage para informações atualizadas   │
-│ sobre limites de taxa e créditos                                              │
-│                                                                                │
-│  Modelo:               gpt-5.6-sol (reasoning low, summaries auto)             │
-│  Conta:                alex@company.com (ChatGPT Plus)                         │
-│                                                                                │
-│  Limite 5h:            [██████████████░░░░░░] 70% restante (renova às 17:34)   │
-│  Limite Semanal:       [███████████████████░] 95% restante (renova 12:34 3 Set)│
-╰────────────────────────────────────────────────────────────────────────────────╯
+### 6. 📁 Bindings por Workspace / Projeto
+Associe pastas de projetos a perfis específicos para uso automático de contas de trabalho ou pessoais:
+```bash
+# Vincular projeto atual à conta corporativa
+ai bind codex:openai-work
+
+# Listar workspaces e seus vínculos
+ai workspaces
 ```
+
+### 7. 🔌 5 Provedores Suportados Nativamente
+| Provedor | Identificador | Capacidades |
+| :--- | :--- | :--- |
+| **OpenAI Codex** | `codex` | Login, Quota 5h/Semanal, Resume nativo, Isolamento `CODEX_HOME` |
+| **Google AGY / Antigravity** | `agy` | Login, Quota Gemini/Claude, Keyring isolado, D-Bus sandbox |
+| **Anthropic Claude Code** | `claude` | Login, Detecção de versão, Runtime isolado |
+| **OpenCode** | `opencode` | Detecção e execução multi-modelo |
+| **Gemini CLI** | `gemini` | Autenticação Google OAuth, Detecção |
 
 ---
 
 ## 🚀 Instalação e Início Rápido
 
-### Opção 1: Compilação e Instalação Automática
+### Pré-requisitos
+- **Go 1.22+** instalado na máquina.
+- Um ou mais CLIs oficiais instalados (`codex`, `agy`, `claude`, etc.).
+
+### Opção 1: Compilação e Instalação Rápida
 ```bash
 git clone https://github.com/kivervinicius/ai-cli.git
 cd ai-cli
 make install
 ```
 
-### Opção 2: Compilação Manual em Go
+### Opção 2: Compilação Manual
 ```bash
-go build -buildvcs=false -o ai ./cmd/ai
+go build -ldflags="-s -w" -o ai ./cmd/ai
 mkdir -p ~/.local/bin
 cp ai ~/.local/bin/ai
 chmod +x ~/.local/bin/ai
 ```
 
-### Autocompletar no Shell (Bash e Zsh)
-Ative o autocompletar de perfis, subcomandos e conversas:
+Certifique-se de que `~/.local/bin` está no seu `$PATH`.
 
-**Bash:**
+---
+
+## 🐚 Autocompletar no Shell (Bash, Zsh e Fish)
+
+Ative o autocompletar completo de provedores, perfis, conversas e flags:
+
+### Bash
 ```bash
 source <(ai completion bash)
-# Ou persistir no ~/.bashrc:
-ai completion bash >> ~/.bashrc
+# Para persistir no ~/.bashrc:
+echo 'source <(ai completion bash)' >> ~/.bashrc
 ```
 
-**Zsh:**
+### Zsh
 ```zsh
 source <(ai completion zsh)
+# Para persistir no ~/.zshrc:
+echo 'source <(ai completion zsh)' >> ~/.zshrc
+```
+
+### Fish
+```fish
+ai completion fish | source
 ```
 
 ---
 
-## 💻 Guia Rápido de Comandos CLI
+## 💻 Guia Completo de Comandos CLI
 
+### Interface Interativa & Execução
 | Comando | Descrição |
 | :--- | :--- |
-| `ai` | Abre a TUI interativa completa (Perfis, Contas, Quotas, Conversas Recentes). |
-| `ai list` | Lista todos os perfis configurados com contas, planos e perfil padrão. |
-| `ai usage` | Monitor unificado de cotas 5H e Semanais com barras de progresso visuais. |
-| `ai usage <provider> <nome>` | Exibe o cartão detalhado oficial de cota do modelo. |
-| `ai switch <provider> <nome>` | Alterna o perfil ativo e as credenciais em tempo real. |
-| `ai resume` | Seleciona uma conversa recente e escolhe com qual conta continuar. |
-| `ai resume <id> <perfil>` | Continuação instantânea de uma conversa usando o perfil especificado. |
-| `ai add <codex\|agy> <nome>` | Cria um novo perfil isolado e dispara o fluxo de login. |
-| `ai login <provider> <nome>` | Autentica ou renova tokens OAuth para um perfil. |
-| `ai codex:<nome> [args...]` | Executa o Codex diretamente com aquele perfil (ex: `ai codex:openai-1 --yolo`). |
-| `ai agy:<nome> [args...]` | Executa o AGY diretamente com aquele perfil (ex: `ai agy:google-1 -c`). |
-| `ai remove <provider> <nome>` | Remove com segurança um perfil e suas credenciais isoladas. |
-| `ai doctor` | Executa diagnósticos no sistema e checa dependências (dbus, keyring, CLIs). |
-| `ai inspect <provider> <nome>` | Exibe caminhos de execução não-secretos, UID/GID e variáveis de isolamento. |
+| `ai` | Abre a TUI interativa completa em Bubble Tea. |
+| `ai <provider> [args...]` | Executa o provedor com seleção inteligente da melhor conta (ex: `ai codex -m gpt-5`). |
+| `ai <provider>:<perfil> [args...]` | Executa diretamente com o perfil especificado (ex: `ai agy:work -c`). |
+| `ai explain <provider>` | Exibe a pontuação e justificativa da seleção de conta do Smart Selector. |
+
+### Gerenciamento de Perfis & Autenticação
+| Comando | Descrição |
+| :--- | :--- |
+| `ai profiles` / `ai list` | Lista todos os perfis configurados, contas, planos e status. |
+| `ai add <provider> <nome>` | Cria um novo perfil isolado e inicializa o sandbox. |
+| `ai login <provider> <nome>` | Executa o fluxo de autenticação oficial do provedor. |
+| `ai logout <provider> <nome>` | Remove as credenciais salvas do perfil. |
+| `ai use <provider> <nome>` | Define o perfil padrão para o provedor. |
+| `ai rename <provider> <antigo> <novo>` | Renomeia um perfil preservando histórico e sessões. |
+| `ai remove <provider> <nome>` | Remove com segurança o perfil e suas credenciais. |
+
+### Quotas & Conversas
+| Comando | Descrição |
+| :--- | :--- |
+| `ai usage` | Monitor unificado de cotas 5H e Semanais com barras de progresso reais. |
+| `ai usage <provider> <nome>` | Exibe os limites detalhados de uma conta específica. |
+| `ai sessions` | Lista o histórico unificado de sessões recentes de todos os provedores. |
+| `ai sessions search <termo>` | Pesquisa sessões por título, ID ou workspace. |
+| `ai resume <id> [perfil]` | Retoma uma conversa específica com o perfil indicado ou com a melhor conta. |
+
+### Workspaces & Configurações
+| Comando | Descrição |
+| :--- | :--- |
+| `ai bind <provider>:<perfil>` | Vincula o diretório atual ao perfil especificado. |
+| `ai unbind <provider>` | Remove o vínculo de workspace para o provedor. |
+| `ai workspaces` | Lista todos os workspaces descobertos e seus vínculos ativos. |
+| `ai current` | Exibe o perfil ativo e vínculos do workspace atual. |
+| `ai config validate` | Valida a integridade do arquivo de configuração. |
+
+### Auditoria, Diagnóstico & Observabilidade
+| Comando | Descrição |
+| :--- | :--- |
+| `ai doctor` | Executa diagnósticos de sistema (D-Bus, keyrings, CLIs instalados, permissões). |
+| `ai security` | Audita permissões de arquivos e valida o isolamento de credenciais. |
+| `ai stats` | Exibe métricas agregadas de uso, taxas de sucesso e rate limits. |
+| `ai history` | Exibe o log de eventos e telemetria de execuções recentes. |
+| `ai paths` | Mostra os diretórios XDG de dados, configuração e estado. |
 
 ---
 
@@ -165,37 +230,45 @@ source <(ai completion zsh)
 
 ```mermaid
 graph TD
-    User["Terminal do Desenvolvedor (ai-cli)"] --> TUI["TUI Interativa / Despachante CLI"]
+    User["Desenvolvedor / Terminal"] --> Entrypoint["ai (CLI / Bubble Tea TUI)"]
     
-    subgraph "Camada de Isolamento de Provedores"
-        TUI --> AGY_Sand["Sandbox AGY (D-Bus + Keyring + HOME Isolados)"]
-        TUI --> CDX_Sand["Sandbox Codex (HOME + auth.json Isolados)"]
+    subgraph Control_Plane["AI CLI Control Plane"]
+        Entrypoint --> Scheduler["Smart Account Selector (Multi-Factor Scoring)"]
+        Entrypoint --> QuotaEngine["Honest Quota Engine (LIVE · CACHED · UNKNOWN)"]
+        Entrypoint --> FallbackExec["Automatic Fallback & Cooldown Tracker"]
+        Entrypoint --> SessionIndex["Universal Session Store (Handoff & Resume)"]
+        Entrypoint --> SecurityLayer["Security & Isolation Presets (strict/dev/compat)"]
     end
     
-    subgraph "Camada de Desenvolvimento Compartilhada"
-        AGY_Sand --> HostEnv["Ambiente do Host Preservado ($CWD, $UID, Dotfiles, .git, .ssh)"]
-        CDX_Sand --> HostEnv
-        AGY_Sand --> ConvEngine["Motor de Conversas e Histórico Unificado"]
-        CDX_Sand --> ConvEngine
+    subgraph Provider_Adapters["Adaptadores de Provedores"]
+        Scheduler --> CodexAd["Codex Adapter"]
+        Scheduler --> AgyAd["AGY Adapter"]
+        Scheduler --> ClaudeAd["Claude Adapter"]
+        Scheduler --> OpenCodeAd["OpenCode Adapter"]
+        Scheduler --> GeminiAd["Gemini Adapter"]
     end
     
-    subgraph "Troca de Contas em Tempo Real"
-        ConvEngine --> Skill["skill-ai-switch (/switch no chat)"]
-        Skill --> InPlaceSwap["Troca a Quente de Credenciais"]
+    subgraph Sandboxes["Sandboxes de Execução Isolados"]
+        CodexAd --> CodexHome["CODEX_HOME (~/.local/share/ai-cli/profiles/codex/*)"]
+        AgyAd --> AgyHome["D-Bus + Keyring (~/.local/share/ai-cli/profiles/agy/*)"]
+        ClaudeAd --> ClaudeHome["Isolated Runtime (~/.local/share/ai-cli/profiles/claude/*)"]
     end
 ```
 
 ### Garantias de Segurança:
-- 🔒 **Zero Vazamento de Tokens:** Chaves de autenticação, payloads JWT e tokens OAuth ficam restritos a diretórios com permissões estritas `0600`.
-- 🔒 **Isolamento de Processos:** Usa `dbus-run-session` e sockets privados do `gnome-keyring-daemon` para isolar cofres de senhas entre contas.
-- 🔒 **Inspeção Segura:** O comando `ai inspect` apenas exibe metadados, diretórios e flags de runtime, nunca credenciais sensíveis.
+- 🔒 **Permissões Estritas `0600`:** Arquivos de credenciais, tokens OAuth e chaves privadas nunca são acessíveis por outros usuários do sistema operacional.
+- 🔒 **Redação Automática:** Logs de telemetria e saídas de diagnóstico passam por filtros de redação que mascaram tokens JWT, chaves OpenAI/Anthropic e dados sensíveis.
+- 🔒 **Isolamento de Processos:** Cofres de senhas do `gnome-keyring` rodam em instâncias D-Bus isoladas para cada perfil do AGY.
 
 ---
 
 ## 🤝 Contribuições
 
-Contribuições, sugestões de melhorias e novas ideias são muito bem-vindas!
-Sinta-se à vontade para abrir uma issue ou pull request.
+Contribuições, sugestões de novos provedores e melhorias são muito bem-vindas!
+1. Faça um Fork do projeto.
+2. Crie uma branch para sua feature (`git checkout -b feat/nova-feature`).
+3. Envie seus commits (`git commit -m 'feat: adiciona novo adapter'`).
+4. Abra um Pull Request.
 
 ---
 

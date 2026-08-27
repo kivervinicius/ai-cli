@@ -2,35 +2,70 @@ package app
 
 import (
 	"bufio"
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
-	"ai-manager/internal/conversation"
-	"ai-manager/internal/profile"
-	"ai-manager/internal/provider/agy"
-	"ai-manager/internal/provider/codex"
-	"ai-manager/internal/runtime"
-	"ai-manager/internal/tui"
+	"github.com/kivervinicius/ai-cli/internal/conversation"
+	"github.com/kivervinicius/ai-cli/internal/core/config"
+	"github.com/kivervinicius/ai-cli/internal/core/cooldown"
+	"github.com/kivervinicius/ai-cli/internal/core/exitcode"
+	"github.com/kivervinicius/ai-cli/internal/core/fallback"
+	"github.com/kivervinicius/ai-cli/internal/core/model"
+	"github.com/kivervinicius/ai-cli/internal/core/provider"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/agy"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/claude"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/codex"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/gemini"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/opencode"
+	"github.com/kivervinicius/ai-cli/internal/core/quota"
+	"github.com/kivervinicius/ai-cli/internal/core/scheduler"
+	"github.com/kivervinicius/ai-cli/internal/core/security"
+	"github.com/kivervinicius/ai-cli/internal/core/session"
+	"github.com/kivervinicius/ai-cli/internal/core/telemetry"
+	"github.com/kivervinicius/ai-cli/internal/profile"
+	"github.com/kivervinicius/ai-cli/internal/tui"
 )
 
-const version = "0.2.0"
+const version = "0.3.0"
+
+var globalRegistry *provider.Registry
+
+func initRegistry() *provider.Registry {
+	if globalRegistry != nil {
+		return globalRegistry
+	}
+	reg := provider.NewRegistry()
+	_ = reg.Register(codex.New())
+	_ = reg.Register(agy.New())
+	_ = reg.Register(claude.New())
+	_ = reg.Register(opencode.New())
+	_ = reg.Register(gemini.New())
+	globalRegistry = reg
+	return reg
+}
 
 func Run(args []string) error {
+	initRegistry()
+
 	if len(args) == 0 {
 		return interactive()
 	}
 
-	// Short form: ai agy:personal -- --model ...
+	// Short form: ai codex:work -- --model ... or ai codex:auto
 	if strings.Contains(args[0], ":") {
 		parts := strings.SplitN(args[0], ":", 2)
-		if len(parts) == 2 && (parts[0] == "agy" || parts[0] == "codex") {
-			return runProfile(parts[0], parts[1], trimDashDash(args[1:]))
+		prov := parts[0]
+		prof := parts[1]
+		if isSupportedProvider(prov) {
+			if prof == "auto" {
+				prof = ""
+			}
+			return executeProviderWithSmartSelection(prov, prof, trimDashDash(args[1:]), true)
 		}
 	}
 
@@ -39,18 +74,27 @@ func Run(args []string) error {
 		usage()
 		return nil
 	case "version", "--version", "-v":
-		fmt.Println("ai-manager", version)
-		return nil
-	case "list", "ls":
-		return list()
+		return versionCmd(args[1:])
+	case "providers":
+		return providersCmd(args[1:])
+	case "profiles", "list", "ls":
+		return profilesCmd(args[1:])
 	case "paths":
 		return paths()
 	case "doctor":
-		return doctor()
+		return doctorCmd(args[1:])
+	case "security":
+		return securityCmd(args[1:])
 	case "add":
 		return addCmd(args[1:])
+	case "remove", "rm":
+		return removeCmd(args[1:])
+	case "rename":
+		return renameCmd(args[1:])
 	case "login":
 		return loginCmd(args[1:])
+	case "logout":
+		return logoutCmd(args[1:])
 	case "inspect":
 		return inspectCmd(args[1:])
 	case "completion":
@@ -59,9 +103,7 @@ func Run(args []string) error {
 		return runCmd(args[1:])
 	case "resume", "continue":
 		return resumeCmd(args[1:])
-	case "switch", "swap":
-		return switchCmd(args[1:])
-	case "use":
+	case "switch", "swap", "use":
 		return useCmd(args[1:])
 	case "current":
 		return currentCmd(args[1:])
@@ -69,87 +111,343 @@ func Run(args []string) error {
 		return statusCmd(args[1:])
 	case "usage", "quota":
 		return usageCmd(args[1:])
-	case "remove", "rm":
-		return removeCmd(args[1:])
-	case "codex", "agy":
-		provider := args[0]
-		if len(args) >= 2 && !strings.HasPrefix(args[1], "-") {
-			return runProfile(provider, args[1], trimDashDash(args[2:]))
+	case "sessions":
+		return sessionsCmd(args[1:])
+	case "workspaces":
+		return workspacesCmd(args[1:])
+	case "bind":
+		return bindCmd(args[1:])
+	case "unbind":
+		return unbindCmd(args[1:])
+	case "bindings":
+		return bindingsCmd(args[1:])
+	case "explain":
+		return explainCmd(args[1:])
+	case "history":
+		return historyCmd(args[1:])
+	case "stats":
+		return statsCmd(args[1:])
+	case "export":
+		return exportCmd(args[1:])
+	case "issue-report":
+		return issueReportCmd(args[1:])
+	case "config":
+		return configCmd(args[1:])
+	case "codex", "agy", "claude", "opencode", "gemini":
+		prov := args[0]
+		targetProfile := ""
+		rest := args[1:]
+		if len(rest) > 0 && !strings.HasPrefix(rest[0], "-") {
+			targetProfile = rest[0]
+			rest = rest[1:]
 		}
-		name, err := profile.Default(provider)
-		if err != nil {
-			return err
+		if targetProfile == "auto" {
+			targetProfile = ""
 		}
-		if name == "" {
-			return fmt.Errorf("no default %s profile; use: ai use %s <profile>", provider, provider)
-		}
-		return runProfile(provider, name, trimDashDash(args[1:]))
+		return executeProviderWithSmartSelection(prov, targetProfile, trimDashDash(rest), true)
 	default:
 		if strings.HasPrefix(args[0], "-") {
-			cfg, _ := profile.LoadConfig()
-			agyDef := cfg.Defaults["agy"]
-			codexDef := cfg.Defaults["codex"]
-			if agyDef != "" && codexDef == "" {
-				return runProfile("agy", agyDef, trimDashDash(args))
+			// Auto selection for configured default provider
+			cfg, _ := config.LoadConfig()
+			for prov, prof := range cfg.Defaults {
+				if prof != "" {
+					return executeProviderWithSmartSelection(prov, prof, trimDashDash(args), true)
+				}
 			}
-			if codexDef != "" && agyDef == "" {
-				return runProfile("codex", codexDef, trimDashDash(args))
-			}
-			if agyDef != "" && codexDef != "" {
-				return fmt.Errorf("multiple defaults configured (agy:%s, codex:%s); specify provider, e.g.: ai agy %s or ai codex %s", agyDef, codexDef, strings.Join(args, " "), strings.Join(args, " "))
-			}
-			return fmt.Errorf("no default profile configured; specify provider, e.g.: ai agy %s or ai codex %s", strings.Join(args, " "), strings.Join(args, " "))
+			return fmt.Errorf("no default profile configured; specify provider, e.g.: ai codex")
 		}
 		return fmt.Errorf("unknown command %q; run 'ai help'", args[0])
 	}
 }
 
+func isSupportedProvider(p string) bool {
+	switch strings.ToLower(p) {
+	case "codex", "agy", "claude", "opencode", "gemini":
+		return true
+	default:
+		return false
+	}
+}
+
+func trimDashDash(args []string) []string {
+	if len(args) > 0 && args[0] == "--" {
+		return args[1:]
+	}
+	return args
+}
+
+func interactive() error {
+	res, err := tui.ShowMenu()
+	if err != nil {
+		return err
+	}
+	if res == nil || res.Action == tui.ActionQuit || res.Action == tui.ActionNone {
+		return nil
+	}
+	switch res.Action {
+	case tui.ActionRunProfile:
+		return executeProviderWithSmartSelection(res.Provider, res.ProfileName, res.Args, true)
+	case tui.ActionResumeConversation:
+		return executeResume(res.Provider, res.ProfileName, res.ConversationID, res.Args)
+	case tui.ActionLogin:
+		return loginCmd([]string{res.Provider, res.ProfileName})
+	default:
+		return nil
+	}
+}
+
+func executeProviderWithSmartSelection(provName, explicitProfile string, args []string, allowFallback bool) error {
+	reg := initRegistry()
+	pAdapter, ok := reg.Get(provName)
+	if !ok {
+		return fmt.Errorf("unknown provider %q (exit code: %d)", provName, exitcode.ProviderNotFound)
+	}
+
+	cfg, _ := config.LoadConfig()
+	qEng := quota.NewEngine(5 * time.Minute)
+	cdTracker := cooldown.NewTracker()
+	sel := scheduler.NewSelector(cfg, qEng, cdTracker)
+	exec := fallback.NewExecutor(sel, cdTracker)
+
+	allProfiles, err := profile.List()
+	if err != nil {
+		return err
+	}
+
+	var candidates []model.Profile
+	accounts := make(map[string]model.AccountInfo)
+	for _, p := range allProfiles {
+		if p.Provider == provName {
+			candidates = append(candidates, p)
+			accounts[p.Name] = profile.GetAccountInfo(provName, p.Name)
+		}
+	}
+
+	if len(candidates) == 0 {
+		return fmt.Errorf("no profiles configured for provider %s. Run: ai add %s <name>", provName, provName)
+	}
+
+	cwd, _ := os.Getwd()
+	ctx := context.Background()
+
+	return exec.RunWithFallback(ctx, provName, cwd, explicitProfile, candidates, accounts, allowFallback, func(p model.Profile) (model.Failure, error) {
+		start := time.Now()
+		_ = telemetry.LogEvent(telemetry.Event{
+			Type:       telemetry.EventSessionStarted,
+			ProviderID: provName,
+			ProfileID:  p.Name,
+			Workspace:  cwd,
+		})
+
+		fail, runErr := pAdapter.Run(ctx, p, args)
+		dur := time.Since(start)
+
+		if fail.Kind != model.FailureNone && fail.Kind != "" {
+			_ = telemetry.LogEvent(telemetry.Event{
+				Type:        telemetry.EventRateLimitDetected,
+				ProviderID:  provName,
+				ProfileID:   p.Name,
+				Workspace:   cwd,
+				DurationMs:  dur.Milliseconds(),
+				FailureKind: fail.Kind,
+			})
+		}
+		return fail, runErr
+	})
+}
+
+func executeResume(provName, profName, sessionID string, args []string) error {
+	reg := initRegistry()
+	pAdapter, ok := reg.Get(provName)
+	if !ok {
+		return fmt.Errorf("provider %q not found", provName)
+	}
+
+	if profName == "" {
+		cfg, _ := config.LoadConfig()
+		profName = cfg.Defaults[provName]
+		if profName == "" {
+			ps, _ := profile.List()
+			for _, p := range ps {
+				if p.Provider == provName {
+					profName = p.Name
+					break
+				}
+			}
+		}
+	}
+
+	p := model.Profile{Provider: provName, Name: profName}
+	if convProv, ok := pAdapter.(provider.ConversationProvider); ok {
+		fail, err := convProv.Resume(context.Background(), p, sessionID, args)
+		if err != nil {
+			return err
+		}
+		if fail.Kind != model.FailureNone && fail.Kind != "" {
+			return fmt.Errorf("%s", fail.Message)
+		}
+		return nil
+	}
+
+	return fmt.Errorf("provider %s does not support session resume (exit code: %d)", provName, exitcode.ResumeUnsupported)
+}
+
 func usage() {
-	fmt.Print(`AI Manager v0.2.0 - isolated multi-account launcher for Codex and AGY
+	fmt.Print(`AI CLI Control Plane v0.3.0 - Local Control Plane for AI Coding CLIs
 
 Usage:
-  ai                              interactive TUI (profiles, accounts, recent conversations)
-  ai list                         list profiles with accounts and plans
-  ai resume [id] [profile]        resume a recent conversation (with any account)
-  ai switch [provider]            quick default account switcher
-  ai add codex <name>             create + authenticate a Codex profile
-  ai add agy <name>               create + authenticate an AGY profile
-  ai login <provider> <name>      start the provider's login flow
-  ai inspect <provider> <name>    display non-secret profile metadata
-  ai run <provider> <name> -- ... run an external CLI with that profile
-  ai codex <name> [-- ...]        short form
-  ai agy <name> [-- ...]          short form
-  ai codex:<name> [-- ...]        shortest form
-  ai agy:<name> [-- ...]          shortest form
-  ai use <provider> <name>        set provider default
-  ai codex [-- ...]               run default Codex profile
-  ai agy [-- ...]                 run default AGY profile
-  ai current [provider]            show defaults
-  ai status [provider] [name]      local/login status
-  ai usage [provider] [name]       real-time quota and /usage monitor
-  ai remove <provider> <name>      delete a local profile
-  ai doctor                        dependency diagnostics
-  ai paths                         show manager storage paths
-  ai completion <bash|zsh>         output shell completion script
-
-Examples:
-  ai                              # open interactive TUI
-  ai resume                       # pick recent conversation & account to continue
-  ai switch agy                   # quick switch default AGY account
-  ai agy:google-personal -c       # continue latest conversation
-  ai agy:google-personal --yolo
-  ai codex:openai-work --yolo
+  ai                              Open interactive control plane (TUI)
+  ai <provider> [flags]           Launch provider with intelligent account selection
+  ai <provider>:<profile> [flags] Launch specific profile (e.g. ai codex:work)
+  ai <provider>:auto [flags]      Explicit auto-selection
+  ai resume [id] [provider:name]  Resume previous session using provider-native syntax
+  ai providers [--json]           List installed providers, versions & capabilities
+  ai profiles [--json]            List configured profiles, auth status & priorities
+  ai usage [provider] [--json]    Display real-time quota metrics & cache freshness
+  ai sessions [search] [--json]   Universal session index across all providers
+  ai workspaces [--json]          View workspaces, session history & bindings
+  ai bind <provider>:<profile>    Bind current workspace to a preferred profile
+  ai unbind <provider>            Unbind current workspace
+  ai bindings [--json]            List all active workspace bindings
+  ai explain <provider>           Explain account selection decision and scores
+  ai doctor [--json]              Deep diagnostics of runtime, keyrings & CLIs
+  ai security [profile] [--json]  Audit file sharing and isolation boundary
+  ai history [--json]             View local session execution log
+  ai stats [--json]               Aggregated statistics (sessions, fallbacks, rate limits)
+  ai config <show|validate>       Manage control plane settings
+  ai completion <bash|zsh|fish>   Generate shell completion scripts
+  ai version [--json]             Display build and platform information
 `)
+}
+
+func versionCmd(args []string) error {
+	if len(args) > 0 && args[0] == "--json" {
+		out := map[string]string{
+			"version": version,
+			"os":      "linux",
+			"arch":    "amd64",
+			"go":      "1.24.2",
+		}
+		b, _ := json.MarshalIndent(out, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+	fmt.Printf("ai-cli %s (linux/amd64)\n", version)
+	return nil
+}
+
+func providersCmd(args []string) error {
+	reg := initRegistry()
+	ctx := context.Background()
+	detections := reg.DetectAll(ctx)
+	profiles, _ := profile.List()
+
+	profCount := make(map[string]int)
+	for _, p := range profiles {
+		profCount[p.Provider]++
+	}
+
+	if len(args) > 0 && args[0] == "--json" {
+		out := make(map[string]interface{})
+		for _, p := range reg.List() {
+			id := string(p.ID())
+			det := detections[id]
+			out[id] = map[string]interface{}{
+				"name":         p.Name(),
+				"installed":    det.Installed,
+				"version":      det.Version,
+				"binary_path":  det.BinaryPath,
+				"profiles":     profCount[id],
+				"capabilities": p.Capabilities(),
+			}
+		}
+		b, _ := json.MarshalIndent(out, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+
+	fmt.Printf("%-14s %-12s %-24s %-10s %s\n", "PROVIDER", "INSTALLED", "VERSION", "PROFILES", "CAPABILITIES")
+	for _, p := range reg.List() {
+		id := string(p.ID())
+		det := detections[id]
+		instStr := "no"
+		if det.Installed {
+			instStr = "yes"
+		}
+		verStr := det.Version
+		if verStr == "" {
+			verStr = "—"
+		}
+		if len(verStr) > 22 {
+			verStr = verStr[:20] + ".."
+		}
+		caps := p.Capabilities()
+		capSummary := fmt.Sprintf("usage:%v resume:%v isolate:%v", caps.Usage, caps.Resume, caps.IsolatedRuntime)
+		fmt.Printf("%-14s %-12s %-24s %-10d %s\n", p.Name(), instStr, verStr, profCount[id], capSummary)
+	}
+	return nil
+}
+
+func profilesCmd(args []string) error {
+	ps, err := profile.List()
+	if err != nil {
+		return err
+	}
+	cfg, _ := config.LoadConfig()
+
+	if len(args) > 0 && args[0] == "--json" {
+		type profileJSON struct {
+			model.Profile
+			Account model.AccountInfo `json:"account"`
+			Default bool              `json:"is_default"`
+		}
+		var list []profileJSON
+		for _, p := range ps {
+			acc := profile.GetAccountInfo(p.Provider, p.Name)
+			list = append(list, profileJSON{
+				Profile: p,
+				Account: acc,
+				Default: cfg.Defaults[p.Provider] == p.Name,
+			})
+		}
+		b, _ := json.MarshalIndent(list, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+
+	if len(ps) == 0 {
+		fmt.Println("No profiles configured. Example: ai add codex work")
+		return nil
+	}
+
+	fmt.Printf("%-10s %-18s %-28s %-16s %-12s %s\n", "PROVIDER", "PROFILE", "ACCOUNT / EMAIL", "PLAN", "STATUS", "DEFAULT")
+	for _, p := range ps {
+		acc := profile.GetAccountInfo(p.Provider, p.Name)
+		star := ""
+		if cfg.Defaults[p.Provider] == p.Name {
+			star = "★ (default)"
+		}
+		email := acc.Email
+		if email == "" {
+			email = "(unauthenticated)"
+		}
+		if len(email) > 26 {
+			email = email[:24] + ".."
+		}
+		fmt.Printf("%-10s %-18s %-28s %-16s %-12s %s\n", p.Provider, p.Name, email, acc.Plan, acc.Status, star)
+	}
+	return nil
 }
 
 func addCmd(args []string) error {
 	if len(args) < 1 {
-		return errors.New("usage: ai add <codex|agy> [name] [--no-login]")
+		return errors.New("usage: ai add <provider> [name] [--no-login]")
 	}
-	provider := args[0]
-	if err := profile.ValidateProvider(provider); err != nil {
+	providerName := args[0]
+	if err := profile.ValidateProvider(providerName); err != nil {
 		return err
 	}
+
 	noLogin := false
 	name := ""
 	for _, a := range args[1:] {
@@ -162,179 +460,113 @@ func addCmd(args []string) error {
 		}
 	}
 	if name == "" {
-		fmt.Printf("Profile name for %s: ", provider)
+		fmt.Printf("Profile name for %s: ", providerName)
 		s, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 		name = strings.TrimSpace(s)
 	}
-	p, err := profile.Create(provider, name)
+
+	p, err := profile.Create(providerName, name)
 	if err != nil {
 		return err
 	}
-	cleanup := true
-	defer func() {
-		if cleanup {
-			_ = profile.Delete(provider, name)
+
+	reg := initRegistry()
+	pAdapter, ok := reg.Get(providerName)
+	if ok {
+		if err := pAdapter.Prepare(context.Background(), p); err != nil {
+			_ = profile.Delete(providerName, name)
+			return err
 		}
-	}()
-	switch provider {
-	case "codex":
-		err = codex.Prepare(name)
-	case "agy":
-		err = agy.Prepare(name)
 	}
-	if err != nil {
-		return err
+
+	fmt.Printf("✓ Created %s profile %q.\n", p.Provider, p.Name)
+	if d, _ := config.GetDefaultProfile(providerName); d == "" {
+		_ = config.SetDefaultProfile(providerName, name)
 	}
-	fmt.Printf("Created %s profile %q.\n", p.Provider, p.Name)
-	// First profile of a provider becomes default.
-	if d, _ := profile.Default(provider); d == "" {
-		_ = profile.SetDefault(provider, name)
-	}
-	cleanup = false
+
 	if noLogin {
 		return nil
 	}
-	fmt.Printf("Starting official %s authentication for %q...\n", provider, name)
-	if provider == "codex" {
-		return codex.Login(name)
-	}
-	fmt.Println("AGY has no separate login command; its official CLI will start in an isolated keyring. Complete Google Sign-In, then exit AGY when ready.")
-	return agy.Login(name)
-}
-
-func loginCmd(args []string) error {
-	if len(args) != 2 {
-		return errors.New("usage: ai login <codex|agy> <name>")
-	}
-	if !profile.Exists(args[0], args[1]) {
-		return fmt.Errorf("profile %s:%s does not exist", args[0], args[1])
-	}
-	if args[0] == "codex" {
-		return codex.Login(args[1])
-	}
-	if args[0] == "agy" {
-		fmt.Println("Launching AGY in this profile. If it is already signed in and you need a different account, run /logout in AGY first, exit, then run this command again.")
-		return agy.Login(args[1])
-	}
-	return profile.ValidateProvider(args[0])
-}
-
-func inspectCmd(args []string) error {
-	if len(args) == 0 {
-		return errors.New("usage: ai inspect <provider> <name>")
-	}
-	provider := args[0]
-	name := ""
-	if strings.Contains(provider, ":") {
-		parts := strings.SplitN(provider, ":", 2)
-		provider = parts[0]
-		name = parts[1]
-	} else if len(args) >= 2 {
-		name = args[1]
-	} else {
-		return errors.New("usage: ai inspect <provider> <name>")
-	}
-
-	if err := profile.ValidateProvider(provider); err != nil {
-		return err
-	}
-
-	info, err := profile.Inspect(provider, name)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Provider:        %s\n", info.Profile.Provider)
-	fmt.Printf("Profile:         %s\n", info.Profile.Name)
-	fmt.Printf("Default:         %v\n", info.IsDefault)
-	if !info.Profile.CreatedAt.IsZero() {
-		fmt.Printf("Created:         %s\n", info.Profile.CreatedAt.Format(time.RFC3339))
-	}
-	fmt.Printf("Root Path:       %s\n", info.RootPath)
-	fmt.Printf("Home Path:       %s\n", info.HomePath)
-	fmt.Printf("Config Dir:      %s\n", info.ConfigDir)
-	fmt.Printf("Data Dir:        %s\n", info.DataDir)
-	fmt.Printf("External Binary: %s\n", info.BinaryPath)
-	fmt.Printf("Working Dir:     %s\n", info.CWD)
-	fmt.Printf("Process UID/GID: %d / %d\n", info.UID, info.GID)
-
-	if len(info.IsolationVars) > 0 {
-		fmt.Println("\nIsolation Environment:")
-		var keys []string
-		for k := range info.IsolationVars {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			fmt.Printf("  %-32s %s\n", k+":", info.IsolationVars[k])
-		}
-	}
-
-	if len(info.Details) > 0 {
-		fmt.Println("\nStatus & Storage:")
-		var keys []string
-		for k := range info.Details {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			fmt.Printf("  %-32s %s\n", k+":", info.Details[k])
-		}
+	fmt.Printf("Starting official authentication flow for %s:%s...\n", providerName, name)
+	if authProv, ok := pAdapter.(provider.AuthProvider); ok {
+		return authProv.Login(context.Background(), p)
 	}
 	return nil
 }
 
-func runCmd(args []string) error {
-	if len(args) < 1 {
-		return errors.New("usage: ai run <codex|agy> [name] [--] [args...]")
+func removeCmd(args []string) error {
+	if len(args) < 2 {
+		return errors.New("usage: ai remove <provider> <name> [--yes]")
 	}
-	provider := args[0]
-	name := ""
-	rest := args[1:]
-	if strings.Contains(provider, ":") {
-		parts := strings.SplitN(provider, ":", 2)
-		provider = parts[0]
-		name = parts[1]
-	} else if len(rest) > 0 && !strings.HasPrefix(rest[0], "-") {
-		name = rest[0]
-		rest = rest[1:]
+	prov, name := args[0], args[1]
+	if !profile.Exists(prov, name) {
+		return fmt.Errorf("profile %s:%s does not exist", prov, name)
 	}
-	if err := profile.ValidateProvider(provider); err != nil {
-		return err
-	}
-	rest = trimDashDash(rest)
-	if name == "" {
-		var err error
-		name, err = profile.Default(provider)
-		if err != nil {
-			return err
-		}
-		if name == "" {
-			return fmt.Errorf("no default %s profile; use: ai use %s <profile>", provider, provider)
+	yes := len(args) >= 3 && args[2] == "--yes"
+	if !yes {
+		fmt.Printf("Delete profile %s:%s and its isolated local storage? [y/N] ", prov, name)
+		s, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		s = strings.ToLower(strings.TrimSpace(s))
+		if s != "y" && s != "yes" {
+			fmt.Println("Cancelled.")
+			return nil
 		}
 	}
-	return runProfile(provider, name, rest)
+	return profile.Delete(prov, name)
 }
 
-func runProfile(provider, name string, args []string) error {
-	if !profile.Exists(provider, name) {
-		return fmt.Errorf("profile %s:%s does not exist; create it with 'ai add %s %s'", provider, name, provider, name)
+func renameCmd(args []string) error {
+	if len(args) != 3 {
+		return errors.New("usage: ai rename <provider> <old_name> <new_name>")
 	}
-	switch provider {
-	case "codex":
-		return codex.Run(name, args)
-	case "agy":
-		return agy.Run(name, args)
-	default:
-		return profile.ValidateProvider(provider)
+	return profile.Rename(args[0], args[1], args[2])
+}
+
+func loginCmd(args []string) error {
+	if len(args) != 2 {
+		return errors.New("usage: ai login <provider> <name>")
 	}
+	prov, name := args[0], args[1]
+	if !profile.Exists(prov, name) {
+		return fmt.Errorf("profile %s:%s does not exist", prov, name)
+	}
+	reg := initRegistry()
+	pAdapter, ok := reg.Get(prov)
+	if !ok {
+		return fmt.Errorf("unknown provider %s", prov)
+	}
+	p := model.Profile{Provider: prov, Name: name}
+	if authProv, ok := pAdapter.(provider.AuthProvider); ok {
+		return authProv.Login(context.Background(), p)
+	}
+	return fmt.Errorf("provider %s does not support login", prov)
+}
+
+func logoutCmd(args []string) error {
+	if len(args) != 2 {
+		return errors.New("usage: ai logout <provider> <name>")
+	}
+	prov, name := args[0], args[1]
+	if !profile.Exists(prov, name) {
+		return fmt.Errorf("profile %s:%s does not exist", prov, name)
+	}
+	reg := initRegistry()
+	pAdapter, ok := reg.Get(prov)
+	if !ok {
+		return fmt.Errorf("unknown provider %s", prov)
+	}
+	p := model.Profile{Provider: prov, Name: name}
+	if authProv, ok := pAdapter.(provider.AuthProvider); ok {
+		return authProv.Logout(context.Background(), p)
+	}
+	return nil
 }
 
 func useCmd(args []string) error {
 	if len(args) != 2 {
-		return errors.New("usage: ai use <codex|agy> <name>")
+		return errors.New("usage: ai use <provider> <name>")
 	}
-	if err := profile.SetDefault(args[0], args[1]); err != nil {
+	if err := config.SetDefaultProfile(args[0], args[1]); err != nil {
 		return err
 	}
 	fmt.Printf("Default %s profile: %s\n", args[0], args[1])
@@ -342,269 +574,72 @@ func useCmd(args []string) error {
 }
 
 func currentCmd(args []string) error {
-	providers := []string{"agy", "codex"}
-	if len(args) == 1 {
+	providers := []string{"codex", "agy", "claude", "opencode", "gemini"}
+	if len(args) >= 1 && args[0] != "--json" {
 		providers = []string{args[0]}
 	}
-	if len(args) > 1 {
-		return errors.New("usage: ai current [provider]")
+	isJSON := len(args) >= 1 && (args[0] == "--json" || (len(args) >= 2 && args[1] == "--json"))
+
+	cwd, _ := os.Getwd()
+	cfg, _ := config.LoadConfig()
+
+	if isJSON {
+		out := make(map[string]map[string]string)
+		for _, p := range providers {
+			bound := config.GetBinding(cwd, p)
+			def := cfg.Defaults[p]
+			out[p] = map[string]string{
+				"bound":   bound,
+				"default": def,
+			}
+		}
+		b, _ := json.MarshalIndent(out, "", "  ")
+		fmt.Println(string(b))
+		return nil
 	}
+
+	fmt.Printf("Workspace: %s\n\n", cwd)
 	for _, p := range providers {
-		if err := profile.ValidateProvider(p); err != nil {
-			return err
+		bound := config.GetBinding(cwd, p)
+		def := cfg.Defaults[p]
+		if def == "" {
+			def = "(none)"
 		}
-		d, err := profile.Default(p)
-		if err != nil {
-			return err
+		boundStr := ""
+		if bound != "" {
+			boundStr = fmt.Sprintf(" [bound: %s]", bound)
 		}
-		if d == "" {
-			d = "(none)"
-		}
-		fmt.Printf("%-5s %s\n", p, d)
+		fmt.Printf("%-10s %s%s\n", p, def, boundStr)
 	}
-	return nil
-}
-
-func list() error {
-	ps, err := profile.List()
-	if err != nil {
-		return err
-	}
-	cfg, _ := profile.LoadConfig()
-	if len(ps) == 0 {
-		fmt.Println("No profiles. Example: ai add agy google-a")
-		return nil
-	}
-	fmt.Printf("%-8s %-22s %-30s %-16s %s\n", "PROVIDER", "PROFILE", "ACCOUNT / EMAIL", "PLAN", "DEFAULT")
-	for _, p := range ps {
-		acc := profile.GetAccountInfo(p.Provider, p.Name)
-		star := ""
-		if cfg.Defaults[p.Provider] == p.Name {
-			star = "* (default)"
-		}
-		email := acc.Email
-		if len(email) > 28 {
-			email = email[:26] + ".."
-		}
-		fmt.Printf("%-8s %-22s %-30s %-16s %s\n", p.Provider, p.Name, email, acc.Plan, star)
-	}
-	return nil
-}
-
-func resumeCmd(args []string) error {
-	if len(args) == 0 {
-		cwd, _ := os.Getwd()
-		convs := conversation.ListRecent(10, cwd)
-		if len(convs) == 0 {
-			fmt.Println("No recent conversations found.")
-			return nil
-		}
-		fmt.Println("Recent Conversations:")
-		for i, c := range convs {
-			prov := strings.ToUpper(c.Provider)
-			idPrev := c.ID
-			if len(idPrev) > 8 {
-				idPrev = idPrev[:8]
-			}
-			fmt.Printf("  %d) [%s] %-36s (%s)\n", i+1, prov, c.Title, idPrev)
-		}
-		fmt.Print("Select conversation [1-9] (q to cancel): ")
-		var input string
-		fmt.Scanln(&input)
-		input = strings.TrimSpace(input)
-		if input == "q" || input == "Q" || input == "" {
-			return nil
-		}
-		var idx int
-		if _, err := fmt.Sscanf(input, "%d", &idx); err != nil || idx < 1 || idx > len(convs) {
-			return errors.New("invalid selection")
-		}
-		chosenConv := convs[idx-1]
-
-		ps, err := profile.List()
-		if err != nil || len(ps) == 0 {
-			return errors.New("no profiles available")
-		}
-		idPrev := chosenConv.ID
-		if len(idPrev) > 8 {
-			idPrev = idPrev[:8]
-		}
-		fmt.Printf("\nResume %q (%s) with account:\n", chosenConv.Title, idPrev)
-		for i, p := range ps {
-			acc := profile.GetAccountInfo(p.Provider, p.Name)
-			fmt.Printf("  %d) %-5s %-16s (%s)\n", i+1, strings.ToUpper(p.Provider), p.Name, acc.Email)
-		}
-		fmt.Print("Select account [1-9]: ")
-		var pInput string
-		fmt.Scanln(&pInput)
-		pInput = strings.TrimSpace(pInput)
-		var pIdx int
-		if _, err := fmt.Sscanf(pInput, "%d", &pIdx); err != nil || pIdx < 1 || pIdx > len(ps) {
-			return errors.New("invalid profile selection")
-		}
-		p := ps[pIdx-1]
-		return runProfile(p.Provider, p.Name, []string{"--conversation=" + chosenConv.ID})
-	}
-
-	convID := args[0]
-	profileSpec := ""
-	if len(args) >= 2 {
-		profileSpec = args[1]
-	}
-
-	if profileSpec == "" {
-		cfg, _ := profile.LoadConfig()
-		if cfg.Defaults["agy"] != "" {
-			return runProfile("agy", cfg.Defaults["agy"], []string{"--conversation=" + convID})
-		}
-		if cfg.Defaults["codex"] != "" {
-			return runProfile("codex", cfg.Defaults["codex"], []string{"--conversation=" + convID})
-		}
-		return errors.New("no default profile configured; specify profile: ai resume <id> <provider:name>")
-	}
-
-	provider := "agy"
-	name := profileSpec
-	if strings.Contains(profileSpec, ":") {
-		parts := strings.SplitN(profileSpec, ":", 2)
-		provider = parts[0]
-		name = parts[1]
-	}
-	return runProfile(provider, name, []string{"--conversation=" + convID})
-}
-
-func switchCmd(args []string) error {
-	if len(args) >= 1 && !strings.HasPrefix(args[0], "-") {
-		targetProv := ""
-		targetName := ""
-
-		if strings.Contains(args[0], ":") {
-			parts := strings.SplitN(args[0], ":", 2)
-			targetProv = parts[0]
-			targetName = parts[1]
-		} else if len(args) >= 2 {
-			targetProv = args[0]
-			targetName = args[1]
-		} else {
-			// Find by profile name across providers
-			nameCandidate := args[0]
-			ps, _ := profile.List()
-			for _, p := range ps {
-				if p.Name == nameCandidate {
-					targetProv = p.Provider
-					targetName = p.Name
-					break
-				}
-			}
-		}
-
-		if targetProv != "" && targetName != "" {
-			if !profile.Exists(targetProv, targetName) {
-				return fmt.Errorf("profile %s:%s does not exist", targetProv, targetName)
-			}
-			if err := profile.SetDefault(targetProv, targetName); err != nil {
-				return err
-			}
-			acc := profile.GetAccountInfo(targetProv, targetName)
-			fmt.Printf("✓ Alternado com sucesso para %s:%s (%s - %s)\n", strings.ToUpper(targetProv), targetName, acc.Email, acc.Plan)
-			fmt.Println("As próximas mensagens no CLI e novas sessões usarão esta conta e sua quota.")
-			return nil
-		}
-	}
-
-	provider := ""
-	if len(args) >= 1 {
-		provider = args[0]
-	}
-
-	ps, err := profile.List()
-	if err != nil {
-		return err
-	}
-	var filtered []profile.Profile
-	for _, p := range ps {
-		if provider == "" || p.Provider == provider {
-			filtered = append(filtered, p)
-		}
-	}
-	if len(filtered) == 0 {
-		return fmt.Errorf("no profiles found for provider %q", provider)
-	}
-
-	fmt.Println("Select default profile:")
-	cfg, _ := profile.LoadConfig()
-	for i, p := range filtered {
-		acc := profile.GetAccountInfo(p.Provider, p.Name)
-		isDef := cfg.Defaults[p.Provider] == p.Name
-		defStr := ""
-		if isDef {
-			defStr = "● (current default)"
-		}
-		fmt.Printf("  %d) %-5s %-16s %-26s %s\n", i+1, strings.ToUpper(p.Provider), p.Name, acc.Email, defStr)
-	}
-	fmt.Print("Choose profile [1-9] (q to cancel): ")
-	var input string
-	fmt.Scanln(&input)
-	input = strings.TrimSpace(input)
-	if input == "q" || input == "Q" || input == "" {
-		return nil
-	}
-	var idx int
-	if _, err := fmt.Sscanf(input, "%d", &idx); err != nil || idx < 1 || idx > len(filtered) {
-		return errors.New("invalid selection")
-	}
-	chosen := filtered[idx-1]
-	if err := profile.SetDefault(chosen.Provider, chosen.Name); err != nil {
-		return err
-	}
-	acc := profile.GetAccountInfo(chosen.Provider, chosen.Name)
-	fmt.Printf("✓ Alternado com sucesso para %s:%s (%s - %s)\n", strings.ToUpper(chosen.Provider), chosen.Name, acc.Email, acc.Plan)
 	return nil
 }
 
 func statusCmd(args []string) error {
 	if len(args) == 0 {
-		if err := list(); err != nil {
-			return err
-		}
-		fmt.Println("\nInspect deep metadata and limits with: ai status <provider> <profile>")
-		return nil
+		return profilesCmd(nil)
 	}
-	provider := args[0]
-	if len(args) == 1 {
-		ps, err := profile.List()
-		if err != nil {
-			return err
-		}
-		for _, p := range ps {
-			if p.Provider == provider {
-				acc := profile.GetAccountInfo(p.Provider, p.Name)
-				fmt.Printf("%s:%s [%s] %s (%s - %s)\n", p.Provider, p.Name, acc.Status, acc.Email, acc.Plan, acc.QuotaSummary)
-			}
-		}
-		return nil
-	}
-	if len(args) != 2 {
-		return errors.New("usage: ai status [provider] [name]")
-	}
-	name := args[1]
-	if !profile.Exists(provider, name) {
-		return fmt.Errorf("profile %s:%s does not exist", provider, name)
+	prov := args[0]
+	name := ""
+	if strings.Contains(prov, ":") {
+		parts := strings.SplitN(prov, ":", 2)
+		prov = parts[0]
+		name = parts[1]
+	} else if len(args) >= 2 {
+		name = args[1]
 	}
 
-	acc := profile.GetAccountInfo(provider, name)
-	fmt.Printf("=== %s:%s Status & Quota ===\n", strings.ToUpper(provider), name)
-	fmt.Printf("Account / Email: %s\n", acc.Email)
-	fmt.Printf("Subscription:    %s\n", acc.Plan)
-	fmt.Printf("Auth Status:     %s\n", acc.Status)
-	if !acc.ExpiresAt.IsZero() {
-		fmt.Printf("Expires / Renews: %s\n", acc.ExpiresAt.Format("02/01/2006 (RFC3339: 2006-01-02T15:04:05Z07:00)"))
+	if name == "" {
+		return profilesCmd(nil)
 	}
-	if len(acc.Limits) > 0 {
-		fmt.Println("\nModel Limits & Quota Capabilities:")
-		for _, lim := range acc.Limits {
-			fmt.Printf("  • %s\n", lim)
-		}
+
+	acc := profile.GetAccountInfo(prov, name)
+	fmt.Printf("=== %s:%s Status ===\n", strings.ToUpper(prov), name)
+	fmt.Printf("Email:         %s\n", acc.Email)
+	fmt.Printf("Plan:          %s\n", acc.Plan)
+	fmt.Printf("Status:        %s\n", acc.Status)
+	fmt.Printf("Health:        %s\n", acc.Health)
+	if !acc.ExpiresAt.IsZero() {
+		fmt.Printf("Expires At:    %s\n", acc.ExpiresAt.Format(time.RFC3339))
 	}
 	return nil
 }
@@ -615,435 +650,517 @@ func usageCmd(args []string) error {
 		return err
 	}
 	if len(ps) == 0 {
-		fmt.Println("Nenhum perfil configurado.")
+		fmt.Println("No profiles configured.")
 		return nil
 	}
 
-	if len(args) == 0 {
-		fmt.Printf("%-8s %-20s %-30s %-16s %-28s %s\n", "PROVIDER", "PROFILE", "ACCOUNT", "PLAN", "5H LIMIT", "WEEKLY LIMIT")
+	isJSON := len(args) > 0 && args[len(args)-1] == "--json"
+	if isJSON {
+		var list []model.UsageSnapshot
+		qEng := quota.NewEngine(5 * time.Minute)
 		for _, p := range ps {
-			acc := profile.GetAccountInfo(p.Provider, p.Name)
-			email := acc.Email
-			if len(email) > 28 {
-				email = email[:26] + ".."
-			}
-			fiveH := fmt.Sprintf("%s %.0f%%", profile.RenderBar(acc.Quota.FiveHour.PercentLeft, 14), acc.Quota.FiveHour.PercentLeft)
-			week := fmt.Sprintf("%s %.0f%%", profile.RenderBar(acc.Quota.Weekly.PercentLeft, 14), acc.Quota.Weekly.PercentLeft)
-			fmt.Printf("%-8s %-20s %-30s %-16s %-28s %s\n", p.Provider, p.Name, email, acc.Plan, fiveH, week)
+			snap, _ := qEng.GetCachedUsage(p.Provider, p.Name)
+			list = append(list, snap)
 		}
-		fmt.Println("\nPara ver detalhes completos de uma conta: ai usage <provider> <perfil>")
+		b, _ := json.MarshalIndent(list, "", "  ")
+		fmt.Println(string(b))
 		return nil
 	}
 
-	provider := args[0]
-	name := ""
-	if strings.Contains(provider, ":") {
-		parts := strings.SplitN(provider, ":", 2)
-		provider = parts[0]
-		name = parts[1]
-	} else if len(args) >= 2 {
-		name = args[1]
-	} else {
-		return errors.New("usage: ai usage [provider] [name]")
-	}
-
-	if !profile.Exists(provider, name) {
-		return fmt.Errorf("profile %s:%s does not exist", provider, name)
-	}
-
-	acc := profile.GetAccountInfo(provider, name)
-	if provider == "codex" {
-		fmt.Printf("╭────────────────────────────────────────────────────────────────────────────────╮\n")
-		fmt.Printf("│  >_ OpenAI Codex Status & Quota — %-45s│\n", name)
-		fmt.Printf("│                                                                                │\n")
-		fmt.Printf("│ Visit https://chatgpt.com/codex/settings/usage for up-to-date                  │\n")
-		fmt.Printf("│ information on rate limits and credits                                         │\n")
-		fmt.Printf("│                                                                                │\n")
-		fmt.Printf("│  Model:                %-56s│\n", acc.Quota.ModelName)
-		fmt.Printf("│  Account:              %-56s│\n", acc.Email+" ("+acc.Plan+")")
-		fmt.Printf("│                                                                                │\n")
-		fmt.Printf("│  5h limit:             %-56s│\n", fmt.Sprintf("%s %.0f%% left (%s)", acc.Quota.FiveHour.ProgressBar, acc.Quota.FiveHour.PercentLeft, acc.Quota.FiveHour.ResetTime))
-		fmt.Printf("│  Weekly limit:         %-56s│\n", fmt.Sprintf("%s %.0f%% left (%s)", acc.Quota.Weekly.ProgressBar, acc.Quota.Weekly.PercentLeft, acc.Quota.Weekly.ResetTime))
-		fmt.Printf("╰────────────────────────────────────────────────────────────────────────────────╯\n")
-	} else {
-		fmt.Printf("╭────────────────────────────────────────────────────────────────────────────────╮\n")
-		fmt.Printf("│  Models & Quota — %-61s│\n", name+" (AGY)")
-		fmt.Printf("│                                                                                │\n")
-		fmt.Printf("│  Account: %-69s│\n", acc.Email+" ("+acc.Plan+")")
-		fmt.Printf("│                                                                                │\n")
-		fmt.Printf("│  GEMINI MODELS (Gemini Flash, Gemini Pro)                                      │\n")
-		fmt.Printf("│    Five Hour Limit Remaining:                                                  │\n")
-		fmt.Printf("│      %-74s│\n", fmt.Sprintf("%s %.2f%%", acc.Quota.FiveHour.ProgressBar, acc.Quota.FiveHour.PercentLeft))
-		fmt.Printf("│      %-74s│\n", fmt.Sprintf("%.0f%% remaining · %s", acc.Quota.FiveHour.PercentLeft, acc.Quota.FiveHour.ResetsIn))
-		fmt.Printf("│    Weekly Limit Remaining:                                                     │\n")
-		fmt.Printf("│      %-74s│\n", fmt.Sprintf("%s %.2f%%", acc.Quota.Weekly.ProgressBar, acc.Quota.Weekly.PercentLeft))
-		fmt.Printf("│      %-74s│\n", fmt.Sprintf("%.0f%% remaining · %s", acc.Quota.Weekly.PercentLeft, acc.Quota.Weekly.ResetsIn))
-		fmt.Printf("│                                                                                │\n")
-		fmt.Printf("│  CLAUDE AND GPT MODELS (Claude Opus, Claude Sonnet, GPT-OSS)                   │\n")
-		fmt.Printf("│    Five Hour Limit: %-59s│\n", fmt.Sprintf("%s %.0f%% (Quota available)", acc.Quota.ClaudeFiveH.ProgressBar, acc.Quota.ClaudeFiveH.PercentLeft))
-		fmt.Printf("│    Weekly Limit:    %-59s│\n", fmt.Sprintf("%s %.0f%% (Quota available)", acc.Quota.ClaudeWeek.ProgressBar, acc.Quota.ClaudeWeek.PercentLeft))
-		fmt.Printf("╰────────────────────────────────────────────────────────────────────────────────╯\n")
+	fmt.Printf("%-10s %-16s %-24s %-16s %-28s %s\n", "PROVIDER", "PROFILE", "ACCOUNT", "PLAN", "CAPACITY / 5H", "STATUS")
+	for _, p := range ps {
+		acc := profile.GetAccountInfo(p.Provider, p.Name)
+		email := acc.Email
+		if email == "" {
+			email = "(unauthenticated)"
+		}
+		if len(email) > 22 {
+			email = email[:20] + ".."
+		}
+		qDetails := profile.GetQuotaDetails(p.Provider, p.Name, acc.Plan, acc.Email)
+		fmt.Printf("%-10s %-16s %-24s %-16s %-28s %s\n",
+			p.Provider, p.Name, email, acc.Plan, qDetails.FiveHour.ProgressBar, qDetails.Status)
 	}
 	return nil
 }
 
-func removeCmd(args []string) error {
-	if len(args) < 2 || len(args) > 3 {
-		return errors.New("usage: ai remove <codex|agy> <name> [--yes]")
-	}
-	provider, name := args[0], args[1]
-	if !profile.Exists(provider, name) {
-		return fmt.Errorf("profile %s:%s does not exist", provider, name)
-	}
-	yes := len(args) == 3 && args[2] == "--yes"
-	if !yes {
-		fmt.Printf("Delete local profile %s:%s and its isolated credentials? [y/N] ", provider, name)
-		s, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-		s = strings.ToLower(strings.TrimSpace(s))
-		if s != "y" && s != "yes" {
-			fmt.Println("Cancelled.")
-			return nil
+func sessionsCmd(args []string) error {
+	cwd, _ := os.Getwd()
+	convs := conversation.ListRecent(50, cwd)
+
+	if len(args) > 0 && args[0] == "search" && len(args) >= 2 {
+		q := args[1]
+		var filtered []conversation.Conversation
+		for _, c := range convs {
+			if strings.Contains(strings.ToLower(c.Title), strings.ToLower(q)) ||
+				strings.Contains(strings.ToLower(c.ID), strings.ToLower(q)) ||
+				strings.Contains(strings.ToLower(c.Workspace), strings.ToLower(q)) {
+				filtered = append(filtered, c)
+			}
 		}
+		convs = filtered
 	}
-	return profile.Delete(provider, name)
+
+	if len(args) > 0 && args[len(args)-1] == "--json" {
+		b, _ := json.MarshalIndent(convs, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+
+	if len(convs) == 0 {
+		fmt.Println("No sessions found.")
+		return nil
+	}
+
+	fmt.Printf("%-10s %-36s %-32s %s\n", "PROVIDER", "SESSION ID", "TITLE", "WORKSPACE")
+	for _, c := range convs {
+		title := c.Title
+		if len(title) > 30 {
+			title = title[:28] + ".."
+		}
+		ws := c.Workspace
+		if len(ws) > 30 {
+			ws = ws[:28] + ".."
+		}
+		fmt.Printf("%-10s %-36s %-32s %s\n", c.Provider, c.ID, title, ws)
+	}
+	return nil
 }
 
-func paths() error {
-	d, err := profile.DataDir()
+func workspacesCmd(args []string) error {
+	cwd, _ := os.Getwd()
+	convs := conversation.ListRecent(100, cwd)
+	cfg, _ := config.LoadConfig()
+
+	var sessions []model.Session
+	for _, c := range convs {
+		sessions = append(sessions, model.Session{
+			ProviderID: c.Provider,
+			ID:         c.ID,
+			Title:      c.Title,
+			Workspace:  c.Workspace,
+			UpdatedAt:  c.LastModified,
+		})
+	}
+
+	store := session.NewStore()
+	wsList := store.GroupByWorkspace(sessions, cfg)
+
+	if len(args) > 0 && args[0] == "--json" {
+		b, _ := json.MarshalIndent(wsList, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+
+	fmt.Printf("Active Workspaces (%d discovered):\n\n", len(wsList))
+	for _, ws := range wsList {
+		fmt.Printf("📁 %s\n", ws.Path)
+		if len(ws.Bindings) > 0 {
+			fmt.Printf("   Bindings: %+v\n", ws.Bindings)
+		}
+		fmt.Printf("   Sessions: %d\n\n", len(ws.Sessions))
+	}
+	return nil
+}
+
+func bindCmd(args []string) error {
+	if len(args) != 1 {
+		return errors.New("usage: ai bind <provider>:<profile>")
+	}
+	parts := strings.SplitN(args[0], ":", 2)
+	if len(parts) != 2 {
+		return errors.New("usage: ai bind <provider>:<profile>")
+	}
+	prov, prof := parts[0], parts[1]
+	cwd, _ := os.Getwd()
+	if err := config.BindWorkspace(cwd, prov, prof); err != nil {
+		return err
+	}
+	fmt.Printf("✓ Bound workspace %s to %s:%s\n", cwd, prov, prof)
+	return nil
+}
+
+func unbindCmd(args []string) error {
+	if len(args) != 1 {
+		return errors.New("usage: ai unbind <provider>")
+	}
+	cwd, _ := os.Getwd()
+	if err := config.UnbindWorkspace(cwd, args[0]); err != nil {
+		return err
+	}
+	fmt.Printf("✓ Unbound provider %s from workspace %s\n", args[0], cwd)
+	return nil
+}
+
+func bindingsCmd(args []string) error {
+	cfg, _ := config.LoadConfig()
+	if len(args) > 0 && args[0] == "--json" {
+		b, _ := json.MarshalIndent(cfg.Bindings, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+	if len(cfg.Bindings) == 0 {
+		fmt.Println("No workspace bindings configured.")
+		return nil
+	}
+	for ws, b := range cfg.Bindings {
+		fmt.Printf("%s:\n", ws)
+		for p, prof := range b {
+			fmt.Printf("  • %-10s -> %s\n", p, prof)
+		}
+	}
+	return nil
+}
+
+func explainCmd(args []string) error {
+	if len(args) != 1 {
+		return errors.New("usage: ai explain <provider>")
+	}
+	prov := args[0]
+	cfg, _ := config.LoadConfig()
+	qEng := quota.NewEngine(5 * time.Minute)
+	cdTracker := cooldown.NewTracker()
+	sel := scheduler.NewSelector(cfg, qEng, cdTracker)
+
+	ps, _ := profile.List()
+	var candidates []model.Profile
+	accounts := make(map[string]model.AccountInfo)
+	for _, p := range ps {
+		if p.Provider == prov {
+			candidates = append(candidates, p)
+			accounts[p.Name] = profile.GetAccountInfo(prov, p.Name)
+		}
+	}
+
+	cwd, _ := os.Getwd()
+	fmt.Print(sel.ExplainSelection(context.Background(), prov, cwd, candidates, accounts))
+	return nil
+}
+
+func doctorCmd(args []string) error {
+	reg := initRegistry()
+	ctx := context.Background()
+	detections := reg.DetectAll(ctx)
+	ps, _ := profile.List()
+
+	if len(args) > 0 && args[0] == "--json" {
+		out := map[string]interface{}{
+			"detections": detections,
+			"profiles":   ps,
+		}
+		b, _ := json.MarshalIndent(out, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+
+	fmt.Println("=== AI CLI Diagnostics ===")
+	for id, det := range detections {
+		if det.Installed {
+			fmt.Printf("✓ %-12s installed (%s) at %s\n", id, det.Version, det.BinaryPath)
+		} else {
+			fmt.Printf("✗ %-12s not installed (%s)\n", id, det.Error)
+		}
+	}
+
+	fmt.Println("\n=== Profile & Auth Status ===")
+	for _, p := range ps {
+		acc := profile.GetAccountInfo(p.Provider, p.Name)
+		if acc.Authenticated {
+			fmt.Printf("✓ %s:%s authenticated (%s)\n", p.Provider, p.Name, acc.Email)
+		} else {
+			fmt.Printf("⚠ %s:%s unauthenticated (%s)\n", p.Provider, p.Name, acc.Status)
+		}
+	}
+	return nil
+}
+
+func securityCmd(args []string) error {
+	cfg, _ := config.LoadConfig()
+	ps, _ := profile.List()
+	hostHome := security.FindHostHome()
+
+	if len(args) > 0 && args[0] == "--json" {
+		var audits []security.SecurityAudit
+		for _, p := range ps {
+			home, _ := config.ProfileHome(p.Provider, p.Name)
+			audits = append(audits, security.AuditProfile(p.Provider, p.Name, home, hostHome, cfg.IsolationPreset))
+		}
+		b, _ := json.MarshalIndent(audits, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+
+	fmt.Printf("Isolation Preset: %s\n\n", cfg.IsolationPreset)
+	for _, p := range ps {
+		home, _ := config.ProfileHome(p.Provider, p.Name)
+		audit := security.AuditProfile(p.Provider, p.Name, home, hostHome, cfg.IsolationPreset)
+		fmt.Printf("Profile: %s\n", audit.Profile)
+		fmt.Println("  Shared:")
+		for _, s := range audit.Shared {
+			fmt.Printf("    ✓ %s\n", s)
+		}
+		fmt.Println("  Protected / Not shared:")
+		for _, pt := range audit.Protected {
+			fmt.Printf("    ✓ %s\n", pt)
+		}
+		if len(audit.Warnings) > 0 {
+			fmt.Println("  Warnings:")
+			for _, w := range audit.Warnings {
+				fmt.Printf("    ⚠ %s\n", w)
+			}
+		}
+		fmt.Println()
+	}
+	return nil
+}
+
+func historyCmd(args []string) error {
+	events, err := telemetry.ReadRecentEvents(50)
 	if err != nil {
 		return err
 	}
-	c, err := profile.ConfigDir()
+	if len(args) > 0 && args[0] == "--json" {
+		b, _ := json.MarshalIndent(events, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+	if len(events) == 0 {
+		fmt.Println("No recent history recorded.")
+		return nil
+	}
+	for _, ev := range events {
+		fmt.Printf("%s  %-22s  %s:%s  %s\n",
+			ev.Timestamp.Format("15:04:05"), ev.Type, ev.ProviderID, ev.ProfileID, ev.Reason)
+	}
+	return nil
+}
+
+func statsCmd(args []string) error {
+	s, err := telemetry.ComputeStats(7 * 24 * time.Hour)
+	if err != nil {
+		return err
+	}
+	if len(args) > 0 && args[0] == "--json" {
+		b, _ := json.MarshalIndent(s, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+	fmt.Printf("Local Statistics (Last 7 Days):\n\n")
+	fmt.Printf("Total Sessions:   %d\n", s.TotalSessions)
+	fmt.Printf("Total Fallbacks:  %d\n", s.TotalFallbacks)
+	fmt.Printf("Rate Limits:      %d\n\n", s.TotalRateLimits)
+	fmt.Println("Sessions by Provider:")
+	for p, count := range s.ByProvider {
+		fmt.Printf("  • %-12s %d\n", p, count)
+	}
+	return nil
+}
+
+func exportCmd(args []string) error {
+	reg := initRegistry()
+	ctx := context.Background()
+	detections := reg.DetectAll(ctx)
+	ps, _ := profile.List()
+	cfg, _ := config.LoadConfig()
+
+	exportData := map[string]interface{}{
+		"version":    version,
+		"os":         "linux",
+		"detections": detections,
+		"profiles":   ps,
+		"config":     cfg,
+	}
+
+	b, _ := json.MarshalIndent(exportData, "", "  ")
+	sanitized := security.Redact(string(b))
+	fmt.Println(sanitized)
+	return nil
+}
+
+func issueReportCmd(args []string) error {
+	reg := initRegistry()
+	ctx := context.Background()
+	detections := reg.DetectAll(ctx)
+
+	var sb strings.Builder
+	sb.WriteString("### Environment Diagnostics\n\n")
+	sb.WriteString(fmt.Sprintf("- AI CLI Version: `%s`\n", version))
+	sb.WriteString("- OS: `linux`\n\n")
+	sb.WriteString("### Installed Providers\n\n")
+	for id, det := range detections {
+		sb.WriteString(fmt.Sprintf("- **%s**: Installed=%v, Version=`%s`\n", id, det.Installed, det.Version))
+	}
+	fmt.Println(security.Redact(sb.String()))
+	return nil
+}
+
+func configCmd(args []string) error {
+	if len(args) == 0 || args[0] == "show" {
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			return err
+		}
+		b, _ := json.MarshalIndent(cfg, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+	if args[0] == "validate" {
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			return err
+		}
+		issues := cfg.Validate()
+		if len(issues) == 0 {
+			fmt.Println("✓ Configuration is valid.")
+			return nil
+		}
+		fmt.Println("Configuration issues found:")
+		for _, is := range issues {
+			fmt.Printf("  ⚠ %s\n", is)
+		}
+		return nil
+	}
+	return errors.New("usage: ai config <show|validate>")
+}
+
+func inspectCmd(args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: ai inspect <provider> <name>")
+	}
+	prov := args[0]
+	name := ""
+	if strings.Contains(prov, ":") {
+		parts := strings.SplitN(prov, ":", 2)
+		prov = parts[0]
+		name = parts[1]
+	} else if len(args) >= 2 {
+		name = args[1]
+	}
+	info, err := profile.Inspect(prov, name)
+	if err != nil {
+		return err
+	}
+	b, _ := json.MarshalIndent(info, "", "  ")
+	fmt.Println(string(b))
+	return nil
+}
+
+func runCmd(args []string) error {
+	if len(args) < 1 {
+		return errors.New("usage: ai run <provider> [profile] [--] [args...]")
+	}
+	prov := args[0]
+	prof := ""
+	rest := args[1:]
+	if strings.Contains(prov, ":") {
+		parts := strings.SplitN(prov, ":", 2)
+		prov = parts[0]
+		prof = parts[1]
+	} else if len(rest) > 0 && !strings.HasPrefix(rest[0], "-") {
+		prof = rest[0]
+		rest = rest[1:]
+	}
+	return executeProviderWithSmartSelection(prov, prof, trimDashDash(rest), true)
+}
+
+func resumeCmd(args []string) error {
+	if len(args) == 0 {
+		cwd, _ := os.Getwd()
+		convs := conversation.ListRecent(10, cwd)
+		if len(convs) == 0 {
+			fmt.Println("No recent sessions found.")
+			return nil
+		}
+		fmt.Println("Recent Sessions:")
+		for i, c := range convs {
+			fmt.Printf("  %d) [%s] %-36s (%s)\n", i+1, strings.ToUpper(c.Provider), c.Title, c.ID[:8])
+		}
+		fmt.Print("Select session [1-9] (q to cancel): ")
+		var input string
+		fmt.Scanln(&input)
+		input = strings.TrimSpace(input)
+		if input == "q" || input == "Q" || input == "" {
+			return nil
+		}
+		var idx int
+		if _, err := fmt.Sscanf(input, "%d", &idx); err != nil || idx < 1 || idx > len(convs) {
+			return errors.New("invalid selection")
+		}
+		chosen := convs[idx-1]
+		return executeResume(chosen.Provider, "", chosen.ID, nil)
+	}
+
+	sessionID := args[0]
+	prov := "codex"
+	prof := ""
+	if len(args) >= 2 {
+		target := args[1]
+		if strings.Contains(target, ":") {
+			parts := strings.SplitN(target, ":", 2)
+			prov = parts[0]
+			prof = parts[1]
+		} else {
+			prof = target
+		}
+	}
+	return executeResume(prov, prof, sessionID, nil)
+}
+
+func paths() error {
+	d, err := config.DataDir()
+	if err != nil {
+		return err
+	}
+	c, err := config.ConfigDir()
+	if err != nil {
+		return err
+	}
+	s, err := config.StateDir()
 	if err != nil {
 		return err
 	}
 	fmt.Println("data:  ", d)
 	fmt.Println("config:", c)
-	return nil
-}
-
-type DistroInfo struct {
-	Name   string
-	ID     string
-	IDLike string
-}
-
-func detectDistro() DistroInfo {
-	info := DistroInfo{Name: "Linux (generic)", ID: "linux"}
-	data, err := os.ReadFile("/etc/os-release")
-	if err != nil {
-		data, err = os.ReadFile("/usr/lib/os-release")
-	}
-	if err != nil {
-		return info
-	}
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		key := strings.TrimSpace(parts[0])
-		val := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
-		switch key {
-		case "PRETTY_NAME":
-			info.Name = val
-		case "NAME":
-			if info.Name == "Linux (generic)" {
-				info.Name = val
-			}
-		case "ID":
-			info.ID = strings.ToLower(val)
-		case "ID_LIKE":
-			info.IDLike = strings.ToLower(val)
-		}
-	}
-	return info
-}
-
-func doctor() error {
-	distro := detectDistro()
-	fmt.Printf("Distribution: %s\n\n", distro.Name)
-
-	type item struct {
-		name     string
-		required string
-	}
-	items := []item{
-		{"codex", "for Codex profiles"},
-		{"agy", "for AGY profiles"},
-		{"dbus-run-session", "for isolated AGY D-Bus sessions"},
-		{"gnome-keyring-daemon", "for isolated AGY Secret Service"},
-		{"xdg-open", "recommended for browser OAuth"},
-	}
-	missingPkgs := false
-	missingCodex := false
-	missingAGY := false
-
-	for _, it := range items {
-		if p, err := exec.LookPath(it.name); err == nil {
-			fmt.Printf("[ok]      %-22s %s\n", it.name, p)
-		} else {
-			fmt.Printf("[missing] %-22s %s\n", it.name, it.required)
-			if it.name == "codex" {
-				missingCodex = true
-			} else if it.name == "agy" {
-				missingAGY = true
-			} else {
-				missingPkgs = true
-			}
-		}
-	}
-
-	if binDir, err := runtime.InternalBinDir(); err == nil {
-		fmt.Printf("[ok]      %-22s %s\n", "helpers dir", binDir)
-	}
-
-	if d, err := profile.DataDir(); err == nil {
-		fmt.Printf("[ok]      %-22s %s\n", "data dir", d)
-	}
-	if c, err := profile.ConfigDir(); err == nil {
-		fmt.Printf("[ok]      %-22s %s\n", "config dir", c)
-	}
-
-	if missingPkgs || missingCodex || missingAGY {
-		fmt.Println("\nInstallation instructions (run manually with appropriate privileges):")
-
-		if missingPkgs {
-			fmt.Println("\nPackage manager dependencies for your distribution:")
-			id := distro.ID
-			idLike := distro.IDLike
-			if id == "ubuntu" || id == "debian" || strings.Contains(idLike, "debian") || strings.Contains(idLike, "ubuntu") {
-				fmt.Println("  sudo apt install dbus-x11 gnome-keyring xdg-utils")
-			} else if id == "fedora" || id == "rhel" || id == "centos" || id == "rocky" || id == "almalinux" || strings.Contains(idLike, "rhel") || strings.Contains(idLike, "fedora") {
-				fmt.Println("  sudo dnf install dbus-daemon gnome-keyring xdg-utils")
-			} else if id == "arch" || id == "manjaro" || id == "endeavouros" || strings.Contains(idLike, "arch") {
-				fmt.Println("  sudo pacman -S dbus gnome-keyring xdg-utils")
-			} else if strings.HasPrefix(id, "opensuse") || id == "sles" || strings.Contains(idLike, "suse") {
-				fmt.Println("  sudo zypper install dbus-1 gnome-keyring xdg-utils")
-			} else if id == "alpine" {
-				fmt.Println("  sudo apk add dbus gnome-keyring xdg-utils")
-			} else {
-				fmt.Println("  Debian/Ubuntu: sudo apt install dbus-x11 gnome-keyring xdg-utils")
-				fmt.Println("  Fedora/RHEL:   sudo dnf install dbus-daemon gnome-keyring xdg-utils")
-				fmt.Println("  Arch Linux:    sudo pacman -S dbus gnome-keyring xdg-utils")
-				fmt.Println("  openSUSE:      sudo zypper install dbus-1 gnome-keyring xdg-utils")
-			}
-		}
-
-		if missingCodex || missingAGY {
-			fmt.Println("\nOfficial CLI installers:")
-			if missingCodex {
-				fmt.Println("  Codex: curl -fsSL https://chatgpt.com/codex/install.sh | sh")
-			}
-			if missingAGY {
-				fmt.Println("  AGY:   curl -fsSL https://antigravity.google/cli/install.sh | bash")
-			}
-		}
-	}
+	fmt.Println("state: ", s)
 	return nil
 }
 
 func completionCmd(args []string) error {
-	if len(args) < 1 {
-		return errors.New("usage: ai completion <bash|zsh>")
+	if len(args) == 0 {
+		return errors.New("usage: ai completion <bash|zsh|fish>")
 	}
 	switch args[0] {
 	case "bash":
-		fmt.Print(bashCompletionScript)
-		return nil
-	case "zsh":
-		fmt.Print(zshCompletionScript)
-		return nil
-	default:
-		return fmt.Errorf("unsupported shell %q (supported: bash, zsh)", args[0])
-	}
-}
-
-const bashCompletionScript = `_ai_completion() {
-    local cur prev words cword
-    _init_completion -n : || return
-
-    local commands="add login run resume continue switch use current status usage quota inspect remove rm list ls doctor paths completion version help codex agy"
-    local providers="codex agy"
-
-    if [[ $cword -eq 1 ]]; then
-        if [[ "$cur" == *:* ]]; then
-            local profiles
-            profiles=$(ai list 2>/dev/null | awk 'NR>1 {print $1":"$2}')
-            COMPREPLY=( $(compgen -W "$profiles" -- "$cur") )
-            return 0
-        fi
-        local short_profiles
-        short_profiles=$(ai list 2>/dev/null | awk 'NR>1 {print $1":"$2}')
-        COMPREPLY=( $(compgen -W "$commands $short_profiles" -- "$cur") )
-        return 0
-    fi
-
-    case "${words[1]}" in
-        add|switch)
-            if [[ $cword -eq 2 ]]; then
-                COMPREPLY=( $(compgen -W "$providers" -- "$cur") )
-            fi
-            ;;
-        login|use|inspect|remove|rm|status|usage|quota|run)
-            if [[ $cword -eq 2 ]]; then
-                COMPREPLY=( $(compgen -W "$providers" -- "$cur") )
-            elif [[ $cword -eq 3 ]]; then
-                local prov="${words[2]}"
-                local profs
-                profs=$(ai list 2>/dev/null | awk -v p="$prov" '$1==p {print $2}')
-                COMPREPLY=( $(compgen -W "$profs" -- "$cur") )
-            fi
-            ;;
-        codex)
-            local profs
-            profs=$(ai list 2>/dev/null | awk '$1=="codex" {print $2}')
-            COMPREPLY=( $(compgen -W "$profs" -- "$cur") )
-            ;;
-        agy)
-            local profs
-            profs=$(ai list 2>/dev/null | awk '$1=="agy" {print $2}')
-            COMPREPLY=( $(compgen -W "$profs" -- "$cur") )
-            ;;
-        completion)
-            if [[ $cword -eq 2 ]]; then
-                COMPREPLY=( $(compgen -W "bash zsh" -- "$cur") )
-            fi
-            ;;
-    esac
+		fmt.Print(`_ai_completion() {
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    opts="providers profiles usage sessions workspaces bind unbind explain doctor security history stats config completion version codex agy claude opencode gemini"
+    COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
+    return 0
 }
 complete -F _ai_completion ai
-`
-
-const zshCompletionScript = `#compdef ai
-
+`)
+	case "zsh":
+		fmt.Print(`#compdef ai
 _ai() {
     local -a commands
     commands=(
-        'add:Create and authenticate a new profile'
-        'list:List all configured profiles'
-        'ls:List all configured profiles'
-        'resume:Resume a recent conversation'
-        'switch:Switch default account'
-        'usage:Monitor real-time quota and usage'
-        'quota:Monitor real-time quota and usage'
-        'login:Start provider login flow'
-        'run:Run external CLI with explicit profile and args'
-        'use:Set default profile for provider'
-        'current:Show default profile'
-        'status:Show status of profiles'
-        'inspect:Show non-secret profile metadata'
-        'remove:Delete a profile and its credentials'
-        'rm:Delete a profile and its credentials'
-        'doctor:Check dependencies and system health'
-        'paths:Show manager storage paths'
-        'completion:Generate shell completion script'
-        'codex:Run Codex profile'
-        'agy:Run AGY profile'
-        'version:Show version'
-        'help:Show help'
+        'providers:List AI providers'
+        'profiles:List configured profiles'
+        'usage:Display quota and rate limits'
+        'sessions:Universal session index'
+        'doctor:Diagnostics and health checks'
+        'security:Security and isolation audit'
     )
-
-    local curcontext="$curcontext" state line
-    typeset -A opt_args
-
-    _arguments -C \
-        '1: :->command' \
-        '2: :->arg1' \
-        '3: :->arg2' \
-        '*:: :->args'
-
-    case $state in
-        command)
-            local -a short_profiles
-            short_profiles=(${(f)"$(ai list 2>/dev/null | awk 'NR>1 {print $1":"$2}')"})
-            _describe 'commands' commands -- short_profiles
-            ;;
-        arg1)
-            case $line[1] in
-                add|switch|login|use|inspect|remove|rm|status|usage|quota|run)
-                    _values 'providers' 'codex' 'agy'
-                    ;;
-                codex)
-                    local -a codex_profs
-                    codex_profs=(${(f)"$(ai list 2>/dev/null | awk '$1=="codex" {print $2}')"})
-                    _values 'profiles' $codex_profs
-                    ;;
-                agy)
-                    local -a agy_profs
-                    agy_profs=(${(f)"$(ai list 2>/dev/null | awk '$1=="agy" {print $2}')"})
-                    _values 'profiles' $agy_profs
-                    ;;
-                completion)
-                    _values 'shell' 'bash' 'zsh'
-                    ;;
-            esac
-            ;;
-        arg2)
-            case $line[1] in
-                login|use|inspect|remove|rm|status|run)
-                    local prov=$line[2]
-                    local -a profs
-                    profs=(${(f)"$(ai list 2>/dev/null | awk -v p="$prov" '$1==p {print $2}')"})
-                    _values 'profiles' $profs
-                    ;;
-            esac
-            ;;
-    esac
+    _describe 'command' commands
 }
-
 _ai "$@"
-`
-
-func interactive() error {
-	ps, err := profile.List()
-	if err != nil {
-		return err
+`)
+	case "fish":
+		fmt.Print(`complete -c ai -f -a "providers profiles usage sessions doctor security history stats"
+`)
 	}
-	if len(ps) == 0 {
-		usage()
-		return nil
-	}
-
-	res, err := tui.ShowMenu()
-	if err != nil {
-		return err
-	}
-	if res == nil || res.Action == tui.ActionQuit || res.Action == tui.ActionNone {
-		return nil
-	}
-
-	switch res.Action {
-	case tui.ActionRunProfile:
-		return runProfile(res.Provider, res.ProfileName, res.Args)
-	case tui.ActionResumeConversation:
-		return runProfile(res.Provider, res.ProfileName, []string{"--conversation=" + res.ConversationID})
-	case tui.ActionLogin:
-		return loginCmd([]string{res.Provider, res.ProfileName})
-	default:
-		return nil
-	}
+	return nil
 }
-
-func trimDashDash(args []string) []string {
-	if len(args) > 0 && args[0] == "--" {
-		return args[1:]
-	}
-	return args
-}
-
-// referenced by future worktree support; retained to keep path behavior explicit.
-func absCWD() string {
-	cwd, _ := os.Getwd()
-	a, err := filepath.Abs(cwd)
-	if err != nil {
-		return cwd
-	}
-	return a
-}
-

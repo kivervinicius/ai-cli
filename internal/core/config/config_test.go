@@ -1,0 +1,66 @@
+package config
+
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/kivervinicius/ai-cli/internal/core/model"
+)
+
+func TestConfigLoadSaveBindings(t *testing.T) {
+	cfgDir := t.TempDir()
+	dataDir := t.TempDir()
+	t.Setenv("AI_CLI_CONFIG_DIR", cfgDir)
+	t.Setenv("AI_CLI_DATA_DIR", dataDir)
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.Strategy != "best-capacity" {
+		t.Fatalf("expected default strategy best-capacity, got %s", cfg.Strategy)
+	}
+
+	// Set default profile
+	if err := SetDefaultProfile("codex", "work"); err != nil {
+		t.Fatal(err)
+	}
+	d, err := GetDefaultProfile("codex")
+	if err != nil || d != "work" {
+		t.Fatalf("expected default profile work, got %s (err=%v)", d, err)
+	}
+
+	// Bind workspace
+	ws := filepath.Join(t.TempDir(), "project")
+	if err := BindWorkspace(ws, "codex", "work"); err != nil {
+		t.Fatal(err)
+	}
+	if bound := GetBinding(ws, "codex"); bound != "work" {
+		t.Fatalf("expected bound profile work, got %s", bound)
+	}
+
+	// Unbind workspace
+	if err := UnbindWorkspace(ws, "codex"); err != nil {
+		t.Fatal(err)
+	}
+	if bound := GetBinding(ws, "codex"); bound != "" {
+		t.Fatalf("expected empty bound profile after unbind, got %s", bound)
+	}
+}
+
+func TestConfigValidation(t *testing.T) {
+	cfg := NewDefaultConfig()
+	if issues := cfg.Validate(); len(issues) > 0 {
+		t.Fatalf("default config should be valid, got issues: %+v", issues)
+	}
+
+	cfg.Strategy = "invalid-strategy"
+	cfg.IsolationPreset = model.IsolationPreset("invalid-preset")
+	cfg.MaxConcurrency = 0
+
+	issues := cfg.Validate()
+	if len(issues) != 3 {
+		t.Fatalf("expected 3 validation issues, got %d: %+v", len(issues), issues)
+	}
+}

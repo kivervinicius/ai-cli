@@ -9,8 +9,8 @@ import (
 func TestGetAccountInfo(t *testing.T) {
 	data := t.TempDir()
 	cfg := t.TempDir()
-	t.Setenv("AI_MANAGER_DATA_DIR", data)
-	t.Setenv("AI_MANAGER_CONFIG_DIR", cfg)
+	t.Setenv("AI_CLI_DATA_DIR", data)
+	t.Setenv("AI_CLI_CONFIG_DIR", cfg)
 
 	// Create AGY profile
 	if _, err := Create("agy", "google-acc"); err != nil {
@@ -30,9 +30,7 @@ func TestGetAccountInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 	homeCodex, _ := Home("codex", "openai-acc")
-	// JWT with email claim: {"email":"codex@example.com","https://api.openai.com/auth":{"chatgpt_plan_type":"pro"}}
-	// Header: {"alg":"none"} -> eyJhbGciOiJub25lIn0
-	// Payload: {"email":"codex@example.com","https://api.openai.com/auth":{"chatgpt_plan_type":"pro"}} -> eyJlbWFpbCI6ImNvZGV4QGV4YW1wbGUuY29tIiwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfcGxhbl90eXBlIjoicHJvIn19
+	// JWT with email claim
 	jwt := "eyJhbGciOiJub25lIn0.eyJlbWFpbCI6ImNvZGV4QGV4YW1wbGUuY29tIiwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfcGxhbl90eXBlIjoicHJvIn19.sig"
 	_ = os.WriteFile(filepath.Join(homeCodex, "auth.json"), []byte(`{"auth_mode":"chatgpt","tokens":{"id_token":"`+jwt+`","access_token":"acc"}}`), 0600)
 

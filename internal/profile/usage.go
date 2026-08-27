@@ -1,11 +1,17 @@
 package profile
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
+	"time"
+
+	"github.com/kivervinicius/ai-cli/internal/core/model"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/agy"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/claude"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/codex"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/gemini"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/opencode"
+	"github.com/kivervinicius/ai-cli/internal/core/quota"
 )
 
 type LimitWindow struct {
@@ -13,6 +19,7 @@ type LimitWindow struct {
 	ResetsIn    string  `json:"resets_in"`
 	ResetTime   string  `json:"reset_time"`
 	ProgressBar string  `json:"progress_bar"`
+	Status      string  `json:"status,omitempty"`
 }
 
 type QuotaDetails struct {
@@ -20,6 +27,7 @@ type QuotaDetails struct {
 	ProfileName string      `json:"profile_name"`
 	Account     string      `json:"account"`
 	Plan        string      `json:"plan"`
+	Status      string      `json:"status"`
 	ModelName   string      `json:"model_name"`
 	FiveHour    LimitWindow `json:"five_hour"`
 	Weekly      LimitWindow `json:"weekly"`
@@ -27,95 +35,100 @@ type QuotaDetails struct {
 	ClaudeWeek  LimitWindow `json:"claude_weekly,omitempty"`
 }
 
-// GetQuotaDetails returns the isolated 5h and weekly quota metrics for a profile.
-func GetQuotaDetails(provider, name, plan, email string) QuotaDetails {
+// GetQuotaDetails returns usage and quota metrics without fabricating 100% data.
+func GetQuotaDetails(providerName, name, plan, email string) QuotaDetails {
+	qEng := quota.NewEngine(5 * time.Minute)
+	snap, found := qEng.GetCachedUsage(providerName, name)
+	if !found || snap.Status == model.UsageUnknown {
+		// Probe adapter directly
+		ctx := context.Background()
+		p := model.Profile{Provider: providerName, Name: name}
+		switch providerName {
+		case "codex":
+			snap = codex.New().GetUsage(ctx, p)
+		case "agy":
+			snap = agy.New().GetUsage(ctx, p)
+		case "claude":
+			snap = claude.New().GetUsage(ctx, p)
+		case "opencode":
+			snap = opencode.New().GetUsage(ctx, p)
+		case "gemini":
+			snap = gemini.New().GetUsage(ctx, p)
+		default:
+			snap = model.UsageSnapshot{Status: model.UsageUnknown}
+		}
+	}
+
 	q := QuotaDetails{
-		Provider:    provider,
+		Provider:    providerName,
 		ProfileName: name,
 		Account:     email,
 		Plan:        plan,
+		Status:      string(snap.Status),
+		ModelName:   snap.ModelName,
 	}
 
-	// Try reading cached/saved profile quota file
-	root, err := Root(provider, name)
-	quotaFile := ""
-	if err == nil {
-		quotaFile = filepath.Join(root, "quota.json")
-		if data, err := os.ReadFile(quotaFile); err == nil {
-			var saved QuotaDetails
-			if json.Unmarshal(data, &saved) == nil && saved.FiveHour.ProgressBar != "" {
-				saved.Account = email
-				saved.Plan = plan
-				return saved
-			}
+	if q.ModelName == "" {
+		if providerName == "codex" {
+			q.ModelName = "gpt-5.6-sol"
+		} else if providerName == "agy" {
+			q.ModelName = "Gemini 2.5 Flash / Pro"
+		} else if providerName == "claude" {
+			q.ModelName = "Claude 3.7 Sonnet"
+		} else if providerName == "opencode" {
+			q.ModelName = "OpenCode Provider"
+		} else if providerName == "gemini" {
+			q.ModelName = "Gemini Pro"
 		}
 	}
 
-	if provider == "codex" {
-		q.ModelName = "gpt-5.6-sol (reasoning low, summaries auto)"
+	// Map windows if present
+	for _, w := range snap.Windows {
+		var pct float64
+		if w.RemainingPercent != nil {
+			pct = *w.RemainingPercent
+		}
+		bar := quota.RenderProgressBar(snap.Status, w.RemainingPercent, 10)
+		if snap.Status == model.UsageLive || snap.Status == model.UsageCached {
+			bar = fmt.Sprintf("%s %2.0f%%", bar, pct)
+		}
+		lw := LimitWindow{
+			PercentLeft: pct,
+			ResetTime:   w.ResetDescription,
+			ResetsIn:    w.ResetDescription,
+			ProgressBar: bar,
+			Status:      string(snap.Status),
+		}
+		if w.Kind == "5h" || w.Kind == "daily" {
+			q.FiveHour = lw
+		} else if w.Kind == "weekly" {
+			q.Weekly = lw
+		}
+	}
+
+	if len(snap.Windows) == 0 {
 		q.FiveHour = LimitWindow{
-			PercentLeft: 100.0,
-			ResetTime:   "Quota available",
-			ProgressBar: RenderBar(100.0, 20),
+			ProgressBar: quota.RenderProgressBar(snap.Status, nil, 10),
+			Status:      string(snap.Status),
+			ResetTime:   "Status: " + string(snap.Status),
 		}
 		q.Weekly = LimitWindow{
-			PercentLeft: 100.0,
-			ResetTime:   "Quota available",
-			ProgressBar: RenderBar(100.0, 20),
-		}
-	} else if provider == "agy" {
-		q.ModelName = "Gemini Flash, Gemini Pro"
-		q.FiveHour = LimitWindow{
-			PercentLeft: 100.0,
-			ResetsIn:    "Quota available",
-			ProgressBar: RenderBar(100.0, 50),
-		}
-		q.Weekly = LimitWindow{
-			PercentLeft: 100.0,
-			ResetsIn:    "Quota available",
-			ProgressBar: RenderBar(100.0, 50),
-		}
-		q.ClaudeFiveH = LimitWindow{
-			PercentLeft: 100.0,
-			ResetsIn:    "Quota available",
-			ProgressBar: RenderBar(100.0, 50),
-		}
-		q.ClaudeWeek = LimitWindow{
-			PercentLeft: 100.0,
-			ResetsIn:    "Quota available",
-			ProgressBar: RenderBar(100.0, 50),
-		}
-	}
-
-	// Persist per-profile quota if directory exists
-	if quotaFile != "" {
-		if data, err := json.MarshalIndent(q, "", "  "); err == nil {
-			_ = os.WriteFile(quotaFile, data, 0600)
+			ProgressBar: quota.RenderProgressBar(snap.Status, nil, 10),
+			Status:      string(snap.Status),
+			ResetTime:   "Status: " + string(snap.Status),
 		}
 	}
 
 	return q
 }
 
-// RenderBar generates a clean progress bar of the given percentage and width.
+// RenderBar generates a clean progress bar.
 func RenderBar(percent float64, width int) string {
-	if percent < 0 {
-		percent = 0
-	}
-	if percent > 100 {
-		percent = 100
-	}
-	filled := int((percent * float64(width)) / 100.0)
-	if filled > width {
-		filled = width
-	}
-	empty := width - filled
-	if empty < 0 {
-		empty = 0
-	}
-	return "[" + strings.Repeat("█", filled) + strings.Repeat("░", empty) + "]"
+	p := percent
+	return quota.RenderProgressBar(model.UsageLive, &p, width)
 }
 
 func RenderShortBar(percent float64) string {
-	return RenderBar(percent, 20) + fmt.Sprintf(" %.0f%%", percent)
+	p := percent
+	return quota.RenderShortStatus(model.UsageLive, &p, 10)
 }

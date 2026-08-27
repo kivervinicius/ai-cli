@@ -4,90 +4,53 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/kivervinicius/ai-cli/internal/core/config"
+	"github.com/kivervinicius/ai-cli/internal/core/model"
+	"github.com/kivervinicius/ai-cli/internal/runtime"
 )
 
-type Profile struct {
-	Provider  string    `json:"provider"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-type Config struct {
-	Defaults map[string]string `json:"defaults"`
-}
+// Re-export common types for compatibility
+type Profile = model.Profile
+type Config = config.Config
 
 func DataDir() (string, error) {
-	if v := os.Getenv("AI_MANAGER_DATA_DIR"); v != "" {
-		return filepath.Abs(v)
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".local", "share", "ai-manager"), nil
+	return config.DataDir()
 }
 
 func ConfigDir() (string, error) {
-	if v := os.Getenv("AI_MANAGER_CONFIG_DIR"); v != "" {
-		return filepath.Abs(v)
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".config", "ai-manager"), nil
-}
-
-func ValidateName(s string) error {
-	if s == "" {
-		return errors.New("profile name cannot be empty")
-	}
-	for _, r := range s {
-		if !(r == '-' || r == '_' || r == '.' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')) {
-			return fmt.Errorf("invalid profile name %q: use letters, numbers, '.', '_' or '-'", s)
-		}
-	}
-	if s == "." || s == ".." {
-		return errors.New("invalid profile name")
-	}
-	return nil
-}
-
-func ValidateProvider(p string) error {
-	switch p {
-	case "codex", "agy":
-		return nil
-	default:
-		return fmt.Errorf("unsupported provider %q (supported: codex, agy)", p)
-	}
+	return config.ConfigDir()
 }
 
 func Root(provider, name string) (string, error) {
-	data, err := DataDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(data, "profiles", provider, name), nil
+	return config.ProfileRoot(provider, name)
 }
 
 func Home(provider, name string) (string, error) {
-	root, err := Root(provider, name)
-	if err != nil {
-		return "", err
+	return config.ProfileHome(provider, name)
+}
+
+func ValidateName(s string) error {
+	return config.ValidateProfileName(s)
+}
+
+func ValidateProvider(p string) error {
+	switch strings.ToLower(p) {
+	case "codex", "agy", "claude", "opencode", "gemini":
+		return nil
+	default:
+		return fmt.Errorf("unsupported provider %q (supported: codex, agy, claude, opencode, gemini)", p)
 	}
-	return filepath.Join(root, "home"), nil
 }
 
 func Exists(provider, name string) bool {
-	root, err := Root(provider, name)
+	root, err := config.ProfileRoot(provider, name)
 	if err != nil {
 		return false
 	}
@@ -95,8 +58,8 @@ func Exists(provider, name string) bool {
 	return err == nil
 }
 
-func Create(provider, name string) (Profile, error) {
-	var p Profile
+func Create(provider, name string) (model.Profile, error) {
+	var p model.Profile
 	if err := ValidateProvider(provider); err != nil {
 		return p, err
 	}
@@ -106,7 +69,7 @@ func Create(provider, name string) (Profile, error) {
 	if Exists(provider, name) {
 		return p, fmt.Errorf("profile %s:%s already exists", provider, name)
 	}
-	root, err := Root(provider, name)
+	root, err := config.ProfileRoot(provider, name)
 	if err != nil {
 		return p, err
 	}
@@ -115,9 +78,8 @@ func Create(provider, name string) (Profile, error) {
 		if err := os.MkdirAll(d, 0700); err != nil {
 			return p, err
 		}
-		_ = os.Chmod(d, 0700)
 	}
-	p = Profile{Provider: provider, Name: name, CreatedAt: time.Now()}
+	p = model.Profile{Provider: provider, Name: name, CreatedAt: time.Now()}
 	b, _ := json.MarshalIndent(p, "", "  ")
 	if err := os.WriteFile(filepath.Join(root, "profile.json"), append(b, '\n'), 0600); err != nil {
 		return p, err
@@ -126,14 +88,14 @@ func Create(provider, name string) (Profile, error) {
 }
 
 func Delete(provider, name string) error {
-	root, err := Root(provider, name)
+	root, err := config.ProfileRoot(provider, name)
 	if err != nil {
 		return err
 	}
 	if err := os.RemoveAll(root); err != nil {
 		return err
 	}
-	cfg, err := LoadConfig()
+	cfg, err := config.LoadConfig()
 	if err == nil && cfg.Defaults[provider] == name {
 		delete(cfg.Defaults, provider)
 		ps, _ := List()
@@ -143,19 +105,71 @@ func Delete(provider, name string) error {
 				break
 			}
 		}
-		_ = SaveConfig(cfg)
+		_ = config.SaveConfig(cfg)
 	}
 	return nil
 }
 
-func List() ([]Profile, error) {
-	data, err := DataDir()
+func Rename(provider, oldName, newName string) error {
+	if err := ValidateName(newName); err != nil {
+		return err
+	}
+	if !Exists(provider, oldName) {
+		return fmt.Errorf("profile %s:%s does not exist", provider, oldName)
+	}
+	if Exists(provider, newName) {
+		return fmt.Errorf("profile %s:%s already exists", provider, newName)
+	}
+
+	oldRoot, err := config.ProfileRoot(provider, oldName)
+	if err != nil {
+		return err
+	}
+	newRoot, err := config.ProfileRoot(provider, newName)
+	if err != nil {
+		return err
+	}
+
+	if err := os.Rename(oldRoot, newRoot); err != nil {
+		return err
+	}
+
+	p, err := Get(provider, newName)
+	if err == nil {
+		p.Name = newName
+		b, _ := json.MarshalIndent(p, "", "  ")
+		_ = os.WriteFile(filepath.Join(newRoot, "profile.json"), append(b, '\n'), 0600)
+	}
+
+	// Update defaults and bindings
+	cfg, err := config.LoadConfig()
+	if err == nil {
+		if cfg.Defaults[provider] == oldName {
+			cfg.Defaults[provider] = newName
+		}
+		for ws, b := range cfg.Bindings {
+			if b[provider] == oldName {
+				cfg.Bindings[ws][provider] = newName
+			}
+		}
+		_ = config.SaveConfig(cfg)
+	}
+
+	return nil
+}
+
+func List() ([]model.Profile, error) {
+	data, err := config.DataDir()
 	if err != nil {
 		return nil, err
 	}
 	base := filepath.Join(data, "profiles")
-	var out []Profile
-	for _, provider := range []string{"agy", "codex"} {
+	var out []model.Profile
+	providers := []string{"agy", "codex", "claude", "opencode", "gemini"}
+
+	cfg, _ := config.LoadConfig()
+
+	for _, provider := range providers {
 		entries, err := os.ReadDir(filepath.Join(base, provider))
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -171,12 +185,22 @@ func List() ([]Profile, error) {
 			if err != nil {
 				continue
 			}
-			var p Profile
+			var p model.Profile
 			if json.Unmarshal(raw, &p) == nil {
+				if cfg.Disabled[p.Provider] != nil && cfg.Disabled[p.Provider][p.Name] {
+					p.Disabled = true
+				}
+				if cfg.Priorities[p.Provider] != nil {
+					p.Priority = cfg.Priorities[p.Provider][p.Name]
+				}
+				if cfg.Labels[p.Provider] != nil {
+					p.Labels = cfg.Labels[p.Provider][p.Name]
+				}
 				out = append(out, p)
 			}
 		}
 	}
+
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Provider == out[j].Provider {
 			return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
@@ -186,68 +210,12 @@ func List() ([]Profile, error) {
 	return out, nil
 }
 
-func LoadConfig() (Config, error) {
-	cfg := Config{Defaults: map[string]string{}}
-	dir, err := ConfigDir()
-	if err != nil {
-		return cfg, err
-	}
-	path := filepath.Join(dir, "config.json")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return cfg, nil
-		}
-		return cfg, err
-	}
-	if err := json.Unmarshal(raw, &cfg); err != nil {
-		return cfg, err
-	}
-	if cfg.Defaults == nil {
-		cfg.Defaults = map[string]string{}
-	}
-	return cfg, nil
-}
-
-func SaveConfig(cfg Config) error {
-	dir, err := ConfigDir()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return err
-	}
-	_ = os.Chmod(dir, 0700)
-	b, _ := json.MarshalIndent(cfg, "", "  ")
-	return os.WriteFile(filepath.Join(dir, "config.json"), append(b, '\n'), 0600)
-}
-
-func SetDefault(provider, name string) error {
-	if !Exists(provider, name) {
-		return fmt.Errorf("profile %s:%s does not exist", provider, name)
-	}
-	cfg, err := LoadConfig()
-	if err != nil {
-		return err
-	}
-	cfg.Defaults[provider] = name
-	return SaveConfig(cfg)
-}
-
-func Default(provider string) (string, error) {
-	cfg, err := LoadConfig()
-	if err != nil {
-		return "", err
-	}
-	return cfg.Defaults[provider], nil
-}
-
-func Get(provider, name string) (Profile, error) {
-	var p Profile
+func Get(provider, name string) (model.Profile, error) {
+	var p model.Profile
 	if err := ValidateProvider(provider); err != nil {
 		return p, err
 	}
-	root, err := Root(provider, name)
+	root, err := config.ProfileRoot(provider, name)
 	if err != nil {
 		return p, err
 	}
@@ -261,11 +229,64 @@ func Get(provider, name string) (Profile, error) {
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return p, err
 	}
+	cfg, _ := config.LoadConfig()
+	if cfg.Disabled[p.Provider] != nil && cfg.Disabled[p.Provider][p.Name] {
+		p.Disabled = true
+	}
+	if cfg.Priorities[p.Provider] != nil {
+		p.Priority = cfg.Priorities[p.Provider][p.Name]
+	}
 	return p, nil
 }
 
+func SetDisabled(provider, name string, disabled bool) error {
+	if !Exists(provider, name) {
+		return fmt.Errorf("profile %s:%s does not exist", provider, name)
+	}
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return err
+	}
+	if cfg.Disabled[provider] == nil {
+		cfg.Disabled[provider] = make(map[string]bool)
+	}
+	cfg.Disabled[provider][name] = disabled
+	return config.SaveConfig(cfg)
+}
+
+func SetPriority(provider, name string, priority int) error {
+	if !Exists(provider, name) {
+		return fmt.Errorf("profile %s:%s does not exist", provider, name)
+	}
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return err
+	}
+	if cfg.Priorities[provider] == nil {
+		cfg.Priorities[provider] = make(map[string]int)
+	}
+	cfg.Priorities[provider][name] = priority
+	return config.SaveConfig(cfg)
+}
+
+func LoadConfig() (config.Config, error) {
+	return config.LoadConfig()
+}
+
+func SaveConfig(cfg config.Config) error {
+	return config.SaveConfig(cfg)
+}
+
+func SetDefault(provider, name string) error {
+	return config.SetDefaultProfile(provider, name)
+}
+
+func Default(provider string) (string, error) {
+	return config.GetDefaultProfile(provider)
+}
+
 type ProfileInfo struct {
-	Profile       Profile           `json:"profile"`
+	Profile       model.Profile     `json:"profile"`
 	IsDefault     bool              `json:"is_default"`
 	RootPath      string            `json:"root_path"`
 	HomePath      string            `json:"home_path"`
@@ -284,16 +305,16 @@ func Inspect(provider, name string) (*ProfileInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	root, _ := Root(provider, name)
-	home, _ := Home(provider, name)
-	d, _ := Default(provider)
-	cfgDir, _ := ConfigDir()
-	dataDir, _ := DataDir()
+	root, _ := config.ProfileRoot(provider, name)
+	home, _ := config.ProfileHome(provider, name)
+	d, _ := config.GetDefaultProfile(provider)
+	cfgDir, _ := config.ConfigDir()
+	dataDir, _ := config.DataDir()
 	cwd, _ := os.Getwd()
 	uid := os.Getuid()
 	gid := os.Getgid()
 
-	binPath, _ := exec.LookPath(provider)
+	binPath, _ := runtime.LookPath(provider)
 	if binPath == "" {
 		binPath = "(not found in PATH)"
 	}
@@ -315,73 +336,20 @@ func Inspect(provider, name string) (*ProfileInfo, error) {
 
 	if provider == "codex" {
 		info.IsolationVars["CODEX_HOME"] = home
-
-		cfgPath := filepath.Join(home, "config.toml")
-		if raw, err := os.ReadFile(cfgPath); err == nil {
-			if strings.Contains(string(raw), "cli_auth_credentials_store") {
-				info.Details["config.toml"] = "present (file-backed credentials store)"
-			} else {
-				info.Details["config.toml"] = "present"
-			}
-		} else {
-			info.Details["config.toml"] = "not found"
-		}
-		authPath := filepath.Join(home, "auth.json")
-		if st, err := os.Stat(authPath); err == nil && st.Size() > 0 {
-			info.Details["auth.json"] = fmt.Sprintf("present (%d bytes, credentials stored locally)", st.Size())
-		} else {
-			info.Details["auth.json"] = "not found (not authenticated yet)"
-		}
-		if _, err := os.Stat(filepath.Join(home, "sessions")); err == nil {
-			info.Details["shared_sessions"] = "linked from host (~/.codex/sessions)"
-		}
-		if _, err := os.Stat(filepath.Join(home, "history.jsonl")); err == nil {
-			info.Details["shared_history"] = "linked from host (~/.codex/history.jsonl)"
-		}
 	} else if provider == "agy" {
-		realHome, _ := os.UserHomeDir()
 		info.IsolationVars["HOME"] = home
 		info.IsolationVars["XDG_CONFIG_HOME"] = filepath.Join(home, ".config")
 		info.IsolationVars["XDG_CACHE_HOME"] = filepath.Join(home, ".cache")
 		info.IsolationVars["XDG_DATA_HOME"] = filepath.Join(home, ".local", "share")
-		info.IsolationVars["AI_REAL_HOME"] = realHome
-		info.IsolationVars["AI_KEYRING_CONTROL_DIR"] = filepath.Join(root, "runtime", "keyring-control")
-		if hostDbus := os.Getenv("DBUS_SESSION_BUS_ADDRESS"); hostDbus != "" {
-			info.IsolationVars["AI_HOST_DBUS_SESSION_BUS_ADDRESS"] = hostDbus
-		} else {
-			info.IsolationVars["AI_HOST_DBUS_SESSION_BUS_ADDRESS"] = "(not set on host)"
-		}
-		info.IsolationVars["GIT_CONFIG_GLOBAL"] = filepath.Join(realHome, ".gitconfig")
-
-		passPath := filepath.Join(root, "keyring.pass")
-		if st, err := os.Stat(passPath); err == nil {
-			info.Details["keyring.pass"] = fmt.Sprintf("present (mode %04o, isolated local password)", st.Mode().Perm())
-		} else {
-			info.Details["keyring.pass"] = "not found"
-		}
-
-		keyringsDir := filepath.Join(home, ".local", "share", "keyrings")
-		if st, err := os.Stat(keyringsDir); err == nil && st.IsDir() {
-			loginKeyring := filepath.Join(keyringsDir, "login.keyring")
-			if kst, err := os.Stat(loginKeyring); err == nil {
-				info.Details["secret_service"] = fmt.Sprintf("initialized (login.keyring present, %d bytes)", kst.Size())
-			} else {
-				entries, _ := os.ReadDir(keyringsDir)
-				info.Details["secret_service"] = fmt.Sprintf("keyrings directory ready (%d entries)", len(entries))
-			}
-		} else {
-			info.Details["secret_service"] = "pending initialization"
-		}
-
-		if _, err := os.Stat(filepath.Join(home, ".gitconfig")); err == nil {
-			info.Details["git_config"] = "linked from host"
-		}
-		if _, err := os.Stat(filepath.Join(home, ".ssh")); err == nil {
-			info.Details["ssh_config"] = "linked from host"
-		}
-		if _, err := os.Stat(filepath.Join(home, ".gemini")); err == nil {
-			info.Details["shared_gemini"] = "linked from host (~/.gemini conversations & brain)"
-		}
+	} else if provider == "claude" {
+		info.IsolationVars["HOME"] = home
+		info.IsolationVars["CLAUDE_CONFIG_DIR"] = filepath.Join(home, ".claude")
+	} else if provider == "opencode" {
+		info.IsolationVars["HOME"] = home
+		info.IsolationVars["OPENCODE_CONFIG_DIR"] = filepath.Join(home, ".config", "opencode")
+	} else if provider == "gemini" {
+		info.IsolationVars["HOME"] = home
+		info.IsolationVars["GEMINI_CLI_HOME"] = home
 	}
 
 	return info, nil
@@ -400,4 +368,3 @@ func EnsureRandomSecret(path string) error {
 	}
 	return os.WriteFile(path, []byte(hex.EncodeToString(buf)+"\n"), 0600)
 }
-

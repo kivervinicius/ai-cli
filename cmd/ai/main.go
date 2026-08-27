@@ -5,15 +5,15 @@ import (
 	"os"
 	"path/filepath"
 
-	"ai-manager/internal/app"
-	"ai-manager/internal/browser"
+	"github.com/kivervinicius/ai-cli/internal/app"
+	"github.com/kivervinicius/ai-cli/internal/browser"
 )
 
 func main() {
 	base := filepath.Base(os.Args[0])
 	if base == "ai-browser" || base == "xdg-open" {
 		if err := browser.Open(os.Args[1:]); err != nil {
-			fmt.Fprintln(os.Stderr, "ai-manager browser helper:", err)
+			fmt.Fprintln(os.Stderr, "ai-cli browser helper:", err)
 			os.Exit(1)
 		}
 		return

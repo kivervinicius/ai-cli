@@ -1,69 +1,76 @@
 package runtime
 
 import (
+	"bytes"
+	"context"
 	"errors"
-	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"github.com/kivervinicius/ai-cli/internal/core/classifier"
+	"github.com/kivervinicius/ai-cli/internal/core/config"
+	"github.com/kivervinicius/ai-cli/internal/core/model"
 )
 
+// LookPath searches for an executable in the system PATH.
 func LookPath(name string) (string, error) {
-	p, err := exec.LookPath(name)
-	if err != nil {
-		return "", fmt.Errorf("%s not found in PATH", name)
-	}
-	return p, nil
+	return exec.LookPath(name)
 }
 
-func EnvSet(env []string, kv map[string]string, unset ...string) []string {
-	drop := map[string]bool{}
-	for k := range kv {
-		drop[k] = true
-	}
+// EnvSet applies environment overrides and removes unset keys from the base environment slice.
+func EnvSet(base []string, overrides map[string]string, unset ...string) []string {
+	unsetMap := make(map[string]bool)
 	for _, k := range unset {
-		drop[k] = true
+		unsetMap[k] = true
 	}
-	out := make([]string, 0, len(env)+len(kv))
-	for _, e := range env {
-		k := e
-		if i := strings.IndexByte(e, '='); i >= 0 {
-			k = e[:i]
-		}
-		if !drop[k] {
-			out = append(out, e)
-		}
+
+	overrideKeys := make(map[string]bool)
+	for k := range overrides {
+		overrideKeys[k] = true
 	}
-	for k, v := range kv {
+
+	var out []string
+	for _, entry := range base {
+		parts := strings.SplitN(entry, "=", 2)
+		if len(parts) == 0 {
+			continue
+		}
+		k := parts[0]
+		if unsetMap[k] || overrideKeys[k] {
+			continue
+		}
+		out = append(out, entry)
+	}
+
+	for k, v := range overrides {
 		out = append(out, k+"="+v)
 	}
 	return out
 }
 
-// RunInteractive executes a command connected to standard I/O with signal propagation.
-func RunInteractive(path string, args []string, env []string, dir string) error {
-	cmd := exec.Command(path, args...)
+// RunInteractive executes an external CLI in full interactive TTY passthrough mode.
+func RunInteractive(bin string, args []string, env []string, cwd string) (model.Failure, error) {
+	cmd := exec.Command(bin, args...)
 	cmd.Env = env
-	if dir != "" {
-		cmd.Dir = dir
-	}
+	cmd.Dir = cwd
 	cmd.Stdin = os.Stdin
+
+	var errBuf bytes.Buffer
 	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = io.MultiWriter(os.Stderr, &errBuf)
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	defer signal.Stop(sigChan)
 
 	if err := cmd.Start(); err != nil {
-		return err
+		return model.Failure{Kind: model.FailureCommand, Message: err.Error()}, err
 	}
-
-	sigChan := make(chan os.Signal, 8)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT)
-	defer func() {
-		signal.Stop(sigChan)
-		close(sigChan)
-	}()
 
 	go func() {
 		for sig := range sigChan {
@@ -77,58 +84,50 @@ func RunInteractive(path string, args []string, env []string, dir string) error 
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok {
-				if ws.Signaled() {
-					return err
-				}
-			}
+			fail := classifier.Classify(err, errBuf.String())
+			return fail, err
 		}
-		return err
+		return model.Failure{Kind: model.FailureUnknown, Message: err.Error()}, err
 	}
-	return nil
+
+	return model.Failure{Kind: model.FailureNone}, nil
 }
 
-// InternalBinDir returns the directory containing helper symlinks (ai-browser, xdg-open).
-// It ensures that the helper directory and valid symlinks exist pointing to the current executable.
+// RunCommandCapture executes a command non-interactively and captures its combined stdout and stderr.
+func RunCommandCapture(ctx context.Context, bin string, args []string, env []string, cwd string) (string, error) {
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Env = env
+	cmd.Dir = cwd
+
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+
+	err := cmd.Run()
+	return buf.String(), err
+}
+
+// InternalBinDir ensures helper binaries (such as ai-browser / xdg-open shim) exist in a runtime dir.
 func InternalBinDir() (string, error) {
-	if custom := os.Getenv("AI_MANAGER_LIB_DIR"); custom != "" {
-		d := filepath.Join(custom, "bin")
-		_ = ensureSymlinks(d)
-		return d, nil
-	}
-
-	home, err := os.UserHomeDir()
-	if err == nil {
-		d := filepath.Join(home, ".local", "lib", "ai-manager", "bin")
-		if err := ensureSymlinks(d); err == nil {
-			return d, nil
-		}
-	}
-
-	exe, err := os.Executable()
+	dataDir, err := config.DataDir()
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Dir(exe)
-	_ = ensureSymlinks(dir)
-	return dir, nil
-}
+	binDir := filepath.Join(dataDir, "runtime", "bin")
+	if err := os.MkdirAll(binDir, 0700); err != nil {
+		return "", err
+	}
 
-func ensureSymlinks(binDir string) error {
-	if err := os.MkdirAll(binDir, 0755); err != nil {
-		return err
-	}
-	exe, err := os.Executable()
+	selfExe, err := os.Executable()
 	if err != nil {
-		return err
+		return binDir, nil
 	}
-	for _, helper := range []string{"ai-browser", "xdg-open"} {
-		target := filepath.Join(binDir, helper)
-		if cur, err := os.Readlink(target); err == nil && cur == exe {
-			continue
-		}
-		_ = os.Remove(target)
-		_ = os.Symlink(exe, target)
+
+	for _, name := range []string{"ai-browser", "xdg-open"} {
+		dst := filepath.Join(binDir, name)
+		_ = os.Remove(dst)
+		_ = os.Symlink(selfExe, dst)
 	}
-	return nil
+
+	return binDir, nil
 }

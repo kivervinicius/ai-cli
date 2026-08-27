@@ -1,19 +1,28 @@
-.PHONY: build test vet install clean zip
+BINARY=ai
+MODULE=github.com/kivervinicius/ai-cli
+
+.PHONY: all build test race vet lint clean install
+
+all: build
 
 build:
-	go build -buildvcs=false -o ai ./cmd/ai
+	go build -ldflags="-s -w" -o $(BINARY) ./cmd/ai
 
 test:
-	go test ./...
+	go test -v ./...
+
+race:
+	go test -race ./...
 
 vet:
 	go vet ./...
 
-install:
-	./install.sh
+lint:
+	go vet ./...
 
 clean:
-	rm -f ai
+	rm -f $(BINARY)
 
-zip:
-	cd .. && zip -r ai-manager.zip ai-manager -x 'ai-manager/ai'
+install: build
+	install -d $(DESTDIR)/usr/local/bin
+	install -m 755 $(BINARY) $(DESTDIR)/usr/local/bin/$(BINARY)
