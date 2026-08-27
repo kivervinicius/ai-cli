@@ -28,3 +28,7 @@
   - Upgraded `install.ps1` for Windows / PowerShell Core (`pwsh`) with release zip downloads, PATH configuration, and fallback.
   - Updated `README.md` and `README.en.md` highlighting one-line installation (`curl -fsSL ... | bash` and `irm ... | iex`).
   - Pushed commit `bde9084` to `origin/feat/control-plane-evolution`.
+- **Visual Harmonization & Full Documentation Review**:
+  - Restored top banner (`assets/banner.svg`), `style=for-the-badge` shields, language switcher (`🇧🇷 Português | 🇬🇧 English`), and centered styling across both `README.md` and `README.en.md`.
+  - Audited all docs in `docs/` (`account-selection.md`, `usage-and-quota.md`, `provider-development.md`, `security.md`, `ai-cli-control-plane.md`, and `ARCHITECTURE.md`), confirming 100% sanitized examples and accurate architecture specs.
+  - Pushed commit `85dfd28` to `origin/feat/control-plane-evolution`.
