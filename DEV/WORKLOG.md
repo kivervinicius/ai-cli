@@ -23,3 +23,8 @@
   - Added unit test cases for PowerShell shell completions in `internal/app/app_test.go`.
   - Updated `README.md` and `README.en.md` with PowerShell installation and `$PROFILE` completion guides.
   - Pushed commit `9467f89` to `origin/feat/control-plane-evolution`.
+- **1-Line Zero-Clone Installers**:
+  - Upgraded `install.sh` to download pre-built release archives with zero dependencies or build from source using Go fallback.
+  - Upgraded `install.ps1` for Windows / PowerShell Core (`pwsh`) with release zip downloads, PATH configuration, and fallback.
+  - Updated `README.md` and `README.en.md` highlighting one-line installation (`curl -fsSL ... | bash` and `irm ... | iex`).
+  - Pushed commit `bde9084` to `origin/feat/control-plane-evolution`.
