@@ -32,3 +32,8 @@
   - Restored top banner (`assets/banner.svg`), `style=for-the-badge` shields, language switcher (`🇧🇷 Português | 🇬🇧 English`), and centered styling across both `README.md` and `README.en.md`.
   - Audited all docs in `docs/` (`account-selection.md`, `usage-and-quota.md`, `provider-development.md`, `security.md`, `ai-cli-control-plane.md`, and `ARCHITECTURE.md`), confirming 100% sanitized examples and accurate architecture specs.
   - Pushed commit `85dfd28` to `origin/feat/control-plane-evolution`.
+- **Windows Session Discovery & 5-CLI Detailed Documentation**:
+  - Implemented multi-root Windows path normalizer (`filepath.ToSlash`), supporting `%USERPROFILE%`, `%LOCALAPPDATA%`, `%APPDATA%`, and `%HOMEDRIVE%%HOMEPATH%`.
+  - Added multi-directory session and history resolution in Codex and AGY adapters for Windows native locations (`.codex`, `.gemini/antigravity-cli`).
+  - Added dedicated detailed subsections for all 5 supported CLIs (Codex, AGY, Claude Code, OpenCode, Gemini CLI) in `README.md` and `README.en.md`.
+  - Pushed commit `008f2f1` to `origin/feat/control-plane-evolution`.
