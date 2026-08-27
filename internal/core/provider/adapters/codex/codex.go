@@ -282,10 +282,22 @@ func (a *Adapter) ListConversations(ctx context.Context, p model.Profile, worksp
 
 	homeCandidates := []string{}
 	if h, err := config.ProfileHome(string(a.ID()), p.Name); err == nil {
-		homeCandidates = append(homeCandidates, h)
+		homeCandidates = append(homeCandidates, h, filepath.Join(h, ".codex"))
+	}
+	if root, err := config.ProfileRoot(string(a.ID()), p.Name); err == nil {
+		homeCandidates = append(homeCandidates, root)
 	}
 	if hostHome := security.FindHostHome(); hostHome != "" {
-		homeCandidates = append(homeCandidates, filepath.Join(hostHome, ".codex"))
+		homeCandidates = append(homeCandidates, filepath.Join(hostHome, ".codex"), hostHome)
+	}
+	if userProf := os.Getenv("USERPROFILE"); userProf != "" {
+		homeCandidates = append(homeCandidates, filepath.Join(userProf, ".codex"), userProf)
+	}
+	if appData := os.Getenv("APPDATA"); appData != "" {
+		homeCandidates = append(homeCandidates, filepath.Join(appData, "codex"), filepath.Join(appData, "OpenAI", "Codex"))
+	}
+	if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
+		homeCandidates = append(homeCandidates, filepath.Join(localAppData, "codex"), filepath.Join(localAppData, "OpenAI", "Codex"))
 	}
 
 	seen := make(map[string]bool)

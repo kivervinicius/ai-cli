@@ -120,13 +120,36 @@ ai workspaces
 ```
 
 ### 7. 🔌 5 Provedores Suportados Nativamente
-| Provedor | Identificador | Capacidades |
-| :--- | :--- | :--- |
-| **OpenAI Codex** | `codex` | Login, Quota 5h/Semanal, Resume nativo, Isolamento `CODEX_HOME` |
-| **Google AGY / Antigravity** | `agy` | Login, Quota Gemini/Claude, Keyring isolado, D-Bus sandbox |
-| **Anthropic Claude Code** | `claude` | Login, Detecção de versão, Runtime isolado |
-| **OpenCode** | `opencode` | Detecção e execução multi-modelo |
-| **Gemini CLI** | `gemini` | Autenticação Google OAuth, Detecção |
+
+O AI CLI Control Plane integra nativamente os principais assistentes de IA para terminal:
+
+#### 🟢 OpenAI Codex (`codex`)
+- **Execução:** `ai codex` (seleção inteligente) ou `ai codex:openai-work --model gpt-5.6-sol`
+- **Isolamento:** Variável de ambiente `CODEX_HOME` dedicada por perfil, com `auth.json` e `config.toml` em modo restrito (`0600`).
+- **Quotas:** Limites de 5 Horas e Semanais compatíveis com os painéis oficiais do Codex (`/status`, `/usage`).
+- **Retomada:** Sintaxe nativa do Codex (`codex resume <session-id>`).
+
+#### 🔵 Google AGY / Antigravity (`agy`)
+- **Execução:** `ai agy` (seleção inteligente) ou `ai agy:google-work -c`
+- **Isolamento:** Sessão D-Bus privada em sandbox (`dbus-run-session`) com cofre `gnome-keyring-daemon` dedicado e `antigravity-oauth-token` isolado.
+- **Quotas:** Limites de 5 Horas e Semanais do Google AI Pro (Gemini 2.5 Pro / Claude 3.7 Sonnet).
+- **Retomada:** Despacho nativo de conversas (`agy --conversation=<session-id>`).
+
+#### 🟣 Anthropic Claude Code (`claude`)
+- **Execução:** `ai claude` (seleção inteligente) ou `ai claude:claude-work -p "refatorar auth"`
+- **Isolamento:** `CLAUDE_CONFIG_DIR` isolado por perfil com gerenciamento independente de OAuth e tokens de API.
+- **Retomada:** Despacho oficial (`claude --resume <session-id>`).
+
+#### 🟠 OpenCode (`opencode`)
+- **Execução:** `ai opencode` ou `ai opencode:local --model ollama/deepseek-r1`
+- **Isolamento:** `OPENCODE_HOME` e `XDG_DATA_HOME` independentes por perfil.
+- **Capacidades:** Suporte multi-modelo para LLMs locais (Ollama, vLLM) e provedores em nuvem.
+- **Retomada:** Retomada de sessões do OpenCode (`opencode session <id>`).
+
+#### 💎 Google Gemini CLI (`gemini`)
+- **Execução:** `ai gemini` (seleção inteligente) ou `ai gemini:personal`
+- **Isolamento:** `GEMINI_CLI_HOME` com `google_accounts.json` dedicado por perfil.
+- **Capacidades:** Autenticação Google OAuth isolada sem sobrescrita de contas.
 
 ---
 

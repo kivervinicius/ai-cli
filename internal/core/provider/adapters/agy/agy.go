@@ -363,21 +363,35 @@ func (a *Adapter) ListConversations(ctx context.Context, p model.Profile, worksp
 
 	homeCandidates := []string{}
 	if root, err := config.ProfileRoot(string(a.ID()), p.Name); err == nil {
-		homeCandidates = append(homeCandidates, filepath.Join(root, "home"))
+		homeCandidates = append(homeCandidates, filepath.Join(root, "home"), root)
 	}
 	if hostHome := security.FindHostHome(); hostHome != "" {
 		homeCandidates = append(homeCandidates, hostHome)
 	}
+	if userProf := os.Getenv("USERPROFILE"); userProf != "" {
+		homeCandidates = append(homeCandidates, userProf)
+	}
+	if appData := os.Getenv("APPDATA"); appData != "" {
+		homeCandidates = append(homeCandidates, appData, filepath.Join(appData, "antigravity-cli"))
+	}
+	if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
+		homeCandidates = append(homeCandidates, localAppData, filepath.Join(localAppData, "antigravity-cli"))
+	}
 
 	seen := make(map[string]bool)
 	for _, h := range homeCandidates {
-		histFile := filepath.Join(h, ".gemini", "antigravity-cli", "history.jsonl")
-		f, err := os.Open(histFile)
-		if err != nil {
-			continue
+		histCandidates := []string{
+			filepath.Join(h, ".gemini", "antigravity-cli", "history.jsonl"),
+			filepath.Join(h, "antigravity-cli", "history.jsonl"),
+			filepath.Join(h, "history.jsonl"),
 		}
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
+		for _, histFile := range histCandidates {
+			f, err := os.Open(histFile)
+			if err != nil {
+				continue
+			}
+			scanner := bufio.NewScanner(f)
+			for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
 			if line == "" {
 				continue
@@ -416,6 +430,7 @@ func (a *Adapter) ListConversations(ctx context.Context, p model.Profile, worksp
 			}
 		}
 		f.Close()
+		}
 	}
 
 	return sessions, nil

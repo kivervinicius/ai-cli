@@ -123,9 +123,26 @@ func FindHostHome() string {
 			return v
 		}
 	}
+	if v := os.Getenv("USERPROFILE"); v != "" {
+		if st, err := os.Stat(v); err == nil && st.IsDir() {
+			return v
+		}
+	}
 	if h, err := os.UserHomeDir(); err == nil && h != "" {
 		if st, err := os.Stat(h); err == nil && st.IsDir() {
 			return h
+		}
+	}
+	if d, p := os.Getenv("HOMEDRIVE"), os.Getenv("HOMEPATH"); d != "" && p != "" {
+		full := filepath.Join(d, p)
+		if st, err := os.Stat(full); err == nil && st.IsDir() {
+			return full
+		}
+	}
+	if u := os.Getenv("USERNAME"); u != "" {
+		p := filepath.Join(`C:\Users`, u)
+		if st, err := os.Stat(p); err == nil && st.IsDir() {
+			return p
 		}
 	}
 	if u := os.Getenv("USER"); u != "" {

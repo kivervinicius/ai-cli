@@ -21,17 +21,17 @@ var (
 
 // Config represents persistent application settings and user preferences.
 type Config struct {
-	ConfigVersion     int                                 `json:"config_version"`
-	Defaults          map[string]string                   `json:"defaults"`            // provider -> profile
-	Priorities        map[string]map[string]int           `json:"priorities,omitempty"` // provider -> profile -> priority
-	Disabled          map[string]map[string]bool          `json:"disabled,omitempty"`   // provider -> profile -> true
-	Labels            map[string]map[string][]string      `json:"labels,omitempty"`     // provider -> profile -> tags
-	Strategy          string                              `json:"strategy"`             // best-capacity, least-used, round-robin, sticky
-	StickyTTL         string                              `json:"sticky_ttl,omitempty"` // e.g. "30m"
-	IsolationPreset   model.IsolationPreset               `json:"isolation_preset"`    // developer, strict, compat
-	Bindings          map[string]map[string]string        `json:"bindings,omitempty"`   // workspace -> provider -> profile
-	AutomaticFallback bool                                `json:"automatic_fallback"`
-	MaxConcurrency    int                                 `json:"max_concurrency"`
+	ConfigVersion     int                            `json:"config_version"`
+	Defaults          map[string]string              `json:"defaults"`            // provider -> profile
+	Priorities        map[string]map[string]int      `json:"priorities,omitempty"` // provider -> profile -> priority
+	Disabled          map[string]map[string]bool     `json:"disabled,omitempty"`   // provider -> profile -> true
+	Labels            map[string]map[string][]string `json:"labels,omitempty"`     // provider -> profile -> tags
+	Strategy          string                         `json:"strategy"`             // best-capacity, least-used, round-robin, sticky
+	StickyTTL         string                         `json:"sticky_ttl,omitempty"` // e.g. "30m"
+	IsolationPreset   model.IsolationPreset          `json:"isolation_preset"`    // developer, strict, compat
+	Bindings          map[string]map[string]string   `json:"bindings,omitempty"`   // workspace -> provider -> profile
+	AutomaticFallback bool                           `json:"automatic_fallback"`
+	MaxConcurrency    int                            `json:"max_concurrency"`
 }
 
 // NewDefaultConfig returns a well-configured default Configuration.
@@ -57,14 +57,38 @@ func getBaseHome() string {
 			return v
 		}
 	}
-	if h, err := os.UserHomeDir(); err == nil && h != "" {
-		if idx := strings.Index(h, "/.local/share/ai-manager/profiles"); idx != -1 {
-			return h[:idx]
+	if v := os.Getenv("USERPROFILE"); v != "" {
+		if st, err := os.Stat(v); err == nil && st.IsDir() {
+			return v
 		}
-		if idx := strings.Index(h, "/.local/share/ai-cli/profiles"); idx != -1 {
-			return h[:idx]
+	}
+	if h, err := os.UserHomeDir(); err == nil && h != "" {
+		norm := filepath.ToSlash(h)
+		if idx := strings.Index(norm, "/.local/share/ai-manager/profiles"); idx != -1 {
+			return filepath.FromSlash(norm[:idx])
+		}
+		if idx := strings.Index(norm, "/.local/share/ai-cli/profiles"); idx != -1 {
+			return filepath.FromSlash(norm[:idx])
+		}
+		if idx := strings.Index(norm, "/AppData/Local/ai-manager/profiles"); idx != -1 {
+			return filepath.FromSlash(norm[:idx])
+		}
+		if idx := strings.Index(norm, "/AppData/Local/ai-cli/profiles"); idx != -1 {
+			return filepath.FromSlash(norm[:idx])
 		}
 		return h
+	}
+	if d, p := os.Getenv("HOMEDRIVE"), os.Getenv("HOMEPATH"); d != "" && p != "" {
+		full := filepath.Join(d, p)
+		if st, err := os.Stat(full); err == nil && st.IsDir() {
+			return full
+		}
+	}
+	if u := os.Getenv("USERNAME"); u != "" {
+		p := filepath.Join(`C:\Users`, u)
+		if st, err := os.Stat(p); err == nil && st.IsDir() {
+			return p
+		}
 	}
 	if u := os.Getenv("USER"); u != "" {
 		p := filepath.Join("/home", u)
@@ -75,7 +99,7 @@ func getBaseHome() string {
 	return ""
 }
 
-// ConfigDir returns the XDG-compliant config directory with ai-manager fallback.
+// ConfigDir returns the XDG/Windows-compliant config directory with ai-manager fallback.
 func ConfigDir() (string, error) {
 	if v := os.Getenv("AI_MANAGER_CONFIG_DIR"); v != "" {
 		return filepath.Abs(v)
@@ -93,27 +117,37 @@ func ConfigDir() (string, error) {
 		}
 	}
 
+	var candidates []string
+
+	// Check XDG_CONFIG_HOME
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" && !strings.Contains(filepath.ToSlash(xdg), "/profiles/") {
+		candidates = append(candidates, filepath.Join(xdg, "ai-cli"), filepath.Join(xdg, "ai-manager"))
+	}
+
+	// Check APPDATA on Windows
+	if appData := os.Getenv("APPDATA"); appData != "" {
+		candidates = append(candidates, filepath.Join(appData, "ai-cli"), filepath.Join(appData, "ai-manager"))
+	}
+
+	// Standard ~/.config
 	configBase := filepath.Join(home, ".config")
-	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" && !strings.Contains(xdg, "/profiles/") {
-		configBase = xdg
+	candidates = append(candidates,
+		filepath.Join(configBase, "ai-cli"),
+		filepath.Join(configBase, "ai-manager"),
+	)
+
+	// Check if any candidate has config.json
+	for _, c := range candidates {
+		if _, err := os.Stat(filepath.Join(c, "config.json")); err == nil {
+			return c, nil
+		}
 	}
 
-	pCli := filepath.Join(configBase, "ai-cli")
-	pMgr := filepath.Join(configBase, "ai-manager")
-
-	// If ai-cli exists, use it
-	if _, err := os.Stat(filepath.Join(pCli, "config.json")); err == nil {
-		return pCli, nil
-	}
-	// Fallback to existing ai-manager config
-	if _, err := os.Stat(filepath.Join(pMgr, "config.json")); err == nil {
-		return pMgr, nil
-	}
-
-	return pCli, nil
+	// Default to first candidate
+	return candidates[0], nil
 }
 
-// DataDir returns the XDG-compliant data directory with ai-manager fallback.
+// DataDir returns the XDG/Windows-compliant data directory with ai-manager fallback.
 func DataDir() (string, error) {
 	if v := os.Getenv("AI_MANAGER_DATA_DIR"); v != "" {
 		return filepath.Abs(v)
@@ -131,27 +165,39 @@ func DataDir() (string, error) {
 		}
 	}
 
+	var candidates []string
+
+	// Check XDG_DATA_HOME
+	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" && !strings.Contains(filepath.ToSlash(xdg), "/profiles/") {
+		candidates = append(candidates, filepath.Join(xdg, "ai-cli"), filepath.Join(xdg, "ai-manager"))
+	}
+
+	// Check LOCALAPPDATA / APPDATA on Windows
+	if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
+		candidates = append(candidates, filepath.Join(localAppData, "ai-cli"), filepath.Join(localAppData, "ai-manager"))
+	}
+	if appData := os.Getenv("APPDATA"); appData != "" {
+		candidates = append(candidates, filepath.Join(appData, "ai-cli"), filepath.Join(appData, "ai-manager"))
+	}
+
+	// Standard ~/.local/share
 	dataBase := filepath.Join(home, ".local", "share")
-	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" && !strings.Contains(xdg, "/profiles/") {
-		dataBase = xdg
+	candidates = append(candidates,
+		filepath.Join(dataBase, "ai-cli"),
+		filepath.Join(dataBase, "ai-manager"),
+	)
+
+	// Check if any candidate has a profiles directory
+	for _, c := range candidates {
+		if _, err := os.Stat(filepath.Join(c, "profiles")); err == nil {
+			return c, nil
+		}
 	}
 
-	pCli := filepath.Join(dataBase, "ai-cli")
-	pMgr := filepath.Join(dataBase, "ai-manager")
-
-	// If ai-cli profiles directory exists, use it
-	if _, err := os.Stat(filepath.Join(pCli, "profiles")); err == nil {
-		return pCli, nil
-	}
-	// Fallback to existing ai-manager directory
-	if _, err := os.Stat(filepath.Join(pMgr, "profiles")); err == nil {
-		return pMgr, nil
-	}
-
-	return pCli, nil
+	return candidates[0], nil
 }
 
-// StateDir returns the XDG-compliant state directory.
+// StateDir returns the XDG/Windows-compliant state directory.
 func StateDir() (string, error) {
 	if v := os.Getenv("AI_MANAGER_STATE_DIR"); v != "" {
 		return filepath.Abs(v)
@@ -169,22 +215,29 @@ func StateDir() (string, error) {
 		}
 	}
 
+	var candidates []string
+
+	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" && !strings.Contains(filepath.ToSlash(xdg), "/profiles/") {
+		candidates = append(candidates, filepath.Join(xdg, "ai-cli"), filepath.Join(xdg, "ai-manager"))
+	}
+
+	if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
+		candidates = append(candidates, filepath.Join(localAppData, "ai-cli", "state"), filepath.Join(localAppData, "ai-manager", "state"))
+	}
+
 	stateBase := filepath.Join(home, ".local", "state")
-	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" && !strings.Contains(xdg, "/profiles/") {
-		stateBase = xdg
+	candidates = append(candidates,
+		filepath.Join(stateBase, "ai-cli"),
+		filepath.Join(stateBase, "ai-manager"),
+	)
+
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c, nil
+		}
 	}
 
-	pCli := filepath.Join(stateBase, "ai-cli")
-	pMgr := filepath.Join(stateBase, "ai-manager")
-
-	if _, err := os.Stat(pCli); err == nil {
-		return pCli, nil
-	}
-	if _, err := os.Stat(pMgr); err == nil {
-		return pMgr, nil
-	}
-
-	return pCli, nil
+	return candidates[0], nil
 }
 
 // ProfileRoot returns the profile root directory.
@@ -225,7 +278,6 @@ func LoadConfig() (Config, error) {
 		return cfg, err
 	}
 
-	// Legacy config migration support: handle old defaults format if present
 	var rawMap map[string]interface{}
 	if err := json.Unmarshal(data, &rawMap); err == nil {
 		if rawMap["defaults"] != nil {
