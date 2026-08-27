@@ -1,0 +1,42 @@
+# Binaries
+/ai
+/dist/
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Logs and databases
+*.log
+*.sqlite
+*.sqlite*
+*.db
+conversation_summaries.db
+history.jsonl
+
+# Credentials, Keys & Secrets
+*token*
+*secret*
+*auth.json
+*keyring*
+*.pass
+*google_accounts*
+*jetski*
+.env
+.env.*
+
+# Local Profile and Storage Dirs
+profiles/
+.codex/
+.gemini/
+scratch/
+tmp/
+
+# OS and IDE Files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

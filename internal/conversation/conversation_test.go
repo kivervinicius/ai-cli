@@ -1,0 +1,49 @@
+package conversation
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestListRecentConversations(t *testing.T) {
+	hostHome := t.TempDir()
+	t.Setenv("AI_REAL_HOME", hostHome)
+
+	// Create simulated AGY history.jsonl
+	agyCliDir := filepath.Join(hostHome, ".gemini", "antigravity-cli")
+	_ = os.MkdirAll(agyCliDir, 0755)
+	histData := `{"display":"Refactor auth system","timestamp":1787839787154,"workspace":"/projetos/my-app","conversationId":"conv-agy-1"}
+{"display":"Fix lint error","timestamp":1787849787154,"workspace":"/projetos/my-app","conversationId":"conv-agy-2"}
+`
+	_ = os.WriteFile(filepath.Join(agyCliDir, "history.jsonl"), []byte(histData), 0644)
+
+	// Create simulated Codex session_index.jsonl
+	codexDir := filepath.Join(hostHome, ".codex")
+	_ = os.MkdirAll(codexDir, 0755)
+	indexData := `{"id":"conv-codex-1","thread_name":"Codex Thread Test","updated_at":"2026-08-27T10:00:00Z"}` + "\n"
+	_ = os.WriteFile(filepath.Join(codexDir, "session_index.jsonl"), []byte(indexData), 0644)
+
+	convs := ListRecent(10, "/projetos/my-app")
+	if len(convs) < 3 {
+		t.Fatalf("expected at least 3 conversations, got %d", len(convs))
+	}
+
+	foundAgy2 := false
+	foundCodex := false
+	for _, c := range convs {
+		if c.ID == "conv-agy-2" && c.Title == "Fix lint error" && c.Provider == "agy" {
+			foundAgy2 = true
+		}
+		if c.ID == "conv-codex-1" && c.Title == "Codex Thread Test" && c.Provider == "codex" {
+			foundCodex = true
+		}
+	}
+
+	if !foundAgy2 {
+		t.Errorf("conv-agy-2 not properly parsed: %+v", convs)
+	}
+	if !foundCodex {
+		t.Errorf("conv-codex-1 not properly parsed: %+v", convs)
+	}
+}
