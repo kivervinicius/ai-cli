@@ -17,3 +17,9 @@
 - **Documentation Restoration & Evolution**:
   - Restored the comprehensive Portuguese (`README.md`, default) and English (`README.en.md`) documentation files with sanitized examples.
   - Expanded both READMEs with complete guides for the 5 providers, Smart Account Selector (`ai explain`), Honest Quotas (`ai usage`), Universal Sessions, Workspace Bindings (`ai bind`), TUI, Architecture diagrams, and Shell autocompletions.
+- **PowerShell Support**:
+  - Implemented native `install.ps1` installer for Windows and PowerShell Core (`pwsh`).
+  - Added native `ai completion powershell` and `ai completion pwsh` shell completer via `Register-ArgumentCompleter`.
+  - Added unit test cases for PowerShell shell completions in `internal/app/app_test.go`.
+  - Updated `README.md` and `README.en.md` with PowerShell installation and `$PROFILE` completion guides.
+  - Pushed commit `9467f89` to `origin/feat/control-plane-evolution`.
