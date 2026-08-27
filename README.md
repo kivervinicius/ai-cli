@@ -128,33 +128,40 @@ ai workspaces
 
 ## 🚀 Instalação e Início Rápido
 
-### Pré-requisitos
-- **Go 1.22+** instalado na máquina.
-- Um ou mais CLIs oficiais instalados (`codex`, `agy`, `claude`, etc.).
+### Instalação em 1 Linha (Zero-Clone / Recomendado)
 
-### Opção 1: Compilação e Instalação Rápida (Linux / macOS)
+**Linux e macOS (via `curl | bash`):**
+```bash
+curl -fsSL https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.sh | bash
+```
+
+**Windows e PowerShell Core (via `irm | iex`):**
+```powershell
+irm https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.ps1 | iex
+```
+
+**Via `go install` (qualquer sistema com Go):**
+```bash
+go install github.com/kivervinicius/ai-cli/cmd/ai@latest
+```
+
+---
+
+### Instalação a partir do Código Fonte (Opcional)
+
+**Linux / macOS:**
 ```bash
 git clone https://github.com/kivervinicius/ai-cli.git
 cd ai-cli
 make install
 ```
 
-### Opção 2: Instalação via PowerShell (Windows / PowerShell Core)
+**Windows / PowerShell:**
 ```powershell
 git clone https://github.com/kivervinicius/ai-cli.git
 cd ai-cli
 .\install.ps1
 ```
-
-### Opção 3: Compilação Manual em Go
-```bash
-go build -ldflags="-s -w" -o ai ./cmd/ai
-mkdir -p ~/.local/bin
-cp ai ~/.local/bin/ai
-chmod +x ~/.local/bin/ai
-```
-
-Certifique-se de que o diretório de instalação está no seu `$PATH`.
 
 ---
 
