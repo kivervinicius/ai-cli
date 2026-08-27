@@ -3,27 +3,31 @@
 </p>
 
 <p align="center">
-  <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.22%2B-00ADD8?style=for-the-badge&logo=go" alt="Go Version"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" alt="License: MIT"></a>
-  <a href="https://kernel.org"><img src="https://img.shields.io/badge/Platform-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux"></a>
-  <img src="https://img.shields.io/badge/Providers-OpenAI%20Codex%20%7C%20Google%20AGY-7C3AED?style=for-the-badge" alt="Supported Providers">
+  <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.22%2B-00ADD8?style=for-the-badge&logo=go" alt="Versão Go"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" alt="Licença: MIT"></a>
+  <a href="https://kernel.org"><img src="https://img.shields.io/badge/Plataforma-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux"></a>
+  <img src="https://img.shields.io/badge/Providers-OpenAI%20Codex%20%7C%20Google%20AGY-7C3AED?style=for-the-badge" alt="Provedores Suportados">
+</p>
+
+<p align="center">
+  <strong>Português (Brasil)</strong> &nbsp;|&nbsp; <a href="README.en.md">🇬🇧 English</a>
 </p>
 
 <h3 align="center">
-  ⚡ Isolated Multi-Account Manager &amp; Live Quota Supervisor for OpenAI Codex &amp; Google AGY
+  ⚡ Gerenciador Multi-Contas Isolado &amp; Supervisor de Quotas em Tempo Real para OpenAI Codex e Google AGY
 </h3>
 
 ---
 
-**AI Manager (`ai`)** is a blazing-fast, isolated multi-account manager, sandbox launcher, and rate-limit bypass supervisor for **OpenAI Codex** and **Google Antigravity (AGY)** on Linux.
+O **AI Manager (`ai`)** é um gerenciador multi-contas ultra rápido, inicializador em sandbox e supervisor contra bloqueios de rate limit (429) para o **OpenAI Codex** e **Google Antigravity (AGY)** no Linux.
 
-It enables developers to seamlessly manage multiple AI developer accounts, switch accounts in real time **without leaving active chat sessions**, monitor live **5-Hour and Weekly Quotas**, and resume conversations across different accounts in under 0.5s when rate limits (429) hit.
+Ele permite gerenciar múltiplas contas de IA de forma totalmente isolada, alternar contas em tempo real **sem sair da sessão ativa do chat**, monitorar cotas **5 Horas e Semanais** ao vivo e continuar conversas entre diferentes contas em menos de 0,5s quando o limite esgota.
 
 ---
 
-## 📸 Interactive Terminal Interface (TUI)
+## 📸 Interface de Terminal Interativa (TUI)
 
-Launch the interactive manager anytime simply by running `ai`:
+Inicie o painel interativo a qualquer momento executando `ai`:
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -45,32 +49,32 @@ Launch the interactive manager anytime simply by running `ai`:
 
 ---
 
-## 🌟 Key Features
+## 🌟 Principais Recursos
 
-### 1. 🛡️ Multi-Account Sandbox & Credential Isolation
-- **Isolated State:** Each account gets its own isolated `HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, private D-Bus session, and dedicated `gnome-keyring-daemon` secret store.
-- **No Token Collisions:** Google OAuth tokens and OpenAI auth tokens are stored strictly in their profile jail, eliminating session overrides.
-- **Shared Project Context:** Preserves your exact working directory (`CWD`), user UID/GID, dotfiles (`.bashrc`, `.zshrc`, `.gitconfig`, `.ssh`), and shared project context across all accounts.
+### 1. 🛡️ Sandbox Multi-Conta & Isolamento de Credenciais
+- **Estado Isolado:** Cada perfil tem seu próprio `HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, sessão privada D-Bus e cofre `gnome-keyring-daemon` dedicado.
+- **Zero Colisão de Tokens:** Tokens OAuth do Google e tokens de autenticação da OpenAI ficam estritamente isolados em sua pasta de perfil, eliminando sobrescritas acidentais de sessão.
+- **Contexto de Projeto Compartilhado:** Preserva exatamente seu diretório de trabalho atual (`CWD`), usuário UID/GID, dotfiles (`.bashrc`, `.zshrc`, `.gitconfig`, `.ssh`) e o contexto compartilhado dos seus repositórios.
 
-### 2. ⚡ In-Session Account Switching (`/switch` Skill)
-Switch accounts directly from within the chat **without closing the terminal**:
+### 2. ⚡ Troca de Contas Durante a Sessão (Skill `/switch`)
+Alterne perfis de autenticação diretamente de dentro do chat **sem precisar fechar o terminal ou reiniciar o CLI**:
 ```text
 User: /switch google-personal
 Agent: ✓ Alternado com sucesso para AGY:google-personal (alex.dev@gmail.com - Google AI Pro).
        As próximas mensagens continuarão com a quota desta conta.
 ```
 
-### 3. 🔄 Anti-Rate-Limit & Instant Conversation Continuation
-When a model quota window is exhausted:
-- Press `[Tab]` in the TUI to view **Conversas Recentes**.
-- Pick any recent conversation title and press `[Enter]` to resume it immediately with another account.
-- CLI direct command:
+### 3. 🔄 Continuação Instantânea de Conversas (Anti-Rate-Limit)
+Quando o limite de quota de uma conta esgotar:
+- Pressione `[Tab]` na TUI para ver as **Conversas Recentes**.
+- Selecione qualquer conversa recente e aperte `[Enter]` para continuá-la de onde parou com outra conta que possua saldo.
+- Comando direto via CLI:
   ```bash
   ai resume <conversation-id> agy:google-personal
   ```
 
-### 4. 📊 Unified Real-Time Quota Monitor (`ai usage`)
-Displays the exact 5-Hour and Weekly limit progress matching the official Google AGY (`/usage`) and OpenAI Codex (`/status`) dashboards:
+### 4. 📊 Monitor de Quotas Unificado em Tempo Real (`ai usage`)
+Exibe com precisão as cotas de 5 Horas e Semanais compatíveis com os painéis oficiais do Google AGY (`/usage`) e OpenAI Codex (`/status`):
 
 ```bash
 $ ai usage
@@ -83,35 +87,35 @@ codex    openai-work          alex@company.com               ChatGPT Plus     [�
 codex    openai-personal      alex.personal@gmail.com        ChatGPT Plus     [██████████████] 100%        [██████████████] 100%
 ```
 
-#### Detailed Official CLI Cards (`ai usage <provider> <perfil>` or press `[s]` in TUI):
+#### Cartões Detalhados Oficiais do CLI (`ai usage <provider> <perfil>` ou tecla `[s]` na TUI):
 
 ```text
 ╭────────────────────────────────────────────────────────────────────────────────╮
 │  >_ OpenAI Codex Status & Quota — openai-work                                  │
 │                                                                                │
-│ Visit https://chatgpt.com/codex/settings/usage for up-to-date                  │
-│ information on rate limits and credits                                         │
+│ Visite https://chatgpt.com/codex/settings/usage para informações atualizadas   │
+│ sobre limites de taxa e créditos                                              │
 │                                                                                │
-│  Model:                gpt-5.6-sol (reasoning low, summaries auto)             │
-│  Account:              alex@company.com (ChatGPT Plus)                         │
+│  Modelo:               gpt-5.6-sol (reasoning low, summaries auto)             │
+│  Conta:                alex@company.com (ChatGPT Plus)                         │
 │                                                                                │
-│  5h limit:             [██████████████░░░░░░] 70% left (resets 17:34)          │
-│  Weekly limit:         [███████████████████░] 95% left (resets 12:34 on 3 Sep) │
+│  Limite 5h:            [██████████████░░░░░░] 70% restante (renova às 17:34)   │
+│  Limite Semanal:       [███████████████████░] 95% restante (renova 12:34 3 Set)│
 ╰────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ---
 
-## 🚀 Quick Start & Installation
+## 🚀 Instalação e Início Rápido
 
-### Option 1: Fast Build & Install
+### Opção 1: Compilação e Instalação Automática
 ```bash
 git clone https://github.com/kivervinicius/ai-cli.git
 cd ai-cli
 make install
 ```
 
-### Option 2: Standalone Go Build
+### Opção 2: Compilação Manual em Go
 ```bash
 go build -buildvcs=false -o ai ./cmd/ai
 mkdir -p ~/.local/bin
@@ -119,13 +123,13 @@ cp ai ~/.local/bin/ai
 chmod +x ~/.local/bin/ai
 ```
 
-### Shell Autocompletion (Bash & Zsh)
-Add autocomplete for all profiles, subcommands, and conversations:
+### Autocompletar no Shell (Bash e Zsh)
+Ative o autocompletar de perfis, subcomandos e conversas:
 
 **Bash:**
 ```bash
 source <(ai completion bash)
-# Or persist in ~/.bashrc:
+# Ou persistir no ~/.bashrc:
 ai completion bash >> ~/.bashrc
 ```
 
@@ -136,65 +140,65 @@ source <(ai completion zsh)
 
 ---
 
-## 💻 CLI Command Reference & Cheat Sheet
+## 💻 Guia Rápido de Comandos CLI
 
-| Command | Description |
+| Comando | Descrição |
 | :--- | :--- |
-| `ai` | Opens the full interactive TUI (Profiles, Accounts, Quotas, Recent Conversations). |
-| `ai list` | Lists all configured profiles with accounts, plans, and defaults. |
-| `ai usage` | Unified 5H and Weekly Quota monitor with visual progress bars. |
-| `ai usage <provider> <name>` | Displays detailed official model quota card. |
-| `ai switch <provider> <name>` | Switches active profile and default credentials in real time. |
-| `ai resume` | Pick recent conversation and choose which account to continue with. |
-| `ai resume <id> <profile>` | Instant resume of conversation ID with target profile. |
-| `ai add <codex\|agy> <name>` | Creates a new isolated profile and triggers login flow. |
-| `ai login <provider> <name>` | Authenticates or refreshes OAuth tokens for a profile. |
-| `ai codex:<name> [args...]` | Runs Codex directly with that profile (e.g. `ai codex:openai-1 --yolo`). |
-| `ai agy:<name> [args...]` | Runs AGY directly with that profile (e.g. `ai agy:google-1 -c`). |
-| `ai remove <provider> <name>` | Safely deletes a profile and its isolated credentials. |
-| `ai doctor` | Performs diagnostic health checks on dependencies (dbus, keyring, CLIs). |
-| `ai inspect <provider> <name>` | Displays non-secret execution paths, UID/GID, and isolation variables. |
+| `ai` | Abre a TUI interativa completa (Perfis, Contas, Quotas, Conversas Recentes). |
+| `ai list` | Lista todos os perfis configurados com contas, planos e perfil padrão. |
+| `ai usage` | Monitor unificado de cotas 5H e Semanais com barras de progresso visuais. |
+| `ai usage <provider> <nome>` | Exibe o cartão detalhado oficial de cota do modelo. |
+| `ai switch <provider> <nome>` | Alterna o perfil ativo e as credenciais em tempo real. |
+| `ai resume` | Seleciona uma conversa recente e escolhe com qual conta continuar. |
+| `ai resume <id> <perfil>` | Continuação instantânea de uma conversa usando o perfil especificado. |
+| `ai add <codex\|agy> <nome>` | Cria um novo perfil isolado e dispara o fluxo de login. |
+| `ai login <provider> <nome>` | Autentica ou renova tokens OAuth para um perfil. |
+| `ai codex:<nome> [args...]` | Executa o Codex diretamente com aquele perfil (ex: `ai codex:openai-1 --yolo`). |
+| `ai agy:<nome> [args...]` | Executa o AGY diretamente com aquele perfil (ex: `ai agy:google-1 -c`). |
+| `ai remove <provider> <nome>` | Remove com segurança um perfil e suas credenciais isoladas. |
+| `ai doctor` | Executa diagnósticos no sistema e checa dependências (dbus, keyring, CLIs). |
+| `ai inspect <provider> <nome>` | Exibe caminhos de execução não-secretos, UID/GID e variáveis de isolamento. |
 
 ---
 
-## 🏗️ Architecture & Security Model
+## 🏗️ Arquitetura e Modelo de Segurança
 
 ```mermaid
 graph TD
-    User["Developer Terminal (ai-cli)"] --> TUI["Interactive TUI / CLI Dispatcher"]
+    User["Terminal do Desenvolvedor (ai-cli)"] --> TUI["TUI Interativa / Despachante CLI"]
     
-    subgraph "Provider Isolation Layer"
-        TUI --> AGY_Sand["AGY Sandbox (Isolated D-Bus + Keyring + HOME)"]
-        TUI --> CDX_Sand["Codex Sandbox (Isolated HOME + auth.json)"]
+    subgraph "Camada de Isolamento de Provedores"
+        TUI --> AGY_Sand["Sandbox AGY (D-Bus + Keyring + HOME Isolados)"]
+        TUI --> CDX_Sand["Sandbox Codex (HOME + auth.json Isolados)"]
     end
     
-    subgraph "Shared Development Layer"
-        AGY_Sand --> HostEnv["Preserved Host Environment ($CWD, $UID, Dotfiles, .git, .ssh)"]
+    subgraph "Camada de Desenvolvimento Compartilhada"
+        AGY_Sand --> HostEnv["Ambiente do Host Preservado ($CWD, $UID, Dotfiles, .git, .ssh)"]
         CDX_Sand --> HostEnv
-        AGY_Sand --> ConvEngine["Shared Conversations & History Engine"]
+        AGY_Sand --> ConvEngine["Motor de Conversas e Histórico Unificado"]
         CDX_Sand --> ConvEngine
     end
     
-    subgraph "Live Account Switcher"
-        ConvEngine --> Skill["skill-ai-switch (/switch in chat)"]
-        Skill --> InPlaceSwap["In-Place Credential Hot-Swap"]
+    subgraph "Troca de Contas em Tempo Real"
+        ConvEngine --> Skill["skill-ai-switch (/switch no chat)"]
+        Skill --> InPlaceSwap["Troca a Quente de Credenciais"]
     end
 ```
 
-### Security Guarantees:
-- 🔒 **Zero Token Leakage:** Authentication keys, JWT payloads, and OAuth tokens are strictly confined to permission `0600` directories.
-- 🔒 **Process Isolation:** Uses `dbus-run-session` and private `gnome-keyring-daemon` sockets so applications never mix secret stores.
-- 🔒 **Non-Secret Inspection:** `ai inspect` only reveals metadata, directory paths, and runtime flags, never sensitive tokens.
+### Garantias de Segurança:
+- 🔒 **Zero Vazamento de Tokens:** Chaves de autenticação, payloads JWT e tokens OAuth ficam restritos a diretórios com permissões estritas `0600`.
+- 🔒 **Isolamento de Processos:** Usa `dbus-run-session` e sockets privados do `gnome-keyring-daemon` para isolar cofres de senhas entre contas.
+- 🔒 **Inspeção Segura:** O comando `ai inspect` apenas exibe metadados, diretórios e flags de runtime, nunca credenciais sensíveis.
 
 ---
 
-## 🤝 Contributing
+## 🤝 Contribuições
 
-Contributions, feature requests, and suggestions are welcome!
-Feel free to open an issue or pull request.
+Contribuições, sugestões de melhorias e novas ideias são muito bem-vindas!
+Sinta-se à vontade para abrir uma issue ou pull request.
 
 ---
 
-## 📄 License
+## 📄 Licença
 
-Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more information.
+Distribuído sob a licença **MIT**. Consulte o arquivo [`LICENSE`](LICENSE) para obter mais informações.
