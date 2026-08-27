@@ -132,14 +132,21 @@ ai workspaces
 - **Go 1.22+** instalado na máquina.
 - Um ou mais CLIs oficiais instalados (`codex`, `agy`, `claude`, etc.).
 
-### Opção 1: Compilação e Instalação Rápida
+### Opção 1: Compilação e Instalação Rápida (Linux / macOS)
 ```bash
 git clone https://github.com/kivervinicius/ai-cli.git
 cd ai-cli
 make install
 ```
 
-### Opção 2: Compilação Manual
+### Opção 2: Instalação via PowerShell (Windows / PowerShell Core)
+```powershell
+git clone https://github.com/kivervinicius/ai-cli.git
+cd ai-cli
+.\install.ps1
+```
+
+### Opção 3: Compilação Manual em Go
 ```bash
 go build -ldflags="-s -w" -o ai ./cmd/ai
 mkdir -p ~/.local/bin
@@ -147,11 +154,11 @@ cp ai ~/.local/bin/ai
 chmod +x ~/.local/bin/ai
 ```
 
-Certifique-se de que `~/.local/bin` está no seu `$PATH`.
+Certifique-se de que o diretório de instalação está no seu `$PATH`.
 
 ---
 
-## 🐚 Autocompletar no Shell (Bash, Zsh e Fish)
+## 🐚 Autocompletar no Shell (Bash, Zsh, Fish e PowerShell)
 
 Ative o autocompletar completo de provedores, perfis, conversas e flags:
 
@@ -172,6 +179,14 @@ echo 'source <(ai completion zsh)' >> ~/.zshrc
 ### Fish
 ```fish
 ai completion fish | source
+```
+
+### PowerShell (Windows & pwsh)
+```powershell
+ai completion powershell | Out-String | Invoke-Expression
+
+# Para persistir no seu $PROFILE:
+Add-Content $PROFILE "`nai completion powershell | Out-String | Invoke-Expression"
 ```
 
 ---

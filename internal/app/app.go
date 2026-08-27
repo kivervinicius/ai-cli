@@ -1127,7 +1127,7 @@ func paths() error {
 
 func completionCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: ai completion <bash|zsh|fish>")
+		return errors.New("usage: ai completion <bash|zsh|fish|powershell>")
 	}
 	switch args[0] {
 	case "bash":
@@ -1161,6 +1161,22 @@ _ai "$@"
 	case "fish":
 		fmt.Print(`complete -c ai -f -a "providers profiles usage sessions doctor security history stats"
 `)
+	case "powershell", "pwsh":
+		fmt.Print(`Register-ArgumentCompleter -Native -CommandName ai -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    $commands = @(
+        'providers', 'profiles', 'usage', 'sessions', 'workspaces',
+        'bind', 'unbind', 'explain', 'doctor', 'security',
+        'history', 'stats', 'config', 'completion', 'version',
+        'codex', 'agy', 'claude', 'opencode', 'gemini'
+    )
+    $commands | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+        [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    }
+}
+`)
+	default:
+		return fmt.Errorf("unsupported shell %q. Supported: bash, zsh, fish, powershell", args[0])
 	}
 	return nil
 }

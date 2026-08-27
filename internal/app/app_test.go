@@ -227,4 +227,14 @@ func TestControlPlaneCLICommands(t *testing.T) {
 	if err != nil || !strings.Contains(out, "AI CLI Diagnostics") {
 		t.Fatalf("doctor failed: %s, %v", out, err)
 	}
+
+	// 14. Completion commands (bash, zsh, fish, powershell, pwsh)
+	for _, sh := range []string{"bash", "zsh", "fish", "powershell", "pwsh"} {
+		out, err = captureStdout(func() error {
+			return Run([]string{"completion", sh})
+		})
+		if err != nil || len(out) == 0 {
+			t.Fatalf("completion %s failed: %s, %v", sh, out, err)
+		}
+	}
 }

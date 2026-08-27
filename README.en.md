@@ -132,14 +132,21 @@ ai workspaces
 - **Go 1.22+** installed.
 - One or more official AI coding CLIs installed (`codex`, `agy`, `claude`, etc.).
 
-### Option 1: Fast Build & Install
+### Option 1: Fast Build & Install (Linux / macOS)
 ```bash
 git clone https://github.com/kivervinicius/ai-cli.git
 cd ai-cli
 make install
 ```
 
-### Option 2: Manual Go Build
+### Option 2: PowerShell Installation (Windows / PowerShell Core)
+```powershell
+git clone https://github.com/kivervinicius/ai-cli.git
+cd ai-cli
+.\install.ps1
+```
+
+### Option 3: Manual Go Build
 ```bash
 go build -ldflags="-s -w" -o ai ./cmd/ai
 mkdir -p ~/.local/bin
@@ -147,11 +154,11 @@ cp ai ~/.local/bin/ai
 chmod +x ~/.local/bin/ai
 ```
 
-Ensure `~/.local/bin` is in your `$PATH`.
+Ensure the target install directory is in your `$PATH`.
 
 ---
 
-## 🐚 Shell Completion (Bash, Zsh, Fish)
+## 🐚 Shell Completion (Bash, Zsh, Fish, and PowerShell)
 
 Enable full tab completion for providers, profiles, sessions, and flags:
 
@@ -172,6 +179,14 @@ echo 'source <(ai completion zsh)' >> ~/.zshrc
 ### Fish
 ```fish
 ai completion fish | source
+```
+
+### PowerShell (Windows & pwsh)
+```powershell
+ai completion powershell | Out-String | Invoke-Expression
+
+# Persist in your $PROFILE:
+Add-Content $PROFILE "`nai completion powershell | Out-String | Invoke-Expression"
 ```
 
 ---
