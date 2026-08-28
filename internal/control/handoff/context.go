@@ -9,7 +9,7 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/control/driver"
 	"github.com/kivervinicius/ai-cli/internal/control/events"
-	"github.com/kivervinicius/ai-cli/internal/control/host"
+	"github.com/kivervinicius/ai-cli/internal/control/launcher"
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/core/config"
@@ -92,7 +92,7 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 	// 3. Capture Safe Work Checkpoint
 	cp := CaptureWorkCheckpoint(source.Workspace, source.RuntimeID, source.ProviderID, source.ProfileID, source.ProviderSessionID, "")
 	if _, err := SaveCheckpoint(cp); err != nil {
-		slog.Warn("Failed to save checkpoint during context handoff", "err", err)
+		return nil, fmt.Errorf("context handoff aborted: failed to persist work checkpoint: %w", err)
 	}
 
 	kickoffPrompt := FormatKickoffPrompt(cp)
@@ -108,45 +108,23 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 		return nil, fmt.Errorf("failed to construct kickoff arguments: %w", err)
 	}
 
-	bin, args, envVars, err := d.BuildCommand(ctx, model.Profile{Name: targetProfile, Provider: targetProvider}, extraArgs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build command for target provider %s: %w", targetProvider, err)
-	}
-
-	// 5. Launch Target Supervised Runtime FIRST
+	// 5. Launch Target Supervised Runtime FIRST via unified launcher
 	newRuntimeID := fmt.Sprintf("%s-continue-%d", targetProvider, len(reg.List())+1)
 	lineageID := fmt.Sprintf("lin-ctx-%s-%d", targetProvider, time.Now().UnixNano())
 
-	newSession := registry.RuntimeSession{
-		RuntimeID:         newRuntimeID,
-		ProviderID:        targetProvider,
-		ProfileID:         targetProfile,
-		ProviderSessionID: "", // New session is a new thread, not an old session ID
-		Workspace:         source.Workspace,
-		State:             registry.StateStarting,
-		ControlLevel:      registry.ControlLevelTerminal,
-		ParentRuntimeID:   source.RuntimeID,
-		HandoffType:       "context",
-		LineageID:         lineageID,
-		StartedAt:         time.Now(),
-	}
-
-	sh, err := host.NewSessionHost(host.Config{
-		Session: newSession,
-		Binary:  bin,
-		Args:    args,
-		Env:     envVars,
-		Cwd:     source.Workspace,
+	newSession, err := launcher.Default().Launch(ctx, launcher.LaunchOptions{
+		RuntimeID:  newRuntimeID,
+		ProviderID: targetProvider,
+		ProfileID:  targetProfile,
+		Workspace:  source.Workspace,
+		Args:       extraArgs,
+		Standalone: true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize SessionHost for context handoff: %w", err)
+		return nil, fmt.Errorf("failed to start context handoff target runtime: %w", err)
 	}
 
-	if err := sh.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start context handoff runtime: %w", err)
-	}
-
-	// 6. Target started successfully. Now gracefullly stop source runtime.
+	// 6. Target started successfully. Now gracefully stop source runtime.
 	client, err := protocol.NewClient(sourceRuntimeID)
 	if err == nil {
 		_ = client.Stop()
@@ -154,7 +132,10 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 	}
 	_ = reg.UpdateState(sourceRuntimeID, registry.StateHandoff)
 
-	_ = reg.Register(newSession)
+	newSession.ParentRuntimeID = source.RuntimeID
+	newSession.HandoffType = "context"
+	newSession.LineageID = lineageID
+	_ = reg.Register(*newSession)
 
 	// 7. Record Lineage
 	if err := RecordLineage(LineageRecord{
@@ -178,5 +159,5 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 		map[string]any{"source_id": source.RuntimeID, "target_id": newSession.RuntimeID, "checkpoint_id": cp.CheckpointID},
 	))
 
-	return &newSession, nil
+	return newSession, nil
 }

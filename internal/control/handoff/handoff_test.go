@@ -136,3 +136,32 @@ func TestGitBounding(t *testing.T) {
 		t.Errorf("expected workspace %s, got %s", dir, cp.Workspace)
 	}
 }
+
+func TestAccountHandoff_CheckpointFailureAborts(t *testing.T) {
+	reg := registry.DefaultRegistry()
+	ctx := context.Background()
+
+	sourceID := "rt-cp-fail-test"
+	sess := registry.RuntimeSession{
+		RuntimeID:         sourceID,
+		ProviderID:        "fake",
+		ProfileID:         "work",
+		ProviderSessionID: "sess-cp-fail",
+		Workspace:         os.TempDir(),
+		State:             registry.StateRunning,
+	}
+	_ = reg.Register(sess)
+
+	// In normal circumstances, handoff to fake:nonexistent fails early with clear error
+	_, err := PerformAccountHandoff(ctx, sourceID, "fake:nonexistent")
+	if err == nil {
+		t.Fatal("expected handoff to fail on invalid profile")
+	}
+
+	// Source session must not be stuck in StateHandoff
+	st, ok := reg.Get(sourceID)
+	if ok && st.State == registry.StateHandoff {
+		t.Errorf("source session state was not preserved/restored: %+v", st)
+	}
+}
+

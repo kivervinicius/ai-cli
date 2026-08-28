@@ -18,6 +18,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/driver"
 	"github.com/kivervinicius/ai-cli/internal/control/handoff"
 	"github.com/kivervinicius/ai-cli/internal/control/host"
+	"github.com/kivervinicius/ai-cli/internal/control/launcher"
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	controltui "github.com/kivervinicius/ai-cli/internal/control/tui"
@@ -202,65 +203,23 @@ func controlStartCmd(args []string) error {
 		}
 	}
 
-	// 2. Resolve Control Driver
-	d, err := driver.DefaultRegistry().Get(providerID)
+	// 2. Launch via unified RuntimeLauncher
+	l := launcher.Default()
+	sess, err := l.Launch(ctx, launcher.LaunchOptions{
+		ProviderID: providerID,
+		ProfileID:  profileName,
+		Args:       extraArgs,
+	})
 	if err != nil {
 		return err
 	}
 
-	p := model.Profile{Name: profileName, Provider: providerID}
-	effCaps := d.EffectiveCaps(ctx, p)
-
-	bin, cmdArgs, env, err := d.BuildCommand(ctx, p, extraArgs)
-	if err != nil {
-		return fmt.Errorf("failed to build runtime command: %w", err)
-	}
-
-	cwd, _ := os.Getwd()
-	reg := registry.DefaultRegistry()
-	runtimeID := fmt.Sprintf("%s-%d", providerID, len(reg.List())+1)
-
-	session := registry.RuntimeSession{
-		RuntimeID:       runtimeID,
-		ProviderID:      providerID,
-		ProfileID:       profileName,
-		Workspace:       cwd,
-		Binary:          bin,
-		Args:            cmdArgs,
-		Env:             env,
-		State:           registry.StateStarting,
-		ControlLevel:    effCaps.ControlLevel,
-		ControlEndpoint: protocol.EndpointPath(runtimeID),
-		StartedAt:       time.Now(),
-	}
-
-	if err := reg.Register(session); err != nil {
-		return fmt.Errorf("failed to register runtime: %w", err)
-	}
-
-	// 3. Launch background independent SessionHost daemon
-	selfExe, err := os.Executable()
-	if err != nil {
-		selfExe = "ai"
-	}
-
-	if _, err := spawnDetachedHost(selfExe, runtimeID); err != nil {
-		return fmt.Errorf("failed to spawn background control host: %w", err)
-	}
-
-	// 4. Wait for endpoint readiness
-	waitCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
-	defer cancel()
-	if err := protocol.WaitForEndpoint(waitCtx, runtimeID, 3*time.Second); err != nil {
-		return fmt.Errorf("control host endpoint failed to initialize: %w", err)
-	}
-
 	fmt.Printf("✓ Started supervised %s runtime (ID: %s, Profile: %s, Control: %s)\n",
-		strings.ToUpper(providerID), runtimeID, profileName, effCaps.ControlLevel)
+		strings.ToUpper(providerID), sess.RuntimeID, profileName, sess.ControlLevel)
 	fmt.Printf("  Connecting interactive terminal...\n\n")
 
 	time.Sleep(50 * time.Millisecond)
-	return attachRuntime(runtimeID)
+	return attachRuntime(sess.RuntimeID)
 }
 
 func controlRunningCmd(args []string) error {
@@ -450,11 +409,18 @@ func controlStopCmd(args []string) error {
 		}
 	}
 
-	// Fallback if socket unreachable: check registry and kill PID
+	// Fallback if socket unreachable: check registry and validate PID identity before kill
 	if s, ok := reg.Get(runtimeID); ok {
-		if s.PID > 0 && registry.IsProcessAlive(s.PID) {
-			if p, pErr := os.FindProcess(s.PID); pErr == nil {
-				_ = p.Kill()
+		if s.PID > 0 {
+			if registry.IsProcessAliveWithGeneration(s.PID, s.HostGeneration) {
+				if p, pErr := os.FindProcess(s.PID); pErr == nil {
+					_ = p.Kill()
+				}
+			} else if registry.IsProcessAlive(s.PID) {
+				// Process is alive but host generation does not match: PID was recycled by the OS!
+				_ = os.Remove(protocol.EndpointPath(runtimeID))
+				_ = reg.UpdateState(runtimeID, registry.StateStale)
+				return fmt.Errorf("safety abort: PID %d is active but does not match runtime %s host generation (PID recycled); marked as STALE without killing", s.PID, runtimeID)
 			}
 		}
 		_ = os.Remove(protocol.EndpointPath(runtimeID))
