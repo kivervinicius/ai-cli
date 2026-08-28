@@ -190,3 +190,29 @@
   - `go vet ./...` (0 warnings).
   - Cross-platform compilation: 6 / 6 target platforms verified (`linux/amd64`, `linux/arm64`, `windows/amd64`, `windows/arm64`, `darwin/amd64`, `darwin/arm64`).
   - Reports generated: `AI_CONTROL_WEB_VALIDATION_REPORT.md`, `AI_CONTROL_REMOTE_VALIDATION_REPORT.md`, and `AI_CONTROL_FINAL_ENGINEERING_REPORT.md`.
+
+## 2026-08-28: Multi-Project Persistence, Session Titles, and Conversation Control
+
+- **What Changed**:
+  - **Persistent Multi-Project Store (`internal/control/workspace/workspace.go`)**:
+    - Created `workspace.Store` persisting registered repositories to `<datadir>/projects.json`.
+    - Added REST endpoints `GET /api/v1/workspaces`, `POST /api/v1/workspaces`, `DELETE /api/v1/workspaces?path=...`.
+    - Integrated project manager into Sidebar with inline Add Project form, directory validation, and removal.
+  - **Session Title Management**:
+    - Added `Title` field to `RuntimeSession`, `LaunchOptions`, and `Registry.UpdateTitle`.
+    - Added endpoint `POST /api/v1/runtimes/:id/title` for live title editing.
+    - Updated `TerminalPane` with click-to-edit inline pencil input and clean header badges.
+    - Updated `TerminalView` tabs to display session title, provider, and profile, eliminating the `● ()` empty badge bug.
+  - **Target Project Selection on Launch**:
+    - Updated `StartModal` to present a project selector choosing among registered workspaces or entering a custom path.
+    - Added optional Session Title input when starting new runtimes.
+  - **Conversation / Session History & Resume**:
+    - Listed both active and past sessions in `Dashboard.tsx`.
+    - Added one-click **Resume** button to offline sessions to continue previous conversations seamlessly.
+    - Added native driver for **Cursor Agent** (`cursor-agent` / `agent`) with `--resume` / `--continue` support.
+    - Enhanced `runtime.LookPath` with proactive multi-path auto-discovery across NVM, Bun, OpenCode, Cargo, and local bin paths.
+- **Verification**:
+  - `go test -count=1 -race ./...` (47 passed, 0 failed across all packages).
+  - Rebuilt and validated Bun bundle in `web/dist`.
+  - Rebuilt and installed binary at `/home/desenvolvedor/.local/bin/ai`.
+
