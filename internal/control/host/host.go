@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,18 +32,18 @@ type Config struct {
 
 // SessionHost manages a single supervised process runtime and its IPC listener.
 type SessionHost struct {
-	mu           sync.RWMutex
-	session      registry.RuntimeSession
-	cfg          Config
-	cmd          *exec.Cmd
-	ptmx         *os.File
-	stdinWriter  io.Writer
-	ringBuffer   *RingBuffer
-	listener     net.Listener
-	clients      map[net.Conn]bool
-	stopChan     chan struct{}
-	doneChan     chan struct{}
-	lineBuf      bytes.Buffer
+	mu          sync.RWMutex
+	session     registry.RuntimeSession
+	cfg         Config
+	cmd         *exec.Cmd
+	ptmx        *os.File
+	stdinWriter io.Writer
+	ringBuffer  *RingBuffer
+	listener    net.Listener
+	clients     map[net.Conn]bool
+	stopChan    chan struct{}
+	doneChan    chan struct{}
+	lineBuf     bytes.Buffer
 }
 
 // NewSessionHost creates a new SessionHost for a given runtime.
@@ -203,6 +204,7 @@ func (sh *SessionHost) handleClient(conn net.Conn) {
 
 		// If this was an Attach command, switch connection to continuous raw streaming mode
 		if isAttach {
+			_ = conn.SetDeadline(time.Time{})
 			sh.streamAttachedInput(conn, reader)
 			return
 		}
@@ -210,6 +212,7 @@ func (sh *SessionHost) handleClient(conn net.Conn) {
 }
 
 func (sh *SessionHost) streamAttachedInput(conn net.Conn, reader *bufio.Reader) {
+	_ = conn.SetDeadline(time.Time{})
 	buf := make([]byte, 1024)
 	for {
 		// Read raw bytes from terminal client
@@ -321,15 +324,17 @@ func (sh *SessionHost) processAttachedInput(data []byte) {
 				continue
 			}
 
-			if route.ForwardToProcess != "" {
+			// If it was an escaped command "//ai ...", forward unescaped "/ai ...\r" to process
+			if strings.HasPrefix(line, "//ai") {
 				if sh.stdinWriter != nil {
-					_, _ = sh.stdinWriter.Write([]byte(route.ForwardToProcess + "\n"))
+					_, _ = sh.stdinWriter.Write([]byte(route.ForwardToProcess + "\r"))
 				}
 				continue
 			}
 
+			// Normal line: send Enter to process
 			if sh.stdinWriter != nil {
-				_, _ = sh.stdinWriter.Write([]byte{b})
+				_, _ = sh.stdinWriter.Write([]byte{'\r'})
 			}
 		} else if b == 0x7f || b == 0x08 { // Backspace
 			if sh.lineBuf.Len() > 0 {
@@ -342,8 +347,21 @@ func (sh *SessionHost) processAttachedInput(data []byte) {
 			}
 		} else {
 			sh.lineBuf.WriteByte(b)
-			if sh.stdinWriter != nil {
-				_, _ = sh.stdinWriter.Write([]byte{b})
+			curr := sh.lineBuf.String()
+
+			// Check if we are potentially typing a slash command prefix
+			isSlashPrefix := strings.HasPrefix("/ai", curr) ||
+				strings.HasPrefix("//ai", curr) ||
+				strings.HasPrefix(curr, "/ai") ||
+				strings.HasPrefix(curr, "//ai")
+
+			if !isSlashPrefix {
+				if sh.stdinWriter != nil {
+					_, _ = sh.stdinWriter.Write([]byte{b})
+				}
+			} else {
+				// Echo slash command character locally to attached clients
+				sh.broadcast([]byte{b})
 			}
 		}
 	}

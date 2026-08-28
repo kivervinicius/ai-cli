@@ -61,6 +61,7 @@ func (c *Client) Send(cmd CommandType, payload any) (Response, error) {
 	}
 
 	line, err := c.reader.ReadBytes('\n')
+	_ = c.conn.SetDeadline(time.Time{}) // Disable deadline after RPC completes
 	if err != nil {
 		return Response{}, err
 	}
@@ -75,6 +76,21 @@ func (c *Client) Send(cmd CommandType, payload any) (Response, error) {
 	}
 
 	return resp, nil
+}
+
+// ClearDeadline removes any read/write timeouts from the connection.
+func (c *Client) ClearDeadline() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn != nil {
+		return c.conn.SetDeadline(time.Time{})
+	}
+	return nil
+}
+
+// Reader returns the client's buffered reader.
+func (c *Client) Reader() *bufio.Reader {
+	return c.reader
 }
 
 // Ping checks if the SessionHost is alive.

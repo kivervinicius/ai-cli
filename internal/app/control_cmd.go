@@ -326,6 +326,9 @@ func attachRuntime(runtimeID string) error {
 		return fmt.Errorf("attach failed: %w", err)
 	}
 
+	// Disable deadline after Attach RPC
+	_ = client.ClearDeadline()
+
 	// Print initial ring buffer history
 	var history string
 	if json.Unmarshal(resp.Data, &history) == nil && history != "" {
@@ -337,6 +340,15 @@ func attachRuntime(runtimeID string) error {
 	// 4. Stream stdout from runtime host to user terminal
 	errChan := make(chan error, 2)
 	go func() {
+		// First flush any buffered bytes in client.reader!
+		r := client.Reader()
+		if r != nil && r.Buffered() > 0 {
+			buf := make([]byte, r.Buffered())
+			n, _ := r.Read(buf)
+			if n > 0 {
+				_, _ = os.Stdout.Write(buf[:n])
+			}
+		}
 		_, copyErr := io.Copy(os.Stdout, rawConn)
 		errChan <- copyErr
 	}()

@@ -60,3 +60,12 @@
   - Replaced line-blocking reader with zero-latency continuous byte-by-byte raw streaming in `SessionHost.streamAttachedInput`.
   - Upgraded dependencies cleanly in `go.mod` (`golang.org/x/term`).
   - Tested with `go test -race ./...` (100% pass).
+
+- **Fix: Socket Deadline Timeout & Non-Duplicated Terminal Input Stream**:
+  - Removed 5-second deadline expiration in `protocol.Client.Send` by disabling deadlines (`SetDeadline(time.Time{})`) after RPC frames.
+  - Added `ClearDeadline()` and `Reader()` methods to `protocol.Client`.
+  - Fixed residual buffer flushing in `attachRuntime` to prevent skipping initial PTY output bytes.
+  - Fixed slash command input routing in `SessionHost.processAttachedInput` to prevent duplicate line transmission on Enter.
+  - Sockets now stay alive continuously for interactive sessions until explicit detach or process termination.
+  - Rebuilt binary in `/home/desenvolvedor/.local/bin/ai`.
+  - All tests passing with race detector (`go test -race ./...`).
