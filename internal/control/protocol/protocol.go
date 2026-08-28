@@ -22,8 +22,10 @@ const (
 	CmdTerminate CommandType = "terminate"
 	CmdHandoff   CommandType = "handoff"
 	CmdContinue  CommandType = "continue"
-	CmdEvents    CommandType = "events"
-	CmdSlash     CommandType = "slash"
+	CmdEvents       CommandType = "events"
+	CmdSlash        CommandType = "slash"
+	CmdLeaseAcquire CommandType = "lease_acquire"
+	CmdLeaseRelease CommandType = "lease_release"
 )
 
 // Request is a versioned command request sent to a SessionHost.

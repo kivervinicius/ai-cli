@@ -3,8 +3,11 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,7 +16,11 @@ import (
 )
 
 func TestWeb_FullE2E(t *testing.T) {
-	// Register a fake runtime in the registry
+	testDir := t.TempDir()
+	t.Setenv("AI_MANAGER_DATA_DIR", testDir)
+	t.Setenv("AI_CLI_DATA_DIR", testDir)
+
+	// Register a fake runtime in the isolated registry
 	reg := registry.DefaultRegistry()
 	fakeSession := registry.RuntimeSession{
 		RuntimeID:       "e2e-fake-1",
@@ -23,6 +30,9 @@ func TestWeb_FullE2E(t *testing.T) {
 		PID:             99999,
 		HostPID:         99999,
 		HostGeneration:  time.Now().UnixNano(),
+		Binary:          "/usr/bin/secret-binary",
+		Args:            []string{"--token=ghp_secrettoken1234567890abcdef"},
+		Env:             []string{"DATABASE_PASSWORD=s3cr3tP@ssword", "SECRET_KEY=supersecretkey"},
 		State:           registry.StateRunning,
 		ControlLevel:    registry.ControlLevelTerminal,
 		ControlEndpoint: "/tmp/fake.sock",
@@ -76,19 +86,37 @@ func TestWeb_FullE2E(t *testing.T) {
 		t.Fatal("expected session to be authenticated")
 	}
 
-	// 3. Fetch runtimes list: should include our fake runtime
+	// 3. Fetch runtimes list: should include our fake runtime and NOT expose secrets/env
 	rtsResp, err := client.Get(srv.URL() + "/api/v1/runtimes")
 	if err != nil {
 		t.Fatalf("failed to fetch runtimes: %v", err)
 	}
 	defer rtsResp.Body.Close()
+	rtsRaw, err := io.ReadAll(rtsResp.Body)
+	if err != nil {
+		t.Fatalf("failed to read runtimes body: %v", err)
+	}
+	rtsStr := string(rtsRaw)
+	if strings.Contains(rtsStr, "supersecretkey") || strings.Contains(rtsStr, "s3cr3tP@ssword") || strings.Contains(rtsStr, "secret-binary") {
+		t.Errorf("runtimes API response leaked secrets/environment: %s", rtsStr)
+	}
+
 	var runtimes []*registry.RuntimeSession
-	_ = json.NewDecoder(rtsResp.Body).Decode(&runtimes)
+	_ = json.Unmarshal(rtsRaw, &runtimes)
 
 	found := false
 	for _, r := range runtimes {
 		if r.RuntimeID == "e2e-fake-1" {
 			found = true
+			if len(r.Env) != 0 {
+				t.Errorf("expected r.Env to be empty, got %+v", r.Env)
+			}
+			if r.Binary != "" {
+				t.Errorf("expected r.Binary to be empty, got %q", r.Binary)
+			}
+			if len(r.Args) != 0 {
+				t.Errorf("expected r.Args to be empty, got %+v", r.Args)
+			}
 			break
 		}
 	}
@@ -96,19 +124,59 @@ func TestWeb_FullE2E(t *testing.T) {
 		t.Errorf("expected to find e2e-fake-1 in runtimes, got %d runtimes", len(runtimes))
 	}
 
-	// 4. Test WebSocket endpoint
 	wsURL := "ws://" + srv.listener.Addr().String() + "/api/v1/runtimes/e2e-fake-1/terminal"
-	header := http.Header{}
-	header.Set("Origin", "http://127.0.0.1")
-	ws, _, err := websocket.DefaultDialer.Dial(wsURL, header)
+	parsedURL, _ := url.Parse(srv.URL())
+	cookies := jar.Cookies(parsedURL)
+
+	// 4a. Unauthenticated WebSocket dial (no cookie): MUST return 401 Unauthorized
+	unauthHeader := http.Header{}
+	unauthHeader.Set("Origin", "http://127.0.0.1")
+	_, badResp, err := websocket.DefaultDialer.Dial(wsURL, unauthHeader)
+	if err == nil {
+		t.Errorf("expected unauthenticated WebSocket dial to fail")
+	} else if badResp != nil && badResp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401 Unauthorized for unauthenticated WebSocket, got %d", badResp.StatusCode)
+	}
+
+	// 4b. Untrusted / spoofed Origin (http://localhost.evil.com): MUST return 403 Forbidden
+	evilHeader := http.Header{}
+	evilHeader.Set("Origin", "http://localhost.evil.com")
+	for _, c := range cookies {
+		evilHeader.Add("Cookie", c.String())
+	}
+	_, evilResp, err := websocket.DefaultDialer.Dial(wsURL, evilHeader)
+	if err == nil {
+		t.Errorf("expected WebSocket dial with untrusted origin to fail")
+	} else if evilResp != nil && evilResp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden for untrusted origin, got %d", evilResp.StatusCode)
+	}
+
+	// 4c. Missing Origin header on WebSocket upgrade: MUST return 403 Forbidden
+	noOriginHeader := http.Header{}
+	for _, c := range cookies {
+		noOriginHeader.Add("Cookie", c.String())
+	}
+	_, noOriginResp, err := websocket.DefaultDialer.Dial(wsURL, noOriginHeader)
+	if err == nil {
+		t.Errorf("expected WebSocket dial without Origin to fail")
+	} else if noOriginResp != nil && noOriginResp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden for missing Origin on WebSocket, got %d", noOriginResp.StatusCode)
+	}
+
+	// 4d. Authenticated dial with valid Origin: MUST succeed in upgrading
+	authHeader := http.Header{}
+	authHeader.Set("Origin", "http://127.0.0.1")
+	for _, c := range cookies {
+		authHeader.Add("Cookie", c.String())
+	}
+	ws, _, err := websocket.DefaultDialer.Dial(wsURL, authHeader)
 	if err != nil {
-		t.Logf("WebSocket dial expectedly encountered offline socket for fake runtime: %v", err)
-	} else {
-		defer ws.Close()
-		var msg TerminalMessage
-		_ = ws.ReadJSON(&msg)
-		if msg.Type == "error" || msg.Type == "lease" {
-			t.Logf("Received valid initial terminal frame: %+v", msg)
-		}
+		t.Fatalf("authenticated WebSocket dial failed: %v", err)
+	}
+	defer ws.Close()
+	var msg TerminalMessage
+	_ = ws.ReadJSON(&msg)
+	if msg.Type == "error" || msg.Type == "lease" {
+		t.Logf("Received valid initial terminal frame: %+v", msg)
 	}
 }

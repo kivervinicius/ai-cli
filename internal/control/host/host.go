@@ -92,6 +92,8 @@ func (sh *SessionHost) Start() error {
 		cols = 80
 	}
 
+	prepareCmd(sh.cmd)
+
 	if err := sh.termBackend.Start(sh.cmd, rows, cols); err != nil {
 		return fmt.Errorf("failed to start terminal backend: %w", err)
 	}
@@ -122,6 +124,14 @@ func (sh *SessionHost) Start() error {
 	// 2. Start IPC listener
 	l, err := protocol.Listen(sh.session.RuntimeID)
 	if err != nil {
+		// Clean up and terminate the spawned child process immediately so it is not orphaned
+		if sh.cmd != nil && sh.cmd.Process != nil {
+			_ = killProcessGroup(sh.cmd.Process)
+			_, _ = sh.cmd.Process.Wait()
+		}
+		_ = sh.termBackend.Close()
+		sh.session.State = registry.StateFailed
+		_ = registry.DefaultRegistry().UpdateState(sh.session.RuntimeID, registry.StateFailed)
 		return fmt.Errorf("failed to create control endpoint: %w", err)
 	}
 	sh.listener = l
@@ -303,6 +313,16 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		go sh.Terminate()
 		resp, _ = protocol.NewResponse("terminated")
 
+	case protocol.CmdLeaseAcquire:
+		sh.activeWriter = conn
+		resp, _ = protocol.NewResponse("lease_acquired")
+
+	case protocol.CmdLeaseRelease:
+		if sh.activeWriter == conn {
+			sh.activeWriter = nil
+		}
+		resp, _ = protocol.NewResponse("lease_released")
+
 	default:
 		resp = protocol.NewErrorResponse(fmt.Sprintf("unknown command %q", req.Command))
 	}
@@ -436,8 +456,8 @@ func (sh *SessionHost) Wait() {
 func (sh *SessionHost) Stop() error {
 	sh.stopOnce.Do(func() { close(sh.stopChan) })
 	sh.mu.Lock()
-	if sh.cmd.Process != nil {
-		_ = sh.cmd.Process.Signal(os.Interrupt)
+	if sh.cmd != nil && sh.cmd.Process != nil {
+		_ = signalProcessGroup(sh.cmd.Process, os.Interrupt)
 	}
 	sh.mu.Unlock()
 
@@ -455,8 +475,8 @@ func (sh *SessionHost) Terminate() error {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 
-	if sh.cmd.Process != nil {
-		_ = sh.cmd.Process.Kill()
+	if sh.cmd != nil && sh.cmd.Process != nil {
+		_ = killProcessGroup(sh.cmd.Process)
 	}
 	if sh.listener != nil {
 		_ = sh.listener.Close()

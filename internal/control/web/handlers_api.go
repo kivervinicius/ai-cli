@@ -17,6 +17,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/workspace"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/quota"
+	"github.com/kivervinicius/ai-cli/internal/core/security"
 	"github.com/kivervinicius/ai-cli/internal/profile"
 )
 
@@ -45,7 +46,14 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
+	writeJSON(w, status, map[string]string{"error": security.Redact(msg)})
+}
+
+func sanitizeSession(s registry.RuntimeSession) registry.RuntimeSession {
+	s.Env = nil
+	s.Args = nil
+	s.Binary = ""
+	return s
 }
 
 // Health Handler
@@ -124,7 +132,11 @@ func (h *APIHandler) handleRuntimes(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		_, _ = h.reg.CleanupStale()
 		all := h.reg.List()
-		writeJSON(w, http.StatusOK, all)
+		sanitized := make([]registry.RuntimeSession, len(all))
+		for i, s := range all {
+			sanitized[i] = sanitizeSession(s)
+		}
+		writeJSON(w, http.StatusOK, sanitized)
 		return
 	}
 
@@ -161,7 +173,8 @@ func (h *APIHandler) handleRuntimes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		writeJSON(w, http.StatusCreated, sess)
+		cleanSess := sanitizeSession(*sess)
+		writeJSON(w, http.StatusCreated, cleanSess)
 		return
 	}
 
@@ -201,8 +214,9 @@ func (h *APIHandler) handleRuntimeDetail(w http.ResponseWriter, r *http.Request)
 		if d != nil {
 			effCaps = d.EffectiveCaps(r.Context(), model.Profile{Name: sess.ProfileID, Provider: sess.ProviderID})
 		}
+		cleanSess := sanitizeSession(sess)
 		writeJSON(w, http.StatusOK, map[string]any{
-			"session":      sess,
+			"session":      cleanSess,
 			"capabilities": effCaps,
 		})
 		return
@@ -242,7 +256,8 @@ func (h *APIHandler) handleRuntimeDetail(w http.ResponseWriter, r *http.Request)
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-			writeJSON(w, http.StatusOK, newSess)
+			cleanSess := sanitizeSession(*newSess)
+			writeJSON(w, http.StatusOK, cleanSess)
 			return
 
 		case "continue":
@@ -259,7 +274,8 @@ func (h *APIHandler) handleRuntimeDetail(w http.ResponseWriter, r *http.Request)
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-			writeJSON(w, http.StatusOK, newSess)
+			cleanSess := sanitizeSession(*newSess)
+			writeJSON(w, http.StatusOK, cleanSess)
 			return
 
 		case "title":
@@ -324,6 +340,9 @@ func (h *APIHandler) handleEvents(w http.ResponseWriter, r *http.Request) {
 	evs := events.DefaultBus().GetHistory(runtimeID, 50)
 	if evs == nil {
 		evs = []events.Event{}
+	}
+	for i := range evs {
+		evs[i].Summary = security.Redact(evs[i].Summary)
 	}
 	writeJSON(w, http.StatusOK, evs)
 }

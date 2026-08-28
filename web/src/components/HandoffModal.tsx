@@ -16,8 +16,10 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const runtimeProvider = runtime.provider_id || runtime.provider || '';
+  const runtimeProfile = runtime.profile_id || runtime.profile || '';
   const availableProfiles = profiles.filter(
-    (p) => p.provider === runtime.provider && p.name !== runtime.profile
+    (p) => p.provider === runtimeProvider && p.name !== runtimeProfile
   );
   const [selectedProfile, setSelectedProfile] = useState<string>(
     availableProfiles.length > 0 ? availableProfiles[0].name : ''
@@ -30,7 +32,7 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
     setLoading(true);
     setError('');
     try {
-      const target = `${runtime.provider}:${selectedProfile}`;
+      const target = `${runtimeProvider}:${selectedProfile}`;
       const res = await api.accountHandoff(runtime.runtime_id, target);
       onSuccess(res);
       onClose();
@@ -58,7 +60,7 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
 
         <div className="text-xs text-slate-300 space-y-2 font-mono">
           <div className="bg-slate-950 p-3 rounded border border-slate-800">
-            <div><span className="text-slate-500">Source:</span> <span className="uppercase font-bold text-slate-200">{runtime.provider}</span> ({runtime.profile})</div>
+            <div><span className="text-slate-500">Source:</span> <span className="uppercase font-bold text-slate-200">{runtimeProvider}</span> ({runtimeProfile})</div>
             <div className="mt-1"><span className="text-slate-500">Runtime:</span> {runtime.runtime_id}</div>
           </div>
           <p className="text-[11px] text-slate-400">
@@ -68,7 +70,7 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
 
         {availableProfiles.length === 0 ? (
           <div className="p-4 bg-amber-950/40 border border-amber-800/60 rounded text-amber-300 text-xs font-mono">
-            No alternative profiles found for provider {runtime.provider}. Add more accounts via <code>ai {runtime.provider} login</code>.
+            No alternative profiles found for provider {runtimeProvider}. Add more accounts via <code>ai {runtimeProvider} login</code>.
           </div>
         ) : (
           <div className="space-y-2">

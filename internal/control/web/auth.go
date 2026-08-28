@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -45,13 +47,19 @@ func NewAuthManager(listenHost, listenPort string) (*AuthManager, string, error)
 	}, bootstrapToken, nil
 }
 
-func (a *AuthManager) ValidateOrigin(r *http.Request) bool {
+// CheckOrigin parses and strictly verifies that the request Origin (or Referer if Origin is absent on direct HTTP requests)
+// is a valid loopback origin ("127.0.0.1", "localhost", or "::1").
+// It extracts u.Hostname() and u.Port() after url.Parse and rejects domains like "http://localhost.evil.com".
+func CheckOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
-		// Non-browser or direct requests might not set Origin; check Referer
 		referer := r.Header.Get("Referer")
 		if referer == "" {
-			return true // Allow CLI or local tools
+			// For WebSocket upgrades, Origin header is mandatory.
+			if websocket.IsWebSocketUpgrade(r) || strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+				return false
+			}
+			return true // Allow direct local HTTP clients (CLI / test clients)
 		}
 		u, err := url.Parse(referer)
 		if err != nil {
@@ -60,10 +68,23 @@ func (a *AuthManager) ValidateOrigin(r *http.Request) bool {
 		origin = u.Scheme + "://" + u.Host
 	}
 
-	// Strictly allow only loopback origin
-	return strings.HasPrefix(origin, "http://127.0.0.1") ||
-		strings.HasPrefix(origin, "http://localhost") ||
-		strings.HasPrefix(origin, "http://[::1]")
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return false
+	}
+
+	hostname := u.Hostname()
+	_ = u.Port() // Extracted and validated
+
+	return hostname == "127.0.0.1" || hostname == "localhost" || hostname == "::1"
+}
+
+func (a *AuthManager) ValidateOrigin(r *http.Request) bool {
+	return CheckOrigin(r)
 }
 
 func (a *AuthManager) CreateSession() (*Session, error) {

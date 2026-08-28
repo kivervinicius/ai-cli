@@ -58,6 +58,24 @@ func TestRedaction(t *testing.T) {
 			contains: "[REDACTED_GITHUB_TOKEN]",
 			excludes: []string{"ghp_1234567890abcdefghijklmnopqrstuvwxyz"},
 		},
+		{
+			name:     "GitHub OAuth Token",
+			input:    "GITHUB_TOKEN=gho_abcdef1234567890abcdefghijklmnopqrstuvwxyz",
+			contains: "[REDACTED_GITHUB_TOKEN]",
+			excludes: []string{"gho_abcdef1234567890abcdefghijklmnopqrstuvwxyz"},
+		},
+		{
+			name:     "Database Connection URI Password",
+			input:    "DATABASE_URL=postgres://dbuser:s3cr3tP@ss!@localhost:5432/mydb",
+			contains: "postgres://dbuser:[REDACTED]@localhost:5432/mydb",
+			excludes: []string{"s3cr3tP@ss!"},
+		},
+		{
+			name:     "Password with special chars",
+			input:    "PASSWORD=myComplexP@ssw0rd!#456",
+			contains: "PASSWORD=[REDACTED]",
+			excludes: []string{"myComplexP@ssw0rd!#456"},
+		},
 	}
 
 	for _, tc := range tests {
@@ -72,6 +90,27 @@ func TestRedaction(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRedactSlice(t *testing.T) {
+	input := []string{
+		"safe-arg",
+		"PASSWORD=secret123",
+		"Authorization: Bearer sk-ant-api03-abcdef1234567890abcdef1234567890",
+	}
+	res := RedactSlice(input)
+	if len(res) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(res))
+	}
+	if res[0] != "safe-arg" {
+		t.Errorf("expected safe-arg unchanged, got %q", res[0])
+	}
+	if strings.Contains(res[1], "secret123") {
+		t.Errorf("expected password redacted, got %q", res[1])
+	}
+	if strings.Contains(res[2], "sk-ant") {
+		t.Errorf("expected api key redacted, got %q", res[2])
 	}
 }
 

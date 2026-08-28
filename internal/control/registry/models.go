@@ -40,9 +40,9 @@ type RuntimeSession struct {
 	PID               int               `json:"pid"`
 	HostPID           int               `json:"host_pid,omitempty"`
 	HostGeneration    int64             `json:"host_generation,omitempty"`
-	Binary            string            `json:"binary,omitempty"`
-	Args              []string          `json:"args,omitempty"`
-	Env               []string          `json:"env,omitempty"`
+	Binary            string            `json:"-"`
+	Args              []string          `json:"-"`
+	Env               []string          `json:"-"`
 	State             RuntimeState      `json:"state"`
 	ControlLevel      ControlLevel      `json:"control_level"`
 	StartedAt         time.Time         `json:"started_at"`

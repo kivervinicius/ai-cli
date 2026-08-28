@@ -28,7 +28,7 @@ export const EventsView: React.FC<EventsViewProps> = ({ events }) => {
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-sky-300 font-bold">
                     {ev.type}
                   </span>
-                  <span className="text-slate-200 font-bold uppercase">{ev.provider_id}</span>
+                  <span className="text-slate-200 font-bold uppercase">{ev.provider_id || ev.provider || 'system'}</span>
                   <span className="text-slate-500">[{ev.runtime_id}]</span>
                 </div>
                 <span className="text-[10px] text-slate-500">

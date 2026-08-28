@@ -1,5 +1,22 @@
 # Worklog: AI CLI Control Plane Evolution
 
+## Date: 2026-08-28
+- **Fix: Multi-Quota Awareness & Smart Capacity Selection**:
+  - Identified that AGY maintains multiple quota windows (`five_hour`, `weekly`, `claude_five_hour`, `claude_weekly`).
+  - Updated `internal/core/provider/adapters/agy/agy.go` to parse all 4 windows (`5h`, `weekly`, `claude_5h`, `claude_weekly`) into `UsageSnapshot.Windows`.
+  - Updated `internal/core/quota/quota.go` `GetCachedUsage` to preserve and parse Claude quota windows from legacy `quota.json`.
+  - Updated `internal/profile/usage.go` `GetQuotaDetails` to map `ClaudeFiveH` and `ClaudeWeek` windows.
+  - Upgraded `internal/core/scheduler/scheduler.go`:
+    - Implemented multi-window capacity scoring considering both the critical bottleneck (`minRemaining * 0.6`) and the average availability (`avgRemaining * 0.4`).
+    - Scaled capacity score up to `+100.0` points so available tokens heavily drive profile choice.
+    - Rebalanced default profile boost to `+5.0` points (strictly used as a tie-breaker on identical capacity rather than overriding accounts with higher availability).
+  - Added test cases in `scheduler_test.go` (`TestMultiQuotaBottleneckSelection` and `TestDefaultProfileTieBreaker`).
+  - 100% tests passing with `-race` across all packages.
+- **Fix: Stdin Lease Injection & Out-of-Band RPC Refactoring**:
+  - Replaced raw in-band JSON lease commands in `handler_terminal.go` with out-of-band RPC calls (`protocol.NewClient`).
+  - Added defense-in-depth attached mode response suppression for non-interactive commands.
+  - Rebuilt offline bundle (`bun run build`) and recompiled `ai` binary.
+
 ## Date: 2026-08-27
 - **Architectural Refactoring**: Transformed the codebase into a modular local control plane for AI coding CLIs with clean package boundaries (`internal/core/{model,exitcode,security,config,quota,cooldown,classifier,scheduler,fallback,session,telemetry,provider}`).
 - **Zero Fake Quotas**: Eliminated all fabricated 100% quota assumptions. Implemented honest usage states (`LIVE`, `CACHED`, `ESTIMATED`, `UNKNOWN`, `UNSUPPORTED`, `RATE_LIMITED`, `ERROR`) with TTL caching and freshness tracking.
@@ -246,6 +263,37 @@
 - **Verification**:
   - `go test -race ./...` (47 passed, 0 failed).
   - Rebuilt `/home/desenvolvedor/.local/bin/ai`.
+
+## 2026-08-28: Lane 1 - Web Control Center & Secret Sanitization Hardening (P0.1 & P0.2)
+
+- **WebSocket Authentication & Strict Origin Enforcement (P0.1)**:
+  - In `internal/control/web/auth.go` and `internal/control/web/handler_terminal.go`:
+    - Hardened `CheckOrigin` and `ValidateOrigin` using `net/url.Parse`.
+    - Enforced `http` or `https` scheme, extracted `u.Hostname()` and `u.Port()`.
+    - Strictly verified `u.Hostname()` is exactly `"127.0.0.1"`, `"localhost"`, or `"::1"`.
+    - Explicitly rejected prefix spoofed domains like `http://localhost.evil.com` and `http://127.0.0.1.attacker.com`.
+    - Mandated Origin header presence on WebSocket upgrade requests, rejecting empty origins on WebSockets.
+    - Configured Gorilla WebSocket upgrader in `handler_terminal.go` to use the exact same strict `CheckOrigin`.
+  - In `internal/control/web/server.go`:
+    - Protected the WebSocket terminal route `/api/v1/runtimes/:id/terminal` by validating origin and verifying authentication via `s.auth.AuthenticateRequest(r)` before upgrading, returning HTTP 401 Unauthorized for unauthenticated clients.
+    - Enforced authentication across all API routes in `s.authMiddleware` (including GET requests: `/api/v1/runtimes`, `/api/v1/workspaces`, `/api/v1/providers`, `/api/v1/profiles`, `/api/v1/events`), while keeping `/api/v1/health` and `/api/v1/session` public.
+- **Secret & Environment Sanitization (P0.2)**:
+  - In `internal/control/registry/models.go`:
+    - Marked `Binary`, `Args`, and `Env` as `json:"-"` in `RuntimeSession`, ensuring raw process environment variables (`os.Environ()`), execution paths, and command arguments are NEVER written to `runtimes.json` on disk or serialized to JSON.
+  - In `internal/control/web/handlers_api.go`:
+    - Added `sanitizeSession` defense-in-depth sanitization on all runtime endpoints (`GET /api/v1/runtimes`, `POST /api/v1/runtimes`, `GET /api/v1/runtimes/:id`, handoff, and continue).
+    - Updated `writeError` to automatically sanitize error strings through `security.Redact`.
+    - Redacted audit event summaries in `handleEvents`.
+  - In `internal/core/security/redact.go`:
+    - Added database URI password redaction (`postgres://user:pass@host:5432/db`).
+    - Expanded GitHub token regex coverage (`gho_`, `ghs_`, `ghu_`, `ghr_`).
+    - Handled passwords with special characters and added `RedactSlice`.
+- **Testing & Verification**:
+  - Added unit test cases for unauthenticated GETs (401), public endpoints (200), and prefix-spoofed Origin rejection (403) in `server_test.go`.
+  - Added WebSocket unauthenticated (401), spoofed Origin (403), missing Origin (403), and authenticated upgrade tests in `e2e_test.go`.
+  - Added persistence sanitization test in `registry_test.go` verifying disk files and JSON marshaling never contain secrets or env vars.
+  - Added URI password, diverse GitHub tokens, and `RedactSlice` tests in `security_test.go`.
+  - Verified with `go test -count=1 -race ./internal/control/web/...` and `go test -count=1 -race ./...` (All tests PASS with 0 race warnings).
 
 
 

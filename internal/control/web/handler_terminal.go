@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -13,15 +14,7 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			return true
-		}
-		return strings.HasPrefix(origin, "http://127.0.0.1") ||
-			strings.HasPrefix(origin, "http://localhost") ||
-			strings.HasPrefix(origin, "http://[::1]")
-	},
+	CheckOrigin: CheckOrigin,
 }
 
 type TerminalMessage struct {
@@ -33,17 +26,24 @@ type TerminalMessage struct {
 }
 
 type TerminalHub struct {
+	auth   *AuthManager
 	mu     sync.Mutex
 	leases map[string]*websocket.Conn // runtimeID -> active writer conn
 }
 
-func NewTerminalHub() *TerminalHub {
+func NewTerminalHub(auth *AuthManager) *TerminalHub {
 	return &TerminalHub{
+		auth:   auth,
 		leases: make(map[string]*websocket.Conn),
 	}
 }
 
 func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, runtimeID string) {
+	if h.auth != nil && h.auth.AuthenticateRequest(r) == nil {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+
 	reg := registry.DefaultRegistry()
 	_, exists := reg.Get(runtimeID)
 	if !exists {
@@ -57,11 +57,18 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 	}
 	defer ws.Close()
 
+	var wsMu sync.Mutex
+	safeWriteJSON := func(v any) error {
+		wsMu.Lock()
+		defer wsMu.Unlock()
+		return ws.WriteJSON(v)
+	}
+
 	// Connect to runtime SessionHost via local IPC
 	client, err := protocol.NewClient(runtimeID)
 	if err != nil {
 		_ = reg.UpdateState(runtimeID, registry.StateStopped)
-		_ = ws.WriteJSON(TerminalMessage{
+		_ = safeWriteJSON(TerminalMessage{
 			Type: "error",
 			Data: "Runtime host is not running (" + err.Error() + "). The process has exited or the socket was closed.",
 		})
@@ -73,7 +80,7 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 	resp, err := client.Send(protocol.CmdAttach, nil)
 	if err != nil {
 		_ = reg.UpdateState(runtimeID, registry.StateStopped)
-		_ = ws.WriteJSON(TerminalMessage{
+		_ = safeWriteJSON(TerminalMessage{
 			Type: "error",
 			Data: "Failed to attach: runtime host is no longer responding (" + err.Error() + ").",
 		})
@@ -81,10 +88,13 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 	}
 	_ = client.ClearDeadline()
 
+	rawConn := client.RawConn()
+	stopChan := make(chan struct{})
+
 	// Initial ring buffer history
 	var history string
 	if json.Unmarshal(resp.Data, &history) == nil && history != "" {
-		_ = ws.WriteJSON(TerminalMessage{
+		_ = safeWriteJSON(TerminalMessage{
 			Type: "output",
 			Data: history,
 		})
@@ -103,6 +113,13 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 		h.mu.Lock()
 		if h.leases[runtimeID] == ws {
 			delete(h.leases, runtimeID)
+			// Out-of-band RPC — separate connection, never pollutes PTY stdin
+			go func() {
+				if c, err := protocol.NewClient(runtimeID); err == nil {
+					_, _ = c.Send(protocol.CmdLeaseRelease, nil)
+					_ = c.Close()
+				}
+			}()
 		}
 		h.mu.Unlock()
 	}()
@@ -110,14 +127,26 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 	role := "VIEW_ONLY"
 	if hasLease {
 		role = "CONTROL"
+		// Out-of-band RPC acquire
+		go func() {
+			if c, err := protocol.NewClient(runtimeID); err == nil {
+				_, _ = c.Send(protocol.CmdLeaseAcquire, nil)
+				_ = c.Close()
+			}
+		}()
+	} else {
+		// Out-of-band RPC release (view-only attach)
+		go func() {
+			if c, err := protocol.NewClient(runtimeID); err == nil {
+				_, _ = c.Send(protocol.CmdLeaseRelease, nil)
+				_ = c.Close()
+			}
+		}()
 	}
-	_ = ws.WriteJSON(TerminalMessage{
+	_ = safeWriteJSON(TerminalMessage{
 		Type: "lease",
 		Role: role,
 	})
-
-	rawConn := client.RawConn()
-	stopChan := make(chan struct{})
 
 	// 1. Pump stdout from child process to browser
 	go func() {
@@ -130,9 +159,15 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 				_ = rawConn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 				n, err := rawConn.Read(buf)
 				if n > 0 {
-					_ = ws.WriteJSON(TerminalMessage{
+					chunk := buf[:n]
+					trimmed := bytes.TrimSpace(chunk)
+					if (bytes.HasPrefix(trimmed, []byte("{\"version\":")) && bytes.Contains(trimmed, []byte("\"ok\":"))) || bytes.HasPrefix(trimmed, []byte("{\"ok\":")) {
+						// Skip RPC response frame from being displayed in terminal
+						continue
+					}
+					_ = safeWriteJSON(TerminalMessage{
 						Type: "output",
-						Data: string(buf[:n]),
+						Data: string(chunk),
 					})
 				}
 				if err != nil && !strings.Contains(err.Error(), "timeout") {
@@ -175,7 +210,14 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 			h.mu.Lock()
 			h.leases[runtimeID] = ws
 			h.mu.Unlock()
-			_ = ws.WriteJSON(TerminalMessage{
+			// Out-of-band RPC acquire
+			go func() {
+				if c, err := protocol.NewClient(runtimeID); err == nil {
+					_, _ = c.Send(protocol.CmdLeaseAcquire, nil)
+					_ = c.Close()
+				}
+			}()
+			_ = safeWriteJSON(TerminalMessage{
 				Type: "lease",
 				Role: "CONTROL",
 			})
@@ -186,7 +228,14 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 				delete(h.leases, runtimeID)
 			}
 			h.mu.Unlock()
-			_ = ws.WriteJSON(TerminalMessage{
+			// Out-of-band RPC release
+			go func() {
+				if c, err := protocol.NewClient(runtimeID); err == nil {
+					_, _ = c.Send(protocol.CmdLeaseRelease, nil)
+					_ = c.Close()
+				}
+			}()
+			_ = safeWriteJSON(TerminalMessage{
 				Type: "lease",
 				Role: "VIEW_ONLY",
 			})

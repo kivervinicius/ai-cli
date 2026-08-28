@@ -49,7 +49,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	}
 
 	api := NewAPIHandler(auth)
-	terminalHub := NewTerminalHub()
+	terminalHub := NewTerminalHub(auth)
 
 	s := &Server{
 		listener:  l,
@@ -131,6 +131,14 @@ func (s *Server) routeRuntime(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(r.URL.Path, "/terminal") {
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/runtimes/"), "/")
 		if len(parts) == 2 && parts[1] == "terminal" {
+			if !s.auth.ValidateOrigin(r) {
+				writeError(w, http.StatusForbidden, "invalid origin")
+				return
+			}
+			if s.auth.AuthenticateRequest(r) == nil {
+				writeError(w, http.StatusUnauthorized, "authentication required")
+				return
+			}
 			runtimeID := parts[0]
 			s.terminal.HandleWebSocket(w, r, runtimeID)
 			return
@@ -148,13 +156,15 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
+		// Enforce authentication on all API routes, including GET requests
+		sess := s.auth.AuthenticateRequest(r)
+		if sess == nil {
+			writeError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+
 		// Non-GET requests require CSRF token validation
 		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
-			sess := s.auth.AuthenticateRequest(r)
-			if sess == nil {
-				writeError(w, http.StatusUnauthorized, "authentication required")
-				return
-			}
 			csrf := r.Header.Get(csrfHeaderName)
 			if csrf == "" || csrf != sess.CSRFToken {
 				writeError(w, http.StatusForbidden, "invalid CSRF token")

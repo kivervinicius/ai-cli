@@ -323,12 +323,57 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 				PercentLeft float64 `json:"percent_left"`
 				ResetsIn    string  `json:"resets_in"`
 			} `json:"weekly"`
+			ClaudeFiveHour struct {
+				PercentLeft float64 `json:"percent_left"`
+				ResetsIn    string  `json:"resets_in"`
+			} `json:"claude_five_hour"`
+			ClaudeWeekly struct {
+				PercentLeft float64 `json:"percent_left"`
+				ResetsIn    string  `json:"resets_in"`
+			} `json:"claude_weekly"`
 		}
-		if json.Unmarshal(data, &leg) == nil && (leg.FiveHour.PercentLeft > 0 || leg.Weekly.PercentLeft > 0 || leg.FiveHour.ResetsIn != "") {
+		if json.Unmarshal(data, &leg) == nil && (leg.FiveHour.PercentLeft > 0 || leg.Weekly.PercentLeft > 0 || leg.FiveHour.ResetsIn != "" || leg.ClaudeFiveHour.PercentLeft > 0 || leg.ClaudeWeekly.PercentLeft > 0) {
 			p5h := leg.FiveHour.PercentLeft
 			u5h := 100.0 - p5h
 			pWk := leg.Weekly.PercentLeft
 			uWk := 100.0 - pWk
+
+			windows := []model.UsageWindow{
+				{
+					Kind:             "5h",
+					RemainingPercent: &p5h,
+					UsedPercent:      &u5h,
+					ResetDescription: leg.FiveHour.ResetsIn,
+				},
+				{
+					Kind:             "weekly",
+					RemainingPercent: &pWk,
+					UsedPercent:      &uWk,
+					ResetDescription: leg.Weekly.ResetsIn,
+				},
+			}
+
+			if leg.ClaudeFiveHour.PercentLeft > 0 || leg.ClaudeFiveHour.ResetsIn != "" {
+				pC5h := leg.ClaudeFiveHour.PercentLeft
+				uC5h := 100.0 - pC5h
+				windows = append(windows, model.UsageWindow{
+					Kind:             "claude_5h",
+					RemainingPercent: &pC5h,
+					UsedPercent:      &uC5h,
+					ResetDescription: leg.ClaudeFiveHour.ResetsIn,
+				})
+			}
+
+			if leg.ClaudeWeekly.PercentLeft > 0 || leg.ClaudeWeekly.ResetsIn != "" {
+				pCWk := leg.ClaudeWeekly.PercentLeft
+				uCWk := 100.0 - pCWk
+				windows = append(windows, model.UsageWindow{
+					Kind:             "claude_weekly",
+					RemainingPercent: &pCWk,
+					UsedPercent:      &uCWk,
+					ResetDescription: leg.ClaudeWeekly.ResetsIn,
+				})
+			}
 
 			return model.UsageSnapshot{
 				ProviderID: string(a.ID()),
@@ -337,20 +382,7 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 				Source:     model.SourceLocalFiles,
 				ModelName:  leg.ModelName,
 				FetchedAt:  time.Now(),
-				Windows: []model.UsageWindow{
-					{
-						Kind:             "5h",
-						RemainingPercent: &p5h,
-						UsedPercent:      &u5h,
-						ResetDescription: leg.FiveHour.ResetsIn,
-					},
-					{
-						Kind:             "weekly",
-						RemainingPercent: &pWk,
-						UsedPercent:      &uWk,
-						ResetDescription: leg.Weekly.ResetsIn,
-					},
-				},
+				Windows:    windows,
 			}
 		}
 	}

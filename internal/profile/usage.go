@@ -114,6 +114,10 @@ func GetQuotaDetails(providerName, name, plan, email string) QuotaDetails {
 			q.FiveHour = lw
 		} else if w.Kind == "weekly" {
 			q.Weekly = lw
+		} else if w.Kind == "claude_5h" || w.Kind == "claude_five_hour" {
+			q.ClaudeFiveH = lw
+		} else if w.Kind == "claude_weekly" {
+			q.ClaudeWeek = lw
 		}
 	}
 

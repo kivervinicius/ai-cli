@@ -14,9 +14,10 @@ import (
 
 // Registry manages in-memory and persistent state of AI Control runtimes.
 type Registry struct {
-	mu       sync.RWMutex
-	filePath string
-	sessions map[string]RuntimeSession
+	mu           sync.RWMutex
+	filePath     string
+	sessions     map[string]RuntimeSession
+	lastModified time.Time
 }
 
 var (
@@ -37,6 +38,12 @@ func DefaultRegistry() *Registry {
 	return defaultRegistry
 }
 
+// ResetDefaultRegistryForTest resets the singleton registry for isolated testing.
+func ResetDefaultRegistryForTest() {
+	regOnce = sync.Once{}
+	defaultRegistry = nil
+}
+
 // NewRegistry initializes a Registry storing state at the given file path.
 func NewRegistry(filePath string) *Registry {
 	r := &Registry{
@@ -45,6 +52,28 @@ func NewRegistry(filePath string) *Registry {
 	}
 	_ = r.load()
 	return r
+}
+
+func loadFromDisk(filePath string) (map[string]RuntimeSession, error) {
+	sessions := make(map[string]RuntimeSession)
+	if filePath == "" {
+		return sessions, nil
+	}
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return sessions, nil
+		}
+		return nil, err
+	}
+	var list []RuntimeSession
+	if err := json.Unmarshal(data, &list); err != nil {
+		return nil, err
+	}
+	for _, s := range list {
+		sessions[s.RuntimeID] = s
+	}
+	return sessions, nil
 }
 
 func (r *Registry) load() error {
@@ -58,37 +87,71 @@ func (r *Registry) load() error {
 	}
 	defer unlock()
 
-	data, err := os.ReadFile(r.filePath)
+	m, err := loadFromDisk(r.filePath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
 		return err
 	}
-	var list []RuntimeSession
-	if err := json.Unmarshal(data, &list); err != nil {
-		return err
-	}
-	for _, s := range list {
-		r.sessions[s.RuntimeID] = s
+	r.sessions = m
+	if fi, err := os.Stat(r.filePath); err == nil {
+		r.lastModified = fi.ModTime()
 	}
 	return nil
 }
 
-func (r *Registry) saveLocked() error {
+func (r *Registry) syncIfNeededLocked() {
 	if r.filePath == "" {
+		return
+	}
+	fi, err := os.Stat(r.filePath)
+	if err != nil {
+		return
+	}
+	if fi.ModTime().After(r.lastModified) {
+		_ = r.load()
+	}
+}
+
+func (r *Registry) saveLocked(mutators ...func(map[string]RuntimeSession)) error {
+	if r.filePath == "" {
+		if len(mutators) > 0 {
+			for _, fn := range mutators {
+				if fn != nil {
+					fn(r.sessions)
+				}
+			}
+		}
 		return nil
 	}
 	_ = os.MkdirAll(filepath.Dir(r.filePath), 0700)
-	
+
 	unlock, err := acquireFileLock(r.filePath)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 
-	var list []RuntimeSession
-	for _, s := range r.sessions {
+	// 1. Under cross-process flock, reload runtimes.json from disk into fresh map
+	freshMap, err := loadFromDisk(r.filePath)
+	if err != nil {
+		return fmt.Errorf("failed to reload runtimes from disk: %w", err)
+	}
+
+	// 2. Merge/apply the mutation onto that fresh map
+	if len(mutators) > 0 {
+		for _, fn := range mutators {
+			if fn != nil {
+				fn(freshMap)
+			}
+		}
+	} else {
+		for k, v := range r.sessions {
+			freshMap[k] = v
+		}
+	}
+
+	// 3. Write updated state atomically
+	list := make([]RuntimeSession, 0, len(freshMap))
+	for _, s := range freshMap {
 		list = append(list, s)
 	}
 
@@ -102,7 +165,16 @@ func (r *Registry) saveLocked() error {
 		return err
 	}
 
-	return os.Rename(tmp, r.filePath)
+	if err := os.Rename(tmp, r.filePath); err != nil {
+		return err
+	}
+
+	// 4. Update in-memory cache and timestamp
+	r.sessions = freshMap
+	if fi, err := os.Stat(r.filePath); err == nil {
+		r.lastModified = fi.ModTime()
+	}
+	return nil
 }
 
 // Register adds or updates a runtime session.
@@ -119,14 +191,16 @@ func (r *Registry) Register(s RuntimeSession) error {
 	}
 	s.UpdatedAt = now
 
-	r.sessions[s.RuntimeID] = s
-	return r.saveLocked()
+	return r.saveLocked(func(fresh map[string]RuntimeSession) {
+		fresh[s.RuntimeID] = s
+	})
 }
 
 // Get retrieves a runtime session by ID.
 func (r *Registry) Get(runtimeID string) (RuntimeSession, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	r.mu.Lock()
+	r.syncIfNeededLocked()
+	defer r.mu.Unlock()
 
 	s, ok := r.sessions[runtimeID]
 	return s, ok
@@ -137,14 +211,24 @@ func (r *Registry) UpdateState(runtimeID string, state RuntimeState) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	s, ok := r.sessions[runtimeID]
-	if !ok {
+	var notFound bool
+	err := r.saveLocked(func(fresh map[string]RuntimeSession) {
+		s, ok := fresh[runtimeID]
+		if !ok {
+			notFound = true
+			return
+		}
+		s.State = state
+		s.UpdatedAt = time.Now()
+		fresh[runtimeID] = s
+	})
+	if err != nil {
+		return err
+	}
+	if notFound {
 		return fmt.Errorf("runtime %q not found", runtimeID)
 	}
-	s.State = state
-	s.UpdatedAt = time.Now()
-	r.sessions[runtimeID] = s
-	return r.saveLocked()
+	return nil
 }
 
 // UpdateProviderSessionID updates the underlying provider session ID.
@@ -152,14 +236,24 @@ func (r *Registry) UpdateProviderSessionID(runtimeID, providerSessionID string) 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	s, ok := r.sessions[runtimeID]
-	if !ok {
+	var notFound bool
+	err := r.saveLocked(func(fresh map[string]RuntimeSession) {
+		s, ok := fresh[runtimeID]
+		if !ok {
+			notFound = true
+			return
+		}
+		s.ProviderSessionID = providerSessionID
+		s.UpdatedAt = time.Now()
+		fresh[runtimeID] = s
+	})
+	if err != nil {
+		return err
+	}
+	if notFound {
 		return fmt.Errorf("runtime %q not found", runtimeID)
 	}
-	s.ProviderSessionID = providerSessionID
-	s.UpdatedAt = time.Now()
-	r.sessions[runtimeID] = s
-	return r.saveLocked()
+	return nil
 }
 
 // UpdateTitle updates the human-friendly title of a runtime session.
@@ -167,22 +261,33 @@ func (r *Registry) UpdateTitle(runtimeID, title string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	s, ok := r.sessions[runtimeID]
-	if !ok {
+	var notFound bool
+	err := r.saveLocked(func(fresh map[string]RuntimeSession) {
+		s, ok := fresh[runtimeID]
+		if !ok {
+			notFound = true
+			return
+		}
+		s.Title = title
+		s.UpdatedAt = time.Now()
+		fresh[runtimeID] = s
+	})
+	if err != nil {
+		return err
+	}
+	if notFound {
 		return fmt.Errorf("runtime %q not found", runtimeID)
 	}
-	s.Title = title
-	s.UpdatedAt = time.Now()
-	r.sessions[runtimeID] = s
-	return r.saveLocked()
+	return nil
 }
 
 // List returns all registered runtime sessions.
 func (r *Registry) List() []RuntimeSession {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	r.mu.Lock()
+	r.syncIfNeededLocked()
+	defer r.mu.Unlock()
 
-	result := []RuntimeSession{}
+	result := make([]RuntimeSession, 0, len(r.sessions))
 	for _, s := range r.sessions {
 		result = append(result, s)
 	}
@@ -191,8 +296,9 @@ func (r *Registry) List() []RuntimeSession {
 
 // ListActive returns all active (running, starting, detached) sessions.
 func (r *Registry) ListActive() []RuntimeSession {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	r.mu.Lock()
+	r.syncIfNeededLocked()
+	defer r.mu.Unlock()
 
 	result := []RuntimeSession{}
 	for _, s := range r.sessions {
@@ -208,6 +314,14 @@ func (r *Registry) Delete(runtimeID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	delete(r.sessions, runtimeID)
-	return r.saveLocked()
+	return r.saveLocked(func(fresh map[string]RuntimeSession) {
+		delete(fresh, runtimeID)
+	})
+}
+
+// Reload explicitly reloads the registry state from disk.
+func (r *Registry) Reload() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.load()
 }

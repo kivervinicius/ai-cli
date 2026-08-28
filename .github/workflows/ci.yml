@@ -15,12 +15,36 @@ on:
       - 'fix/**'
 
 jobs:
+  frontend:
+    name: Frontend (Typecheck & Bun Build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        working-directory: ./web
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck Frontend
+        working-directory: ./web
+        run: bun run typecheck
+
+      - name: Build Frontend
+        working-directory: ./web
+        run: bun run build
+
   test-unix:
     name: Test Unix (${{ matrix.os }} - Go ${{ matrix.go }})
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        go: ['1.22', '1.24']
+        go: ['1.25']
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code
@@ -46,7 +70,7 @@ jobs:
     strategy:
       matrix:
         os: [windows-latest]
-        go: ['1.22', '1.24']
+        go: ['1.25']
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code

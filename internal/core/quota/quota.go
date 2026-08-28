@@ -84,8 +84,18 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 				ResetTime   string  `json:"reset_time"`
 				ResetsIn    string  `json:"resets_in"`
 			} `json:"weekly"`
+			ClaudeFiveHour struct {
+				PercentLeft float64 `json:"percent_left"`
+				ResetTime   string  `json:"reset_time"`
+				ResetsIn    string  `json:"resets_in"`
+			} `json:"claude_five_hour"`
+			ClaudeWeekly struct {
+				PercentLeft float64 `json:"percent_left"`
+				ResetTime   string  `json:"reset_time"`
+				ResetsIn    string  `json:"resets_in"`
+			} `json:"claude_weekly"`
 		}
-		if json.Unmarshal(data, &leg) == nil && (leg.FiveHour.PercentLeft > 0 || leg.Weekly.PercentLeft > 0 || leg.FiveHour.ResetTime != "" || leg.Weekly.ResetTime != "" || leg.FiveHour.ResetsIn != "" || leg.Weekly.ResetsIn != "") {
+		if json.Unmarshal(data, &leg) == nil && (leg.FiveHour.PercentLeft > 0 || leg.Weekly.PercentLeft > 0 || leg.FiveHour.ResetTime != "" || leg.Weekly.ResetTime != "" || leg.FiveHour.ResetsIn != "" || leg.Weekly.ResetsIn != "" || leg.ClaudeFiveHour.PercentLeft > 0 || leg.ClaudeWeekly.PercentLeft > 0) {
 			p5h := leg.FiveHour.PercentLeft
 			u5h := 100.0 - p5h
 			pWk := leg.Weekly.PercentLeft
@@ -99,6 +109,51 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 				rWk = leg.Weekly.ResetsIn
 			}
 
+			windows := []model.UsageWindow{
+				{
+					Kind:             "5h",
+					RemainingPercent: &p5h,
+					UsedPercent:      &u5h,
+					ResetDescription: r5h,
+				},
+				{
+					Kind:             "weekly",
+					RemainingPercent: &pWk,
+					UsedPercent:      &uWk,
+					ResetDescription: rWk,
+				},
+			}
+
+			if leg.ClaudeFiveHour.PercentLeft > 0 || leg.ClaudeFiveHour.ResetsIn != "" || leg.ClaudeFiveHour.ResetTime != "" {
+				pC5h := leg.ClaudeFiveHour.PercentLeft
+				uC5h := 100.0 - pC5h
+				rC5h := leg.ClaudeFiveHour.ResetTime
+				if rC5h == "" {
+					rC5h = leg.ClaudeFiveHour.ResetsIn
+				}
+				windows = append(windows, model.UsageWindow{
+					Kind:             "claude_5h",
+					RemainingPercent: &pC5h,
+					UsedPercent:      &uC5h,
+					ResetDescription: rC5h,
+				})
+			}
+
+			if leg.ClaudeWeekly.PercentLeft > 0 || leg.ClaudeWeekly.ResetsIn != "" || leg.ClaudeWeekly.ResetTime != "" {
+				pCWk := leg.ClaudeWeekly.PercentLeft
+				uCWk := 100.0 - pCWk
+				rCWk := leg.ClaudeWeekly.ResetTime
+				if rCWk == "" {
+					rCWk = leg.ClaudeWeekly.ResetsIn
+				}
+				windows = append(windows, model.UsageWindow{
+					Kind:             "claude_weekly",
+					RemainingPercent: &pCWk,
+					UsedPercent:      &uCWk,
+					ResetDescription: rCWk,
+				})
+			}
+
 			snap = model.UsageSnapshot{
 				ProviderID: provider,
 				ProfileID:  profileName,
@@ -106,20 +161,7 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 				Source:     model.SourceLocalFiles,
 				ModelName:  leg.ModelName,
 				FetchedAt:  time.Now(),
-				Windows: []model.UsageWindow{
-					{
-						Kind:             "5h",
-						RemainingPercent: &p5h,
-						UsedPercent:      &u5h,
-						ResetDescription: r5h,
-					},
-					{
-						Kind:             "weekly",
-						RemainingPercent: &pWk,
-						UsedPercent:      &uWk,
-						ResetDescription: rWk,
-					},
-				},
+				Windows:    windows,
 			}
 			return snap, true
 		}

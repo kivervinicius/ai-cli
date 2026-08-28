@@ -2,6 +2,7 @@ package host
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,19 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 )
+
+func TestMain(m *testing.M) {
+	testDir, err := os.MkdirTemp("", "ai-control-host-test-*")
+	if err == nil {
+		defer os.RemoveAll(testDir)
+		_ = os.Setenv("AI_MANAGER_DATA_DIR", testDir)
+		_ = os.Setenv("AI_CLI_DATA_DIR", testDir)
+	}
+	registry.ResetDefaultRegistryForTest()
+	code := m.Run()
+	registry.ResetDefaultRegistryForTest()
+	os.Exit(code)
+}
 
 func TestSlashRouterInterceptionAndEscape(t *testing.T) {
 	sess := registry.RuntimeSession{
@@ -245,5 +259,120 @@ func TestSessionHost_SlowObserverDoesNotBlockWriter(t *testing.T) {
 		t.Fatal("BLOCKED: writer was blocked by slow observer")
 	}
 }
+
+func TestSessionHost_ListenerFailureTerminatesChild(t *testing.T) {
+	runtimeID := "rt-listen-fail-test"
+	sockPath := protocol.EndpointPath(runtimeID)
+	// Create a non-empty directory at sockPath so os.Remove(sockPath) fails in protocol.Listen
+	_ = os.MkdirAll(filepath.Join(sockPath, "blocking-child"), 0700)
+	defer os.RemoveAll(sockPath)
+
+	sess := registry.RuntimeSession{
+		RuntimeID:    runtimeID,
+		ProviderID:   "test",
+		ProfileID:    "default",
+		Workspace:    os.TempDir(),
+		State:        registry.StateStarting,
+		ControlLevel: registry.ControlLevelTerminal,
+	}
+
+	sh, err := NewSessionHost(Config{
+		Session: sess,
+		Binary:  "cat",
+		Args:    []string{},
+		Env:     os.Environ(),
+		Cwd:     os.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("failed to create SessionHost: %v", err)
+	}
+
+	startErr := sh.Start()
+	if startErr == nil {
+		_ = sh.Stop()
+		t.Fatal("expected Start() to fail due to blocked listener path")
+	}
+
+	// Verify child was not orphaned
+	pid := sh.session.PID
+	if pid > 0 {
+		time.Sleep(50 * time.Millisecond)
+		if registry.IsProcessAlive(pid) {
+			t.Errorf("child process %d is still alive after listener failure", pid)
+		}
+	}
+
+	// Verify session was marked StateFailed
+	if sh.session.State != registry.StateFailed {
+		t.Errorf("expected session state to be FAILED, got %s", sh.session.State)
+	}
+}
+
+func TestSessionHost_ExplicitLeaseAcquireRelease(t *testing.T) {
+	runtimeID := "rt-lease-explicit"
+	sess := registry.RuntimeSession{
+		RuntimeID:    runtimeID,
+		ProviderID:   "test",
+		ProfileID:    "default",
+		Workspace:    os.TempDir(),
+		State:        registry.StateStarting,
+		ControlLevel: registry.ControlLevelTerminal,
+	}
+
+	sh, err := NewSessionHost(Config{
+		Session: sess,
+		Binary:  "cat",
+		Args:    []string{},
+		Env:     os.Environ(),
+		Cwd:     os.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("failed to create SessionHost: %v", err)
+	}
+
+	if err := sh.Start(); err != nil {
+		t.Fatalf("failed to start SessionHost: %v", err)
+	}
+	defer sh.Stop()
+
+	time.Sleep(50 * time.Millisecond)
+
+	clientA, err := protocol.NewClient(runtimeID)
+	if err != nil {
+		t.Fatalf("clientA connect failed: %v", err)
+	}
+	defer clientA.Close()
+	if _, err := clientA.Send(protocol.CmdAttach, nil); err != nil {
+		t.Fatalf("clientA attach failed: %v", err)
+	}
+
+	clientB, err := protocol.NewClient(runtimeID)
+	if err != nil {
+		t.Fatalf("clientB connect failed: %v", err)
+	}
+	defer clientB.Close()
+	if _, err := clientB.Send(protocol.CmdAttach, nil); err != nil {
+		t.Fatalf("clientB attach failed: %v", err)
+	}
+
+	// Client B explicitly acquires lease
+	resp, err := clientB.Send(protocol.CmdLeaseAcquire, nil)
+	if err != nil {
+		t.Fatalf("clientB lease_acquire failed: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("clientB lease_acquire not OK: %s", resp.Error)
+	}
+
+	// Client B releases lease
+	resp, err = clientB.Send(protocol.CmdLeaseRelease, nil)
+	if err != nil {
+		t.Fatalf("clientB lease_release failed: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("clientB lease_release not OK: %s", resp.Error)
+	}
+}
+
 
 

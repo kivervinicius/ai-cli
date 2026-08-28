@@ -18,7 +18,9 @@ export const ContinueModal: React.FC<ContinueModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const otherProviders = providers.filter((p) => p.id !== runtime.provider && p.installed);
+  const runtimeProvider = runtime.provider_id || runtime.provider;
+  const runtimeProfile = runtime.profile_id || runtime.profile;
+  const otherProviders = providers.filter((p) => p.id !== runtimeProvider && p.installed);
   const [selectedProvider, setSelectedProvider] = useState<string>(
     otherProviders.length > 0 ? otherProviders[0].id : ''
   );

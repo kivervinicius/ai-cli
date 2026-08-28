@@ -2,6 +2,7 @@ package registry
 
 import (
 	"os"
+	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 )
@@ -29,26 +30,24 @@ func (r *Registry) CleanupStale() (int, error) {
 				continue
 			}
 
-			r.mu.Lock()
-			current, ok := r.sessions[s.RuntimeID]
-			if ok && current.IsActive() {
-				// Mark as stale
-				current.State = StateStale
-				r.sessions[s.RuntimeID] = current
-				cleaned++
-			}
-			r.mu.Unlock()
-
 			// Clean up stale socket file if present
 			sockPath := protocol.EndpointPath(s.RuntimeID)
 			_ = os.Remove(sockPath)
-		}
-	}
 
-	if cleaned > 0 {
-		r.mu.Lock()
-		_ = r.saveLocked()
-		r.mu.Unlock()
+			r.mu.Lock()
+			current, ok := r.sessions[s.RuntimeID]
+			if ok && current.IsActive() {
+				cleaned++
+			}
+			_ = r.saveLocked(func(fresh map[string]RuntimeSession) {
+				if cur, ok := fresh[s.RuntimeID]; ok && cur.IsActive() {
+					cur.State = StateStale
+					cur.UpdatedAt = time.Now()
+					fresh[s.RuntimeID] = cur
+				}
+			})
+			r.mu.Unlock()
+		}
 	}
 
 	return cleaned, nil
@@ -74,18 +73,14 @@ func (r *Registry) PurgeInactive() (int, error) {
 			_ = os.Remove(sockPath)
 
 			r.mu.Lock()
-			if _, ok := r.sessions[s.RuntimeID]; ok {
-				delete(r.sessions, s.RuntimeID)
-				purged++
-			}
+			_ = r.saveLocked(func(fresh map[string]RuntimeSession) {
+				if _, ok := fresh[s.RuntimeID]; ok {
+					delete(fresh, s.RuntimeID)
+					purged++
+				}
+			})
 			r.mu.Unlock()
 		}
-	}
-
-	if purged > 0 {
-		r.mu.Lock()
-		_ = r.saveLocked()
-		r.mu.Unlock()
 	}
 
 	return purged, nil

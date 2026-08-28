@@ -203,22 +203,45 @@ func (s *Selector) EvaluateAll(provider string, workspace string, candidates []m
 		var breakdown []string
 		breakdown = append(breakdown, "authenticated")
 
-		// Capacity / Quota Score
-		var remaining *float64
+		// Capacity / Quota Score (Multi-window bottleneck & average)
+		var validPercentages []float64
+		var minWindowKind string
+		minRemaining := 100.0
+		sumRemaining := 0.0
+
 		for _, w := range snap.Windows {
 			if w.RemainingPercent != nil {
-				remaining = w.RemainingPercent
-				break
+				pct := *w.RemainingPercent
+				if pct < 0 {
+					pct = 0
+				}
+				if pct > 100 {
+					pct = 100
+				}
+				validPercentages = append(validPercentages, pct)
+				sumRemaining += pct
+				if pct <= minRemaining {
+					minRemaining = pct
+					minWindowKind = w.Kind
+				}
 			}
 		}
 
-		if remaining != nil {
-			capScore := (*remaining) * 0.8 // Up to +80 points for 100% capacity
+		if len(validPercentages) > 0 {
+			avgRemaining := sumRemaining / float64(len(validPercentages))
+			// Bottleneck has 60% weight, average has 40% weight
+			effectiveCapacity := (minRemaining * 0.6) + (avgRemaining * 0.4)
+			capScore := effectiveCapacity * 1.0 // Up to +100 points for 100% capacity
 			score += capScore
-			breakdown = append(breakdown, fmt.Sprintf("%.0f%% capacity (+%.1f)", *remaining, capScore))
+
+			if len(validPercentages) == 1 {
+				breakdown = append(breakdown, fmt.Sprintf("%.0f%% capacity (+%.1f)", effectiveCapacity, capScore))
+			} else {
+				breakdown = append(breakdown, fmt.Sprintf("%.0f%% eff capacity (min: %.0f%% [%s], avg: %.0f%%) (+%.1f)", effectiveCapacity, minRemaining, minWindowKind, avgRemaining, capScore))
+			}
 		} else {
-			score += 40.0 // Neutral capacity assumption for unprobed
-			breakdown = append(breakdown, "unknown capacity (+40.0)")
+			score += 50.0 // Neutral capacity assumption for unprobed
+			breakdown = append(breakdown, "unknown capacity (+50.0)")
 		}
 
 		// User Configured Priority
@@ -238,10 +261,10 @@ func (s *Selector) EvaluateAll(provider string, workspace string, candidates []m
 			breakdown = append(breakdown, "workspace bound (+50.0)")
 		}
 
-		// Default Profile Boost
+		// Default Profile Boost (Used as tie-breaker)
 		if ev.IsDefault {
-			score += 25.0
-			breakdown = append(breakdown, "default profile (+25.0)")
+			score += 5.0
+			breakdown = append(breakdown, "default profile (+5.0)")
 		}
 
 		// Recency / Plan Type

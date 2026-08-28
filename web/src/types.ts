@@ -20,7 +20,7 @@ export interface RuntimeSession {
   workspace: string;
   pid: number;
   host_pid: number;
-  state: 'STARTING' | 'RUNNING' | 'HANDOFF' | 'STOPPED' | 'FAILED' | 'STALE';
+  state: 'STARTING' | 'RUNNING' | 'HANDOFF' | 'WAITING' | 'APPROVAL' | 'DETACHED' | 'STOPPING' | 'STOPPED' | 'FAILED' | 'STALE';
   control_level: string;
   control_endpoint: string;
   parent_runtime_id?: string;
@@ -74,8 +74,10 @@ export interface ProfileInfo {
 export interface EventRecord {
   id: string;
   runtime_id: string;
-  provider_id: string;
-  profile_id: string;
+  provider_id?: string;
+  profile_id?: string;
+  provider?: string;
+  profile?: string;
   type: string;
   summary: string;
   data: Record<string, any>;

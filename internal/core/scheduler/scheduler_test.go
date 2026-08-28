@@ -104,3 +104,117 @@ func TestSmartAccountSelector(t *testing.T) {
 		t.Fatalf("unexpected explain output: %s", explain)
 	}
 }
+
+func TestMultiQuotaBottleneckSelection(t *testing.T) {
+	dataDir := t.TempDir()
+	cfgDir := t.TempDir()
+	stateDir := t.TempDir()
+	t.Setenv("AI_CLI_DATA_DIR", dataDir)
+	t.Setenv("AI_CLI_CONFIG_DIR", cfgDir)
+	t.Setenv("AI_CLI_STATE_DIR", stateDir)
+
+	cfg := config.NewDefaultConfig()
+	// acc-a is default in config
+	cfg.Defaults = map[string]string{
+		"agy": "acc-a",
+	}
+
+	qEng := quota.NewEngine(5 * time.Minute)
+	cdTracker := cooldown.NewTracker()
+	selector := NewSelector(cfg, qEng, cdTracker)
+	ctx := context.Background()
+
+	// Profile A (default): Google 5h is 92%, but Claude 5h is 10% (bottleneck)
+	p5hA := 92.0
+	pClaudeA := 10.0
+	_ = qEng.SaveUsage(model.UsageSnapshot{
+		ProviderID: "agy",
+		ProfileID:  "acc-a",
+		Status:     model.UsageLive,
+		Windows: []model.UsageWindow{
+			{Kind: "5h", RemainingPercent: &p5hA},
+			{Kind: "claude_5h", RemainingPercent: &pClaudeA},
+		},
+	})
+
+	// Profile B: Google 5h is 90%, Claude 5h is 90%
+	p5hB := 90.0
+	pClaudeB := 90.0
+	_ = qEng.SaveUsage(model.UsageSnapshot{
+		ProviderID: "agy",
+		ProfileID:  "acc-b",
+		Status:     model.UsageLive,
+		Windows: []model.UsageWindow{
+			{Kind: "5h", RemainingPercent: &p5hB},
+			{Kind: "claude_5h", RemainingPercent: &pClaudeB},
+		},
+	})
+
+	candidates := []model.Profile{
+		{Provider: "agy", Name: "acc-a"},
+		{Provider: "agy", Name: "acc-b"},
+	}
+	accounts := map[string]model.AccountInfo{
+		"acc-a": {Authenticated: true, Health: model.HealthHealthy},
+		"acc-b": {Authenticated: true, Health: model.HealthHealthy},
+	}
+
+	res, err := selector.SelectBestProfile(ctx, "agy", "/tmp", candidates, accounts, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.SelectedProfile.Name != "acc-b" {
+		t.Fatalf("expected acc-b to be selected due to higher overall token availability (claude bottleneck on acc-a), got %s", res.SelectedProfile.Name)
+	}
+}
+
+func TestDefaultProfileTieBreaker(t *testing.T) {
+	dataDir := t.TempDir()
+	cfgDir := t.TempDir()
+	stateDir := t.TempDir()
+	t.Setenv("AI_CLI_DATA_DIR", dataDir)
+	t.Setenv("AI_CLI_CONFIG_DIR", cfgDir)
+	t.Setenv("AI_CLI_STATE_DIR", stateDir)
+
+	cfg := config.NewDefaultConfig()
+	cfg.Defaults = map[string]string{
+		"agy": "acc-default",
+	}
+
+	qEng := quota.NewEngine(5 * time.Minute)
+	cdTracker := cooldown.NewTracker()
+	selector := NewSelector(cfg, qEng, cdTracker)
+	ctx := context.Background()
+
+	// Both have 100% capacity
+	p100 := 100.0
+	_ = qEng.SaveUsage(model.UsageSnapshot{
+		ProviderID: "agy",
+		ProfileID:  "acc-default",
+		Status:     model.UsageLive,
+		Windows:    []model.UsageWindow{{Kind: "5h", RemainingPercent: &p100}},
+	})
+	_ = qEng.SaveUsage(model.UsageSnapshot{
+		ProviderID: "agy",
+		ProfileID:  "acc-other",
+		Status:     model.UsageLive,
+		Windows:    []model.UsageWindow{{Kind: "5h", RemainingPercent: &p100}},
+	})
+
+	candidates := []model.Profile{
+		{Provider: "agy", Name: "acc-other"},
+		{Provider: "agy", Name: "acc-default"},
+	}
+	accounts := map[string]model.AccountInfo{
+		"acc-other":   {Authenticated: true, Health: model.HealthHealthy},
+		"acc-default": {Authenticated: true, Health: model.HealthHealthy},
+	}
+
+	res, err := selector.SelectBestProfile(ctx, "agy", "/tmp", candidates, accounts, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.SelectedProfile.Name != "acc-default" {
+		t.Fatalf("expected acc-default to win tie-break on equal 100%% capacity, got %s", res.SelectedProfile.Name)
+	}
+}

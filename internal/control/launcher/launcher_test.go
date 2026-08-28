@@ -5,7 +5,22 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/kivervinicius/ai-cli/internal/control/registry"
 )
+
+func TestMain(m *testing.M) {
+	testDir, err := os.MkdirTemp("", "ai-control-launcher-test-*")
+	if err == nil {
+		defer os.RemoveAll(testDir)
+		_ = os.Setenv("AI_MANAGER_DATA_DIR", testDir)
+		_ = os.Setenv("AI_CLI_DATA_DIR", testDir)
+	}
+	registry.ResetDefaultRegistryForTest()
+	code := m.Run()
+	registry.ResetDefaultRegistryForTest()
+	os.Exit(code)
+}
 
 func TestRuntimeLauncher_StandaloneLaunchAndHandshake(t *testing.T) {
 	l := NewLauncher()

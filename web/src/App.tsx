@@ -176,6 +176,7 @@ export const App: React.FC = () => {
               runtimes={runtimes}
               providers={providers}
               workspaces={workspaces}
+              activeWorkspace={activeWorkspace}
               onOpenTerminal={handleOpenTerminal}
               onOpenStartModal={() => setShowStartModal(true)}
               onOpenHandoffModal={(r) => setHandoffRuntime(r)}
@@ -200,6 +201,7 @@ export const App: React.FC = () => {
               runtimes={runtimes}
               providers={providers}
               workspaces={workspaces}
+              activeWorkspace={activeWorkspace}
               onOpenTerminal={handleOpenTerminal}
               onOpenStartModal={() => setShowStartModal(true)}
               onOpenHandoffModal={(r) => setHandoffRuntime(r)}

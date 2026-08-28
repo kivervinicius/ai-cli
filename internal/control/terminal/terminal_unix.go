@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"syscall"
 
 	"github.com/creack/pty"
 )
@@ -44,6 +45,18 @@ func (b *unixPTYBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 
 	ptmx, err := pty.StartWithSize(cmd, size)
 	if err != nil {
+		// Reset Stdin, Stdout, Stderr in case pty partially set them
+		cmd.Stdin = nil
+		cmd.Stdout = nil
+		cmd.Stderr = nil
+		if cmd.SysProcAttr == nil {
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		} else {
+			cmd.SysProcAttr.Setsid = false
+			cmd.SysProcAttr.Setctty = false
+			cmd.SysProcAttr.Setpgid = true
+		}
+
 		// Fallback to standard pipes if PTY cannot be created (e.g. strict sandbox)
 		inPipe, pipeErr := cmd.StdinPipe()
 		if pipeErr != nil {
