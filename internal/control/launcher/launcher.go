@@ -85,6 +85,9 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 		ControlLevel:      d.EffectiveCaps(ctx, prof).ControlLevel,
 		ControlEndpoint:   protocol.EndpointPath(opts.RuntimeID),
 		StartedAt:         time.Now(),
+		MachineID:         registry.LocalMachineID(),
+		Location:          "local",
+		Transport:         "ipc",
 	}
 
 	if err := l.reg.Register(sess); err != nil {

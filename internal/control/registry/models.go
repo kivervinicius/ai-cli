@@ -51,6 +51,9 @@ type RuntimeSession struct {
 	HandoffType       string            `json:"handoff_type,omitempty"`
 	LineageID         string            `json:"lineage_id,omitempty"`
 	Labels            map[string]string `json:"labels,omitempty"`
+	MachineID         string            `json:"machine_id,omitempty"`
+	Location          string            `json:"location,omitempty"`
+	Transport         string            `json:"transport,omitempty"`
 }
 
 // IsActive returns true if the runtime is in an operational lifecycle state.

@@ -171,6 +171,22 @@
   - Cross-platform compilation: 6 / 6 target platforms (`linux/amd64`, `linux/arm64`, `windows/amd64`, `windows/arm64`, `darwin/amd64`, `darwin/arm64`) compiled with exit code 0.
   - Documentation: Created `docs/superpowers/specs/2026-08-28-ai-control-runtime-validation-design.md`, `docs/superpowers/plans/2026-08-28-ai-control-runtime-validation.md`, and `AI_CONTROL_FINAL_VALIDATION_REPORT.md`.
 
+## 2026-08-28: AI Control Web Center & Private Remote Control (Subprojects B & C)
 
-
-
+- **What Changed**:
+  - **Embedded Web Control Center (`ai control web`)**:
+    - Created Go HTTP server with dynamic loopback binding (`127.0.0.1:<os-port>`), one-time 256-bit cryptographic bootstrap token exchange, `HttpOnly` `SameSite=Strict` session cookies, and strict CSRF and Origin verification.
+    - Integrated React 19 + TypeScript + Lucide + xterm.js SPA compiled with Bun into `web/dist` and embedded directly into the Go binary (`//go:embed all:dist`).
+    - Implemented REST API (`/api/v1/workspaces`, `/api/v1/runtimes`, `/api/v1/providers`, `/api/v1/profiles`, `/api/v1/events`) sharing the exact same Control Core without parallel managers.
+    - Implemented bidirectional Terminal WebSocket (`/api/v1/runtimes/:id/terminal`) connecting xterm.js to `SessionHost` PTY/ConPTY streams with dynamic window resize forwarding and single-writer lease governance (`CONTROL` vs `VIEW ONLY`).
+    - Added UI features: Project sidebar, live runtimes dashboard, multi-terminal tabs, 2x2 split-view grid, Account Handoff modal, and Context Continue modal.
+  - **Private Remote Control & Multi-Machine Foundations**:
+    - Validated encrypted SSH Port Forwarding Tunnel workflow (`TestRemote_SSHTunnel`) connecting local client browsers to remote host runtimes without exposing public ports.
+    - Added private IP range validation (RFC 1918 / CGNAT) and explicit security warning outputs for non-loopback `--listen` bindings.
+    - Added `MachineID`, `Location`, and `Transport` fields to `RuntimeSession` with deterministic host identification (`LocalMachineID`).
+    - Authored future multi-machine mTLS blueprint in `DEV/AI_CONTROL_REMOTE_NODES_FUTURE.md` and deferred non-goals in `DEV/AI_CONTROL_DEFERRED.md`.
+- **Verification**:
+  - `go test -count=1 -race ./...` (46 passed, 0 failed across all packages).
+  - `go vet ./...` (0 warnings).
+  - Cross-platform compilation: 6 / 6 target platforms verified (`linux/amd64`, `linux/arm64`, `windows/amd64`, `windows/arm64`, `darwin/amd64`, `darwin/arm64`).
+  - Reports generated: `AI_CONTROL_WEB_VALIDATION_REPORT.md`, `AI_CONTROL_REMOTE_VALIDATION_REPORT.md`, and `AI_CONTROL_FINAL_ENGINEERING_REPORT.md`.

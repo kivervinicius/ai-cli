@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/signal"
 	"runtime"
@@ -128,6 +129,16 @@ func controlWebCmd(args []string) error {
 			i++
 		} else if args[i] == "--no-open" {
 			noOpen = true
+		}
+	}
+
+	if host != "127.0.0.1" && host != "localhost" && host != "::1" {
+		parsedIP := net.ParseIP(host)
+		if parsedIP != nil && (parsedIP.IsPrivate() || parsedIP.IsLoopback()) {
+			fmt.Printf("[SECURITY NOTICE] Web server bound to private network interface (%s).\n\n", host)
+		} else {
+			fmt.Printf("[SECURITY WARNING] Binding to %q exposes the web control center to non-loopback networks.\n"+
+				"                  Use SSH port forwarding (ssh -N -L local:127.0.0.1:port user@host) or a private VPN instead.\n\n", host)
 		}
 	}
 
