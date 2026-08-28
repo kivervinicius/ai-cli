@@ -27,13 +27,13 @@
   <path d="M150,0 V380 M300,0 V380 M450,0 V380 M600,0 V380 M750,0 V380 M900,0 V380 M1050,0 V380" stroke="#334155" stroke-width="0.5" stroke-opacity="0.3"/>
 
   <!-- Glowing Header Badge -->
-  <rect x="80" y="45" width="220" height="32" rx="16" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" stroke-opacity="0.6"/>
+  <rect x="80" y="45" width="240" height="32" rx="16" fill="#1e293b" stroke="#00D2FF" stroke-width="1.5" stroke-opacity="0.8"/>
   <circle cx="100" cy="61" r="5" fill="#22c55e"/>
-  <text x="115" y="66" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="600" fill="#38bdf8" letter-spacing="1">MULTI-ACCOUNT CLI</text>
+  <text x="115" y="66" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="700" fill="#00D2FF" letter-spacing="1">IAPRO COMMUNITY</text>
 
   <!-- Title -->
-  <text x="80" y="130" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="44" font-weight="800" fill="url(#glow)">AI Manager (ai-cli)</text>
-  <text x="80" y="168" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="18" font-weight="400" fill="#94a3b8">Sandbox isolation, live rate-limit bypassing &amp; in-session account switching for OpenAI Codex &amp; Google AGY.</text>
+  <text x="80" y="130" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="44" font-weight="900" fill="url(#glow)">IAPro AI Control (`ai`)</text>
+  <text x="80" y="168" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="18" font-weight="400" fill="#94a3b8">Universal Local Control Plane, Supervised Terminals &amp; Context Handoff for AI Coding Agents.</text>
 
   <!-- Feature Cards -->
   <!-- Card 1: Codex Sandbox -->
