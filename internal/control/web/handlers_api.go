@@ -167,6 +167,16 @@ func (h *APIHandler) handleRuntimes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == http.MethodDelete {
+		cleaned, _ := h.reg.CleanupStale()
+		purged, _ := h.reg.PurgeInactive()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"cleaned": cleaned,
+			"purged":  purged,
+		})
+		return
+	}
+
 	writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 }
 
@@ -197,6 +207,13 @@ func (h *APIHandler) handleRuntimeDetail(w http.ResponseWriter, r *http.Request)
 			"session":      sess,
 			"capabilities": effCaps,
 		})
+		return
+	}
+
+	// DELETE runtime record
+	if len(parts) == 1 && r.Method == http.MethodDelete {
+		_ = h.reg.Delete(runtimeID)
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 		return
 	}
 

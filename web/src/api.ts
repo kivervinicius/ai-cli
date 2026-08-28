@@ -60,4 +60,8 @@ export const api = {
   getProfiles: () => request<ProfileInfo[]>('/api/v1/profiles'),
   getEvents: (runtimeId?: string) =>
     request<EventRecord[]>(`/api/v1/events${runtimeId ? `?runtime_id=${runtimeId}` : ''}`),
+  deleteRuntime: (id: string) =>
+    request<{ status: string }>(`/api/v1/runtimes/${id}`, { method: 'DELETE' }),
+  cleanRuntimes: () =>
+    request<{ cleaned: number; purged: number }>('/api/v1/runtimes', { method: 'DELETE' }),
 };

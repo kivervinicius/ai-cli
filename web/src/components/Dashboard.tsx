@@ -1,6 +1,6 @@
 import React from 'react';
 import { RuntimeSession, ProviderInfo, Workspace } from '../types';
-import { Cpu, Play, Square, ArrowRightLeft, FastForward } from 'lucide-react';
+import { Cpu, Play, Square, ArrowRightLeft, FastForward, Trash2 } from 'lucide-react';
 
 interface DashboardProps {
   runtimes: RuntimeSession[];
@@ -11,6 +11,8 @@ interface DashboardProps {
   onOpenHandoffModal: (runtime: RuntimeSession) => void;
   onOpenContinueModal: (runtime: RuntimeSession) => void;
   onStopRuntime: (id: string) => void;
+  onDeleteRuntime?: (id: string) => void;
+  onCleanInactive?: () => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -22,6 +24,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenHandoffModal,
   onOpenContinueModal,
   onStopRuntime,
+  onDeleteRuntime,
+  onCleanInactive,
 }) => {
   const activeCount = runtimes.filter((r) => r.state === 'RUNNING' || r.state === 'STARTING').length;
   const installedCount = providers.filter((p) => p.installed).length;
@@ -63,9 +67,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Supervised Runtimes Section */}
       <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
-          <h2 className="text-xs font-bold font-mono text-slate-200 uppercase tracking-wider">
-            Live Runtimes
-          </h2>
+          <div className="flex items-center space-x-3">
+            <h2 className="text-xs font-bold font-mono text-slate-200 uppercase tracking-wider">
+              Live Runtimes
+            </h2>
+            {onCleanInactive && runtimes.some((r) => r.state === 'STOPPED' || r.state === 'FAILED' || r.state === 'STALE') && (
+              <button
+                onClick={onCleanInactive}
+                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-[10px] font-mono transition"
+              >
+                Clear Inactive
+              </button>
+            )}
+          </div>
           <span className="text-xs font-mono text-slate-500">{runtimes.length} total sessions</span>
         </div>
 
@@ -99,6 +113,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             {r.handoff_type}
                           </span>
                         )}
+                        {!isRunning && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
+                            {r.state}
+                          </span>
+                        )}
                       </div>
                       <div className="mt-1 text-xs text-slate-400 font-mono truncate max-w-md">
                         {r.workspace}
@@ -107,39 +126,57 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => onOpenTerminal(r.runtime_id)}
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-medium transition flex items-center space-x-1.5"
-                    >
-                      <Cpu className="w-3.5 h-3.5" />
-                      <span>Terminal</span>
-                    </button>
-
-                    <button
-                      onClick={() => onOpenHandoffModal(r)}
-                      className="px-2.5 py-1.5 bg-slate-800 hover:bg-indigo-950 text-slate-300 hover:text-indigo-200 rounded text-xs font-medium transition flex items-center space-x-1"
-                      title="Account Handoff"
-                    >
-                      <ArrowRightLeft className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Handoff</span>
-                    </button>
-
-                    <button
-                      onClick={() => onOpenContinueModal(r)}
-                      className="px-2.5 py-1.5 bg-slate-800 hover:bg-emerald-950 text-slate-300 hover:text-emerald-200 rounded text-xs font-medium transition flex items-center space-x-1"
-                      title="Continue With AI"
-                    >
-                      <FastForward className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Continue</span>
-                    </button>
+                    {isRunning ? (
+                      <button
+                        onClick={() => onOpenTerminal(r.runtime_id)}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-medium transition flex items-center space-x-1.5"
+                      >
+                        <Cpu className="w-3.5 h-3.5" />
+                        <span>Terminal</span>
+                      </button>
+                    ) : (
+                      <span className="px-2 py-1 text-[11px] font-mono text-slate-500 bg-slate-950 rounded border border-slate-800">
+                        OFFLINE
+                      </span>
+                    )}
 
                     {isRunning && (
+                      <>
+                        <button
+                          onClick={() => onOpenHandoffModal(r)}
+                          className="px-2.5 py-1.5 bg-slate-800 hover:bg-indigo-950 text-slate-300 hover:text-indigo-200 rounded text-xs font-medium transition flex items-center space-x-1"
+                          title="Account Handoff"
+                        >
+                          <ArrowRightLeft className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Handoff</span>
+                        </button>
+
+                        <button
+                          onClick={() => onOpenContinueModal(r)}
+                          className="px-2.5 py-1.5 bg-slate-800 hover:bg-emerald-950 text-slate-300 hover:text-emerald-200 rounded text-xs font-medium transition flex items-center space-x-1"
+                          title="Continue With AI"
+                        >
+                          <FastForward className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Continue</span>
+                        </button>
+
+                        <button
+                          onClick={() => onStopRuntime(r.runtime_id)}
+                          className="px-2.5 py-1.5 bg-slate-800 hover:bg-rose-950 text-slate-300 hover:text-rose-300 rounded text-xs font-medium transition"
+                          title="Stop Process"
+                        >
+                          <Square className="w-3.5 h-3.5 fill-current" />
+                        </button>
+                      </>
+                    )}
+
+                    {!isRunning && onDeleteRuntime && (
                       <button
-                        onClick={() => onStopRuntime(r.runtime_id)}
-                        className="px-2.5 py-1.5 bg-slate-800 hover:bg-rose-950 text-slate-300 hover:text-rose-300 rounded text-xs font-medium transition"
-                        title="Stop Process"
+                        onClick={() => onDeleteRuntime(r.runtime_id)}
+                        className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-slate-800 rounded transition"
+                        title="Delete Stale Record"
                       >
-                        <Square className="w-3.5 h-3.5 fill-current" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     )}
                   </div>

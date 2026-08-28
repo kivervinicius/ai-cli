@@ -76,6 +76,24 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleDeleteRuntime = async (id: string) => {
+    try {
+      await api.deleteRuntime(id);
+      fetchDynamicData();
+    } catch (e) {
+      console.error('Failed to delete runtime', e);
+    }
+  };
+
+  const handleCleanInactive = async () => {
+    try {
+      await api.cleanRuntimes();
+      fetchDynamicData();
+    } catch (e) {
+      console.error('Failed to clean inactive runtimes', e);
+    }
+  };
+
   return (
     <div className="flex h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* Left Sidebar */}
@@ -117,12 +135,14 @@ export const App: React.FC = () => {
               onOpenHandoffModal={(r) => setHandoffRuntime(r)}
               onOpenContinueModal={(r) => setContinueRuntime(r)}
               onStopRuntime={handleStopRuntime}
+              onDeleteRuntime={handleDeleteRuntime}
+              onCleanInactive={handleCleanInactive}
             />
           )}
 
           {currentTab === 'terminals' && (
             <TerminalView
-              runtimes={runtimes}
+              runtimes={runtimes.filter((r) => r.state === 'RUNNING' || r.state === 'STARTING')}
               activeRuntimeId={activeTerminalId}
               onSelectRuntime={setActiveTerminalId}
             />
@@ -138,6 +158,8 @@ export const App: React.FC = () => {
               onOpenHandoffModal={(r) => setHandoffRuntime(r)}
               onOpenContinueModal={(r) => setContinueRuntime(r)}
               onStopRuntime={handleStopRuntime}
+              onDeleteRuntime={handleDeleteRuntime}
+              onCleanInactive={handleCleanInactive}
             />
           )}
 

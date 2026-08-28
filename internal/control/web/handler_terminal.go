@@ -60,9 +60,10 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 	// Connect to runtime SessionHost via local IPC
 	client, err := protocol.NewClient(runtimeID)
 	if err != nil {
+		_ = reg.UpdateState(runtimeID, registry.StateStopped)
 		_ = ws.WriteJSON(TerminalMessage{
 			Type: "error",
-			Data: "failed to connect to runtime host: " + err.Error(),
+			Data: "Runtime host is not running (" + err.Error() + "). The process has exited or the socket was closed.",
 		})
 		return
 	}
@@ -71,9 +72,10 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 	// Attach to host
 	resp, err := client.Send(protocol.CmdAttach, nil)
 	if err != nil {
+		_ = reg.UpdateState(runtimeID, registry.StateStopped)
 		_ = ws.WriteJSON(TerminalMessage{
 			Type: "error",
-			Data: "failed to attach to runtime: " + err.Error(),
+			Data: "Failed to attach: runtime host is no longer responding (" + err.Error() + ").",
 		})
 		return
 	}
