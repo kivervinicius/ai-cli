@@ -154,10 +154,23 @@
   - Updated `internal/core/security/isolation.go` to use `SafeLinkOrCopy`.
   - Updated `internal/app/app.go` (`executeResume`) to include clear error context and tips when session resume fails.
 - **Why**: Fixes the issue reported on Windows where `ai` failed to resume sessions (`ERROR: No saved session found with ID <id>`) because `CODEX_HOME` did not have access to host sessions due to silent Windows symlink permission failures.
+## 2026-08-28: AI Control Runtime Final Validation & Maestro Orchestrated Hardening
+
+- **What Changed**:
+  - **Deadlock Elimination**: Fixed re-entrant mutex deadlock in `SessionHost.CmdInput` handling by separating state locks and input handlers.
+  - **Zero-Leak Slash Prefix Router**: Implemented `SlashPrefixRouter` state machine in `internal/control/host/slash_prefix.go`, guaranteeing that `/ai <cmd>` never leaks to child provider stdin while streaming normal keystrokes and `//ai` escape without latency.
+  - **Bounded Multi-Client Fanout**: Implemented `BoundedFanout` in `internal/control/host/fanout.go` with per-client 256-chunk ring queues and drop policy, preventing slow observers from blocking the terminal writer.
+  - **Unified Supervised Launcher**: Created `internal/control/launcher/launcher.go` with `RuntimeLauncher` unifying SessionHost allocation, endpoint discovery, daemon spawning, and handshake verification across `ai control start`, account handoffs, and context continuations.
+  - **Mandatory Checkpoint Persistence & Rollback**: Required successful `SaveCheckpoint` before state transitions; verified source process quiescence; enforced safe transactional rollback on target resume failures.
+  - **PID Recycling Identity Protection**: Validated start time and host generation in `IsProcessAliveWithGeneration` before executing kill fallbacks in `controlStopCmd` and cleanup routines.
+  - **Universal Platform Truth**: Removed hardcoded OS/Arch/Go strings from `ai version` and `ai control doctor`, dynamically reporting `runtime.GOOS`, `runtime.GOARCH`, and `runtime.Version()`. Added provider filtering (`ai control doctor <provider>`).
+  - **Adversarial QA Test Suite**: Implemented `internal/control/host/qa_test.go` verifying rapid attach/detach spamming, multi-writer lease handover, and continuous high-throughput streaming.
 - **Verification**:
-  - `go test -race ./...` (100% PASS).
-  - Multi-OS build verified (`GOOS=windows go build ./cmd/ai`).
-  - Binary installed and validated at `/home/desenvolvedor/.local/bin/ai`.
+  - `go test -count=1 -race ./...` (44 passed, 0 failed across all packages).
+  - `go vet ./...` (0 warnings).
+  - Cross-platform compilation: 6 / 6 target platforms (`linux/amd64`, `linux/arm64`, `windows/amd64`, `windows/arm64`, `darwin/amd64`, `darwin/arm64`) compiled with exit code 0.
+  - Documentation: Created `docs/superpowers/specs/2026-08-28-ai-control-runtime-validation-design.md`, `docs/superpowers/plans/2026-08-28-ai-control-runtime-validation.md`, and `AI_CONTROL_FINAL_VALIDATION_REPORT.md`.
+
 
 
 
