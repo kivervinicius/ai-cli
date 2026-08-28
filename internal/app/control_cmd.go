@@ -605,7 +605,11 @@ func controlDoctorCmd(args []string) error {
 	}
 
 	var dReports []driverReport
+	showAll := hasFlag(args, "--all") || hasFlag(args, "--test-mode")
 	for _, d := range drivers {
+		if d.ProviderID() == "fake" && !showAll {
+			continue
+		}
 		det, _ := d.Detect(ctx)
 		effCaps := d.EffectiveCaps(ctx, model.Profile{Name: "default", Provider: d.ProviderID()})
 		dReports = append(dReports, driverReport{

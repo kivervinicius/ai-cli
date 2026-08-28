@@ -280,8 +280,12 @@ func (h *APIHandler) handleProviders(w http.ResponseWriter, r *http.Request) {
 		Capabilities driver.EffectiveCapabilities `json:"capabilities"`
 	}
 
+	showInternal := r.URL.Query().Get("internal") == "true"
 	var res []ProviderView
 	for _, d := range drivers {
+		if !showInternal && d.ProviderID() == "fake" {
+			continue
+		}
 		det, _ := d.Detect(r.Context())
 		caps := d.EffectiveCaps(r.Context(), model.Profile{Name: "default", Provider: d.ProviderID()})
 		res = append(res, ProviderView{

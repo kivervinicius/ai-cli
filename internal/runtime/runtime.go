@@ -17,9 +17,46 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 )
 
-// LookPath searches for an executable in the system PATH.
+// LookPath searches for an executable in the system PATH and standard developer directories
+// (e.g. ~/.local/bin, ~/.bun/bin, ~/.opencode/bin, ~/.cargo/bin, ~/.nvm/versions/node/*/bin).
 func LookPath(name string) (string, error) {
-	return exec.LookPath(name)
+	// 1. Standard PATH
+	if path, err := exec.LookPath(name); err == nil {
+		return path, nil
+	}
+
+	// 2. Proactive developer directories
+	home, err := os.UserHomeDir()
+	if err == nil && home != "" {
+		candidates := []string{
+			filepath.Join(home, ".local", "bin", name),
+			filepath.Join(home, ".bun", "bin", name),
+			filepath.Join(home, ".opencode", "bin", name),
+			filepath.Join(home, ".cargo", "bin", name),
+			filepath.Join(home, ".local", "share", "pnpm", name),
+			filepath.Join("/usr", "local", "bin", name),
+			filepath.Join("/snap", "bin", name),
+		}
+
+		for _, cand := range candidates {
+			if fi, err := os.Stat(cand); err == nil && !fi.IsDir() && (fi.Mode()&0111 != 0) {
+				return cand, nil
+			}
+		}
+
+		// Check NVM directories
+		nvmPattern := filepath.Join(home, ".nvm", "versions", "node", "*", "bin", name)
+		if matches, err := filepath.Glob(nvmPattern); err == nil && len(matches) > 0 {
+			for i := len(matches) - 1; i >= 0; i-- {
+				cand := matches[i]
+				if fi, err := os.Stat(cand); err == nil && !fi.IsDir() && (fi.Mode()&0111 != 0) {
+					return cand, nil
+				}
+			}
+		}
+	}
+
+	return "", exec.ErrNotFound
 }
 
 // EnvSet applies environment overrides and removes unset keys from the base environment slice.
