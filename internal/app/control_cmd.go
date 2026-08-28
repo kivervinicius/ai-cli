@@ -43,6 +43,15 @@ func controlCmd(args []string) error {
 	}
 
 	switch args[0] {
+	case "ui", "tui":
+		target, err := controltui.RunControlTUI(context.Background())
+		if err != nil {
+			return err
+		}
+		if target != "" {
+			return attachRuntime(target)
+		}
+		return nil
 	case "help", "-h", "--help":
 		controlHelp()
 		return nil
