@@ -15,7 +15,6 @@ import (
 func Listen(runtimeID string) (net.Listener, error) {
 	path := EndpointPath(runtimeID)
 
-	// SDDL: D:P(A;;GA;;;OW) - Discretionary ACL, Protected, Grant Generic All (GA) to Owner (OW) only.
 	cfg := &winio.PipeConfig{
 		SecurityDescriptor: "D:P(A;;GA;;;OW)",
 		MessageMode:        false,
@@ -23,6 +22,13 @@ func Listen(runtimeID string) (net.Listener, error) {
 		OutputBufferSize:   65536,
 	}
 
+	l, err := winio.ListenPipe(path, cfg)
+	if err == nil {
+		return l, nil
+	}
+
+	// Fallback to default process security if custom SDDL fails on this Windows environment
+	cfg.SecurityDescriptor = ""
 	return winio.ListenPipe(path, cfg)
 }
 
