@@ -25,11 +25,19 @@ func (d *OpenCodeDriver) Detect(ctx context.Context) (model.DetectionResult, err
 	if err != nil {
 		return model.DetectionResult{Installed: false, Error: "opencode binary not found in PATH"}, nil
 	}
-	out, _ := runtime.RunCommandCapture(ctx, bin, []string{"--version"}, os.Environ(), "")
+	out, err := runtime.RunCommandCapture(ctx, bin, []string{"--version"}, os.Environ(), "")
+	if err != nil || strings.Contains(out, "No such file or directory") {
+		return model.DetectionResult{
+			Installed:  false,
+			BinaryPath: bin,
+			Error:      strings.TrimSpace(out),
+		}, nil
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
 	return model.DetectionResult{
 		Installed:  true,
 		BinaryPath: bin,
-		Version:    strings.TrimSpace(out),
+		Version:    lines[0],
 	}, nil
 }
 
