@@ -91,6 +91,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="divide-y divide-slate-800">
             {runtimes.map((r) => {
               const isRunning = r.state === 'RUNNING' || r.state === 'STARTING';
+              const prov = r.provider_id || r.provider || 'AI';
+              const prof = r.profile_id || r.profile || 'default';
+              const title = r.title || `${prov.toUpperCase()} (${prof})`;
               return (
                 <div key={r.runtime_id} className="p-4 flex items-center justify-between hover:bg-slate-800/30 transition">
                   <div className="flex items-center space-x-3">
@@ -101,11 +104,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     />
                     <div>
                       <div className="flex items-center space-x-2">
-                        <span className="font-bold text-sm text-slate-100 uppercase font-mono">
-                          {r.provider}
+                        <span className="font-bold text-sm text-slate-100 font-sans">
+                          {title}
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-800 font-mono uppercase">
+                          {prov}
                         </span>
                         <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
-                          {r.profile}
+                          {prof}
                         </span>
                         <span className="text-xs font-mono text-slate-500">ID: {r.runtime_id}</span>
                         {r.handoff_type && (
@@ -135,9 +141,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <span>Terminal</span>
                       </button>
                     ) : (
-                      <span className="px-2 py-1 text-[11px] font-mono text-slate-500 bg-slate-950 rounded border border-slate-800">
-                        OFFLINE
-                      </span>
+                      <>
+                        <button
+                          onClick={() => onOpenContinueModal(r)}
+                          className="px-2.5 py-1.5 bg-slate-800 hover:bg-emerald-950 text-slate-300 hover:text-emerald-200 rounded text-xs font-medium transition flex items-center space-x-1"
+                          title="Resume conversation with new session"
+                        >
+                          <FastForward className="w-3.5 h-3.5" />
+                          <span>Resume</span>
+                        </button>
+                        <span className="px-2 py-1 text-[11px] font-mono text-slate-500 bg-slate-950 rounded border border-slate-800">
+                          {r.state}
+                        </span>
+                      </>
                     )}
 
                     {isRunning && (

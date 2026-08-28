@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/control/driver"
@@ -16,6 +17,7 @@ import (
 // LaunchOptions defines parameters for launching a supervised AI runtime.
 type LaunchOptions struct {
 	RuntimeID         string
+	Title             string
 	ProviderID        string
 	ProfileID         string
 	ProviderSessionID string
@@ -72,8 +74,14 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 		return nil, fmt.Errorf("failed to build command for %s:%s: %w", opts.ProviderID, opts.ProfileID, err)
 	}
 
+	title := opts.Title
+	if strings.TrimSpace(title) == "" {
+		title = fmt.Sprintf("%s (%s)", strings.ToUpper(opts.ProviderID), opts.ProfileID)
+	}
+
 	sess := registry.RuntimeSession{
 		RuntimeID:         opts.RuntimeID,
+		Title:             title,
 		ProviderID:        opts.ProviderID,
 		ProfileID:         opts.ProfileID,
 		ProviderSessionID: opts.ProviderSessionID,

@@ -14,7 +14,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/launcher"
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
-	"github.com/kivervinicius/ai-cli/internal/core/config"
+	"github.com/kivervinicius/ai-cli/internal/control/workspace"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/quota"
 	"github.com/kivervinicius/ai-cli/internal/profile"
@@ -74,54 +74,49 @@ func (h *APIHandler) handleSession(w http.ResponseWriter, r *http.Request) {
 
 // Workspaces / Projects Handler
 func (h *APIHandler) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
-	cwd, _ := os.Getwd()
-	cfg, _ := config.LoadConfig()
+	wsStore := workspace.DefaultStore()
 
-	type WorkspaceView struct {
-		Name     string `json:"name"`
-		Path     string `json:"path"`
-		Provider string `json:"provider,omitempty"`
-		Profile  string `json:"profile,omitempty"`
-		IsActive bool   `json:"is_active"`
+	if r.Method == http.MethodGet {
+		writeJSON(w, http.StatusOK, wsStore.List())
+		return
 	}
 
-	var list []WorkspaceView
-	// Current workspace
-	currentName := cwd
-	if idx := strings.LastIndex(cwd, "/"); idx != -1 {
-		currentName = cwd[idx+1:]
-	}
-	list = append(list, WorkspaceView{
-		Name:     currentName,
-		Path:     cwd,
-		IsActive: true,
-	})
-
-	// Add workspaces from config bindings
-	if len(cfg.Bindings) > 0 {
-		for pth, provMap := range cfg.Bindings {
-			for prov, prof := range provMap {
-				if pth == cwd {
-					list[0].Provider = prov
-					list[0].Profile = prof
-					continue
-				}
-				wName := pth
-				if idx := strings.LastIndex(pth, "/"); idx != -1 {
-					wName = pth[idx+1:]
-				}
-				list = append(list, WorkspaceView{
-					Name:     wName,
-					Path:     pth,
-					Provider: prov,
-					Profile:  prof,
-					IsActive: false,
-				})
-			}
+	if r.Method == http.MethodPost {
+		var req struct {
+			Path string `json:"path"`
+			Name string `json:"name"`
 		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		proj, err := wsStore.Add(req.Path, req.Name)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, proj)
+		return
 	}
 
-	writeJSON(w, http.StatusOK, list)
+	if r.Method == http.MethodDelete {
+		idOrPath := r.URL.Query().Get("path")
+		if idOrPath == "" {
+			idOrPath = r.URL.Query().Get("id")
+		}
+		if idOrPath == "" {
+			writeError(w, http.StatusBadRequest, "missing path or id query param")
+			return
+		}
+		if err := wsStore.Remove(idOrPath); err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+		return
+	}
+
+	writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 }
 
 // Runtimes List & Start Handler
@@ -135,6 +130,7 @@ func (h *APIHandler) handleRuntimes(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
 		var req struct {
+			Title      string   `json:"title"`
 			ProviderID string   `json:"provider"`
 			ProfileID  string   `json:"profile"`
 			Workspace  string   `json:"workspace"`
@@ -148,11 +144,13 @@ func (h *APIHandler) handleRuntimes(w http.ResponseWriter, r *http.Request) {
 		if req.Workspace == "" {
 			req.Workspace, _ = os.Getwd()
 		}
+		workspace.DefaultStore().Touch(req.Workspace)
 
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
 
 		sess, err := h.launcher.Launch(ctx, launcher.LaunchOptions{
+			Title:      req.Title,
 			ProviderID: req.ProviderID,
 			ProfileID:  req.ProfileID,
 			Workspace:  req.Workspace,
@@ -262,6 +260,21 @@ func (h *APIHandler) handleRuntimeDetail(w http.ResponseWriter, r *http.Request)
 				return
 			}
 			writeJSON(w, http.StatusOK, newSess)
+			return
+
+		case "title":
+			var payload struct {
+				Title string `json:"title"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid payload")
+				return
+			}
+			if err := h.reg.UpdateTitle(runtimeID, payload.Title); err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "title": payload.Title})
 			return
 		}
 	}

@@ -37,12 +37,26 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   getWorkspaces: () => request<Workspace[]>('/api/v1/workspaces'),
+  addWorkspace: (path: string, name?: string) =>
+    request<Workspace>('/api/v1/workspaces', {
+      method: 'POST',
+      body: JSON.stringify({ path, name }),
+    }),
+  removeWorkspace: (pathOrId: string) =>
+    request<{ status: string }>(`/api/v1/workspaces?path=${encodeURIComponent(pathOrId)}`, {
+      method: 'DELETE',
+    }),
   getRuntimes: () => request<RuntimeSession[]>('/api/v1/runtimes'),
   getRuntime: (id: string) => request<{ session: RuntimeSession; capabilities: any }>(`/api/v1/runtimes/${id}`),
-  startRuntime: (provider: string, profile: string, workspace: string, args: string[] = []) =>
+  startRuntime: (provider: string, profile: string, workspace: string, args: string[] = [], title?: string) =>
     request<RuntimeSession>('/api/v1/runtimes', {
       method: 'POST',
-      body: JSON.stringify({ provider, profile, workspace, args }),
+      body: JSON.stringify({ provider, profile, workspace, args, title }),
+    }),
+  updateRuntimeTitle: (id: string, title: string) =>
+    request<{ status: string; title: string }>(`/api/v1/runtimes/${id}/title`, {
+      method: 'POST',
+      body: JSON.stringify({ title }),
     }),
   stopRuntime: (id: string) =>
     request<{ status: string }>(`/api/v1/runtimes/${id}/stop`, { method: 'POST' }),

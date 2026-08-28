@@ -94,6 +94,39 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleUpdateTitle = async (id: string, title: string) => {
+    try {
+      await api.updateRuntimeTitle(id, title);
+      fetchDynamicData();
+    } catch (e) {
+      console.error('Failed to update runtime title', e);
+    }
+  };
+
+  const handleAddWorkspace = async (path: string, name?: string) => {
+    try {
+      await api.addWorkspace(path, name);
+      const ws = await api.getWorkspaces();
+      setWorkspaces(ws);
+      setActiveWorkspace(path);
+    } catch (e) {
+      console.error('Failed to add workspace', e);
+    }
+  };
+
+  const handleRemoveWorkspace = async (path: string) => {
+    try {
+      await api.removeWorkspace(path);
+      const ws = await api.getWorkspaces();
+      setWorkspaces(ws);
+      if (activeWorkspace === path && ws.length > 0) {
+        setActiveWorkspace(ws[0].path);
+      }
+    } catch (e) {
+      console.error('Failed to remove workspace', e);
+    }
+  };
+
   return (
     <div className="flex h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* Left Sidebar */}
@@ -104,6 +137,8 @@ export const App: React.FC = () => {
         activeWorkspace={activeWorkspace}
         onSelectWorkspace={setActiveWorkspace}
         runtimeCount={runtimes.filter((r) => r.state === 'RUNNING' || r.state === 'STARTING').length}
+        onAddWorkspace={handleAddWorkspace}
+        onRemoveWorkspace={handleRemoveWorkspace}
       />
 
       {/* Main Content Area */}
@@ -145,6 +180,7 @@ export const App: React.FC = () => {
               runtimes={runtimes.filter((r) => r.state === 'RUNNING' || r.state === 'STARTING')}
               activeRuntimeId={activeTerminalId}
               onSelectRuntime={setActiveTerminalId}
+              onUpdateTitle={handleUpdateTitle}
             />
           )}
 
@@ -175,6 +211,7 @@ export const App: React.FC = () => {
           providers={providers}
           profiles={profiles}
           workspace={activeWorkspace}
+          workspaces={workspaces}
           onClose={() => setShowStartModal(false)}
           onSuccess={(newSession) => {
             fetchDynamicData();

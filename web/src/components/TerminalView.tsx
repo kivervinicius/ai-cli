@@ -7,12 +7,14 @@ interface TerminalViewProps {
   runtimes: RuntimeSession[];
   activeRuntimeId?: string;
   onSelectRuntime: (id: string) => void;
+  onUpdateTitle?: (id: string, title: string) => void;
 }
 
 export const TerminalView: React.FC<TerminalViewProps> = ({
   runtimes,
   activeRuntimeId,
   onSelectRuntime,
+  onUpdateTitle,
 }) => {
   const [splitMode, setSplitMode] = useState<'single' | 'split-h' | 'grid'>('single');
   const [openIds, setOpenIds] = useState<string[]>(() => {
@@ -68,6 +70,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         <div className="flex items-center space-x-1.5 overflow-x-auto">
           {runtimes.map((r) => {
             const isActive = r.runtime_id === currentId;
+            const prov = r.provider_id || r.provider || 'AI';
+            const prof = r.profile_id || r.profile || 'default';
+            const title = r.title || `${prov.toUpperCase()} (${prof})`;
             return (
               <button
                 key={r.runtime_id}
@@ -79,8 +84,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
                 }`}
               >
                 <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span className="uppercase">{r.provider}</span>
-                <span className="text-slate-500 text-[10px]">({r.profile})</span>
+                <span className="font-sans font-medium">{title}</span>
+                <span className="text-slate-500 text-[10px]">[{r.runtime_id}]</span>
               </button>
             );
           })}
@@ -132,8 +137,10 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           <TerminalPane
             key={r.runtime_id}
             runtimeId={r.runtime_id}
-            provider={r.provider}
-            profile={r.profile}
+            title={r.title}
+            provider={r.provider_id || r.provider || 'AI'}
+            profile={r.profile_id || r.profile || 'default'}
+            onUpdateTitle={onUpdateTitle}
             onClose={() => handleCloseTab(r.runtime_id)}
           />
         ))}

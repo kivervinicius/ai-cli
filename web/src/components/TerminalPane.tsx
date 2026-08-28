@@ -1,19 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
-import { Shield, ShieldAlert, Maximize2, XSquare } from 'lucide-react';
+import { Shield, ShieldAlert, Maximize2, XSquare, Pencil, Check } from 'lucide-react';
 
 interface TerminalPaneProps {
   runtimeId: string;
+  title?: string;
   provider: string;
   profile: string;
+  onUpdateTitle?: (id: string, newTitle: string) => void;
   onClose?: () => void;
 }
 
 export const TerminalPane: React.FC<TerminalPaneProps> = ({
   runtimeId,
+  title,
   provider,
   profile,
+  onUpdateTitle,
   onClose,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -24,6 +28,19 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   const [role, setRole] = useState<'CONTROL' | 'VIEW_ONLY'>('VIEW_ONLY');
   const [connected, setConnected] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [customTitle, setCustomTitle] = useState(title || '');
+
+  useEffect(() => {
+    setCustomTitle(title || '');
+  }, [title]);
+
+  const handleSaveTitle = () => {
+    setIsEditingTitle(false);
+    if (customTitle.trim() && onUpdateTitle) {
+      onUpdateTitle(runtimeId, customTitle.trim());
+    }
+  };
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -137,10 +154,40 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       <div className="flex items-center justify-between px-3 py-2 bg-slate-900 border-b border-slate-800 text-xs font-mono select-none">
         <div className="flex items-center space-x-2">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span className="text-slate-200 font-bold uppercase">{provider}</span>
-          <span className="text-slate-500">({profile})</span>
+          {isEditingTitle ? (
+            <div className="flex items-center space-x-1">
+              <input
+                type="text"
+                value={customTitle}
+                onChange={(e) => setCustomTitle(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSaveTitle()}
+                className="bg-slate-950 border border-sky-500 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
+                autoFocus
+              />
+              <button
+                onClick={handleSaveTitle}
+                className="p-0.5 text-emerald-400 hover:text-emerald-300"
+              >
+                <Check className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <div
+              className="flex items-center space-x-1.5 cursor-pointer group"
+              onClick={() => setIsEditingTitle(true)}
+              title="Click to rename session title"
+            >
+              <span className="text-slate-100 font-bold font-sans">
+                {customTitle || `${provider.toUpperCase()} (${profile})`}
+              </span>
+              <Pencil className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100 transition" />
+            </div>
+          )}
           <span className="text-slate-600">|</span>
-          <span className="text-slate-400">{runtimeId}</span>
+          <span className="text-slate-400 uppercase text-[11px]">{provider}</span>
+          <span className="text-slate-500 text-[11px]">({profile})</span>
+          <span className="text-slate-600">|</span>
+          <span className="text-slate-500 text-[10px]">ID: {runtimeId}</span>
         </div>
 
         <div className="flex items-center space-x-3">

@@ -1,15 +1,21 @@
 export interface Workspace {
+  id?: string;
   name: string;
   path: string;
   provider?: string;
   profile?: string;
-  is_active: boolean;
+  is_active?: boolean;
+  created_at?: string;
+  last_used_at?: string;
 }
 
 export interface RuntimeSession {
   runtime_id: string;
-  provider: string;
-  profile: string;
+  title?: string;
+  provider_id?: string;
+  profile_id?: string;
+  provider?: string;
+  profile?: string;
   provider_session_id?: string;
   workspace: string;
   pid: number;

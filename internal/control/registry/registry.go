@@ -162,6 +162,21 @@ func (r *Registry) UpdateProviderSessionID(runtimeID, providerSessionID string) 
 	return r.saveLocked()
 }
 
+// UpdateTitle updates the human-friendly title of a runtime session.
+func (r *Registry) UpdateTitle(runtimeID, title string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	s, ok := r.sessions[runtimeID]
+	if !ok {
+		return fmt.Errorf("runtime %q not found", runtimeID)
+	}
+	s.Title = title
+	s.UpdatedAt = time.Now()
+	r.sessions[runtimeID] = s
+	return r.saveLocked()
+}
+
 // List returns all registered runtime sessions.
 func (r *Registry) List() []RuntimeSession {
 	r.mu.RLock()
