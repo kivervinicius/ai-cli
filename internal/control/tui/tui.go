@@ -10,9 +10,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/kivervinicius/ai-cli/internal/control/driver"
 	"github.com/kivervinicius/ai-cli/internal/control/events"
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
+	"github.com/kivervinicius/ai-cli/internal/core/model"
 )
 
 var (
@@ -56,17 +58,17 @@ const (
 
 // ControlModel is the Bubble Tea model for the AI Control Center TUI.
 type ControlModel struct {
-	width          int
-	height         int
-	activeTab      Tab
-	runtimes       []registry.RuntimeSession
-	selectedIndex  int
-	eventsList     []events.Event
-	workspace      string
-	statusMessage  string
-	statusTime     time.Time
-	quitting       bool
-	attachTarget   string
+	width         int
+	height        int
+	activeTab     Tab
+	runtimes      []registry.RuntimeSession
+	selectedIndex int
+	eventsList    []events.Event
+	workspace     string
+	statusMessage string
+	statusTime    time.Time
+	quitting      bool
+	attachTarget  string
 }
 
 // NewControlModel creates an initial ControlModel.
@@ -211,6 +213,12 @@ func (m ControlModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.quitting = true
 				return m, tea.Quit
 			}
+		case "h":
+			if len(m.runtimes) > 0 && m.selectedIndex < len(m.runtimes) {
+				m.statusMessage = "To handoff, attach ([a]) and type: /ai handoff <profile>"
+				m.statusTime = time.Now()
+			}
+			return m, nil
 		}
 
 	case tea.MouseMsg:
@@ -272,9 +280,28 @@ func (m ControlModel) View() string {
 		statusText = lipgloss.NewStyle().Foreground(lipgloss.Color("#10B981")).Render("ℹ " + statusText + "\n")
 	}
 
-	shortcuts := lipgloss.NewStyle().Foreground(lipgloss.Color("#9CA3AF")).Render(
-		" [a/Enter] Attach   [s] Stop   [d] Delete   [c] Clean Stale   [r] Refresh   [Tab] Switch Tab   [q] Quit",
-	)
+	shortcutsStr := " [a/Enter] Attach"
+	
+	if m.activeTab == TabRuntimes && len(m.runtimes) > 0 && m.selectedIndex < len(m.runtimes) {
+		sel := m.runtimes[m.selectedIndex]
+		if d, err := driver.DefaultRegistry().Get(sel.ProviderID); err == nil {
+			caps := d.EffectiveCaps(context.Background(), model.Profile{Name: sel.ProfileID, Provider: sel.ProviderID})
+			if caps.Process.Status == driver.CapabilitySupported || caps.Terminal.Status == driver.CapabilitySupported {
+				shortcutsStr += "   [s] Stop"
+			}
+			if caps.Resume.Status == driver.CapabilitySupported {
+				shortcutsStr += "   [h] Handoff"
+			}
+		} else {
+			shortcutsStr += "   [s] Stop"
+		}
+	} else {
+		shortcutsStr += "   [s] Stop" // Default for empty/events tab
+	}
+
+	shortcutsStr += "   [d] Delete   [c] Clean Stale   [r] Refresh   [Tab] Switch Tab   [q] Quit"
+
+	shortcuts := lipgloss.NewStyle().Foreground(lipgloss.Color("#9CA3AF")).Render(shortcutsStr)
 
 	return topBar + tabsRow + content + "\n" + statusText + shortcuts + "\n"
 }
@@ -284,7 +311,7 @@ func (m ControlModel) renderRuntimesTab(width int) string {
 
 	header := fmt.Sprintf("  %-16s %-10s %-14s %-12s %-12s %s\n", "RUNTIME ID", "PROVIDER", "PROFILE", "STATE", "CONTROL", "PID")
 	sb.WriteString(headerStyle.Render(header))
-	sb.WriteString("  " + strings.Repeat("─", width-6) + "\n")
+	sb.WriteString("  " + strings.Repeat("─", max(20, width-6)) + "\n")
 
 	if len(m.runtimes) == 0 {
 		sb.WriteString("\n   (No managed runtimes running. Start one with: ai control start <provider>)\n\n")
@@ -325,8 +352,9 @@ func (m ControlModel) renderRuntimesTab(width int) string {
 		sel := m.runtimes[m.selectedIndex]
 		sb.WriteString("\n")
 		details := fmt.Sprintf(
-			"Selected Runtime: %s | Provider: %s (%s) | Workspace: %s | Endpoint: %s",
-			sel.RuntimeID, sel.ProviderID, sel.ProfileID, sel.Workspace, sel.ControlEndpoint,
+			"Runtime: %s | Provider: %s:%s | State: %s | Level: %s | Host PID: %d | Child PID: %d\nWorkspace: %s\nEndpoint:  %s",
+			sel.RuntimeID, strings.ToUpper(sel.ProviderID), sel.ProfileID, sel.State, sel.ControlLevel, sel.HostPID, sel.PID,
+			sel.Workspace, sel.ControlEndpoint,
 		)
 		sb.WriteString(activeBorderStyle.Render(details) + "\n")
 	}
@@ -337,7 +365,7 @@ func (m ControlModel) renderRuntimesTab(width int) string {
 func (m ControlModel) renderEventsTab(width int) string {
 	var sb strings.Builder
 	sb.WriteString(headerStyle.Render("  RECENT EVENT LOG (Real-Time)\n"))
-	sb.WriteString("  " + strings.Repeat("─", width-6) + "\n")
+	sb.WriteString("  " + strings.Repeat("─", max(20, width-6)) + "\n")
 
 	if len(m.eventsList) == 0 {
 		sb.WriteString("\n   (No recorded events yet)\n\n")
@@ -353,12 +381,14 @@ func (m ControlModel) renderEventsTab(width int) string {
 	return sb.String()
 }
 
-func truncate(s string, max int) string {
-	if len(s) > max {
-		return s[:max-1] + "…"
+func truncate(s string, maxLen int) string {
+	if len(s) > maxLen {
+		return s[:maxLen-1] + "…"
 	}
 	return s
 }
+
+
 
 // RunControlTUI launches the interactive AI Control Center TUI.
 func RunControlTUI(ctx context.Context) (attachTargetID string, err error) {

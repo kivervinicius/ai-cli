@@ -31,7 +31,7 @@ Launch the interactive control plane at any time by running `ai`:
 
 ```text
  ┌────────────────────────────────────────────────────────────────────────────────────────┐
- │  AI CLI Control Plane v0.3.0                             Workspace: ~/tools/ai-manager │
+ │  AI CLI Control Plane v0.4.0                             Workspace: ~/tools/ai-manager │
  ├─────────────────────────┬──────────────────────────────────────────────────────────────┤
  │ Providers               │ Accounts (Codex)                                             │
  │                         │                                                              │
@@ -266,10 +266,30 @@ Add-Content $PROFILE "`nai completion powershell | Out-String | Invoke-Expressio
 ### Interactive TUI & Execution
 | Command | Description |
 | :--- | :--- |
-| `ai` | Launches the interactive Bubble Tea control plane TUI. |
+| `ai` | Launches the interactive Bubble Tea control plane TUI (Classic Mode). |
+| `ai control` / `ai ui` | Opens the interactive AI Control Center TUI for supervised runtimes. |
+| `ai control start <provider>` | Launches a persistent background runtime with universal `/ai` slash command control. |
+| `ai control running` | Lists active managed runtimes across all providers. |
+| `ai control attach <id>` | Connects the interactive terminal to a running background session. |
+| `ai control stop <id>` | Gracefully stops a supervised runtime. |
+| `ai control handoff <id> <profile>` | Performs transactional same-provider account handoff with session continuity. |
+| `ai control continue <id> --with <prov>` | Executes cross-provider context handoff with automated secret redaction. |
+| `ai control doctor` | Audits control runtime environment, IPC transport, and truthful provider capabilities. |
 | `ai <provider> [args...]` | Runs the provider with automatic smart account selection (e.g. `ai codex -m gpt-5`). |
 | `ai <provider>:<profile> [args...]` | Directly runs with the specified profile (e.g. `ai agy:work -c`). |
 | `ai explain <provider>` | Explains why the Smart Account Selector chose a specific account. |
+
+### Supervised In-Session Slash Commands (`/ai`)
+| Slash Command | Description |
+| :--- | :--- |
+| `/ai status` | Displays live runtime identifiers, state, and honest quota metrics. |
+| `/ai accounts` | Lists configured accounts, auth status, and remaining capacity for active provider. |
+| `/ai usage` | Shows point-in-time quota metrics and reset windows. |
+| `/ai handoff <profile>` | Initiates transactional account transition on the same provider. |
+| `/ai continue <provider>` | Creates a safe, bounded work checkpoint and transfers context to another provider. |
+| `/ai detach` | Detaches the terminal while keeping the background agent process running. |
+| `/ai stop` | Gracefully terminates the supervised session. |
+| `//ai <text>` | Escape prefix to send literal `/ai` commands directly to the model. |
 
 ### Profile & Authentication Management
 | Command | Description |

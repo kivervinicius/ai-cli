@@ -2,38 +2,25 @@ package registry
 
 import (
 	"os"
-	"syscall"
 
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 )
-
-// IsProcessAlive checks whether a process with the given PID is currently running.
-func IsProcessAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	// On Unix, signal 0 tests process existence
-	err = process.Signal(syscall.Signal(0))
-	return err == nil
-}
 
 // CleanupStale scans registered active sessions, checks if their process/endpoint is dead,
 // marks dead sessions as STALE, and removes orphaned socket files.
 func (r *Registry) CleanupStale() (int, error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	var candidates []RuntimeSession
+	for _, s := range r.sessions {
+		if s.IsActive() {
+			candidates = append(candidates, s)
+		}
+	}
+	r.mu.Unlock()
 
 	cleaned := 0
-	for id, s := range r.sessions {
-		if !s.IsActive() {
-			continue
-		}
-
-		alive := IsProcessAlive(s.PID)
+	for _, s := range candidates {
+		alive := IsProcessAliveWithGeneration(s.PID, s.HostGeneration)
 		if !alive {
 			// Check if endpoint is responsive
 			client, err := protocol.NewClient(s.RuntimeID)
@@ -42,10 +29,15 @@ func (r *Registry) CleanupStale() (int, error) {
 				continue
 			}
 
-			// Mark as stale
-			s.State = StateStale
-			r.sessions[id] = s
-			cleaned++
+			r.mu.Lock()
+			current, ok := r.sessions[s.RuntimeID]
+			if ok && current.IsActive() {
+				// Mark as stale
+				current.State = StateStale
+				r.sessions[s.RuntimeID] = current
+				cleaned++
+			}
+			r.mu.Unlock()
 
 			// Clean up stale socket file if present
 			sockPath := protocol.EndpointPath(s.RuntimeID)
@@ -54,7 +46,9 @@ func (r *Registry) CleanupStale() (int, error) {
 	}
 
 	if cleaned > 0 {
+		r.mu.Lock()
 		_ = r.saveLocked()
+		r.mu.Unlock()
 	}
 
 	return cleaned, nil
@@ -63,27 +57,35 @@ func (r *Registry) CleanupStale() (int, error) {
 // PurgeInactive permanently removes STALE, FAILED, and STOPPED sessions whose PID and socket are dead.
 func (r *Registry) PurgeInactive() (int, error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	var candidates []RuntimeSession
+	for _, s := range r.sessions {
+		if !s.IsActive() {
+			candidates = append(candidates, s)
+		}
+	}
+	r.mu.Unlock()
 
 	purged := 0
-	for id, s := range r.sessions {
-		if s.IsActive() {
-			continue
-		}
-
-		alive := IsProcessAlive(s.PID)
+	for _, s := range candidates {
+		alive := IsProcessAliveWithGeneration(s.PID, s.HostGeneration)
 		if !alive {
 			// Clean up socket file
 			sockPath := protocol.EndpointPath(s.RuntimeID)
 			_ = os.Remove(sockPath)
 
-			delete(r.sessions, id)
-			purged++
+			r.mu.Lock()
+			if _, ok := r.sessions[s.RuntimeID]; ok {
+				delete(r.sessions, s.RuntimeID)
+				purged++
+			}
+			r.mu.Unlock()
 		}
 	}
 
 	if purged > 0 {
+		r.mu.Lock()
 		_ = r.saveLocked()
+		r.mu.Unlock()
 	}
 
 	return purged, nil

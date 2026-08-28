@@ -463,20 +463,6 @@ func linkSharedAgyItems(profileHome, hostGemini string) {
 			continue
 		}
 
-		_ = os.MkdirAll(filepath.Dir(dst), 0700)
-
-		if fi, err := os.Lstat(dst); err == nil {
-			if fi.Mode()&os.ModeSymlink != 0 {
-				target, err := os.Readlink(dst)
-				if err == nil && target == src {
-					continue
-				}
-				_ = os.Remove(dst)
-			} else {
-				continue
-			}
-		}
-
-		_ = os.Symlink(src, dst)
+		_ = security.SafeLinkOrCopy(src, dst)
 	}
 }

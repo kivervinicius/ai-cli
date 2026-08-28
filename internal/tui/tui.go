@@ -515,7 +515,7 @@ func (m Model) View() string {
 	var sb strings.Builder
 
 	// Header line
-	headerLeft := fmt.Sprintf("%s %s", titleStyle.Render("AI CLI Control Plane"), subStyle.Render("v0.3.0"))
+	headerLeft := fmt.Sprintf("%s %s", titleStyle.Render("AI CLI Control Plane"), subStyle.Render("v0.4.0"))
 	headerRight := subStyle.Render(fmt.Sprintf("Workspace: ~/%s", projName))
 	gap := availWidth - lipgloss.Width(headerLeft) - lipgloss.Width(headerRight) - 2
 	if gap < 2 {
@@ -590,7 +590,7 @@ func (m Model) View() string {
 			qDetails := profile.GetQuotaDetails(p.Provider, p.Name, acc.Plan, acc.Email)
 			bar := qDetails.FiveHour.ProgressBar
 			if bar == "" {
-				bar = "[??????????] UNK"
+				bar = "[ UNKNOWN  ] UNK"
 			}
 			barStr := subStyle.Render(bar)
 

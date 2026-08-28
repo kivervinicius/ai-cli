@@ -37,6 +37,11 @@ type RuntimeSession struct {
 	ProviderSessionID string            `json:"provider_session_id,omitempty"`
 	Workspace         string            `json:"workspace"`
 	PID               int               `json:"pid"`
+	HostPID           int               `json:"host_pid,omitempty"`
+	HostGeneration    int64             `json:"host_generation,omitempty"`
+	Binary            string            `json:"binary,omitempty"`
+	Args              []string          `json:"args,omitempty"`
+	Env               []string          `json:"env,omitempty"`
 	State             RuntimeState      `json:"state"`
 	ControlLevel      ControlLevel      `json:"control_level"`
 	StartedAt         time.Time         `json:"started_at"`
@@ -44,6 +49,7 @@ type RuntimeSession struct {
 	ControlEndpoint   string            `json:"control_endpoint"`
 	ParentRuntimeID   string            `json:"parent_runtime_id,omitempty"`
 	HandoffType       string            `json:"handoff_type,omitempty"`
+	LineageID         string            `json:"lineage_id,omitempty"`
 	Labels            map[string]string `json:"labels,omitempty"`
 }
 

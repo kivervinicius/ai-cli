@@ -9,8 +9,9 @@ import (
 
 func TestDriverRegistryAndCapabilities(t *testing.T) {
 	reg := DefaultRegistry()
+	ctx := context.Background()
 
-	providers := []string{"codex", "agy", "claude", "opencode", "gemini"}
+	providers := []string{"codex", "agy", "claude", "opencode", "gemini", "fake"}
 	for _, p := range providers {
 		d, err := reg.Get(p)
 		if err != nil {
@@ -20,9 +21,35 @@ func TestDriverRegistryAndCapabilities(t *testing.T) {
 			t.Errorf("expected provider ID %s, got %s", p, d.ProviderID())
 		}
 
-		caps := d.Capabilities(context.Background(), model.Profile{Name: "default"})
-		if !caps.Process || !caps.Terminal || !caps.SlashControl {
-			t.Errorf("driver %s missing core capabilities: %+v", p, caps)
+		effCaps := d.EffectiveCaps(ctx, model.Profile{Name: "default"})
+		if effCaps.Process.Status != CapabilitySupported || effCaps.Terminal.Status != CapabilitySupported {
+			t.Errorf("driver %s expected Process and Terminal supported, got %+v", p, effCaps)
+		}
+
+		// Truthful test: Codex and OpenCode without server adapters should NOT claim StructuredEvents supported
+		if p == "codex" || p == "opencode" {
+			if effCaps.StructuredEvents.Status == CapabilitySupported {
+				t.Errorf("driver %s must not claim StructuredEvents supported without real adapter", p)
+			}
+		}
+
+		// Test CanResume with valid and empty session ID
+		canResumeEmpty, reason := d.CanResume(ctx, model.Profile{Name: "default"}, "")
+		if canResumeEmpty {
+			t.Errorf("driver %s should reject empty session ID for resume", p)
+		}
+		if reason == "" {
+			t.Errorf("driver %s should provide reason when resume is rejected", p)
+		}
+
+		canResumeValid, _ := d.CanResume(ctx, model.Profile{Name: "default"}, "sess-123")
+		if !canResumeValid {
+			t.Errorf("driver %s should allow valid session ID", p)
+		}
+
+		resumeArgs, err := d.BuildResumeArgs(ctx, model.Profile{Name: "default"}, "sess-123")
+		if err != nil || len(resumeArgs) == 0 {
+			t.Errorf("driver %s failed to build resume args: %v", p, err)
 		}
 	}
 

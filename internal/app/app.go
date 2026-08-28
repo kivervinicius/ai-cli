@@ -31,7 +31,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/tui"
 )
 
-const version = "0.3.0"
+const version = "0.4.0"
 
 var globalRegistry *provider.Registry
 
@@ -135,6 +135,8 @@ func Run(args []string) error {
 		return configCmd(args[1:])
 	case "control", "ui":
 		return controlCmd(args[1:])
+	case "__control-host":
+		return controlHostCmd(args[1:])
 	case "codex", "agy", "claude", "opencode", "gemini":
 		prov := args[0]
 		targetProfile := ""
@@ -295,7 +297,7 @@ func executeResume(provName, profName, sessionID string, args []string) error {
 }
 
 func usage() {
-	fmt.Print(`AI CLI Control Plane v0.3.0 - Local Control Plane for AI Coding CLIs
+	fmt.Print(`AI CLI Control Plane v0.4.0 - Local Control Plane for AI Coding CLIs
 
 Usage:
   ai                              Open interactive control plane (TUI)

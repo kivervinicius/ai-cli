@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -98,6 +99,7 @@ func NewRequest(cmd CommandType, payload any) (Request, error) {
 	}
 	return Request{
 		Version:   ProtocolVersion,
+		ID:        fmt.Sprintf("req-%d", time.Now().UnixNano()),
 		Command:   cmd,
 		Payload:   raw,
 		Timestamp: time.Now(),

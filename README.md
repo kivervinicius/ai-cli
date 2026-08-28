@@ -31,7 +31,7 @@ Inicie o painel interativo a qualquer momento executando `ai`:
 
 ```text
  ┌────────────────────────────────────────────────────────────────────────────────────────┐
- │  AI CLI Control Plane v0.3.0                             Workspace: ~/tools/ai-manager │
+ │  AI CLI Control Plane v0.4.0                             Workspace: ~/tools/ai-manager │
  ├─────────────────────────┬──────────────────────────────────────────────────────────────┤
  │ Providers               │ Accounts (Codex)                                             │
  │                         │                                                              │
@@ -266,10 +266,30 @@ Add-Content $PROFILE "`nai completion powershell | Out-String | Invoke-Expressio
 ### Interface Interativa & Execução
 | Comando | Descrição |
 | :--- | :--- |
-| `ai` | Abre a TUI interativa completa em Bubble Tea. |
+| `ai` | Abre a TUI interativa completa em Bubble Tea (Modo Clássico). |
+| `ai control` / `ai ui` | Abre a Central de Controle TUI para runtimes supervisionados. |
+| `ai control start <provider>` | Inicia um processo supervisionado em background com canal universal `/ai`. |
+| `ai control running` | Lista os runtimes ativos gerenciados pelo Control Plane. |
+| `ai control attach <id>` | Conecta o terminal interativo a um runtime em background. |
+| `ai control stop <id>` | Encerra graciosamente um runtime supervisionado. |
+| `ai control handoff <id> <perfil>` | Executa troca transacional de conta no mesmo provedor com continuidade de sessão. |
+| `ai control continue <id> --with <prov>` | Executa migração de contexto (Context Handoff) com redação de segredos. |
+| `ai control doctor` | Diagnóstico de integridade e capacidades reais dos drivers do Control Plane. |
 | `ai <provider> [args...]` | Executa o provedor com seleção inteligente da melhor conta (ex: `ai codex -m gpt-5`). |
 | `ai <provider>:<perfil> [args...]` | Executa diretamente com o perfil especificado (ex: `ai agy:work -c`). |
 | `ai explain <provider>` | Exibe a pontuação e justificativa da seleção de conta do Smart Selector. |
+
+### Comandos Slash em Sessão Supervisionada (`/ai`)
+| Comando Slash | Descrição |
+| :--- | :--- |
+| `/ai status` | Exibe estado do runtime, identificadores e métricas de cota ativas. |
+| `/ai accounts` | Lista contas configuradas e capacidade restante do provedor ativo. |
+| `/ai usage` | Exibe snapshot detalhado de cotas e janelas de reset. |
+| `/ai handoff <perfil>` | Transição transacional de conta no mesmo provedor. |
+| `/ai continue <provider>` | Migração de contexto para outro provedor com checkpoint seguro. |
+| `/ai detach` | Desconecta do terminal mantendo o processo do assistente rodando em background. |
+| `/ai stop` | Encerra a sessão supervisionada com segurança. |
+| `//ai <texto>` | Prefixo de escape para enviar comandos `/ai` literais para o assistente. |
 
 ### Gerenciamento de Perfis & Autenticação
 | Comando | Descrição |

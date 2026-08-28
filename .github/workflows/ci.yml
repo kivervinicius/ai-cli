@@ -2,13 +2,21 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches:
+      - main
+      - master
+      - 'feat/**'
+      - 'fix/**'
   pull_request:
-    branches: [ main, master ]
+    branches:
+      - main
+      - master
+      - 'feat/**'
+      - 'fix/**'
 
 jobs:
-  test:
-    name: Test & Lint
+  test-unix:
+    name: Test Unix (${{ matrix.os }} - Go ${{ matrix.go }})
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -27,8 +35,34 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      - name: Run Tests
+      - name: Run Tests with Race Detector
         run: go test -v -race ./...
+
+      - name: Build Binary
+        run: go build -v ./cmd/ai
+
+  test-windows:
+    name: Test Windows (${{ matrix.os }} - Go ${{ matrix.go }})
+    strategy:
+      matrix:
+        os: [windows-latest]
+        go: ['1.22', '1.24']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Run Tests
+        run: go test -v ./...
 
       - name: Build Binary
         run: go build -v ./cmd/ai

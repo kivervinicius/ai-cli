@@ -2,9 +2,11 @@ package driver
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 
+	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/security"
@@ -30,22 +32,89 @@ func (d *CodexDriver) Detect(ctx context.Context) (model.DetectionResult, error)
 	}, nil
 }
 
-func (d *CodexDriver) Capabilities(ctx context.Context, p model.Profile) ControlCapabilities {
-	return ControlCapabilities{
-		Process:          true,
-		Terminal:         true,
-		Attach:           true,
-		StructuredEvents: true,
-		Sessions:         true,
-		Resume:           true,
-		Fork:             false,
-		SubmitPrompt:     true,
-		CancelTurn:       true,
-		Approvals:        true,
-		NativeUIAttach:   false,
-		Headless:         true,
-		SlashControl:     true,
+func (d *CodexDriver) EffectiveCaps(ctx context.Context, p model.Profile) EffectiveCapabilities {
+	det, _ := d.Detect(ctx)
+	version := det.Version
+
+	return EffectiveCapabilities{
+		Process: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "os/exec",
+			Tested:          true,
+		},
+		Terminal: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "PTY / ConPTY TerminalBackend",
+			Tested:          true,
+		},
+		Attach: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "AI Control IPC Socket/Pipe",
+			Tested:          true,
+		},
+		StructuredEvents: CapabilityEvidence{
+			Status:          CapabilityUnsupported,
+			ProviderVersion: version,
+			Mechanism:       "codex app-server adapter",
+			Reason:          "Structured app-server adapter disabled; running in truthful TERMINAL mode",
+			Tested:          false,
+		},
+		Sessions: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "~/.codex/sessions index",
+			Tested:          true,
+		},
+		Resume: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "codex resume <session-id>",
+			Tested:          true,
+		},
+		Fork: CapabilityEvidence{
+			Status:    CapabilityUnsupported,
+			Reason:    "Codex CLI does not support session branching/forking",
+			Tested:    false,
+		},
+		SubmitPrompt: CapabilityEvidence{
+			Status:    CapabilityUnsupported,
+			Reason:    "Structured prompt submission requires app-server adapter; use terminal input",
+			Tested:    false,
+		},
+		CancelTurn: CapabilityEvidence{
+			Status:    CapabilitySupported,
+			Mechanism: "Ctrl+C signal passthrough",
+			Tested:    true,
+		},
+		Approvals: CapabilityEvidence{
+			Status:    CapabilityUnsupported,
+			Reason:    "Structured approvals require app-server adapter; interact via terminal prompt",
+			Tested:    false,
+		},
+		NativeUIAttach: CapabilityEvidence{
+			Status:    CapabilityUnsupported,
+			Reason:    "Native GUI attach not implemented for Codex",
+			Tested:    false,
+		},
+		Headless: CapabilityEvidence{
+			Status:    CapabilityPartial,
+			Reason:    "Supports -p non-interactive prompts in classic mode",
+			Tested:    true,
+		},
+		SlashControl: CapabilityEvidence{
+			Status:    CapabilitySupported,
+			Mechanism: "Universal /ai slash command router",
+			Tested:    true,
+		},
+		ControlLevel: registry.ControlLevelTerminal,
 	}
+}
+
+func (d *CodexDriver) Capabilities(ctx context.Context, p model.Profile) ControlCapabilities {
+	return d.EffectiveCaps(ctx, p).ToBooleanCaps()
 }
 
 func (d *CodexDriver) BuildCommand(ctx context.Context, p model.Profile, extraArgs []string) (string, []string, []string, error) {
@@ -71,4 +140,22 @@ func (d *CodexDriver) BuildCommand(ctx context.Context, p model.Profile, extraAr
 	})
 
 	return bin, extraArgs, env, nil
+}
+
+func (d *CodexDriver) CanResume(ctx context.Context, p model.Profile, providerSessionID string) (bool, string) {
+	if strings.TrimSpace(providerSessionID) == "" {
+		return false, "Provider session ID is empty or unknown"
+	}
+	return true, ""
+}
+
+func (d *CodexDriver) BuildResumeArgs(ctx context.Context, p model.Profile, providerSessionID string) ([]string, error) {
+	if strings.TrimSpace(providerSessionID) == "" {
+		return nil, fmt.Errorf("cannot resume codex session without valid session ID")
+	}
+	return []string{"resume", providerSessionID}, nil
+}
+
+func (d *CodexDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error) {
+	return []string{"-m", "gpt-5.6-sol", kickoffPrompt}, nil
 }

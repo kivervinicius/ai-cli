@@ -172,23 +172,7 @@ func ApplyIsolation(profileHome string, policy Policy) error {
 			return
 		}
 
-		if _, err := os.Stat(src); err != nil {
-			return
-		}
-
-		fi, err := os.Lstat(dst)
-		if err == nil {
-			if fi.Mode()&os.ModeSymlink != 0 {
-				target, err := os.Readlink(dst)
-				if err == nil && target == src {
-					return
-				}
-				_ = os.Remove(dst)
-			} else {
-				return
-			}
-		}
-		_ = os.Symlink(src, dst)
+		_ = SafeLinkOrCopy(src, dst)
 	}
 
 	syncLink(".gitconfig", policy.AllowGitConfig)
@@ -210,18 +194,7 @@ func ApplyIsolation(profileHome string, policy Policy) error {
 				}
 				src := filepath.Join(hostConfig, e.Name())
 				dst := filepath.Join(profileConfig, e.Name())
-				if fi, err := os.Lstat(dst); err == nil {
-					if fi.Mode()&os.ModeSymlink != 0 {
-						target, err := os.Readlink(dst)
-						if err == nil && target == src {
-							continue
-						}
-						_ = os.Remove(dst)
-					} else {
-						continue
-					}
-				}
-				_ = os.Symlink(src, dst)
+				_ = SafeLinkOrCopy(src, dst)
 			}
 		}
 	}

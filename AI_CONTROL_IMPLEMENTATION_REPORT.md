@@ -5,9 +5,10 @@
 **Continuation Branch:** `feat/ai-control-runtime`
 **Base Branch:** `feat/control-plane-evolution` (SHA: `ced1e31191544a49fe05634d0b134d1b848c783e`)
 
----
+> **SUPERSEDED NOTICE (2026-08-28):**
+> This report reflects the preliminary runtime milestone and has been audited and superseded by the Truth Audit and Hardening Phase report: [`DEV/AI_CONTROL_HARDENING_REPORT.md`](DEV/AI_CONTROL_HARDENING_REPORT.md).
 
-## 1. Executive Verdict: GO
+## 1. Executive Verdict: SUPERSEDED (See Hardening Report)
 
 The AI Control Runtime and Universal Agent Management layer has been successfully implemented on top of the latest development baseline without modifying or regressing the classic execution plane.
 

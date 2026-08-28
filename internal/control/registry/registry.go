@@ -51,6 +51,13 @@ func (r *Registry) load() error {
 	if r.filePath == "" {
 		return nil
 	}
+	_ = os.MkdirAll(filepath.Dir(r.filePath), 0700)
+	unlock, err := acquireFileLock(r.filePath)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	data, err := os.ReadFile(r.filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -73,6 +80,12 @@ func (r *Registry) saveLocked() error {
 		return nil
 	}
 	_ = os.MkdirAll(filepath.Dir(r.filePath), 0700)
+	
+	unlock, err := acquireFileLock(r.filePath)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	var list []RuntimeSession
 	for _, s := range r.sessions {

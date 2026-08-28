@@ -3,8 +3,10 @@ package host
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
+	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/profile"
 )
 
@@ -40,7 +42,7 @@ func StripANSI(str string) string {
 	return b.String()
 }
 
-// RouteSlashCommand inspects terminal input lines and intercepts /ai commands.
+// RouteSlashCommand inspects terminal input lines and intercepts /ai commands with live usage data.
 func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResult {
 	clean := StripANSI(input)
 	trimmed := strings.TrimSpace(clean)
@@ -81,8 +83,8 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 ║               AI CONTROL — UNIVERSAL SLASH COMMANDS             ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║  /ai status               Show current runtime status & quota   ║
-║  /ai accounts             List available accounts for provider  ║
-║  /ai usage                Display honest usage metrics          ║
+║  /ai accounts             List available accounts & quotas      ║
+║  /ai usage                Display honest usage metrics snapshot ║
 ║  /ai handoff <profile>    Same-provider account handoff         ║
 ║  /ai continue <provider>  Cross-provider context handoff        ║
 ║  /ai control              Open Control Center TUI instructions  ║
@@ -94,6 +96,9 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 		return SlashResult{Intercepted: true, Response: resp}
 
 	case "status":
+		snap := profile.GetUsageSnapshot(session.ProviderID, session.ProfileID)
+		usageStr := formatUsageSummary(snap)
+
 		resp := fmt.Sprintf(`
 ┌─ AI CONTROL STATUS ──────────────────────────────────────────┐
 │  Runtime ID:       %-41s │
@@ -103,44 +108,93 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 │  State:            %-41s │
 │  Control Level:    %-41s │
 │  Workspace:        %-41s │
+│  Usage / Quota:    %-41s │
 └──────────────────────────────────────────────────────────────┘
-`, session.RuntimeID, session.ProviderID, session.ProfileID, session.ProviderSessionID, session.State, session.ControlLevel, session.Workspace)
+`, session.RuntimeID, strings.ToUpper(session.ProviderID), session.ProfileID,
+			fallbackUnknown(session.ProviderSessionID), session.State, session.ControlLevel,
+			truncateStr(session.Workspace, 41), usageStr)
 		return SlashResult{Intercepted: true, Response: resp}
 
 	case "accounts":
 		profs, _ := profile.List()
 		var lines []string
-		lines = append(lines, fmt.Sprintf("=== Accounts for Provider: %s ===", strings.ToUpper(session.ProviderID)))
+		lines = append(lines, fmt.Sprintf("=== Accounts & Quotas for Provider: %s ===", strings.ToUpper(session.ProviderID)))
+		lines = append(lines, fmt.Sprintf("%-16s %-12s %-14s %-14s %s", "PROFILE", "STATUS", "CAPACITY", "FRESHNESS", "RESET"))
+		lines = append(lines, strings.Repeat("─", 70))
+
+		found := 0
 		for _, p := range profs {
 			if p.Provider == session.ProviderID {
+				found++
 				activeMarker := "  "
 				if p.Name == session.ProfileID {
 					activeMarker = "> "
 				}
 				info := profile.GetAccountInfo(p.Provider, p.Name)
-				acc := info.Email
-				if acc == "" {
-					acc = info.Status
+				snap := profile.GetUsageSnapshot(p.Provider, p.Name)
+
+				authStatus := "AUTH_OK"
+				if !info.Authenticated {
+					authStatus = "NO_AUTH"
 				}
-				lines = append(lines, fmt.Sprintf("%s%-18s %-25s %s", activeMarker, p.Name, acc, info.Plan))
+
+				capStr := "UNKNOWN"
+				for _, w := range snap.Windows {
+					if w.RemainingPercent != nil {
+						capStr = fmt.Sprintf("%.0f%% left", *w.RemainingPercent)
+						break
+					}
+				}
+				if snap.Status == model.UsageRateLimited {
+					capStr = "429 LIMITED"
+				}
+
+				freshStr := string(snap.Status)
+				resetStr := "-"
+				for _, w := range snap.Windows {
+					if w.ResetDescription != "" {
+						resetStr = w.ResetDescription
+						break
+					}
+				}
+
+				lines = append(lines, fmt.Sprintf("%s%-14s %-12s %-14s %-14s %s",
+					activeMarker, p.Name, authStatus, capStr, freshStr, resetStr,
+				))
 			}
 		}
-		if len(lines) == 1 {
-			lines = append(lines, "  (No other profiles configured)")
+		if found == 0 {
+			lines = append(lines, "  (No profiles configured for this provider)")
 		}
 		return SlashResult{Intercepted: true, Response: strings.Join(lines, "\n") + "\n"}
 
 	case "usage":
-		return SlashResult{
-			Intercepted: true,
-			Response:    fmt.Sprintf("AI Control: Quota tracking active for %s:%s\n", session.ProviderID, session.ProfileID),
+		snap := profile.GetUsageSnapshot(session.ProviderID, session.ProfileID)
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("\n=== Quota Snapshot: %s:%s ===\n", strings.ToUpper(session.ProviderID), session.ProfileID))
+		sb.WriteString(fmt.Sprintf("Status:       %s\n", snap.Status))
+		sb.WriteString(fmt.Sprintf("Source:       %s\n", snap.Source))
+		if len(snap.Windows) > 0 {
+			for _, w := range snap.Windows {
+				remStr := "UNKNOWN"
+				if w.RemainingPercent != nil {
+					remStr = fmt.Sprintf("%.1f%%", *w.RemainingPercent)
+				}
+				sb.WriteString(fmt.Sprintf("Window [%s]:  Remaining: %s | Reset: %s\n", w.Kind, remStr, w.ResetDescription))
+			}
+		} else {
+			sb.WriteString("Remaining:    UNKNOWN (No authentic quota metric exposed)\n")
 		}
+		if !snap.FetchedAt.IsZero() {
+			sb.WriteString(fmt.Sprintf("Last Check:   %s (%s ago)\n", snap.FetchedAt.Format(time.RFC3339), time.Since(snap.FetchedAt).Round(time.Second)))
+		}
+		return SlashResult{Intercepted: true, Response: sb.String() + "\n"}
 
 	case "detach":
 		return SlashResult{
 			Intercepted: true,
 			Action:      "detach",
-			Response:    "\n[AI Control] Detached from runtime session. Process remains running.\n",
+			Response:    "\n[AI Control] Detached from runtime session. Host process remains running in background.\n",
 		}
 
 	case "stop":
@@ -154,7 +208,7 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 		if len(parts) < 3 {
 			return SlashResult{
 				Intercepted: true,
-				Response:    "Usage: /ai handoff <target-profile> (e.g. /ai handoff codex:personal or /ai handoff personal)\n",
+				Response:    "Usage: /ai handoff <target-profile> (e.g. /ai handoff codex:work or /ai handoff work)\n",
 			}
 		}
 		target := parts[2]
@@ -193,3 +247,37 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 		}
 	}
 }
+
+func fallbackUnknown(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return "UNKNOWN"
+	}
+	return s
+}
+
+func truncateStr(s string, max int) string {
+	if len(s) > max {
+		return s[:max-3] + "..."
+	}
+	return s
+}
+
+func formatUsageSummary(snap model.UsageSnapshot) string {
+	switch snap.Status {
+	case model.UsageLive, model.UsageCached:
+		for _, w := range snap.Windows {
+			if w.RemainingPercent != nil {
+				return fmt.Sprintf("%.0f%% remaining (%s)", *w.RemainingPercent, snap.Status)
+			}
+		}
+		return string(snap.Status)
+	case model.UsageRateLimited:
+		return "RATE_LIMITED (429)"
+	case model.UsageUnsupported:
+		return "UNSUPPORTED"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+

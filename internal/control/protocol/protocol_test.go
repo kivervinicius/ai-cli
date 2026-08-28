@@ -15,6 +15,9 @@ func TestProtocolSerialization(t *testing.T) {
 	if req.Command != CmdResize {
 		t.Errorf("expected CmdResize, got %s", req.Command)
 	}
+	if req.ID == "" {
+		t.Errorf("expected request ID to be populated")
+	}
 
 	resp, err := NewResponse(StatusData{
 		RuntimeID: "rt-123",

@@ -40,6 +40,26 @@ func (c *Client) Close() error {
 	return nil
 }
 
+const MaxRPCResponseSize = 1024 * 1024
+
+func readBounded(r *bufio.Reader, limit int) ([]byte, error) {
+	var buf []byte
+	for {
+		chunk, isPrefix, err := r.ReadLine()
+		buf = append(buf, chunk...)
+		if len(buf) > limit {
+			return nil, errors.New("response exceeded max size limit")
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !isPrefix {
+			break
+		}
+	}
+	return buf, nil
+}
+
 // Send sends a request and awaits a response.
 func (c *Client) Send(cmd CommandType, payload any) (Response, error) {
 	c.mu.Lock()
@@ -60,7 +80,7 @@ func (c *Client) Send(cmd CommandType, payload any) (Response, error) {
 		return Response{}, err
 	}
 
-	line, err := c.reader.ReadBytes('\n')
+	line, err := readBounded(c.reader, MaxRPCResponseSize)
 	_ = c.conn.SetDeadline(time.Time{}) // Disable deadline after RPC completes
 	if err != nil {
 		return Response{}, err

@@ -3,6 +3,7 @@ package host
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,37 +14,40 @@ import (
 	"sync"
 	"time"
 
-	"github.com/creack/pty"
 	"github.com/kivervinicius/ai-cli/internal/control/events"
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
-	"golang.org/x/term"
+	"github.com/kivervinicius/ai-cli/internal/control/terminal"
 )
+
+const MaxFrameSize = 64 * 1024 // 64 KB max frame
 
 // Config configures a SessionHost instance.
 type Config struct {
-	Session registry.RuntimeSession
-	Binary  string
-	Args    []string
-	Env     []string
-	Cwd     string
-	UsePTY  bool
+	Session     registry.RuntimeSession
+	Binary      string
+	Args        []string
+	Env         []string
+	Cwd         string
+	InitialRows int
+	InitialCols int
 }
 
 // SessionHost manages a single supervised process runtime and its IPC listener.
 type SessionHost struct {
-	mu          sync.RWMutex
-	session     registry.RuntimeSession
-	cfg         Config
-	cmd         *exec.Cmd
-	ptmx        *os.File
-	stdinWriter io.Writer
-	ringBuffer  *RingBuffer
-	listener    net.Listener
-	clients     map[net.Conn]bool
-	stopChan    chan struct{}
-	doneChan    chan struct{}
-	lineBuf     bytes.Buffer
+	mu           sync.RWMutex
+	session      registry.RuntimeSession
+	cfg          Config
+	cmd          *exec.Cmd
+	termBackend  terminal.Backend
+	ringBuffer   *RingBuffer
+	listener     net.Listener
+	clients      map[net.Conn]bool
+	activeWriter net.Conn
+	stopChan     chan struct{}
+	doneChan     chan struct{}
+	lineBuf      bytes.Buffer
+	stopOnce     sync.Once
 }
 
 // NewSessionHost creates a new SessionHost for a given runtime.
@@ -56,14 +60,17 @@ func NewSessionHost(cfg Config) (*SessionHost, error) {
 	cmd.Dir = cfg.Cwd
 	cmd.Env = cfg.Env
 
+	termBackend := terminal.NewBackend()
+
 	return &SessionHost{
-		session:    cfg.Session,
-		cfg:        cfg,
-		cmd:        cmd,
-		ringBuffer: NewRingBuffer(128 * 1024), // 128 KB terminal history
-		clients:    make(map[net.Conn]bool),
-		stopChan:   make(chan struct{}),
-		doneChan:   make(chan struct{}),
+		session:     cfg.Session,
+		cfg:         cfg,
+		cmd:         cmd,
+		termBackend: termBackend,
+		ringBuffer:  NewRingBuffer(128 * 1024), // 128 KB terminal history
+		clients:     make(map[net.Conn]bool),
+		stopChan:    make(chan struct{}),
+		doneChan:    make(chan struct{}),
 	}, nil
 }
 
@@ -72,44 +79,27 @@ func (sh *SessionHost) Start() error {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 
-	// 1. Start child process with PTY if supported, otherwise standard pipes
-	var err error
-	var ptmx *os.File
-
-	var initialSize *pty.Winsize
-	if w, h, sizeErr := term.GetSize(int(os.Stdout.Fd())); sizeErr == nil && w > 0 && h > 0 {
-		initialSize = &pty.Winsize{Rows: uint16(h), Cols: uint16(w)}
-	} else {
-		initialSize = &pty.Winsize{Rows: 24, Cols: 80}
+	// 1. Start process with terminal backend
+	rows := sh.cfg.InitialRows
+	cols := sh.cfg.InitialCols
+	if rows <= 0 {
+		rows = 24
+	}
+	if cols <= 0 {
+		cols = 80
 	}
 
-	ptmx, err = pty.StartWithSize(sh.cmd, initialSize)
-	if err != nil {
-		// Fallback to standard pipe execution if PTY fails
-		inPipe, pipeErr := sh.cmd.StdinPipe()
-		if pipeErr != nil {
-			return fmt.Errorf("failed to create stdin pipe: %w", pipeErr)
-		}
-		outPipe, pipeErr := sh.cmd.StdoutPipe()
-		if pipeErr != nil {
-			return fmt.Errorf("failed to create stdout pipe: %w", pipeErr)
-		}
-		sh.cmd.Stderr = sh.cmd.Stdout
-
-		if startErr := sh.cmd.Start(); startErr != nil {
-			return fmt.Errorf("failed to start process: %w", startErr)
-		}
-
-		sh.stdinWriter = inPipe
-		go sh.streamReader(outPipe)
-	} else {
-		sh.ptmx = ptmx
-		sh.stdinWriter = ptmx
-		go sh.streamReader(ptmx)
+	if err := sh.termBackend.Start(sh.cmd, rows, cols); err != nil {
+		return fmt.Errorf("failed to start terminal backend: %w", err)
 	}
+
+	// Start reading stdout from terminal backend
+	go sh.streamReader(sh.termBackend)
 
 	// Update session details
-	sh.session.PID = sh.cmd.Process.Pid
+	sh.session.PID = sh.termBackend.PID()
+	sh.session.HostPID = os.Getpid()
+	sh.session.HostGeneration = time.Now().UnixNano()
 	sh.session.State = registry.StateRunning
 	sh.session.ControlEndpoint = protocol.EndpointPath(sh.session.RuntimeID)
 
@@ -122,8 +112,8 @@ func (sh *SessionHost) Start() error {
 		sh.session.ProviderID,
 		sh.session.ProfileID,
 		events.EventProcessStarted,
-		fmt.Sprintf("Started supervised %s runtime (PID %d)", sh.session.ProviderID, sh.session.PID),
-		map[string]any{"pid": sh.session.PID, "endpoint": sh.session.ControlEndpoint},
+		fmt.Sprintf("Started supervised %s runtime (PID %d, Host PID %d)", sh.session.ProviderID, sh.session.PID, sh.session.HostPID),
+		map[string]any{"pid": sh.session.PID, "host_pid": sh.session.HostPID, "endpoint": sh.session.ControlEndpoint},
 	))
 
 	// 2. Start IPC listener
@@ -180,7 +170,7 @@ func (sh *SessionHost) serveIPC() {
 }
 
 func (sh *SessionHost) handleClient(conn net.Conn) {
-	reader := bufio.NewReader(conn)
+	reader := bufio.NewReaderSize(conn, MaxFrameSize)
 
 	// Read initial RPC command frames
 	for {
@@ -191,10 +181,16 @@ func (sh *SessionHost) handleClient(conn net.Conn) {
 			return
 		}
 
+		if len(line) > MaxFrameSize {
+			_ = conn.Close()
+			sh.removeClient(conn)
+			return
+		}
+
 		var req protocol.Request
 		if err := json.Unmarshal(line, &req); err != nil {
-			// If not a JSON command, process raw input
-			sh.processAttachedInput(line)
+			// If not a JSON command, process raw input if writer
+			sh.processAttachedInput(conn, line)
 			continue
 		}
 
@@ -215,10 +211,9 @@ func (sh *SessionHost) streamAttachedInput(conn net.Conn, reader *bufio.Reader) 
 	_ = conn.SetDeadline(time.Time{})
 	buf := make([]byte, 1024)
 	for {
-		// Read raw bytes from terminal client
 		n, err := reader.Read(buf)
 		if n > 0 {
-			sh.processAttachedInput(buf[:n])
+			sh.processAttachedInput(conn, buf[:n])
 		}
 		if err != nil {
 			sh.removeClient(conn)
@@ -253,22 +248,26 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 
 	case protocol.CmdAttach:
 		sh.clients[conn] = true
+		// Acquire single-writer lease if none active
+		if sh.activeWriter == nil {
+			sh.activeWriter = conn
+		}
 		// Send initial terminal history from ring buffer
 		history := sh.ringBuffer.Bytes()
 		resp, _ = protocol.NewResponse(string(history))
 
 	case protocol.CmdDetach:
 		delete(sh.clients, conn)
+		if sh.activeWriter == conn {
+			sh.activeWriter = nil
+		}
 		resp, _ = protocol.NewResponse("detached")
 
 	case protocol.CmdResize:
-		if sh.ptmx != nil && req.Payload != nil {
+		if req.Payload != nil {
 			var p protocol.ResizePayload
 			if json.Unmarshal(req.Payload, &p) == nil && p.Rows > 0 && p.Cols > 0 {
-				_ = pty.Setsize(sh.ptmx, &pty.Winsize{
-					Rows: uint16(p.Rows),
-					Cols: uint16(p.Cols),
-				})
+				_ = sh.termBackend.Resize(p.Rows, p.Cols)
 			}
 		}
 		resp, _ = protocol.NewResponse("resized")
@@ -277,7 +276,7 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		if req.Payload != nil {
 			var p protocol.InputPayload
 			if json.Unmarshal(req.Payload, &p) == nil && p.Data != "" {
-				sh.processAttachedInput([]byte(p.Data))
+				sh.processAttachedInput(conn, []byte(p.Data))
 			}
 		}
 		resp, _ = protocol.NewResponse("input_received")
@@ -298,9 +297,17 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 	_, _ = conn.Write(append(data, '\n'))
 }
 
-func (sh *SessionHost) processAttachedInput(data []byte) {
+func (sh *SessionHost) processAttachedInput(conn net.Conn, data []byte) {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
+
+	// Only active writer (or first attached client) can send input to child process
+	if sh.activeWriter != nil && sh.activeWriter != conn {
+		return
+	}
+	if sh.activeWriter == nil {
+		sh.activeWriter = conn
+	}
 
 	for _, b := range data {
 		if b == '\r' || b == '\n' {
@@ -313,21 +320,16 @@ func (sh *SessionHost) processAttachedInput(data []byte) {
 			// 1. Check for escape prefix "//ai ..."
 			if strings.HasPrefix(trimmed, "//ai") {
 				// Clear the line from the child process readline buffer with Ctrl+U (0x15)
-				if sh.stdinWriter != nil {
-					_, _ = sh.stdinWriter.Write([]byte{0x15})
-					escaped := "/ai" + trimmed[4:] + "\r"
-					_, _ = sh.stdinWriter.Write([]byte(escaped))
-				}
+				_, _ = sh.termBackend.Write([]byte{0x15})
+				escaped := "/ai" + trimmed[4:] + "\r"
+				_, _ = sh.termBackend.Write([]byte(escaped))
 				continue
 			}
 
 			// 2. Check for reserved "/ai" commands
 			if strings.HasPrefix(trimmed, "/ai") {
 				// Wipe the typed /ai command from the child process readline buffer with Ctrl+U (0x15)
-				// and DO NOT send \r to child process.
-				if sh.stdinWriter != nil {
-					_, _ = sh.stdinWriter.Write([]byte{0x15})
-				}
+				_, _ = sh.termBackend.Write([]byte{0x15})
 
 				route := RouteSlashCommand(trimmed, sh.session)
 				if route.Intercepted && route.Response != "" {
@@ -336,39 +338,63 @@ func (sh *SessionHost) processAttachedInput(data []byte) {
 
 				switch route.Action {
 				case "detach":
-					for conn := range sh.clients {
-						_ = conn.Close()
+					for c := range sh.clients {
+						_ = c.Close()
 					}
 					sh.clients = make(map[net.Conn]bool)
+					sh.activeWriter = nil
 				case "stop":
 					go sh.Stop()
+				case "handoff":
+					if PerformAccountHandoff != nil {
+						go func(target string) {
+							_, err := PerformAccountHandoff(context.Background(), sh.session.RuntimeID, target)
+							if err != nil {
+								sh.broadcast([]byte(fmt.Sprintf("\r\n[AI Control] Handoff failed: %v\r\n", err)))
+							} else {
+								sh.broadcast([]byte("\r\n[AI Control] Handoff succeeded.\r\n"))
+								// The old process will be quiesced and clients disconnected by PerformAccountHandoff via protocol.Stop()
+							}
+						}(route.ActionArg)
+					}
+				case "continue":
+					if PerformContextHandoff != nil {
+						go func(target string) {
+							// target is provider[:profile]
+							var provider, profile string
+							if idx := strings.Index(target, ":"); idx != -1 {
+								provider = target[:idx]
+								profile = target[idx+1:]
+							} else {
+								provider = target
+							}
+							_, err := PerformContextHandoff(context.Background(), sh.session.RuntimeID, provider, profile)
+							if err != nil {
+								sh.broadcast([]byte(fmt.Sprintf("\r\n[AI Control] Continue failed: %v\r\n", err)))
+							} else {
+								sh.broadcast([]byte("\r\n[AI Control] Continue succeeded.\r\n"))
+							}
+						}(route.ActionArg)
+					}
 				}
 				continue
 			}
 
 			// 3. Normal line submission to child process
-			if sh.stdinWriter != nil {
-				_, _ = sh.stdinWriter.Write([]byte{'\r'})
-			}
+			_, _ = sh.termBackend.Write([]byte{'\r'})
 		} else if b == 0x03 || b == 0x15 { // Ctrl+C or Ctrl+U
 			sh.lineBuf.Reset()
-			if sh.stdinWriter != nil {
-				_, _ = sh.stdinWriter.Write([]byte{b})
-			}
+			_, _ = sh.termBackend.Write([]byte{b})
 		} else if b == 0x7f || b == 0x08 { // Backspace
 			if sh.lineBuf.Len() > 0 {
 				buf := sh.lineBuf.Bytes()
 				sh.lineBuf.Reset()
 				sh.lineBuf.Write(buf[:len(buf)-1])
 			}
-			if sh.stdinWriter != nil {
-				_, _ = sh.stdinWriter.Write([]byte{b})
-			}
+			_, _ = sh.termBackend.Write([]byte{b})
 		} else {
 			sh.lineBuf.WriteByte(b)
-			if sh.stdinWriter != nil {
-				_, _ = sh.stdinWriter.Write([]byte{b})
-			}
+			_, _ = sh.termBackend.Write([]byte{b})
 		}
 	}
 }
@@ -377,6 +403,9 @@ func (sh *SessionHost) removeClient(conn net.Conn) {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 	delete(sh.clients, conn)
+	if sh.activeWriter == conn {
+		sh.activeWriter = nil
+	}
 }
 
 func (sh *SessionHost) waitProcess() {
@@ -385,9 +414,7 @@ func (sh *SessionHost) waitProcess() {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 
-	if sh.ptmx != nil {
-		_ = sh.ptmx.Close()
-	}
+	_ = sh.termBackend.Close()
 
 	state := registry.StateStopped
 	if err != nil {
@@ -408,8 +435,14 @@ func (sh *SessionHost) waitProcess() {
 	close(sh.doneChan)
 }
 
+// Wait blocks until the supervised child process terminates.
+func (sh *SessionHost) Wait() {
+	<-sh.doneChan
+}
+
 // Stop gracefully stops the supervised process.
 func (sh *SessionHost) Stop() error {
+	sh.stopOnce.Do(func() { close(sh.stopChan) })
 	sh.mu.Lock()
 	if sh.cmd.Process != nil {
 		_ = sh.cmd.Process.Signal(os.Interrupt)
@@ -426,6 +459,7 @@ func (sh *SessionHost) Stop() error {
 
 // Terminate forcefully kills the supervised process.
 func (sh *SessionHost) Terminate() error {
+	sh.stopOnce.Do(func() { close(sh.stopChan) })
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 
@@ -435,5 +469,6 @@ func (sh *SessionHost) Terminate() error {
 	if sh.listener != nil {
 		_ = sh.listener.Close()
 	}
+	_ = sh.termBackend.Close()
 	return nil
 }

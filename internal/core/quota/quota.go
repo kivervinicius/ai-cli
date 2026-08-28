@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -192,7 +193,7 @@ func RenderProgressBar(status model.UsageStatus, remainingPercent *float64, widt
 	switch status {
 	case model.UsageLive, model.UsageCached, model.UsageEstimated:
 		if remainingPercent == nil {
-			return "[" + strings.Repeat("?", width) + "]"
+			return formatProgressLabel("UNKNOWN", width)
 		}
 		pct := *remainingPercent
 		if pct < 0 {
@@ -206,20 +207,37 @@ func RenderProgressBar(status model.UsageStatus, remainingPercent *float64, widt
 			fillCount = width
 		}
 		emptyCount := width - fillCount
+
+		// On Windows console (cmd.exe, PowerShell, legacy OEM code pages CP437/CP850/CP1252),
+		// UTF-8 block characters (█, ░) frequently render as '???' or mojibake.
+		// We use universal ASCII characters (# and -) on Windows to ensure 100% clean rendering.
+		if runtime.GOOS == "windows" {
+			return "[" + strings.Repeat("#", fillCount) + strings.Repeat("-", emptyCount) + "]"
+		}
 		return "[" + strings.Repeat("█", fillCount) + strings.Repeat("░", emptyCount) + "]"
 
 	case model.UsageRateLimited:
-		return "[RATE-LIMITED]"
+		return formatProgressLabel("LIMITED", width)
 
 	case model.UsageUnsupported:
-		return "[UNSUPPORTED ]"
+		return formatProgressLabel("UNSUPPORT", width)
 
 	case model.UsageError:
-		return "[FETCH-ERROR ]"
+		return formatProgressLabel("ERROR", width)
 
 	default:
-		return "[" + strings.Repeat("?", width) + "]"
+		return formatProgressLabel("UNKNOWN", width)
 	}
+}
+
+func formatProgressLabel(label string, width int) string {
+	if len(label) >= width {
+		return "[" + label[:width] + "]"
+	}
+	pad := width - len(label)
+	left := pad / 2
+	right := pad - left
+	return "[" + strings.Repeat(" ", left) + label + strings.Repeat(" ", right) + "]"
 }
 
 // RenderShortStatus returns a compact 1-line representation for tables and status bars.

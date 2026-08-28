@@ -28,7 +28,7 @@ func TestQuotaEnginePersistenceAndRendering(t *testing.T) {
 
 	// Test 2: Progress bar for UNKNOWN
 	unknownBar := RenderShortStatus(model.UsageUnknown, nil, 10)
-	if !strings.Contains(unknownBar, "UNKNOWN") || !strings.Contains(unknownBar, "?") {
+	if !strings.Contains(unknownBar, "UNKNOWN") {
 		t.Fatalf("unexpected unknown bar rendering: %s", unknownBar)
 	}
 

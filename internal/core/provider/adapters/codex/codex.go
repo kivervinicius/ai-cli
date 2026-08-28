@@ -383,6 +383,7 @@ func linkSharedCodexItems(profileHome, hostCodex string) {
 		"thread_history_1.sqlite",
 		"thread_history_1.sqlite-wal",
 		"thread_history_1.sqlite-shm",
+		"sessions",
 		"rules",
 		"skills",
 		"customizations",
@@ -396,18 +397,6 @@ func linkSharedCodexItems(profileHome, hostCodex string) {
 			continue
 		}
 
-		if fi, err := os.Lstat(dst); err == nil {
-			if fi.Mode()&os.ModeSymlink != 0 {
-				target, err := os.Readlink(dst)
-				if err == nil && target == src {
-					continue
-				}
-				_ = os.Remove(dst)
-			} else {
-				continue
-			}
-		}
-
-		_ = os.Symlink(src, dst)
+		_ = security.SafeLinkOrCopy(src, dst)
 	}
 }

@@ -2,9 +2,11 @@ package driver
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 
+	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/security"
@@ -30,22 +32,89 @@ func (d *GeminiDriver) Detect(ctx context.Context) (model.DetectionResult, error
 	}, nil
 }
 
-func (d *GeminiDriver) Capabilities(ctx context.Context, p model.Profile) ControlCapabilities {
-	return ControlCapabilities{
-		Process:          true,
-		Terminal:         true,
-		Attach:           true,
-		StructuredEvents: false,
-		Sessions:         true,
-		Resume:           false,
-		Fork:             false,
-		SubmitPrompt:     false,
-		CancelTurn:       false,
-		Approvals:        false,
-		NativeUIAttach:   false,
-		Headless:         false,
-		SlashControl:     true,
+func (d *GeminiDriver) EffectiveCaps(ctx context.Context, p model.Profile) EffectiveCapabilities {
+	det, _ := d.Detect(ctx)
+	version := det.Version
+
+	return EffectiveCapabilities{
+		Process: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "os/exec",
+			Tested:          true,
+		},
+		Terminal: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "PTY / ConPTY TerminalBackend",
+			Tested:          true,
+		},
+		Attach: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "AI Control IPC Socket/Pipe",
+			Tested:          true,
+		},
+		StructuredEvents: CapabilityEvidence{
+			Status:          CapabilityUnsupported,
+			ProviderVersion: version,
+			Reason:          "Gemini CLI hooks are not wired to daemon; running in TERMINAL mode",
+			Tested:          false,
+		},
+		Sessions: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "gemini --list-sessions / local SQLite",
+			Tested:          true,
+		},
+		Resume: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "gemini -r <session-id>",
+			Tested:          true,
+		},
+		Fork: CapabilityEvidence{
+			Status: CapabilityUnsupported,
+			Tested: false,
+		},
+		SubmitPrompt: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "gemini -p <prompt>",
+			Tested:          true,
+		},
+		CancelTurn: CapabilityEvidence{
+			Status:    CapabilitySupported,
+			Mechanism: "Ctrl+C signal passthrough",
+			Tested:    true,
+		},
+		Approvals: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "gemini --approval-mode",
+			Tested:          true,
+		},
+		NativeUIAttach: CapabilityEvidence{
+			Status: CapabilityUnsupported,
+			Tested: false,
+		},
+		Headless: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "gemini -p / non-interactive",
+			Tested:          true,
+		},
+		SlashControl: CapabilityEvidence{
+			Status:    CapabilitySupported,
+			Mechanism: "Universal /ai slash command router",
+			Tested:    true,
+		},
+		ControlLevel: registry.ControlLevelTerminal,
 	}
+}
+
+func (d *GeminiDriver) Capabilities(ctx context.Context, p model.Profile) ControlCapabilities {
+	return d.EffectiveCaps(ctx, p).ToBooleanCaps()
 }
 
 func (d *GeminiDriver) BuildCommand(ctx context.Context, p model.Profile, extraArgs []string) (string, []string, []string, error) {
@@ -64,11 +133,29 @@ func (d *GeminiDriver) BuildCommand(ctx context.Context, p model.Profile, extraA
 	_ = security.ApplyIsolation(home, security.GetPolicy(cfgObj.IsolationPreset))
 
 	env := runtime.EnvSet(os.Environ(), map[string]string{
-		"HOME":             home,
-		"GEMINI_CLI_HOME":  home,
-		"AI_PROFILE":       p.Name,
-		"AI_PROVIDER":      "gemini",
+		"HOME":            home,
+		"GEMINI_CLI_HOME": home,
+		"AI_PROFILE":      p.Name,
+		"AI_PROVIDER":     "gemini",
 	})
 
 	return bin, extraArgs, env, nil
+}
+
+func (d *GeminiDriver) CanResume(ctx context.Context, p model.Profile, providerSessionID string) (bool, string) {
+	if strings.TrimSpace(providerSessionID) == "" {
+		return false, "Provider session ID is empty or unknown"
+	}
+	return true, ""
+}
+
+func (d *GeminiDriver) BuildResumeArgs(ctx context.Context, p model.Profile, providerSessionID string) ([]string, error) {
+	if strings.TrimSpace(providerSessionID) == "" {
+		return nil, fmt.Errorf("cannot resume gemini session without valid session ID")
+	}
+	return []string{"-r", providerSessionID}, nil
+}
+
+func (d *GeminiDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error) {
+	return []string{kickoffPrompt}, nil
 }

@@ -22,6 +22,7 @@ const (
 	EventApproved         EventType = "APPROVED"
 	EventRejected         EventType = "REJECTED"
 	EventRateLimited      EventType = "RATE_LIMITED"
+	EventHandoffCompleted EventType = "HANDOFF_COMPLETED"
 	EventError            EventType = "ERROR"
 )
 

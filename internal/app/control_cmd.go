@@ -8,7 +8,9 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/term"
@@ -93,6 +95,62 @@ FLAGS:
   -h, --help                    Show this help message`)
 }
 
+// controlHostCmd is the internal background daemon worker running as: ai __control-host --runtime <runtime-id>
+func controlHostCmd(args []string) error {
+	var runtimeID string
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--runtime" && i+1 < len(args) {
+			runtimeID = args[i+1]
+			i++
+		}
+	}
+	if runtimeID == "" {
+		return errors.New("missing --runtime <id> parameter")
+	}
+
+	reg := registry.DefaultRegistry()
+	sess, ok := reg.Get(runtimeID)
+	if !ok {
+		return fmt.Errorf("runtime %q not found in registry", runtimeID)
+	}
+
+	d, err := driver.DefaultRegistry().Get(sess.ProviderID)
+	if err != nil {
+		return fmt.Errorf("driver not found for provider %s: %w", sess.ProviderID, err)
+	}
+
+	p := model.Profile{Name: sess.ProfileID, Provider: sess.ProviderID}
+	bin, cmdArgs, env, err := d.BuildCommand(context.Background(), p, sess.Args)
+	if err != nil {
+		return fmt.Errorf("failed to build runtime command: %w", err)
+	}
+
+	sh, err := host.NewSessionHost(host.Config{
+		Session: sess,
+		Binary:  bin,
+		Args:    cmdArgs,
+		Env:     env,
+		Cwd:     sess.Workspace,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create SessionHost: %w", err)
+	}
+
+	if err := sh.Start(); err != nil {
+		return fmt.Errorf("failed to start SessionHost: %w", err)
+	}
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		<-sigChan
+		sh.Stop()
+	}()
+
+	sh.Wait()
+	return nil
+}
+
 func controlStartCmd(args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: ai control start <provider> [--profile <name>] [args...]")
@@ -151,7 +209,7 @@ func controlStartCmd(args []string) error {
 	}
 
 	p := model.Profile{Name: profileName, Provider: providerID}
-	caps := d.Capabilities(ctx, p)
+	effCaps := d.EffectiveCaps(ctx, p)
 
 	bin, cmdArgs, env, err := d.BuildCommand(ctx, p, extraArgs)
 	if err != nil {
@@ -162,41 +220,46 @@ func controlStartCmd(args []string) error {
 	reg := registry.DefaultRegistry()
 	runtimeID := fmt.Sprintf("%s-%d", providerID, len(reg.List())+1)
 
-	controlLevel := registry.ControlLevelTerminal
-	if caps.StructuredEvents {
-		controlLevel = registry.ControlLevelAPI
-	}
-
 	session := registry.RuntimeSession{
-		RuntimeID:    runtimeID,
-		ProviderID:   providerID,
-		ProfileID:    profileName,
-		Workspace:    cwd,
-		State:        registry.StateStarting,
-		ControlLevel: controlLevel,
-		StartedAt:    time.Now(),
+		RuntimeID:       runtimeID,
+		ProviderID:      providerID,
+		ProfileID:       profileName,
+		Workspace:       cwd,
+		Binary:          bin,
+		Args:            cmdArgs,
+		Env:             env,
+		State:           registry.StateStarting,
+		ControlLevel:    effCaps.ControlLevel,
+		ControlEndpoint: protocol.EndpointPath(runtimeID),
+		StartedAt:       time.Now(),
 	}
 
-	sh, err := host.NewSessionHost(host.Config{
-		Session: session,
-		Binary:  bin,
-		Args:    cmdArgs,
-		Env:     env,
-		Cwd:     cwd,
-		UsePTY:  true,
-	})
+	if err := reg.Register(session); err != nil {
+		return fmt.Errorf("failed to register runtime: %w", err)
+	}
+
+	// 3. Launch background independent SessionHost daemon
+	selfExe, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("failed to create SessionHost: %w", err)
+		selfExe = "ai"
 	}
 
-	if err := sh.Start(); err != nil {
-		return fmt.Errorf("failed to start SessionHost: %w", err)
+	if _, err := spawnDetachedHost(selfExe, runtimeID); err != nil {
+		return fmt.Errorf("failed to spawn background control host: %w", err)
 	}
 
-	fmt.Printf("✓ Started supervised %s runtime (ID: %s, Profile: %s)\n", strings.ToUpper(providerID), runtimeID, profileName)
+	// 4. Wait for endpoint readiness
+	waitCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	if err := protocol.WaitForEndpoint(waitCtx, runtimeID, 3*time.Second); err != nil {
+		return fmt.Errorf("control host endpoint failed to initialize: %w", err)
+	}
+
+	fmt.Printf("✓ Started supervised %s runtime (ID: %s, Profile: %s, Control: %s)\n",
+		strings.ToUpper(providerID), runtimeID, profileName, effCaps.ControlLevel)
 	fmt.Printf("  Connecting interactive terminal...\n\n")
 
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 	return attachRuntime(runtimeID)
 }
 
@@ -306,10 +369,18 @@ func attachRuntime(runtimeID string) error {
 		protocol.NotifyWinSizeChange(sigChan)
 		defer signal.Stop(sigChan)
 
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
 		go func() {
-			for range sigChan {
-				if w, h, err := term.GetSize(int(os.Stdin.Fd())); err == nil && w > 0 && h > 0 {
-					_ = client.Resize(h, w)
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-sigChan:
+					if w, h, err := term.GetSize(int(os.Stdin.Fd())); err == nil && w > 0 && h > 0 {
+						_ = client.Resize(h, w)
+					}
 				}
 			}
 		}()
@@ -340,7 +411,7 @@ func attachRuntime(runtimeID string) error {
 	// 4. Stream stdout from runtime host to user terminal
 	errChan := make(chan error, 2)
 	go func() {
-		// First flush any buffered bytes in client.reader!
+		defer rawConn.Close()
 		r := client.Reader()
 		if r != nil && r.Buffered() > 0 {
 			buf := make([]byte, r.Buffered())
@@ -355,6 +426,7 @@ func attachRuntime(runtimeID string) error {
 
 	// 5. Stream user stdin to runtime host
 	go func() {
+		defer rawConn.Close()
 		_, copyErr := io.Copy(rawConn, os.Stdin)
 		errChan <- copyErr
 	}()
@@ -459,31 +531,52 @@ func controlDoctorCmd(args []string) error {
 	staleCount, _ := reg.CleanupStale()
 
 	drivers := driver.DefaultRegistry().List()
-	type driverStatus struct {
-		Provider   string `json:"provider"`
-		Installed  bool   `json:"installed"`
-		Version    string `json:"version,omitempty"`
-		BinaryPath string `json:"binary_path,omitempty"`
-		Error      string `json:"error,omitempty"`
+	type driverReport struct {
+		Provider     string                       `json:"provider"`
+		Installed    bool                         `json:"installed"`
+		Version      string                       `json:"version,omitempty"`
+		BinaryPath   string                       `json:"binary_path,omitempty"`
+		ControlLevel registry.ControlLevel        `json:"control_level"`
+		Capabilities driver.EffectiveCapabilities `json:"capabilities"`
+		Error        string                       `json:"error,omitempty"`
 	}
 
-	var dStatuses []driverStatus
+	var dReports []driverReport
 	for _, d := range drivers {
 		det, _ := d.Detect(ctx)
-		dStatuses = append(dStatuses, driverStatus{
-			Provider:   d.ProviderID(),
-			Installed:  det.Installed,
-			Version:    det.Version,
-			BinaryPath: det.BinaryPath,
-			Error:      det.Error,
+		effCaps := d.EffectiveCaps(ctx, model.Profile{Name: "default", Provider: d.ProviderID()})
+		dReports = append(dReports, driverReport{
+			Provider:     d.ProviderID(),
+			Installed:    det.Installed,
+			Version:      det.Version,
+			BinaryPath:   det.BinaryPath,
+			ControlLevel: effCaps.ControlLevel,
+			Capabilities: effCaps,
+			Error:        det.Error,
 		})
 	}
 
+	ipcMechanism := "Unix Domain Socket"
+	if runtime.GOOS == "windows" {
+		ipcMechanism = "Windows Named Pipe"
+	}
+
+	termMechanism := "Unix PTY (creack/pty)"
+	if runtime.GOOS == "windows" {
+		termMechanism = "Windows ConPTY / Standard Pipes"
+	}
+
 	report := map[string]any{
+		"platform": map[string]string{
+			"os":       runtime.GOOS,
+			"arch":     runtime.GOARCH,
+			"ipc":      ipcMechanism,
+			"terminal": termMechanism,
+		},
 		"runtimes_total":  len(reg.List()),
 		"runtimes_active": len(reg.ListActive()),
 		"stale_cleaned":   staleCount,
-		"drivers":         dStatuses,
+		"drivers":         dReports,
 	}
 
 	if jsonMode {
@@ -493,17 +586,25 @@ func controlDoctorCmd(args []string) error {
 	}
 
 	fmt.Println("=== AI Control Runtime Doctor ===")
+	fmt.Printf("Platform:         %s/%s\n", runtime.GOOS, runtime.GOARCH)
+	fmt.Printf("IPC Transport:    %s\n", ipcMechanism)
+	fmt.Printf("Terminal Engine:  %s\n", termMechanism)
 	fmt.Printf("Active Runtimes:  %d\n", len(reg.ListActive()))
 	fmt.Printf("Total Runtimes:   %d\n", len(reg.List()))
 	fmt.Printf("Stale Cleaned:    %d\n\n", staleCount)
 
-	fmt.Println("Provider Drivers Status:")
-	for _, ds := range dStatuses {
+	fmt.Println("Provider Drivers Truthful Status:")
+	for _, dr := range dReports {
 		mark := "✓"
-		if !ds.Installed {
+		if !dr.Installed {
 			mark = "✗"
 		}
-		fmt.Printf(" %s %-10s (Installed: %t, Version: %s)\n", mark, strings.ToUpper(ds.Provider), ds.Installed, ds.Version)
+		verStr := dr.Version
+		if verStr == "" {
+			verStr = "not installed"
+		}
+		fmt.Printf(" %s %-10s (Version: %-18s | Control: %-8s | Resume: %s)\n",
+			mark, strings.ToUpper(dr.Provider), verStr, dr.ControlLevel, dr.Capabilities.Resume.Status)
 	}
 
 	return nil

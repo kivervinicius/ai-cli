@@ -88,3 +88,76 @@
   - Added unit test `TestPurgeInactive` in `internal/control/registry/registry_test.go`.
   - Rebuilt binary in `/home/desenvolvedor/.local/bin/ai` and purged 7 accumulated ghost records.
   - All tests passing with race detector (`go test -race ./...`).
+
+## Date: 2026-08-28
+- **AI Control Runtime Hardening & Truth Audit**:
+  - Created new hardening branch `feat/ai-control-runtime-hardening` from published baseline `f54833e`.
+  - Conducted full subsystem Truth Audit documented in `DEV/AI_CONTROL_TRUTH_AUDIT.md`.
+  - **Windows IPC**: Replaced invalid TCP dial of named pipes with native Windows Named Pipe implementation using `github.com/Microsoft/go-winio` (`D:P(A;;GA;;;OW)`) and Unix Domain Sockets under `$XDG_RUNTIME_DIR` / `/tmp/ai-control-<uid>` with `0600` permissions.
+  - **Terminal Backend Abstraction**: Created `internal/control/terminal` defining `Backend` interface with full PTY support on Unix and ConPTY / pipes on Windows.
+  - **Truthful Capabilities Framework**: Replaced hardcoded booleans with dynamic `EffectiveCapabilities` containing explicit evidence (`CapabilityStatus`, `Mechanism`, `Reason`, `Tested`). Codex and OpenCode truthfully downgraded to `TERMINAL` mode.
+  - **Independent SessionHost Lifecycle**: Implemented hidden background daemon `ai __control-host --runtime <id>` spawned via `Setsid`/`CREATE_NEW_PROCESS_GROUP`, allowing supervised runtimes to persist across client detachments.
+  - **Transactional Account Handoff**: Refactored `PerformAccountHandoff` into transactional state machine with mandatory session ID check, target provider validation, preflight checks, pre-stop checkpointing, verified session continuity, and automatic rollback (`FAILED_SAFE`).
+  - **Context Handoff V2 & Redaction**: Created `WorkCheckpoint` and `LineageRecord` with bounded file limits and comprehensive secret redaction (`OPENAI_KEY`, `ANTHROPIC_KEY`, `GOOGLE_TOKEN`, `GITHUB_TOKEN`, `AWS_KEY`, `JWT`, `PRIVATE_KEY`). Integrated Smart Account Selector when target profile is omitted.
+  - **Universal Slash Quota Integration**: Connected `/ai status`, `/ai accounts`, and `/ai usage` to `quota.Engine` and `profile.GetUsageSnapshot`.
+  - **CI Platform Matrix**: Updated `.github/workflows/ci.yml` with `ubuntu-latest`, `windows-latest`, and `macos-latest` matrix testing Go 1.22 and Go 1.24 across feature branches.
+  - **Documentation & Reports**: Updated `README.md`, `README.en.md`, marked `AI_CONTROL_IMPLEMENTATION_REPORT.md` as superseded, and generated final hardening report `DEV/AI_CONTROL_HARDENING_REPORT.md`.
+  - **Zero Data Races**: All 45+ tests passing with race detector (`go test -race ./...`) and `go vet ./...` clean. Windows cross-compilation verified.
+
+
+## 2026-08-28: AI Control Full Hardening Execution (All Lanes & Phases)
+
+- **What Changed**:
+  - **Lane 1 (Protocol & IPC Security)**:
+    - [C-1] Removed silent Named Pipe security fallback in `endpoint_windows.go`.
+    - [C-2] Protected Unix socket creation against permission race windows with `syscall.Umask(0177)` and `0600` verification.
+    - [C-3] Added ownership verification on `/tmp` socket fallback directory to prevent hijacking.
+    - [H-4] Implemented bounded response reading in `protocol.Client` (`readBounded` with 1MB ceiling).
+    - [L-1, L-2] Added auto-generated unique request IDs and ticker-based instant context cancellation in `WaitForEndpoint`.
+  - **Lane 2 (Registry & Process Lifecycle)**:
+    - [H-1] Implemented cross-process file locking for `runtimes.json` using `syscall.Flock` (Unix) and `LockFileEx` (Windows).
+    - [H-2] Released registry mutex during network/socket I/O in `CleanupStale` and `PurgeInactive` to eliminate deadlocks.
+    - [H-3] Implemented PID recycling validation (`IsProcessAliveWithGeneration`) checking process creation start times against `HostGeneration`.
+    - [M-1] Redirected daemon stdout/stderr streams to `<datadir>/logs/<runtime-id>.log`.
+    - [H-7] Injected `SIGTERM`/`SIGINT` graceful shutdown traps in `controlHostCmd` and plugged goroutine leaks in `attachRuntime`.
+  - **Lane 3 (Handoff, Drivers, Host & TUI)**:
+    - [C-4] Reordered `PerformContextHandoff` to verify target runtime is alive before stopping source process (zero session loss).
+    - [C-5] Hardened `account.go` rollback to verify source PID liveness before respawning (preventing duplicate processes).
+    - [H-5] Added exhaustive integration tests for handoff state transitions, rollback safety, and git bounds.
+    - [H-6] Added persistent warning logging for checkpoint and lineage writes.
+    - [H-8] Implemented real background handoff execution on intercepted `/ai handoff` and `/ai continue` slash actions.
+    - [M-3] Implemented dynamic, capability-aware TUI shortcut rendering (`[h] Handoff` and `[s] Stop`).
+    - [M-4] Updated `ARCHITECTURE.md` with complete AI Control Plane section and sequence diagrams.
+    - [M-5] Added `BuildKickoffArgs` to `ControlDriver` interface and implemented across all 6 provider drivers.
+    - [M-7, L-3, L-4, L-5] Redacted workspace paths, added atomic `.tmp` file writing in checkpoints, cleaned up dead quota init, and removed shadowed `max()` helper.
+- **Why**: Production readiness, truthful capabilities, cross-platform security, and zero data-loss resilience across all AI Control operations.
+- **Verification**:
+  - `go vet ./...` (0 warnings).
+  - `go test -race ./...` (100% pass across all packages, 0 data races).
+  - Multi-OS build verified (`GOOS=windows`, `GOOS=darwin`, `GOOS=linux`).
+  - Binary installed and validated at `/home/desenvolvedor/.local/bin/ai`.
+
+## 2026-08-28: Windows Progress Bar Character Rendering Fix
+
+- **What Changed**:
+  - Updated `internal/core/quota/quota.go` (`RenderProgressBar`):
+    - On Windows (`runtime.GOOS == "windows"`), replaced UTF-8 block characters `█` (`\u2588`) and `░` (`\u2591`) with standard universal ASCII characters (`#` and `-`, e.g. `[#######---]`), preventing Windows Console / PowerShell / CMD (CP437, CP850, CP1252) from rendering UTF-8 multi-byte sequences as `???` or mojibake.
+    - Formatted non-numeric / unknown status states into aligned labels (`[ UNKNOWN  ]`, `[ LIMITED  ]`, `[ UNSUPPORT]`, `[  ERROR   ]`) instead of repeated `?` characters (`[??????????]`), eliminating the appearance of decoding bugs.
+  - Updated `internal/tui/tui.go` to use `[ UNKNOWN  ] UNK` fallback instead of `[??????????] UNK`.
+  - Updated `internal/core/quota/quota_test.go` and verified with `go test -race ./...`.
+## 2026-08-28: Windows Session Resumption Fix (Symlink Privilege Fallback)
+
+- **What Changed**:
+  - Implemented `security.SafeLinkOrCopy` in `internal/core/security/link.go`:
+    - On Windows, un-elevated non-developer users lack `SeCreateSymbolicLinkPrivilege`. When `os.Symlink` fails, the system automatically falls back to hardlinks (`os.Link`) for files, directory junctions (`mklink /J`) for folders, and recursive copying for cross-volume resources.
+  - Updated `internal/core/provider/adapters/codex/codex.go` and `internal/core/provider/adapters/agy/agy.go` to use `SafeLinkOrCopy` and explicitly include the `sessions/` directory in the linked items list.
+  - Updated `internal/core/security/isolation.go` to use `SafeLinkOrCopy`.
+  - Updated `internal/app/app.go` (`executeResume`) to include clear error context and tips when session resume fails.
+- **Why**: Fixes the issue reported on Windows where `ai` failed to resume sessions (`ERROR: No saved session found with ID <id>`) because `CODEX_HOME` did not have access to host sessions due to silent Windows symlink permission failures.
+- **Verification**:
+  - `go test -race ./...` (100% PASS).
+  - Multi-OS build verified (`GOOS=windows go build ./cmd/ai`).
+  - Binary installed and validated at `/home/desenvolvedor/.local/bin/ai`.
+
+
+

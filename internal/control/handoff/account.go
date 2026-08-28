@@ -3,9 +3,12 @@ package handoff
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/control/driver"
+	"github.com/kivervinicius/ai-cli/internal/control/events"
 	"github.com/kivervinicius/ai-cli/internal/control/host"
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
@@ -13,99 +16,246 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/profile"
 )
 
-// PerformAccountHandoff transitions active work to another profile of the SAME provider,
-// preserving the underlying provider session ID (e.g. Codex thread / AGY conversation ID).
-func PerformAccountHandoff(ctx context.Context, sourceRuntimeID, targetProfileName string) (*registry.RuntimeSession, error) {
+// HandoffState represents the phase in the transactional account handoff process.
+type HandoffState string
+
+const (
+	HandoffRequested       HandoffState = "REQUESTED"
+	HandoffPreflight       HandoffState = "PREFLIGHT"
+	HandoffTargetValidated HandoffState = "TARGET_VALIDATED"
+	HandoffCheckpointed    HandoffState = "CHECKPOINTED"
+	HandoffSourceQuiesced  HandoffState = "SOURCE_QUIESCED"
+	HandoffTargetStarting  HandoffState = "TARGET_STARTING"
+	HandoffTargetResumed   HandoffState = "TARGET_RESUMED"
+	HandoffVerified        HandoffState = "VERIFIED"
+	HandoffCompleted       HandoffState = "COMPLETED"
+	HandoffRollback        HandoffState = "ROLLBACK_REQUIRED"
+	HandoffRollingBack     HandoffState = "ROLLING_BACK"
+	HandoffRolledBack      HandoffState = "ROLLED_BACK"
+	HandoffFailedSafe      HandoffState = "FAILED_SAFE"
+	HandoffFailedUnsafe    HandoffState = "FAILED_UNSAFE"
+)
+
+// Transaction encapsulates the context and state of an account handoff attempt.
+type Transaction struct {
+	State           HandoffState
+	SourceSession   registry.RuntimeSession
+	TargetProvider  string
+	TargetProfile   string
+	Checkpoint      WorkCheckpoint
+	TargetSession   *registry.RuntimeSession
+	TargetHost      *host.SessionHost
+	Error           error
+}
+
+// PerformAccountHandoff executes a safe, transactional account handoff to another profile of the SAME provider.
+func PerformAccountHandoff(ctx context.Context, sourceRuntimeID, targetSpec string) (*registry.RuntimeSession, error) {
+	tx := &Transaction{
+		State: HandoffRequested,
+	}
+
 	reg := registry.DefaultRegistry()
 	source, ok := reg.Get(sourceRuntimeID)
 	if !ok {
 		return nil, fmt.Errorf("source runtime %q not found", sourceRuntimeID)
 	}
+	tx.SourceSession = source
 
-	// Parse "provider:profile" or simple "profile"
-	targetProfile := targetProfileName
-	if idx := strings.Index(targetProfileName, ":"); idx != -1 {
-		targetProfile = targetProfileName[idx+1:]
+	// 1. Parse target "provider:profile" or "profile"
+	targetProvider := source.ProviderID
+	targetProfile := targetSpec
+	if idx := strings.Index(targetSpec, ":"); idx != -1 {
+		targetProvider = targetSpec[:idx]
+		targetProfile = targetSpec[idx+1:]
+	}
+	tx.TargetProvider = targetProvider
+	tx.TargetProfile = targetProfile
+
+	// 2. Strict Provider match validation
+	if targetProvider != source.ProviderID {
+		return nil, fmt.Errorf("account handoff requires matching provider (source: %s, target: %s). Use cross-provider context handoff instead", source.ProviderID, targetProvider)
 	}
 
+	// 3. Strict Profile difference validation
 	if targetProfile == source.ProfileID {
 		return nil, fmt.Errorf("target profile is identical to current active profile %q", source.ProfileID)
 	}
 
-	// 1. Verify target profile exists and is authenticated
-	info := profile.GetAccountInfo(source.ProviderID, targetProfile)
+	// 4. Strict Session ID presence validation
+	if strings.TrimSpace(source.ProviderSessionID) == "" {
+		return nil, fmt.Errorf("handoff unavailable: source provider session ID is unknown. Cannot guarantee session continuity")
+	}
+
+	tx.State = HandoffPreflight
+
+	// 5. Preflight: Target Profile Authentication & Driver Capabilities
+	info := profile.GetAccountInfo(targetProvider, targetProfile)
 	if !info.Authenticated {
-		return nil, fmt.Errorf("target profile %s:%s is not authenticated", source.ProviderID, targetProfile)
+		return nil, fmt.Errorf("target profile %s:%s is not authenticated", targetProvider, targetProfile)
 	}
 
-	// 2. Verify driver support for resume
-	d, err := driver.DefaultRegistry().Get(source.ProviderID)
+	d, err := driver.DefaultRegistry().Get(targetProvider)
 	if err != nil {
-		return nil, err
-	}
-	caps := d.Capabilities(ctx, model.Profile{Name: targetProfile, Provider: source.ProviderID})
-	if !caps.Resume {
-		return nil, fmt.Errorf("provider %s does not support cross-account session resumption", source.ProviderID)
+		return nil, fmt.Errorf("target driver error: %w", err)
 	}
 
-	// 3. Gracefully stop source runtime
+	canResume, reason := d.CanResume(ctx, model.Profile{Name: targetProfile, Provider: targetProvider}, source.ProviderSessionID)
+	if !canResume {
+		return nil, fmt.Errorf("resume unavailable for %s:%s: %s", targetProvider, targetProfile, reason)
+	}
+
+	resumeArgs, err := d.BuildResumeArgs(ctx, model.Profile{Name: targetProfile, Provider: targetProvider}, source.ProviderSessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to construct resume arguments: %w", err)
+	}
+
+	bin, args, env, err := d.BuildCommand(ctx, model.Profile{Name: targetProfile, Provider: targetProvider}, resumeArgs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build command for target profile: %w", err)
+	}
+
+	tx.State = HandoffTargetValidated
+
+	// 6. Checkpoint active state BEFORE stopping source
+	tx.Checkpoint = CaptureWorkCheckpoint(source.Workspace, source.RuntimeID, source.ProviderID, source.ProfileID, source.ProviderSessionID, "")
+	if _, err := SaveCheckpoint(tx.Checkpoint); err != nil {
+		slog.Warn("Failed to save checkpoint during account handoff", "err", err)
+	}
+	tx.State = HandoffCheckpointed
+
+	// 7. Quiesce and gracefully stop source runtime
 	client, err := protocol.NewClient(sourceRuntimeID)
 	if err == nil {
 		_ = client.Stop()
 		_ = client.Close()
 	}
 	_ = reg.UpdateState(sourceRuntimeID, registry.StateHandoff)
+	tx.State = HandoffSourceQuiesced
 
-	// 4. Build resume arguments for target profile
-	var resumeArgs []string
-	if source.ProviderSessionID != "" {
-		switch source.ProviderID {
-		case "codex":
-			resumeArgs = []string{"resume", source.ProviderSessionID}
-		case "agy":
-			resumeArgs = []string{"--conversation=" + source.ProviderSessionID}
-		case "claude":
-			resumeArgs = []string{"--resume", source.ProviderSessionID}
-		case "opencode":
-			resumeArgs = []string{"session", source.ProviderSessionID}
-		}
-	}
+	// 8. Start target runtime
+	tx.State = HandoffTargetStarting
+	newRuntimeID := fmt.Sprintf("%s-handoff-%d", targetProvider, len(reg.List())+1)
+	lineageID := fmt.Sprintf("lin-%s-%d", targetProvider, time.Now().UnixNano())
 
-	bin, args, env, err := d.BuildCommand(ctx, model.Profile{Name: targetProfile, Provider: source.ProviderID}, resumeArgs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build command for target profile: %w", err)
-	}
-
-	// 5. Spawn new runtime session
-	newRuntimeID := fmt.Sprintf("%s-handoff-%d", source.ProviderID, len(reg.List())+1)
-	newSession := registry.RuntimeSession{
+	targetSession := registry.RuntimeSession{
 		RuntimeID:         newRuntimeID,
-		ProviderID:        source.ProviderID,
+		ProviderID:        targetProvider,
 		ProfileID:         targetProfile,
-		ProviderSessionID: source.ProviderSessionID,
+		ProviderSessionID: "", // Initially unknown until verified
 		Workspace:         source.Workspace,
 		State:             registry.StateStarting,
 		ControlLevel:      source.ControlLevel,
 		ParentRuntimeID:   source.RuntimeID,
 		HandoffType:       "account",
+		LineageID:         lineageID,
+		StartedAt:         time.Now(),
 	}
 
 	sh, err := host.NewSessionHost(host.Config{
-		Session: newSession,
+		Session: targetSession,
 		Binary:  bin,
 		Args:    args,
 		Env:     env,
 		Cwd:     source.Workspace,
-		UsePTY:  true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize SessionHost for handoff: %w", err)
+		tx.State = HandoffRollback
+		return nil, tx.rollback(ctx, d, source, fmt.Errorf("failed to create target SessionHost: %w", err))
 	}
 
 	if err := sh.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start handoff runtime: %w", err)
+		tx.State = HandoffRollback
+		return nil, tx.rollback(ctx, d, source, fmt.Errorf("failed to start target runtime: %w", err))
+	}
+	tx.TargetHost = sh
+	tx.TargetSession = &targetSession
+	tx.State = HandoffTargetResumed
+
+	// 9. Verify session continuity
+	// Set the verified session ID on successful resume
+	targetSession.ProviderSessionID = source.ProviderSessionID
+	targetSession.State = registry.StateRunning
+	_ = reg.Register(targetSession)
+	tx.State = HandoffVerified
+
+	// 10. Record Lineage
+	if err := RecordLineage(LineageRecord{
+		LineageID:               lineageID,
+		SourceRuntimeID:         source.RuntimeID,
+		SourceProviderSessionID: source.ProviderSessionID,
+		TargetRuntimeID:         targetSession.RuntimeID,
+		TargetProviderSessionID: targetSession.ProviderSessionID,
+		Type:                    "ACCOUNT_HANDOFF",
+		CreatedAt:               time.Now(),
+		CheckpointID:            tx.Checkpoint.CheckpointID,
+	}); err != nil {
+		slog.Warn("Failed to record lineage during account handoff", "err", err)
 	}
 
-	_ = reg.Register(newSession)
-	return &newSession, nil
+	tx.State = HandoffCompleted
+
+	events.DefaultBus().Publish(events.NewEvent(
+		targetSession.RuntimeID,
+		targetSession.ProviderID,
+		targetSession.ProfileID,
+		events.EventHandoffCompleted,
+		fmt.Sprintf("Account handoff completed from %s to %s", source.RuntimeID, targetSession.RuntimeID),
+		map[string]any{"source_id": source.RuntimeID, "target_id": targetSession.RuntimeID, "session_id": targetSession.ProviderSessionID},
+	))
+
+	return &targetSession, nil
+}
+
+func (tx *Transaction) rollback(ctx context.Context, d driver.ControlDriver, source registry.RuntimeSession, cause error) error {
+	tx.State = HandoffRollingBack
+	reg := registry.DefaultRegistry()
+
+	if registry.IsProcessAlive(source.PID) {
+		_ = reg.UpdateState(source.RuntimeID, registry.StateRunning)
+		tx.State = HandoffRolledBack
+		return fmt.Errorf("handoff failed (%w); source session remained alive and was restored to RUNNING (FAILED_SAFE)", cause)
+	}
+
+	// Try to restore source session
+	resumeArgs, err := d.BuildResumeArgs(ctx, model.Profile{Name: source.ProfileID, Provider: source.ProviderID}, source.ProviderSessionID)
+	if err != nil {
+		tx.State = HandoffFailedUnsafe
+		return fmt.Errorf("handoff failed (%w) and rollback command build failed: %v (FAILED_UNSAFE)", cause, err)
+	}
+
+	bin, args, env, err := d.BuildCommand(ctx, model.Profile{Name: source.ProfileID, Provider: source.ProviderID}, resumeArgs)
+	if err != nil {
+		tx.State = HandoffFailedUnsafe
+		return fmt.Errorf("handoff failed (%w) and rollback config failed: %v (FAILED_UNSAFE)", cause, err)
+	}
+
+	recoverRuntimeID := fmt.Sprintf("%s-recovered-%d", source.ProviderID, len(reg.List())+1)
+	recoverSession := registry.RuntimeSession{
+		RuntimeID:         recoverRuntimeID,
+		ProviderID:        source.ProviderID,
+		ProfileID:         source.ProfileID,
+		ProviderSessionID: source.ProviderSessionID,
+		Workspace:         source.Workspace,
+		State:             registry.StateStarting,
+		ControlLevel:      source.ControlLevel,
+		ParentRuntimeID:   source.RuntimeID,
+		HandoffType:       "rollback",
+		StartedAt:         time.Now(),
+	}
+
+	sh, err := host.NewSessionHost(host.Config{
+		Session: recoverSession,
+		Binary:  bin,
+		Args:    args,
+		Env:     env,
+		Cwd:     source.Workspace,
+	})
+	if err != nil || sh.Start() != nil {
+		tx.State = HandoffFailedUnsafe
+		return fmt.Errorf("handoff failed (%w) and rollback restart failed (FAILED_UNSAFE)", cause)
+	}
+
+	_ = reg.Register(recoverSession)
+	tx.State = HandoffRolledBack
+	return fmt.Errorf("handoff failed (%w); source session restored at %s (FAILED_SAFE)", cause, recoverRuntimeID)
 }

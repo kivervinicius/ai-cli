@@ -35,12 +35,11 @@ type QuotaDetails struct {
 	ClaudeWeek  LimitWindow `json:"claude_weekly,omitempty"`
 }
 
-// GetQuotaDetails returns usage and quota metrics without fabricating 100% data.
-func GetQuotaDetails(providerName, name, plan, email string) QuotaDetails {
+// GetUsageSnapshot returns a point-in-time usage snapshot for a provider and profile.
+func GetUsageSnapshot(providerName, name string) model.UsageSnapshot {
 	qEng := quota.NewEngine(5 * time.Minute)
 	snap, found := qEng.GetCachedUsage(providerName, name)
 	if !found || snap.Status == model.UsageUnknown {
-		// Probe adapter directly
 		ctx := context.Background()
 		p := model.Profile{Provider: providerName, Name: name}
 		switch providerName {
@@ -55,9 +54,21 @@ func GetQuotaDetails(providerName, name, plan, email string) QuotaDetails {
 		case "gemini":
 			snap = gemini.New().GetUsage(ctx, p)
 		default:
-			snap = model.UsageSnapshot{Status: model.UsageUnknown}
+			snap = model.UsageSnapshot{
+				ProviderID: providerName,
+				ProfileID:  name,
+				Status:     model.UsageUnknown,
+				Source:     model.SourceNone,
+				FetchedAt:  time.Now(),
+			}
 		}
 	}
+	return snap
+}
+
+// GetQuotaDetails returns usage and quota metrics without fabricating 100% data.
+func GetQuotaDetails(providerName, name, plan, email string) QuotaDetails {
+	snap := GetUsageSnapshot(providerName, name)
 
 	q := QuotaDetails{
 		Provider:    providerName,

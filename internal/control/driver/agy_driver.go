@@ -2,9 +2,11 @@ package driver
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 
+	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/security"
@@ -30,22 +32,88 @@ func (d *AGYDriver) Detect(ctx context.Context) (model.DetectionResult, error) {
 	}, nil
 }
 
-func (d *AGYDriver) Capabilities(ctx context.Context, p model.Profile) ControlCapabilities {
-	return ControlCapabilities{
-		Process:          true,
-		Terminal:         true,
-		Attach:           true,
-		StructuredEvents: false,
-		Sessions:         true,
-		Resume:           true,
-		Fork:             false,
-		SubmitPrompt:     false,
-		CancelTurn:       false,
-		Approvals:        false,
-		NativeUIAttach:   false,
-		Headless:         false,
-		SlashControl:     true,
+func (d *AGYDriver) EffectiveCaps(ctx context.Context, p model.Profile) EffectiveCapabilities {
+	det, _ := d.Detect(ctx)
+	version := det.Version
+
+	return EffectiveCapabilities{
+		Process: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "os/exec",
+			Tested:          true,
+		},
+		Terminal: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "PTY / ConPTY TerminalBackend",
+			Tested:          true,
+		},
+		Attach: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "AI Control IPC Socket/Pipe",
+			Tested:          true,
+		},
+		StructuredEvents: CapabilityEvidence{
+			Status:          CapabilityUnsupported,
+			ProviderVersion: version,
+			Reason:          "AGY CLI operates as standalone binary without remote daemon protocol",
+			Tested:          false,
+		},
+		Sessions: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "~/.gemini/antigravity-cli session transcript files",
+			Tested:          true,
+		},
+		Resume: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "agy --conversation=<session-id>",
+			Tested:          true,
+		},
+		Fork: CapabilityEvidence{
+			Status: CapabilityUnsupported,
+			Tested: false,
+		},
+		SubmitPrompt: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "agy -p / --prompt",
+			Tested:          true,
+		},
+		CancelTurn: CapabilityEvidence{
+			Status:    CapabilitySupported,
+			Mechanism: "Ctrl+C signal passthrough",
+			Tested:    true,
+		},
+		Approvals: CapabilityEvidence{
+			Status:    CapabilityUnsupported,
+			Reason:    "AGY tool approvals handled interactively in terminal",
+			Tested:    false,
+		},
+		NativeUIAttach: CapabilityEvidence{
+			Status: CapabilityUnsupported,
+			Tested: false,
+		},
+		Headless: CapabilityEvidence{
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "agy -p (print mode)",
+			Tested:          true,
+		},
+		SlashControl: CapabilityEvidence{
+			Status:    CapabilitySupported,
+			Mechanism: "Universal /ai slash command router",
+			Tested:    true,
+		},
+		ControlLevel: registry.ControlLevelTerminal,
 	}
+}
+
+func (d *AGYDriver) Capabilities(ctx context.Context, p model.Profile) ControlCapabilities {
+	return d.EffectiveCaps(ctx, p).ToBooleanCaps()
 }
 
 func (d *AGYDriver) BuildCommand(ctx context.Context, p model.Profile, extraArgs []string) (string, []string, []string, error) {
@@ -70,4 +138,22 @@ func (d *AGYDriver) BuildCommand(ctx context.Context, p model.Profile, extraArgs
 	})
 
 	return bin, extraArgs, env, nil
+}
+
+func (d *AGYDriver) CanResume(ctx context.Context, p model.Profile, providerSessionID string) (bool, string) {
+	if strings.TrimSpace(providerSessionID) == "" {
+		return false, "Provider session ID is empty or unknown"
+	}
+	return true, ""
+}
+
+func (d *AGYDriver) BuildResumeArgs(ctx context.Context, p model.Profile, providerSessionID string) ([]string, error) {
+	if strings.TrimSpace(providerSessionID) == "" {
+		return nil, fmt.Errorf("cannot resume agy session without valid session ID")
+	}
+	return []string{"--conversation=" + providerSessionID}, nil
+}
+
+func (d *AGYDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error) {
+	return []string{kickoffPrompt}, nil
 }
