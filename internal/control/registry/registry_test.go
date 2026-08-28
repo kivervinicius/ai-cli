@@ -89,3 +89,33 @@ func TestCleanupStale(t *testing.T) {
 		t.Errorf("expected state STALE, got %s", s.State)
 	}
 }
+
+func TestPurgeInactive(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "runtimes.json")
+	reg := NewRegistry(dbPath)
+
+	fakePID := 99999999
+	_ = reg.Register(RuntimeSession{
+		RuntimeID: "rt-stale-1",
+		PID:       fakePID,
+		State:     StateStale,
+	})
+	_ = reg.Register(RuntimeSession{
+		RuntimeID: "rt-stopped-2",
+		PID:       fakePID,
+		State:     StateStopped,
+	})
+
+	purged, err := reg.PurgeInactive()
+	if err != nil {
+		t.Fatalf("purge failed: %v", err)
+	}
+	if purged != 2 {
+		t.Errorf("expected 2 purged sessions, got %d", purged)
+	}
+
+	if len(reg.List()) != 0 {
+		t.Errorf("expected 0 sessions remaining, got %d", len(reg.List()))
+	}
+}

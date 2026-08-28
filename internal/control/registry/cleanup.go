@@ -59,3 +59,32 @@ func (r *Registry) CleanupStale() (int, error) {
 
 	return cleaned, nil
 }
+
+// PurgeInactive permanently removes STALE, FAILED, and STOPPED sessions whose PID and socket are dead.
+func (r *Registry) PurgeInactive() (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	purged := 0
+	for id, s := range r.sessions {
+		if s.IsActive() {
+			continue
+		}
+
+		alive := IsProcessAlive(s.PID)
+		if !alive {
+			// Clean up socket file
+			sockPath := protocol.EndpointPath(s.RuntimeID)
+			_ = os.Remove(sockPath)
+
+			delete(r.sessions, id)
+			purged++
+		}
+	}
+
+	if purged > 0 {
+		_ = r.saveLocked()
+	}
+
+	return purged, nil
+}

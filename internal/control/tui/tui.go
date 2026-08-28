@@ -150,16 +150,59 @@ func (m ControlModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "s":
 			if len(m.runtimes) > 0 && m.selectedIndex < len(m.runtimes) {
 				target := m.runtimes[m.selectedIndex]
+				reg := registry.DefaultRegistry()
 				client, err := protocol.NewClient(target.RuntimeID)
 				if err == nil {
 					_ = client.Stop()
 					_ = client.Close()
-					m.statusMessage = fmt.Sprintf("Stopping runtime %s...", target.RuntimeID)
+					m.statusMessage = fmt.Sprintf("✓ Sent stop signal to %s", target.RuntimeID)
 				} else {
-					m.statusMessage = fmt.Sprintf("Failed to stop runtime %s: %v", target.RuntimeID, err)
+					// Fallback: kill PID if running and clean up record
+					if target.PID > 0 && registry.IsProcessAlive(target.PID) {
+						if p, pErr := os.FindProcess(target.PID); pErr == nil {
+							_ = p.Kill()
+						}
+					}
+					_ = os.Remove(protocol.EndpointPath(target.RuntimeID))
+					_ = reg.Delete(target.RuntimeID)
+					m.runtimes = reg.List()
+					if m.selectedIndex >= len(m.runtimes) && len(m.runtimes) > 0 {
+						m.selectedIndex = len(m.runtimes) - 1
+					}
+					m.statusMessage = fmt.Sprintf("✓ Cleaned up dead runtime %s", target.RuntimeID)
 				}
 				m.statusTime = time.Now()
 			}
+			return m, nil
+
+		case "d", "x", "delete", "backspace":
+			if len(m.runtimes) > 0 && m.selectedIndex < len(m.runtimes) {
+				target := m.runtimes[m.selectedIndex]
+				reg := registry.DefaultRegistry()
+				if target.PID > 0 && registry.IsProcessAlive(target.PID) {
+					if p, pErr := os.FindProcess(target.PID); pErr == nil {
+						_ = p.Kill()
+					}
+				}
+				_ = os.Remove(protocol.EndpointPath(target.RuntimeID))
+				_ = reg.Delete(target.RuntimeID)
+				m.runtimes = reg.List()
+				if m.selectedIndex >= len(m.runtimes) && len(m.runtimes) > 0 {
+					m.selectedIndex = len(m.runtimes) - 1
+				}
+				m.statusMessage = fmt.Sprintf("✓ Deleted runtime %s", target.RuntimeID)
+				m.statusTime = time.Now()
+			}
+			return m, nil
+
+		case "c":
+			reg := registry.DefaultRegistry()
+			_, _ = reg.CleanupStale()
+			purged, _ := reg.PurgeInactive()
+			m.runtimes = reg.List()
+			m.selectedIndex = 0
+			m.statusMessage = fmt.Sprintf("✓ Cleaned up %d stale runtime records", purged)
+			m.statusTime = time.Now()
 			return m, nil
 
 		case "a", "enter":
@@ -230,7 +273,7 @@ func (m ControlModel) View() string {
 	}
 
 	shortcuts := lipgloss.NewStyle().Foreground(lipgloss.Color("#9CA3AF")).Render(
-		" [a/Enter] Attach   [s] Stop   [r] Refresh   [Tab] Switch Tab   [↑/↓] Navigate   [q] Quit",
+		" [a/Enter] Attach   [s] Stop   [d] Delete   [c] Clean Stale   [r] Refresh   [Tab] Switch Tab   [q] Quit",
 	)
 
 	return topBar + tabsRow + content + "\n" + statusText + shortcuts + "\n"

@@ -368,17 +368,30 @@ func controlStopCmd(args []string) error {
 		return errors.New("usage: ai control stop <runtime-id>")
 	}
 	runtimeID := args[0]
+	reg := registry.DefaultRegistry()
 	client, err := protocol.NewClient(runtimeID)
-	if err != nil {
-		return fmt.Errorf("failed to reach runtime %q: %w", runtimeID, err)
+	if err == nil {
+		defer client.Close()
+		if stopErr := client.Stop(); stopErr == nil {
+			fmt.Printf("✓ Sent stop signal to runtime %s\n", runtimeID)
+			return nil
+		}
 	}
-	defer client.Close()
 
-	if err := client.Stop(); err != nil {
-		return err
+	// Fallback if socket unreachable: check registry and kill PID
+	if s, ok := reg.Get(runtimeID); ok {
+		if s.PID > 0 && registry.IsProcessAlive(s.PID) {
+			if p, pErr := os.FindProcess(s.PID); pErr == nil {
+				_ = p.Kill()
+			}
+		}
+		_ = os.Remove(protocol.EndpointPath(runtimeID))
+		_ = reg.Delete(runtimeID)
+		fmt.Printf("✓ Cleaned up dead runtime %s\n", runtimeID)
+		return nil
 	}
-	fmt.Printf("✓ Sent stop signal to runtime %s\n", runtimeID)
-	return nil
+
+	return fmt.Errorf("runtime %q not found or already stopped", runtimeID)
 }
 
 func controlHandoffCmd(args []string) error {
@@ -431,11 +444,10 @@ func controlContinueCmd(args []string) error {
 }
 
 func controlCleanupCmd(args []string) error {
-	cleaned, err := registry.DefaultRegistry().CleanupStale()
-	if err != nil {
-		return fmt.Errorf("cleanup failed: %w", err)
-	}
-	fmt.Printf("✓ Cleaned up %d stale runtime records.\n", cleaned)
+	reg := registry.DefaultRegistry()
+	cleaned, _ := reg.CleanupStale()
+	purged, _ := reg.PurgeInactive()
+	fmt.Printf("✓ Cleaned up %d stale records and purged %d inactive runtimes.\n", cleaned, purged)
 	return nil
 }
 

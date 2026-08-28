@@ -80,3 +80,11 @@
   - Normal commands pass through directly with `\r`.
   - Rebuilt binary in `/home/desenvolvedor/.local/bin/ai`.
   - Tested with `go test -race ./...` (100% pass).
+
+- **Fix: Stale Process Auto-Purge, Smart Stop & TUI Delete Shortcuts**:
+  - Implemented `PurgeInactive()` in `internal/control/registry/cleanup.go` to remove ghost/inactive sessions (`STALE`, `FAILED`, `STOPPED`) and delete orphaned socket files.
+  - Updated `controlStopCmd` in `internal/app/control_cmd.go` with fallback PID kill and record deletion when socket is unreachable.
+  - Added smart stop fallback and new interactive shortcuts `[d/x]` (delete row) and `[c]` (clean all stale) in Bubble Tea TUI (`internal/control/tui/tui.go`).
+  - Added unit test `TestPurgeInactive` in `internal/control/registry/registry_test.go`.
+  - Rebuilt binary in `/home/desenvolvedor/.local/bin/ai` and purged 7 accumulated ghost records.
+  - All tests passing with race detector (`go test -race ./...`).
