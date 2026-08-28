@@ -351,6 +351,13 @@ func (sh *SessionHost) processAttachedInputLocked(conn net.Conn, data []byte) {
 		sh.activeWriter = conn
 	}
 
+	// Discard spurious browser terminal focus tracking and cursor report sequences
+	if bytes.Equal(data, []byte("\x1b[I")) || bytes.Equal(data, []byte("\x1b[O")) ||
+		bytes.Equal(data, []byte("[I")) || bytes.Equal(data, []byte("[O")) ||
+		bytes.Equal(data, []byte("\x1b[1;1R")) || bytes.Equal(data, []byte("[1;1R")) {
+		return
+	}
+
 	for _, b := range data {
 		out := sh.prefixRouter.ProcessByte(b)
 		if len(out.ForwardBytes) > 0 {

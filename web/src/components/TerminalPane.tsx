@@ -108,8 +108,19 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       setErrorMsg('WebSocket connection error');
     };
 
-    // Forward terminal input to WebSocket
+    // Forward terminal input to WebSocket with focus/CPR sequence filtering
     const dataListener = term.onData((data) => {
+      // Discard browser focus in/out and cursor position report sequences that leak during tab switching
+      if (
+        data === '\x1b[I' ||
+        data === '\x1b[O' ||
+        data === '[I' ||
+        data === '[O' ||
+        /^\x1b\[\d+;\d+R$/.test(data) ||
+        /^\[\d+;\d+R$/.test(data)
+      ) {
+        return;
+      }
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'input', data }));
       }

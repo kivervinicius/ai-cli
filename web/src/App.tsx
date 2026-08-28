@@ -187,14 +187,15 @@ export const App: React.FC = () => {
             />
           )}
 
-          {currentTab === 'terminals' && (
+          {/* Terminal view is kept mounted to preserve WebSocket connections and terminal state across tab switches */}
+          <div className={currentTab === 'terminals' ? 'h-full flex flex-col' : 'hidden'}>
             <TerminalView
               runtimes={runtimes.filter((r) => r.state === 'RUNNING' || r.state === 'STARTING')}
               activeRuntimeId={activeTerminalId}
               onSelectRuntime={setActiveTerminalId}
               onUpdateTitle={handleUpdateTitle}
             />
-          )}
+          </div>
 
           {currentTab === 'runtimes' && (
             <Dashboard
