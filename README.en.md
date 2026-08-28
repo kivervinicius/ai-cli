@@ -1,4 +1,10 @@
 <p align="center">
+  <a href="https://github.com/IAPro-Community">
+    <img src="logo.png" alt="IAPro Community Logo" width="200">
+  </a>
+</p>
+
+<p align="center">
   <img src="assets/banner.svg" alt="IAPro AI Control Banner" width="100%">
 </p>
 

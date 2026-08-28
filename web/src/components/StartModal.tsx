@@ -191,7 +191,7 @@ export const StartModal: React.FC<StartModalProps> = ({
           <button
             disabled={loading || installedProviders.length === 0}
             onClick={handleStart}
-            className="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white rounded text-xs font-semibold shadow-md shadow-sky-900/30 transition flex items-center space-x-1.5"
+            className="px-4 py-1.5 iapro-gradient-bg hover:opacity-95 disabled:opacity-50 text-white rounded text-xs font-semibold shadow-md shadow-purple-950/40 iapro-glow-sm transition flex items-center space-x-1.5"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
             <span>{loading ? 'Starting...' : 'Start Runtime'}</span>

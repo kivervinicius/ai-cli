@@ -6,7 +6,7 @@
     "typecheck": "tsc --noEmit",
     "build:css": "tailwindcss -i src/index.css -o dist/bundle.css --minify",
     "build:js": "bun build src/index.tsx --outdir dist --entry-naming bundle.[ext] --minify",
-    "build": "bun run build:css && bun run build:js && cp index.html dist/index.html && cp -r dist/* ../internal/control/web/dist/"
+    "build": "bun run build:css && bun run build:js && cp index.html dist/index.html && cp ../logo.png dist/logo.png && cp -r dist/* ../internal/control/web/dist/"
   },
   "dependencies": {
     "lucide-react": "^0.475.0",
