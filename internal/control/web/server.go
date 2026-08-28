@@ -55,6 +55,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	}
 
 	api := NewAPIHandler(auth)
+	nexusHandler := NewNexusHandler(auth)
 	terminalHub := NewTerminalHub(auth)
 
 	s := &Server{
@@ -77,6 +78,11 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	mux.HandleFunc("/api/v1/providers", s.authMiddleware(api.handleProviders))
 	mux.HandleFunc("/api/v1/profiles", s.authMiddleware(api.handleProfiles))
 	mux.HandleFunc("/api/v1/events", s.authMiddleware(api.handleEvents))
+
+	// Nexus Product API Routes (Project-first / Agent-first)
+	mux.HandleFunc("/api/v1/projects", s.authMiddleware(nexusHandler.handleProjectsList))
+	mux.HandleFunc("/api/v1/projects/", s.routeProject(nexusHandler))
+	mux.HandleFunc("/api/v1/agents/", s.routeAgent(nexusHandler))
 
 	// Static Files & SPA Routing
 	distFS, distErr := DistFileSystem()
@@ -177,6 +183,72 @@ func (s *Server) routeRuntime(w http.ResponseWriter, r *http.Request) {
 
 	// Normal REST API runtime action
 	s.authMiddleware(s.api.handleRuntimeDetail)(w, r)
+}
+
+// routeProject dispatches project detail, layout, and agents sub-routes.
+func (s *Server) routeProject(h *NexusHandler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.auth.ValidateOrigin(r) {
+			writeError(w, http.StatusForbidden, "invalid origin")
+			return
+		}
+		if s.auth.AuthenticateRequest(r) == nil {
+			writeError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/layout"):
+			h.handleProjectLayout(w, r)
+		case strings.HasSuffix(r.URL.Path, "/agents"):
+			if r.Method == http.MethodGet {
+				h.handleAgentsList(w, r)
+			} else {
+				h.handleAgentCreate(w, r)
+			}
+		default:
+			h.handleProjectDetail(w, r)
+		}
+	}
+}
+
+// routeAgent dispatches agent detail, actions, and the agent-scoped terminal WS.
+func (s *Server) routeAgent(h *NexusHandler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.auth.ValidateOrigin(r) {
+			writeError(w, http.StatusForbidden, "invalid origin")
+			return
+		}
+		if s.auth.AuthenticateRequest(r) == nil {
+			writeError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+
+		path := strings.TrimPrefix(r.URL.Path, "/api/v1/agents/")
+		parts := strings.Split(path, "/")
+
+		// WebSocket terminal: /api/v1/agents/:id/terminal
+		if len(parts) == 2 && parts[1] == "terminal" && r.Method == http.MethodGet {
+			runtimeID, err := h.resolveAgentRuntimeID(parts[0])
+			if err != nil {
+				writeError(w, http.StatusNotFound, "agent has no active runtime: "+err.Error())
+				return
+			}
+			s.terminal.HandleWebSocket(w, r, runtimeID)
+			return
+		}
+
+		if len(parts) >= 2 {
+			switch parts[1] {
+			case "start":
+				h.handleAgentStart(w, r)
+				return
+			case "stop":
+				h.handleAgentStop(w, r)
+				return
+			}
+		}
+		h.handleAgentDetail(w, r)
+	}
 }
 
 func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {

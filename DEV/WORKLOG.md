@@ -312,3 +312,13 @@
 - Docs: README sandbox/hermetic terminology corrected to credential isolation; gofmt-clean whole repo.
 - Reports: DEV/FINAL_BASELINE_AUDIT.md, FINAL_PRODUCTION_AUDIT.md, FINAL_PLATFORM_MATRIX.md, FINAL_PROVIDER_MATRIX.md, FINAL_SECURITY_REPORT.md, FINAL_RELEASE_REPORT.md, FINAL_10_OF_10_SCORECARD.md.
 - Scorecard: 87/100 (8.7/10 CONDITIONAL GO). Blockers: Windows/macOS runtime E2E pending CI + local; session expiry/rotation; doctor v2; final independent review.
+
+## Date: 2026-08-28 — Nexus V1 Gate 1 (feat/nexus-v1)
+- SQLite durable product state (modernc.org/sqlite, pure Go): internal/nexus/store + embedded idempotent migrations (projects/agents/revisions/generations/lineage/layouts/events/maestro/verification).
+- Project domain: ULID id, slug, canonical path (Abs+EvalSymlinks+dir check), repo fields, maestro_mode default ASSIST, MRU ordering.
+- Persistent Agent domain: stable agt_ id, project-scoped (IDOR guard), config revisions, runtime generations, lineage, honest continuity statuses.
+- Nexus service StartAgent/StopAgent bridging store + RuntimeLauncher.
+- Web API: /api/v1/projects* + /api/v1/agents* + agent terminal WS (resolves current generation, 101 verified).
+- Frontend: design tokens, UI primitives, AppShell (Nexus+Legacy nav), CommandPalette (Ctrl+K), ProjectsPage (project rail + agents + agent terminal); App.tsx de-goddified.
+- Maestro WIP salvage inventory (feat/cli-novo-wip): ~5k LOC planner classified KEEP_IN_MAESTRO; Mission concepts → Gate 7.
+- Evidence: go test -race 25 pkgs ok; frontend typecheck/lint/test/build ok; live vertical slice (project→agent→runtime RUNNING→terminal 101→persist across restart).

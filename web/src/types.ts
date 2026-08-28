@@ -83,3 +83,76 @@ export interface EventRecord {
   data: Record<string, any>;
   timestamp: string;
 }
+
+/* ---- IAPro Nexus domain types ---- */
+
+export interface Project {
+  id: string;
+  name: string;
+  slug: string;
+  canonical_path: string;
+  repo_remote: string;
+  repo_url: string;
+  default_branch: string;
+  maestro_mode: 'OFF' | 'ASSIST' | 'ORCHESTRATE';
+  resource_policy: string;
+  default_isolation: string;
+  settings: string;
+  created_at: string;
+  updated_at: string;
+  last_opened_at?: string;
+}
+
+export interface Agent {
+  id: string;
+  project_id: string;
+  name: string;
+  role: string;
+  status: string;
+  current_revision_id?: string;
+  continuity_status: string;
+  created_at: string;
+  updated_at: string;
+  last_started_at?: string;
+}
+
+export interface RuntimeGeneration {
+  id: string;
+  agent_id: string;
+  revision_id: string;
+  runtime_id: string;
+  provider: string;
+  profile: string;
+  provider_session: string;
+  continuity: string;
+  started_at: string;
+  stopped_at?: string;
+  state: string;
+}
+
+export interface LineageEntry {
+  id: string;
+  agent_id: string;
+  relation: string;
+  source_runtime: string;
+  source_session: string;
+  target_runtime: string;
+  target_session: string;
+  checkpoint_id: string;
+  created_at: string;
+}
+
+export interface AgentRevision {
+  id: string;
+  agent_id: string;
+  revision: number;
+  config: string;
+  created_at: string;
+}
+
+export interface AgentDetail {
+  agent: Agent;
+  generations: RuntimeGeneration[];
+  lineage: LineageEntry[];
+  revisions: AgentRevision[];
+}

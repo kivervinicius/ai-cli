@@ -1,13 +1,40 @@
 @import "tailwindcss";
 @import "xterm/css/xterm.css";
 
+/* ---- IAPro Nexus design tokens (dark primary, light/system prepared) ---- */
+:root {
+  --nx-bg: #020617;
+  --nx-surface: #0f172a;
+  --nx-surface-2: #1e293b;
+  --nx-border: rgba(51, 65, 85, 0.6);
+  --nx-text: #f8fafc;
+  --nx-muted: #94a3b8;
+  --nx-brand: #8b5cf6;
+  --nx-brand-2: #06b6d4;
+  --nx-success: #22c55e;
+  --nx-warning: #f59e0b;
+  --nx-danger: #ef4444;
+  --nx-info: #3b82f6;
+
+  --nx-radius-sm: 6px;
+  --nx-radius: 10px;
+  --nx-radius-lg: 14px;
+  --nx-space-1: 4px;
+  --nx-space-2: 8px;
+  --nx-space-3: 12px;
+  --nx-space-4: 16px;
+  --nx-space-6: 24px;
+  --nx-font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+}
+
 body {
   margin: 0;
   padding: 0;
-  background-color: #020617;
-  color: #f8fafc;
+  background-color: var(--nx-bg);
+  color: var(--nx-text);
   overflow: hidden;
   user-select: none;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 /* Custom terminal styles */

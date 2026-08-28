@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { api, initSession } from './api';
+import { setNexusCSRF } from './nexus/api';
+import { AppShell, CommandPalette, PlaceholderPage } from './nexus/AppShell';
+import { ProjectsPage } from './nexus/ProjectsPage';
 import { Workspace, RuntimeSession, ProviderInfo, ProfileInfo, EventRecord } from './types';
-import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { TerminalView } from './components/TerminalView';
 import { ProvidersView } from './components/ProvidersView';
@@ -11,29 +13,40 @@ import { HandoffModal } from './components/HandoffModal';
 import { ContinueModal } from './components/ContinueModal';
 
 export const App: React.FC = () => {
-  const [currentTab, setCurrentTab] = useState<string>('dashboard');
+  const [currentTab, setCurrentTab] = useState<string>('overview');
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeWorkspace, setActiveWorkspace] = useState<string>('');
   const [runtimes, setRuntimes] = useState<RuntimeSession[]>([]);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
   const [events, setEvents] = useState<EventRecord[]>([]);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const [activeTerminalId, setActiveTerminalId] = useState<string>('');
   const [showStartModal, setShowStartModal] = useState<boolean>(false);
   const [handoffRuntime, setHandoffRuntime] = useState<RuntimeSession | null>(null);
   const [continueRuntime, setContinueRuntime] = useState<RuntimeSession | null>(null);
 
-  // Initial load & authentication
   useEffect(() => {
-    initSession().then(() => {
+    initSession().then((sess) => {
+      if (sess.csrf_token) setNexusCSRF(sess.csrf_token);
       fetchStaticData();
       fetchDynamicData();
     });
-
-    // 3-second background polling
     const interval = setInterval(fetchDynamicData, 3000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Command palette shortcut: Ctrl/Cmd + K
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   const fetchStaticData = async () => {
@@ -103,123 +116,55 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleAddWorkspace = async (path: string, name?: string) => {
-    try {
-      await api.addWorkspace(path, name);
-      const ws = await api.getWorkspaces();
-      setWorkspaces(ws);
-      setActiveWorkspace(path);
-    } catch (e) {
-      console.error('Failed to add workspace', e);
-    }
-  };
-
-  const handleRemoveWorkspace = async (path: string) => {
-    try {
-      await api.removeWorkspace(path);
-      const ws = await api.getWorkspaces();
-      setWorkspaces(ws);
-      if (activeWorkspace === path && ws.length > 0) {
-        setActiveWorkspace(ws[0].path);
-      }
-    } catch (e) {
-      console.error('Failed to remove workspace', e);
-    }
-  };
-
   return (
-    <div className="flex h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
-      {/* Left Sidebar */}
-      <Sidebar
-        currentTab={currentTab}
-        onSelectTab={setCurrentTab}
-        workspaces={workspaces}
-        activeWorkspace={activeWorkspace}
-        onSelectWorkspace={setActiveWorkspace}
-        runtimeCount={runtimes.filter((r) => r.state === 'RUNNING' || r.state === 'STARTING').length}
-        onAddWorkspace={handleAddWorkspace}
-        onRemoveWorkspace={handleRemoveWorkspace}
-      />
+    <AppShell current={currentTab} onNavigate={setCurrentTab} onCommandPalette={() => setPaletteOpen(true)}>
+      {currentTab === 'overview' && <ProjectsPage />}
+      {currentTab === 'projects' && <ProjectsPage />}
+      {currentTab === 'agents' && <ProjectsPage />}
+      {currentTab === 'resources' && (
+        <PlaceholderPage
+          title="Resources"
+          hint="Providers, accounts, quotas and the smart Resource Scheduler arrive in Gate 5."
+        />
+      )}
+      {currentTab === 'maestro' && (
+        <PlaceholderPage title="Maestro Assist" hint="Process, skill and verification recommendations arrive in Gate 6." />
+      )}
+      {currentTab === 'sessions' && (
+        <PlaceholderPage title="Sessions" hint="Session continuity and lineage view arrives with persistent agents." />
+      )}
+      {currentTab === 'settings' && (
+        <PlaceholderPage title="Settings" hint="Nexus settings arrive with the configuration drawer (Gate 3)." />
+      )}
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-950">
-        {/* Top Navbar */}
-        <header className="h-12 border-b border-slate-800/80 px-6 flex items-center justify-between text-xs font-mono select-none bg-slate-950/40">
-          <div className="flex items-center space-x-2">
-            <span className="text-slate-500">Workspace:</span>
-            <span className="text-slate-200 font-semibold">{activeWorkspace || 'Default'}</span>
-          </div>
+      {currentTab === 'runtimes' && (
+        <Dashboard
+          runtimes={runtimes}
+          providers={providers}
+          workspaces={workspaces}
+          activeWorkspace={activeWorkspace}
+          onOpenTerminal={handleOpenTerminal}
+          onOpenStartModal={() => setShowStartModal(true)}
+          onOpenHandoffModal={(r) => setHandoffRuntime(r)}
+          onOpenContinueModal={(r) => setContinueRuntime(r)}
+          onStopRuntime={handleStopRuntime}
+          onDeleteRuntime={handleDeleteRuntime}
+          onCleanInactive={handleCleanInactive}
+        />
+      )}
 
-          <div className="flex items-center space-x-4">
-            <a
-              href="https://github.com/IAPro-Community"
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-indigo-950/40 border border-indigo-800/50 text-indigo-300 hover:text-indigo-200 hover:border-indigo-600 transition shadow-sm"
-              title="Visit IAPro Community on GitHub"
-            >
-              <span className="w-2 h-2 rounded-full bg-violet-400 animate-ping"></span>
-              <span className="font-semibold text-[11px]">IAPro Community</span>
-            </a>
+      <div className={currentTab === 'terminals' ? 'h-full flex flex-col' : 'hidden'}>
+        <TerminalView
+          runtimes={runtimes.filter((r) => r.state === 'RUNNING' || r.state === 'STARTING')}
+          activeRuntimeId={activeTerminalId}
+          onSelectRuntime={setActiveTerminalId}
+          onUpdateTitle={handleUpdateTitle}
+        />
+      </div>
 
-            <span className="flex items-center space-x-1.5 text-emerald-400 font-medium">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>Control Core Healthy</span>
-            </span>
-          </div>
-        </header>
+      {currentTab === 'providers' && <ProvidersView providers={providers} />}
+      {currentTab === 'events' && <EventsView events={events} />}
 
-        {/* View Switcher */}
-        <div className="flex-1 p-4 overflow-y-auto">
-          {currentTab === 'dashboard' && (
-            <Dashboard
-              runtimes={runtimes}
-              providers={providers}
-              workspaces={workspaces}
-              activeWorkspace={activeWorkspace}
-              onOpenTerminal={handleOpenTerminal}
-              onOpenStartModal={() => setShowStartModal(true)}
-              onOpenHandoffModal={(r) => setHandoffRuntime(r)}
-              onOpenContinueModal={(r) => setContinueRuntime(r)}
-              onStopRuntime={handleStopRuntime}
-              onDeleteRuntime={handleDeleteRuntime}
-              onCleanInactive={handleCleanInactive}
-            />
-          )}
-
-          {/* Terminal view is kept mounted to preserve WebSocket connections and terminal state across tab switches */}
-          <div className={currentTab === 'terminals' ? 'h-full flex flex-col' : 'hidden'}>
-            <TerminalView
-              runtimes={runtimes.filter((r) => r.state === 'RUNNING' || r.state === 'STARTING')}
-              activeRuntimeId={activeTerminalId}
-              onSelectRuntime={setActiveTerminalId}
-              onUpdateTitle={handleUpdateTitle}
-            />
-          </div>
-
-          {currentTab === 'runtimes' && (
-            <Dashboard
-              runtimes={runtimes}
-              providers={providers}
-              workspaces={workspaces}
-              activeWorkspace={activeWorkspace}
-              onOpenTerminal={handleOpenTerminal}
-              onOpenStartModal={() => setShowStartModal(true)}
-              onOpenHandoffModal={(r) => setHandoffRuntime(r)}
-              onOpenContinueModal={(r) => setContinueRuntime(r)}
-              onStopRuntime={handleStopRuntime}
-              onDeleteRuntime={handleDeleteRuntime}
-              onCleanInactive={handleCleanInactive}
-            />
-          )}
-
-          {currentTab === 'providers' && <ProvidersView providers={providers} />}
-
-          {currentTab === 'events' && <EventsView events={events} />}
-        </div>
-      </main>
-
-      {/* Modals */}
       {showStartModal && (
         <StartModal
           providers={providers}
@@ -257,6 +202,8 @@ export const App: React.FC = () => {
           }}
         />
       )}
-    </div>
+
+      {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} onNavigate={setCurrentTab} />}
+    </AppShell>
   );
 };
