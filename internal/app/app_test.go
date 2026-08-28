@@ -237,4 +237,26 @@ func TestControlPlaneCLICommands(t *testing.T) {
 			t.Fatalf("completion %s failed: %s, %v", sh, out, err)
 		}
 	}
+
+	// 15. AI Control CLI commands
+	out, err = captureStdout(func() error {
+		return Run([]string{"control", "running", "--json"})
+	})
+	if err != nil || !strings.Contains(out, "[") {
+		t.Fatalf("control running failed: %s, %v", out, err)
+	}
+
+	out, err = captureStdout(func() error {
+		return Run([]string{"control", "cleanup"})
+	})
+	if err != nil || !strings.Contains(out, "Cleaned up") {
+		t.Fatalf("control cleanup failed: %s, %v", out, err)
+	}
+
+	out, err = captureStdout(func() error {
+		return Run([]string{"control", "doctor", "--json"})
+	})
+	if err != nil || !strings.Contains(out, "drivers") {
+		t.Fatalf("control doctor failed: %s, %v", out, err)
+	}
 }

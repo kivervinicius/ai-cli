@@ -153,6 +153,42 @@ AI CLI Control Plane natively coordinates leading terminal AI coding assistants:
 
 ---
 
+### 8. ⚡ AI Control — Supervised Runtimes & Universal Slash Channel (`/ai`)
+
+AI CLI provides two complementary operational modes:
+- **Classic Mode (`ai <provider>`)**: Fast, direct CLI execution with multi-factor account selection and anti-rate-limit fallback.
+- **Supervised Mode (`ai control start <provider>`)**: Execution under `SessionHost` with interactive reattach (Attach/Detach), real-time event bus, and in-session universal slash commands.
+
+#### 🎮 Universal Slash Commands (Inside the Supervised Terminal)
+When running inside a supervised session, type special commands starting with `/ai` directly into the CLI prompt. AI Control intercepts them locally without sending them to the model:
+
+| Command | Description |
+| :--- | :--- |
+| `/ai status` | Displays active runtime status, PID, session ID, and quota capacity. |
+| `/ai accounts` | Lists all configured accounts for the provider and remaining limits. |
+| `/ai usage` | Displays live usage metrics and reset windows. |
+| `/ai handoff <profile>` | **Account Handoff:** Transitions active work to another profile of the same provider. |
+| `/ai continue <provider>` | **Context Handoff:** Starts a new session on another provider with workspace tasks and diffs. |
+| `/ai detach` | Detaches from interactive terminal while keeping the agent process alive. |
+| `/ai stop` | Sends graceful termination signal to the assistant. |
+| `//ai <text>` | **Escape Prefix:** Sends literal `/ai` text directly to the assistant. |
+
+#### 🖥️ Control Center CLI Commands (`ai control` / `ai ui`)
+```bash
+ai control                                      # Opens interactive Bubble Tea Control Center
+ai control start codex [--profile work]         # Starts a supervised runtime session
+ai control running [--json]                     # Lists active supervised runtimes
+ai control status <runtime-id> [--json]         # Inspects details of a runtime
+ai control attach <runtime-id>                  # Reconnects terminal to an active session
+ai control stop <runtime-id>                    # Stops a supervised runtime
+ai control handoff <id> codex:personal          # Performs account handoff preserving session
+ai control continue <id> --with claude:work     # Transfers work context to another provider
+ai control cleanup                              # Removes orphaned records and dead sockets
+ai control doctor [--json]                      # Audits drivers, sockets, and compatibility
+```
+
+---
+
 ## 🚀 Installation & Quick Start
 
 ### 1-Line Quick Install (Zero-Clone / Recommended)

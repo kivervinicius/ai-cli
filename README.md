@@ -153,6 +153,42 @@ O AI CLI Control Plane integra nativamente os principais assistentes de IA para 
 
 ---
 
+### 8. ⚡ AI Control — Runtimes Supervisionados & Canal Universal `/ai`
+
+O AI CLI oferece dois modos de operação complementares:
+- **Modo Classic (`ai <provider>`)**: Execução rápida e direta do assistente no terminal com seleção inteligente de perfis e fallback anti-rate-limit.
+- **Modo Supervised (`ai control start <provider>`)**: Execução supervisionada pelo `SessionHost`, permitindo reconexão (Attach/Detach), observabilidade de eventos em tempo real e canal universal de comandos em sessão.
+
+#### 🎮 Comandos do Canal Universal `/ai` (Dentro do Terminal Supervisionado)
+Ao executar em modo supervisionado, digite comandos especiais iniciados por `/ai` diretamente no prompt do assistente. O AI Control intercepta o comando localmente sem repassar ao modelo:
+
+| Comando | Descrição |
+| :--- | :--- |
+| `/ai status` | Exibe o status do runtime ativo, PID, sessão e capacidade de quota. |
+| `/ai accounts` | Lista todas as contas configuradas do provedor e seus limites restantes. |
+| `/ai usage` | Mostra as quotas de uso e janelas de reset em tempo real. |
+| `/ai handoff <perfil>` | **Account Handoff:** Migra a sessão ativa para outra conta com quota do mesmo provedor. |
+| `/ai continue <provedor>` | **Context Handoff:** Cria uma nova sessão em outro provedor com o envelope de tarefas e arquivos modificados. |
+| `/ai detach` | Desconecta do terminal interativo mantendo o processo do assistente em execução. |
+| `/ai stop` | Envia sinal de encerramento controlado para o assistente. |
+| `//ai <texto>` | **Prefixo de Escape:** Envia o texto literal iniciado por `/ai` para o assistente. |
+
+#### 🖥️ Subcomandos do Control Center (`ai control` / `ai ui`)
+```bash
+ai control                                      # Abre a interface interativa Bubble Tea
+ai control start codex [--profile work]         # Inicia um runtime supervisionado
+ai control running [--json]                     # Lista runtimes supervisionados ativos
+ai control status <runtime-id> [--json]         # Inspeciona detalhes de um runtime
+ai control attach <runtime-id>                  # Reconecta o terminal a uma sessão ativa
+ai control stop <runtime-id>                    # Para um runtime supervisionado
+ai control handoff <id> codex:personal          # Executa troca de conta com preservação de sessão
+ai control continue <id> --with claude:work     # Transfere contexto para outro provedor
+ai control cleanup                              # Remove registros órfãos e sockets antigos
+ai control doctor [--json]                      # Audita drivers, sockets e compatibilidade
+```
+
+---
+
 ## 🚀 Instalação e Início Rápido
 
 ### Instalação em 1 Linha (Zero-Clone / Recomendado)

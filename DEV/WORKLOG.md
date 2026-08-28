@@ -37,3 +37,18 @@
   - Added multi-directory session and history resolution in Codex and AGY adapters for Windows native locations (`.codex`, `.gemini/antigravity-cli`).
   - Added dedicated detailed subsections for all 5 supported CLIs (Codex, AGY, Claude Code, OpenCode, Gemini CLI) in `README.md` and `README.en.md`.
   - Pushed commit `008f2f1` to `origin/feat/control-plane-evolution`.
+
+- **AI Control Runtime & Universal Agent Management (Milestones 1-10)**:
+  - Baseline audit generated in `DEV/CONTROL_BASELINE_AUDIT.md` from `feat/control-plane-evolution`.
+  - Implemented versioned IPC protocol and cross-platform socket/pipe endpoints in `internal/control/protocol`.
+  - Implemented persistent runtime registry and lifecycle state engine in `internal/control/registry`.
+  - Implemented PTY process coordinator, ring buffer, and universal `/ai` slash command router in `internal/control/host`.
+  - Implemented provider control drivers with capability matrix in `internal/control/driver`.
+  - Implemented in-memory pub/sub event bus in `internal/control/events`.
+  - Implemented safe same-provider account handoff and cross-provider context handoff with secret redaction in `internal/control/handoff`.
+  - Created Bubble Tea Control Center TUI in `internal/control/tui`.
+  - Integrated `ai control` and `ai ui` CLI commands in `internal/app`.
+  - Added deterministic interactive test fixture in `internal/testutil/fakeagent`.
+  - Updated `README.md` and `README.en.md` with Section 8 describing Supervised Mode and in-session `/ai` commands.
+  - Generated comprehensive implementation report `AI_CONTROL_IMPLEMENTATION_REPORT.md`.
+  - All 40+ tests passing with 0 data races (`go test -race ./...`).

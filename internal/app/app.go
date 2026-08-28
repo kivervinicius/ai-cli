@@ -133,6 +133,8 @@ func Run(args []string) error {
 		return issueReportCmd(args[1:])
 	case "config":
 		return configCmd(args[1:])
+	case "control", "ui":
+		return controlCmd(args[1:])
 	case "codex", "agy", "claude", "opencode", "gemini":
 		prov := args[0]
 		targetProfile := ""
@@ -297,6 +299,7 @@ func usage() {
 
 Usage:
   ai                              Open interactive control plane (TUI)
+  ai control [subcmd]             AI Control Center & Supervised Runtimes (alias: ai ui)
   ai <provider> [flags]           Launch provider with intelligent account selection
   ai <provider>:<profile> [flags] Launch specific profile (e.g. ai codex:work)
   ai <provider>:auto [flags]      Explicit auto-selection
@@ -1136,7 +1139,7 @@ func completionCmd(args []string) error {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="providers profiles usage sessions workspaces bind unbind explain doctor security history stats config completion version codex agy claude opencode gemini"
+    opts="control ui providers profiles usage sessions workspaces bind unbind explain doctor security history stats config completion version codex agy claude opencode gemini"
     COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
     return 0
 }
@@ -1147,6 +1150,8 @@ complete -F _ai_completion ai
 _ai() {
     local -a commands
     commands=(
+        'control:AI Control Center & Supervised Runtimes'
+        'ui:Interactive Control Center'
         'providers:List AI providers'
         'profiles:List configured profiles'
         'usage:Display quota and rate limits'
@@ -1159,13 +1164,13 @@ _ai() {
 _ai "$@"
 `)
 	case "fish":
-		fmt.Print(`complete -c ai -f -a "providers profiles usage sessions doctor security history stats"
+		fmt.Print(`complete -c ai -f -a "control ui providers profiles usage sessions doctor security history stats"
 `)
 	case "powershell", "pwsh":
 		fmt.Print(`Register-ArgumentCompleter -Native -CommandName ai -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
     $commands = @(
-        'providers', 'profiles', 'usage', 'sessions', 'workspaces',
+        'control', 'ui', 'providers', 'profiles', 'usage', 'sessions', 'workspaces',
         'bind', 'unbind', 'explain', 'doctor', 'security',
         'history', 'stats', 'config', 'completion', 'version',
         'codex', 'agy', 'claude', 'opencode', 'gemini'
