@@ -21,10 +21,10 @@ type EventType string
 
 const (
 	EventProfileSelected   EventType = "PROFILE_SELECTED"
-	EventSessionStarted     EventType = "SESSION_STARTED"
+	EventSessionStarted    EventType = "SESSION_STARTED"
 	EventRateLimitDetected EventType = "RATE_LIMIT_DETECTED"
-	EventFallbackTriggered  EventType = "FALLBACK_TRIGGERED"
-	EventQuotaRefreshed     EventType = "QUOTA_REFRESHED"
+	EventFallbackTriggered EventType = "FALLBACK_TRIGGERED"
+	EventQuotaRefreshed    EventType = "QUOTA_REFRESHED"
 )
 
 // Event records local audit information.
@@ -118,13 +118,13 @@ func ReadRecentEvents(limit int) ([]Event, error) {
 
 // StatsSummary aggregates local metrics for the given lookback period.
 type StatsSummary struct {
-	PeriodDays     int                       `json:"period_days"`
-	TotalSessions  int                       `json:"total_sessions"`
-	TotalFallbacks int                       `json:"total_fallbacks"`
-	TotalRateLimits int                      `json:"total_rate_limits"`
-	ByProvider     map[string]int            `json:"by_provider"`
-	ByProfile      map[string]int            `json:"by_profile"`
-	RateLimits     map[string]int            `json:"rate_limits_by_profile"`
+	PeriodDays      int            `json:"period_days"`
+	TotalSessions   int            `json:"total_sessions"`
+	TotalFallbacks  int            `json:"total_fallbacks"`
+	TotalRateLimits int            `json:"total_rate_limits"`
+	ByProvider      map[string]int `json:"by_provider"`
+	ByProfile       map[string]int `json:"by_profile"`
+	RateLimits      map[string]int `json:"rate_limits_by_profile"`
 }
 
 // ComputeStats aggregates historical metrics over a lookback duration.
@@ -136,10 +136,10 @@ func ComputeStats(lookback time.Duration) (StatsSummary, error) {
 
 	cutoff := time.Now().Add(-lookback)
 	summary := StatsSummary{
-		PeriodDays:  int(lookback.Hours() / 24),
-		ByProvider:  make(map[string]int),
-		ByProfile:   make(map[string]int),
-		RateLimits:  make(map[string]int),
+		PeriodDays: int(lookback.Hours() / 24),
+		ByProvider: make(map[string]int),
+		ByProfile:  make(map[string]int),
+		RateLimits: make(map[string]int),
 	}
 
 	for _, ev := range events {

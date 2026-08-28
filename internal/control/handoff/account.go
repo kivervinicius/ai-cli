@@ -10,6 +10,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/driver"
 	"github.com/kivervinicius/ai-cli/internal/control/events"
 	"github.com/kivervinicius/ai-cli/internal/control/host"
+	"github.com/kivervinicius/ai-cli/internal/control/ids"
 	"github.com/kivervinicius/ai-cli/internal/control/launcher"
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
@@ -39,14 +40,14 @@ const (
 
 // Transaction encapsulates the context and state of an account handoff attempt.
 type Transaction struct {
-	State           HandoffState
-	SourceSession   registry.RuntimeSession
-	TargetProvider  string
-	TargetProfile   string
-	Checkpoint      WorkCheckpoint
-	TargetSession   *registry.RuntimeSession
-	TargetHost      *host.SessionHost
-	Error           error
+	State          HandoffState
+	SourceSession  registry.RuntimeSession
+	TargetProvider string
+	TargetProfile  string
+	Checkpoint     WorkCheckpoint
+	TargetSession  *registry.RuntimeSession
+	TargetHost     *host.SessionHost
+	Error          error
 }
 
 // PerformAccountHandoff executes a safe, transactional account handoff to another profile of the SAME provider.
@@ -134,13 +135,20 @@ func PerformAccountHandoff(ctx context.Context, sourceRuntimeID, targetSpec stri
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+	// Source stop is a hard barrier (H3): never start the target while the source
+	// may still be a writer for the same provider session.
+	if registry.IsProcessAlive(source.PID) {
+		tx.State = HandoffFailedSafe
+		_ = reg.UpdateState(sourceRuntimeID, registry.StateRunning)
+		return nil, fmt.Errorf("account handoff aborted (FAILED_SAFE): source runtime %s did not stop within policy; refusing to start target while source may still write the session", sourceRuntimeID)
+	}
 	_ = reg.UpdateState(sourceRuntimeID, registry.StateHandoff)
 	tx.State = HandoffSourceQuiesced
 
 	// 8. Start target runtime using unified launcher
 	tx.State = HandoffTargetStarting
-	newRuntimeID := fmt.Sprintf("%s-handoff-%d", targetProvider, len(reg.List())+1)
-	lineageID := fmt.Sprintf("lin-%s-%d", targetProvider, time.Now().UnixNano())
+	newRuntimeID := fmt.Sprintf("%s-handoff-%s", targetProvider, ids.NewRuntimeID())
+	lineageID := fmt.Sprintf("lin-%s-%s", targetProvider, ids.NewRuntimeID())
 
 	targetSession, err := launcher.Default().Launch(ctx, launcher.LaunchOptions{
 		RuntimeID:         newRuntimeID,
@@ -149,7 +157,7 @@ func PerformAccountHandoff(ctx context.Context, sourceRuntimeID, targetSpec stri
 		ProviderSessionID: source.ProviderSessionID,
 		Workspace:         source.Workspace,
 		Args:              resumeArgs,
-		Standalone:        true,
+		Standalone:        false,
 	})
 	if err != nil {
 		tx.State = HandoffRollback
@@ -159,7 +167,15 @@ func PerformAccountHandoff(ctx context.Context, sourceRuntimeID, targetSpec stri
 	tx.TargetSession = targetSession
 	tx.State = HandoffTargetResumed
 
-	// 9. Verify session continuity
+	// Verify continuity before claiming VERIFIED: the target must be running and
+	// its resume command must actually reference the source session ID.
+	if ok, reason := VerifyResumeContinuity(targetSession, resumeArgs, source.ProviderSessionID); !ok {
+		tx.State = HandoffRollback
+		// Never orphan the freshly launched target before rolling the source back.
+		stopRuntime(targetSession.RuntimeID)
+		return nil, tx.rollback(ctx, d, source, fmt.Errorf("resume continuity verification failed: %s", reason))
+	}
+
 	targetSession.ProviderSessionID = source.ProviderSessionID
 	targetSession.State = registry.StateRunning
 	targetSession.ParentRuntimeID = source.RuntimeID
@@ -213,7 +229,7 @@ func (tx *Transaction) rollback(ctx context.Context, d driver.ControlDriver, sou
 		return fmt.Errorf("handoff failed (%w) and rollback command build failed: %v (FAILED_UNSAFE)", cause, err)
 	}
 
-	recoverRuntimeID := fmt.Sprintf("%s-recovered-%d", source.ProviderID, len(reg.List())+1)
+	recoverRuntimeID := fmt.Sprintf("%s-recovered-%s", source.ProviderID, ids.NewRuntimeID())
 	recoverSession, err := launcher.Default().Launch(ctx, launcher.LaunchOptions{
 		RuntimeID:         recoverRuntimeID,
 		ProviderID:        source.ProviderID,
@@ -221,7 +237,7 @@ func (tx *Transaction) rollback(ctx context.Context, d driver.ControlDriver, sou
 		ProviderSessionID: source.ProviderSessionID,
 		Workspace:         source.Workspace,
 		Args:              resumeArgs,
-		Standalone:        true,
+		Standalone:        false,
 	})
 	if err != nil {
 		tx.State = HandoffFailedUnsafe
@@ -234,4 +250,16 @@ func (tx *Transaction) rollback(ctx context.Context, d driver.ControlDriver, sou
 
 	tx.State = HandoffRolledBack
 	return fmt.Errorf("handoff failed (%w); successfully restored source session on recovery runtime %s (ROLLED_BACK)", cause, recoverRuntimeID)
+}
+
+// stopRuntime forcefully terminates a freshly started runtime so a failed
+// handoff never orphans a live target holding the provider session.
+func stopRuntime(runtimeID string) {
+	if runtimeID == "" {
+		return
+	}
+	if c, err := protocol.NewClient(runtimeID); err == nil {
+		_, _ = c.Send(protocol.CmdTerminate, nil)
+		_ = c.Close()
+	}
 }

@@ -40,7 +40,7 @@ func spawnDetachedHost(exe string, runtimeID string) (*os.Process, error) {
 		}
 		return nil, err
 	}
-	
+
 	if logFile != nil {
 		logFile.Close()
 	}

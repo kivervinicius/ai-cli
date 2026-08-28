@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kivervinicius/ai-cli/internal/buildinfo"
 	"github.com/kivervinicius/ai-cli/internal/conversation"
 	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/cooldown"
@@ -31,8 +32,6 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/profile"
 	"github.com/kivervinicius/ai-cli/internal/tui"
 )
-
-const version = "0.4.0"
 
 var globalRegistry *provider.Registry
 
@@ -298,9 +297,8 @@ func executeResume(provName, profName, sessionID string, args []string) error {
 }
 
 func usage() {
-	fmt.Print(`AI CLI Control Plane v0.4.0 - Local Control Plane for AI Coding CLIs
-
-Usage:
+	fmt.Printf("AI CLI Control Plane %s - Local Control Plane for AI Coding CLIs\n", buildinfo.Version)
+	fmt.Print(`Usage:
   ai                              Open interactive control plane (TUI)
   ai control [subcmd]             AI Control Center & Supervised Runtimes (alias: ai ui)
   ai <provider> [flags]           Launch provider with intelligent account selection
@@ -328,17 +326,12 @@ Usage:
 
 func versionCmd(args []string) error {
 	if len(args) > 0 && args[0] == "--json" {
-		out := map[string]string{
-			"version": version,
-			"os":      runtime.GOOS,
-			"arch":    runtime.GOARCH,
-			"go":      runtime.Version(),
-		}
+		out := buildinfo.JSON()
 		b, _ := json.MarshalIndent(out, "", "  ")
 		fmt.Println(string(b))
 		return nil
 	}
-	fmt.Printf("ai-cli %s (%s/%s, %s)\n", version, runtime.GOOS, runtime.GOARCH, runtime.Version())
+	fmt.Println(buildinfo.String())
 	return nil
 }
 
@@ -970,8 +963,8 @@ func exportCmd(args []string) error {
 	cfg, _ := config.LoadConfig()
 
 	exportData := map[string]interface{}{
-		"version":    version,
-		"os":         "linux",
+		"version":    buildinfo.Version,
+		"os":         runtime.GOOS,
 		"detections": detections,
 		"profiles":   ps,
 		"config":     cfg,
@@ -990,8 +983,8 @@ func issueReportCmd(args []string) error {
 
 	var sb strings.Builder
 	sb.WriteString("### Environment Diagnostics\n\n")
-	sb.WriteString(fmt.Sprintf("- AI CLI Version: `%s`\n", version))
-	sb.WriteString("- OS: `linux`\n\n")
+	sb.WriteString(fmt.Sprintf("- AI CLI Version: `%s`\n", buildinfo.Version))
+	sb.WriteString(fmt.Sprintf("- OS: `%s`\n\n", runtime.GOOS))
 	sb.WriteString("### Installed Providers\n\n")
 	for id, det := range detections {
 		sb.WriteString(fmt.Sprintf("- **%s**: Installed=%v, Version=`%s`\n", id, det.Installed, det.Version))

@@ -97,9 +97,9 @@ func (d *AGYDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effectiv
 			Tested:    true,
 		},
 		Approvals: CapabilityEvidence{
-			Status:    CapabilityUnsupported,
-			Reason:    "AGY tool approvals handled interactively in terminal",
-			Tested:    false,
+			Status: CapabilityUnsupported,
+			Reason: "AGY tool approvals handled interactively in terminal",
+			Tested: false,
 		},
 		NativeUIAttach: CapabilityEvidence{
 			Status: CapabilityUnsupported,

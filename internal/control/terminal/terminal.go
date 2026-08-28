@@ -2,10 +2,11 @@ package terminal
 
 import (
 	"io"
+	"os"
 	"os/exec"
 )
 
-// Backend abstracts platform-specific terminal emulation (Unix PTY, Windows ConPTY/Pipes).
+// Backend abstracts platform-specific terminal emulation (Unix PTY, Windows ConPTY).
 type Backend interface {
 	io.Reader
 	io.Writer
@@ -20,11 +21,23 @@ type Backend interface {
 	// PID returns the process ID of the supervised child process.
 	PID() int
 
+	// Wait blocks until the supervised child process terminates.
+	Wait() error
+
+	// Signal delivers an interrupt-style signal to the child (graceful stop).
+	Signal(sig os.Signal) error
+
+	// Kill forcefully terminates the child process tree.
+	Kill() error
+
 	// SupportsResize indicates whether dynamic window resizing is active.
 	SupportsResize() bool
 
 	// SupportsRawMode indicates whether VT/raw mode is supported.
 	SupportsRawMode() bool
+
+	// Mechanism returns a truthful description of the terminal backend in use.
+	Mechanism() string
 }
 
 // NewBackend instantiates the optimal terminal backend for the current OS.

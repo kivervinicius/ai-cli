@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
-import { Shield, ShieldAlert, Maximize2, XSquare, Pencil, Check } from 'lucide-react';
+import { Shield, ShieldAlert, XSquare, Pencil, Check } from 'lucide-react';
 
 interface TerminalPaneProps {
   runtimeId: string;
@@ -26,7 +26,6 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   const wsRef = useRef<WebSocket | null>(null);
 
   const [role, setRole] = useState<'CONTROL' | 'VIEW_ONLY'>('VIEW_ONLY');
-  const [connected, setConnected] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [customTitle, setCustomTitle] = useState(title || '');
@@ -75,7 +74,6 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     wsRef.current = ws;
 
     ws.onopen = () => {
-      setConnected(true);
       setErrorMsg('');
       fitAddon.fit();
       if (ws.readyState === WebSocket.OPEN) {
@@ -100,11 +98,10 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     };
 
     ws.onclose = () => {
-      setConnected(false);
+      setErrorMsg('Disconnected from runtime');
     };
 
     ws.onerror = () => {
-      setConnected(false);
       setErrorMsg('WebSocket connection error');
     };
 
@@ -116,6 +113,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         data === '\x1b[O' ||
         data === '[I' ||
         data === '[O' ||
+        // eslint-disable-next-line no-control-regex
         /^\x1b\[\d+;\d+R$/.test(data) ||
         /^\[\d+;\d+R$/.test(data)
       ) {

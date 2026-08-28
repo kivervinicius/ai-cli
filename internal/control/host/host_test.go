@@ -1,6 +1,7 @@
 package host
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -374,5 +375,61 @@ func TestSessionHost_ExplicitLeaseAcquireRelease(t *testing.T) {
 	}
 }
 
+func TestSessionHost_RejectsIncompatibleProtocolVersion(t *testing.T) {
+	runtimeID := "rt-version-test"
+	sess := registry.RuntimeSession{
+		RuntimeID:    runtimeID,
+		ProviderID:   "test",
+		ProfileID:    "default",
+		Workspace:    os.TempDir(),
+		State:        registry.StateStarting,
+		ControlLevel: registry.ControlLevelTerminal,
+	}
 
+	sh, err := NewSessionHost(Config{
+		Session: sess,
+		Binary:  "cat",
+		Args:    []string{},
+		Env:     os.Environ(),
+		Cwd:     os.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("failed to create SessionHost: %v", err)
+	}
+	if err := sh.Start(); err != nil {
+		t.Fatalf("failed to start SessionHost: %v", err)
+	}
+	defer sh.Stop()
 
+	time.Sleep(100 * time.Millisecond)
+
+	client, err := protocol.NewClient(runtimeID)
+	if err != nil {
+		t.Fatalf("failed to connect: %v", err)
+	}
+	defer client.Close()
+
+	// Craft a request with an incompatible protocol version.
+	badReq := protocol.Request{
+		Version:   99999,
+		ID:        "req-bad-version",
+		Command:   protocol.CmdPing,
+		Timestamp: time.Now(),
+	}
+	raw, _ := json.Marshal(badReq)
+	if _, err := client.RawConn().Write(append(raw, '\n')); err != nil {
+		t.Fatalf("failed to write incompatible request: %v", err)
+	}
+
+	line, err := client.Reader().ReadBytes('\n')
+	if err != nil {
+		t.Fatalf("failed to read rejection response: %v", err)
+	}
+	var resp protocol.Response
+	if err := json.Unmarshal(line, &resp); err != nil {
+		t.Fatalf("failed to parse rejection response: %v", err)
+	}
+	if resp.Error != "ERROR_PROTOCOL_VERSION" {
+		t.Fatalf("expected ERROR_PROTOCOL_VERSION, got %q", resp.Error)
+	}
+}

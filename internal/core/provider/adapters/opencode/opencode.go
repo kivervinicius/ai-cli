@@ -92,11 +92,11 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 	cwd, _ := os.Getwd()
 
 	envMap := map[string]string{
-		"HOME":                 home,
-		"XDG_CONFIG_HOME":      filepath.Join(home, ".config"),
-		"XDG_DATA_HOME":        filepath.Join(home, ".local", "share"),
-		"XDG_CACHE_HOME":       filepath.Join(home, ".cache"),
-		"OPENCODE_CONFIG_DIR":  filepath.Join(home, ".config", "opencode"),
+		"HOME":                home,
+		"XDG_CONFIG_HOME":     filepath.Join(home, ".config"),
+		"XDG_DATA_HOME":       filepath.Join(home, ".local", "share"),
+		"XDG_CACHE_HOME":      filepath.Join(home, ".cache"),
+		"OPENCODE_CONFIG_DIR": filepath.Join(home, ".config", "opencode"),
 	}
 	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
 		envMap["SSH_AUTH_SOCK"] = sock

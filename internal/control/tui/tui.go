@@ -281,7 +281,7 @@ func (m ControlModel) View() string {
 	}
 
 	shortcutsStr := " [a/Enter] Attach"
-	
+
 	if m.activeTab == TabRuntimes && len(m.runtimes) > 0 && m.selectedIndex < len(m.runtimes) {
 		sel := m.runtimes[m.selectedIndex]
 		if d, err := driver.DefaultRegistry().Get(sel.ProviderID); err == nil {
@@ -387,8 +387,6 @@ func truncate(s string, maxLen int) string {
 	}
 	return s
 }
-
-
 
 // RunControlTUI launches the interactive AI Control Center TUI.
 func RunControlTUI(ctx context.Context) (attachTargetID string, err error) {

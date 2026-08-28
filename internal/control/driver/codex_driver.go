@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
+	"github.com/kivervinicius/ai-cli/internal/control/terminal"
 	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/security"
@@ -54,7 +55,7 @@ func (d *CodexDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effect
 		Terminal: CapabilityEvidence{
 			Status:          CapabilitySupported,
 			ProviderVersion: version,
-			Mechanism:       "PTY / ConPTY TerminalBackend",
+			Mechanism:       terminal.BackendMechanism(),
 			Tested:          true,
 		},
 		Attach: CapabilityEvidence{
@@ -80,17 +81,18 @@ func (d *CodexDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effect
 			Status:          CapabilitySupported,
 			ProviderVersion: version,
 			Mechanism:       "codex resume <session-id>",
-			Tested:          true,
+			Reason:          "resume command supported by signature; not runtime-verified against a live codex session",
+			Tested:          false,
 		},
 		Fork: CapabilityEvidence{
-			Status:    CapabilityUnsupported,
-			Reason:    "Codex CLI does not support session branching/forking",
-			Tested:    false,
+			Status: CapabilityUnsupported,
+			Reason: "Codex CLI does not support session branching/forking",
+			Tested: false,
 		},
 		SubmitPrompt: CapabilityEvidence{
-			Status:    CapabilityUnsupported,
-			Reason:    "Structured prompt submission requires app-server adapter; use terminal input",
-			Tested:    false,
+			Status: CapabilityUnsupported,
+			Reason: "Structured prompt submission requires app-server adapter; use terminal input",
+			Tested: false,
 		},
 		CancelTurn: CapabilityEvidence{
 			Status:    CapabilitySupported,
@@ -98,19 +100,19 @@ func (d *CodexDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effect
 			Tested:    true,
 		},
 		Approvals: CapabilityEvidence{
-			Status:    CapabilityUnsupported,
-			Reason:    "Structured approvals require app-server adapter; interact via terminal prompt",
-			Tested:    false,
+			Status: CapabilityUnsupported,
+			Reason: "Structured approvals require app-server adapter; interact via terminal prompt",
+			Tested: false,
 		},
 		NativeUIAttach: CapabilityEvidence{
-			Status:    CapabilityUnsupported,
-			Reason:    "Native GUI attach not implemented for Codex",
-			Tested:    false,
+			Status: CapabilityUnsupported,
+			Reason: "Native GUI attach not implemented for Codex",
+			Tested: false,
 		},
 		Headless: CapabilityEvidence{
-			Status:    CapabilityPartial,
-			Reason:    "Supports -p non-interactive prompts in classic mode",
-			Tested:    true,
+			Status: CapabilityPartial,
+			Reason: "Supports -p non-interactive prompts in classic mode",
+			Tested: true,
 		},
 		SlashControl: CapabilityEvidence{
 			Status:    CapabilitySupported,

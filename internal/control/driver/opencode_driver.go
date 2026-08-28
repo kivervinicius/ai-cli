@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
+	"github.com/kivervinicius/ai-cli/internal/control/terminal"
 	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/security"
@@ -55,7 +56,7 @@ func (d *OpenCodeDriver) EffectiveCaps(ctx context.Context, p model.Profile) Eff
 		Terminal: CapabilityEvidence{
 			Status:          CapabilitySupported,
 			ProviderVersion: version,
-			Mechanism:       "PTY / ConPTY TerminalBackend",
+			Mechanism:       terminal.BackendMechanism(),
 			Tested:          true,
 		},
 		Attach: CapabilityEvidence{
@@ -81,7 +82,8 @@ func (d *OpenCodeDriver) EffectiveCaps(ctx context.Context, p model.Profile) Eff
 			Status:          CapabilitySupported,
 			ProviderVersion: version,
 			Mechanism:       "opencode -s <session-id>",
-			Tested:          true,
+			Reason:          "resume command supported by signature; not runtime-verified against a live opencode session",
+			Tested:          false,
 		},
 		Fork: CapabilityEvidence{
 			Status:          CapabilitySupported,
@@ -101,9 +103,9 @@ func (d *OpenCodeDriver) EffectiveCaps(ctx context.Context, p model.Profile) Eff
 			Tested:    true,
 		},
 		Approvals: CapabilityEvidence{
-			Status:    CapabilityUnsupported,
-			Reason:    "Structured approvals require server adapter; interact via terminal",
-			Tested:    false,
+			Status: CapabilityUnsupported,
+			Reason: "Structured approvals require server adapter; interact via terminal",
+			Tested: false,
 		},
 		NativeUIAttach: CapabilityEvidence{
 			Status:          CapabilitySupported,

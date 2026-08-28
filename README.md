@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/IAPro-Community"><img src="https://img.shields.io/badge/Organization-IAPro--Community-blueviolet?style=for-the-badge&logo=github" alt="IAPro Community"></a>
-  <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.23%2B-00ADD8?style=for-the-badge&logo=go" alt="Versão Go"></a>
+  <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?style=for-the-badge&logo=go" alt="Versão Go"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-green.svg?style=for-the-badge" alt="Licença"></a>
   <a href="https://kernel.org"><img src="https://img.shields.io/badge/Plataforma-Linux%20%7C%20macOS%20%7C%20Windows-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Plataforma"></a>
   <img src="https://img.shields.io/badge/Providers-Codex%20%7C%20AGY%20%7C%20Claude%20%7C%20OpenCode%20%7C%20Gemini%20%7C%20Cursor-7C3AED?style=for-the-badge" alt="Provedores Suportados">
@@ -32,7 +32,7 @@
 
 O **IAPro AI Control (`ai`)** é o **Control Plane local e visual oficial da <a href="https://github.com/IAPro-Community">IAPro Community</a>**, projetado para gerenciar, supervisionar e orquestrar múltiplos coding agents no terminal e no navegador (como **Google AGY / Antigravity**, **Anthropic Claude Code**, **Cursor Agent**, **OpenAI Codex**, **OpenCode** e **Google Gemini CLI**).
 
-Ele gerencia de forma inteligente e segura múltiplos projetos, isola autenticações e credenciais em sandboxes dedicados por perfil, fornece terminal supervisionado em tempo real com governança de escrita e checkpoints de handoff para migração de raciocínio sem perda de contexto.
+Ele gerencia de forma inteligente e segura múltiplos projetos, isola autenticações e credenciais em perfis dedicados por provedor (isolamento de credenciais, não sandbox de processo), fornece terminal supervisionado em tempo real com governança de escrita e checkpoints de handoff de contexto de trabalho entre provedores.
 
 ---
 
@@ -71,10 +71,10 @@ Inicie o painel interativo a qualquer momento executando `ai`:
 
 ## 🌟 Principais Recursos
 
-### 1. 🛡️ Sandbox Multi-Conta & Isolamento de Credenciais
+### 1. 🛡️ Isolamento de Credenciais Multi-Conta
 - **Estado Isolado:** Cada perfil possui seu próprio diretório `HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, sessão privada D-Bus e cofre `gnome-keyring-daemon` dedicado.
 - **Zero Colisão de Tokens:** Tokens OAuth do Google, credenciais OpenAI, Anthropic e chaves de API ficam estritamente isolados em sua pasta de perfil com permissões restritas `0600`.
-- **Presets de Isolamento Configuráveis:** Escolha entre `developer` (compartilha dotfiles e contexto de git), `strict` (sandbox hermético) e `compat`.
+- **Presets de Isolamento Configuráveis:** Escolha entre `developer` (compartilha dotfiles e contexto de git), `strict` (isolamento completo de credenciais e HOME) e `compat`.
 - **Preservação de Contexto de Projeto:** Mantém seu diretório de trabalho (`CWD`), usuário UID/GID, configurações locais (`.gitconfig`, `.ssh`) e repositórios intactos.
 
 ### 2. 🧠 Seleção Inteligente de Contas (Smart Account Selector)
@@ -142,7 +142,7 @@ O AI CLI Control Plane integra nativamente os principais assistentes de IA para 
 
 #### 🔵 Google AGY / Antigravity (`agy`)
 - **Execução:** `ai agy` (seleção inteligente) ou `ai agy:google-work -c`
-- **Isolamento:** Sessão D-Bus privada em sandbox (`dbus-run-session`) com cofre `gnome-keyring-daemon` dedicado e `antigravity-oauth-token` isolado.
+- **Isolamento:** Sessão D-Bus privada isolada (`dbus-run-session`) com cofre `gnome-keyring-daemon` dedicado e `antigravity-oauth-token` isolado.
 - **Quotas:** Limites de 5 Horas e Semanais do Google AI Pro (Gemini 2.5 Pro / Claude 3.7 Sonnet).
 - **Retomada:** Despacho nativo de conversas (`agy --conversation=<session-id>`).
 
@@ -306,7 +306,7 @@ Add-Content $PROFILE "`nai completion powershell | Out-String | Invoke-Expressio
 | Comando | Descrição |
 | :--- | :--- |
 | `ai profiles` / `ai list` | Lista todos os perfis configurados, contas, planos e status. |
-| `ai add <provider> <nome>` | Cria um novo perfil isolado e inicializa o sandbox. |
+| `ai add <provider> <nome>` | Cria um novo perfil isolado e inicializa seu diretório de credenciais. |
 | `ai login <provider> <nome>` | Executa o fluxo de autenticação oficial do provedor. |
 | `ai logout <provider> <nome>` | Remove as credenciais salvas do perfil. |
 | `ai use <provider> <nome>` | Define o perfil padrão para o provedor. |
@@ -364,7 +364,7 @@ graph TD
         Scheduler --> GeminiAd["Gemini Adapter"]
     end
     
-    subgraph Sandboxes["Sandboxes de Execução Isolados"]
+    subgraph Sandboxes["Perfis Isolados de Credenciais"]
         CodexAd --> CodexHome["CODEX_HOME (~/.local/share/ai-cli/profiles/codex/*)"]
         AgyAd --> AgyHome["D-Bus + Keyring (~/.local/share/ai-cli/profiles/agy/*)"]
         ClaudeAd --> ClaudeHome["Isolated Runtime (~/.local/share/ai-cli/profiles/claude/*)"]

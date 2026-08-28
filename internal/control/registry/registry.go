@@ -152,7 +152,14 @@ func (r *Registry) saveLocked(mutators ...func(map[string]RuntimeSession)) error
 	// 3. Write updated state atomically
 	list := make([]RuntimeSession, 0, len(freshMap))
 	for _, s := range freshMap {
-		list = append(list, s)
+		// Launch-only metadata must never be persisted: Env may contain
+		// API keys/tokens from the parent environment and Args may embed
+		// prompts or session IDs. The in-memory map keeps them; disk gets none.
+		p := s
+		p.Env = nil
+		p.Args = nil
+		p.Binary = ""
+		list = append(list, p)
 	}
 
 	data, err := json.MarshalIndent(list, "", "  ")

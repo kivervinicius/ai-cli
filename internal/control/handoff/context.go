@@ -9,6 +9,7 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/control/driver"
 	"github.com/kivervinicius/ai-cli/internal/control/events"
+	"github.com/kivervinicius/ai-cli/internal/control/ids"
 	"github.com/kivervinicius/ai-cli/internal/control/launcher"
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
@@ -73,7 +74,7 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 
 		if len(candidates) > 0 {
 			res, _ := sel.SelectBestProfile(ctx, targetProvider, source.Workspace, candidates, accounts, nil)
-			if res.SelectedProfile != nil && res.SelectedProfile.Name != "" {
+			if res != nil && res.SelectedProfile != nil && res.SelectedProfile.Name != "" {
 				targetProfile = res.SelectedProfile.Name
 			} else {
 				targetProfile = candidates[0].Name
@@ -108,9 +109,9 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 		return nil, fmt.Errorf("failed to construct kickoff arguments: %w", err)
 	}
 
-	// 5. Launch Target Supervised Runtime FIRST via unified launcher
-	newRuntimeID := fmt.Sprintf("%s-continue-%d", targetProvider, len(reg.List())+1)
-	lineageID := fmt.Sprintf("lin-ctx-%s-%d", targetProvider, time.Now().UnixNano())
+	// 5. Launch Target Supervised Runtime FIRST via unified launcher (persistent host)
+	newRuntimeID := fmt.Sprintf("%s-continue-%s", targetProvider, ids.NewRuntimeID())
+	lineageID := fmt.Sprintf("lin-ctx-%s", ids.NewRuntimeID())
 
 	newSession, err := launcher.Default().Launch(ctx, launcher.LaunchOptions{
 		RuntimeID:  newRuntimeID,
@@ -118,7 +119,7 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 		ProfileID:  targetProfile,
 		Workspace:  source.Workspace,
 		Args:       extraArgs,
-		Standalone: true,
+		Standalone: false,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to start context handoff target runtime: %w", err)

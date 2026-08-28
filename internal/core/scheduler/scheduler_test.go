@@ -218,3 +218,26 @@ func TestDefaultProfileTieBreaker(t *testing.T) {
 		t.Fatalf("expected acc-default to win tie-break on equal 100%% capacity, got %s", res.SelectedProfile.Name)
 	}
 }
+
+// TestSelectBestProfileEmptyCandidatesNeverNilResult is a regression test for a
+// nil-pointer crash: controlStartCmd dereferenced res.SelectedProfile after
+// ignoring the error, and SelectBestProfile returned a nil result for providers
+// with no configured profiles.
+func TestSelectBestProfileEmptyCandidatesNeverNilResult(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	qEng := quota.NewEngine(5 * time.Minute)
+	cdTracker := cooldown.NewTracker()
+	selector := NewSelector(cfg, qEng, cdTracker)
+
+	ctx := context.Background()
+	res, err := selector.SelectBestProfile(ctx, "provider-with-no-profiles", "/tmp", nil, nil, nil)
+	if res == nil {
+		t.Fatal("SelectBestProfile must never return a nil result for empty candidates")
+	}
+	if err == nil {
+		t.Fatal("expected an error describing the missing profiles")
+	}
+	if res.SelectedProfile != nil {
+		t.Error("expected no selected profile for empty candidates")
+	}
+}

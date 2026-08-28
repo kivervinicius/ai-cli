@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/signal"
 	"runtime"
@@ -104,7 +103,7 @@ SUBCOMMANDS:
                                 Cross-provider context handoff
   cleanup                       Clean up stale runtime records and dead sockets
   doctor [--json]               Audit control runtime environment and drivers
-  web [--port <port>] [--no-open]
+  web [--port <port>] [--no-open] [--listen <ip>] [--remote]
                                 Open browser-based Web Control Center
 
 FLAGS:
@@ -116,6 +115,7 @@ func controlWebCmd(args []string) error {
 	var port int
 	var host string = "127.0.0.1"
 	var noOpen bool
+	var remote bool
 
 	for i := 0; i < len(args); i++ {
 		if (args[i] == "--port" || args[i] == "-p") && i+1 < len(args) {
@@ -129,16 +129,8 @@ func controlWebCmd(args []string) error {
 			i++
 		} else if args[i] == "--no-open" {
 			noOpen = true
-		}
-	}
-
-	if host != "127.0.0.1" && host != "localhost" && host != "::1" {
-		parsedIP := net.ParseIP(host)
-		if parsedIP != nil && (parsedIP.IsPrivate() || parsedIP.IsLoopback()) {
-			fmt.Printf("[SECURITY NOTICE] Web server bound to private network interface (%s).\n\n", host)
-		} else {
-			fmt.Printf("[SECURITY WARNING] Binding to %q exposes the web control center to non-loopback networks.\n"+
-				"                  Use SSH port forwarding (ssh -N -L local:127.0.0.1:port user@host) or a private VPN instead.\n\n", host)
+		} else if args[i] == "--remote" {
+			remote = true
 		}
 	}
 
@@ -146,9 +138,10 @@ func controlWebCmd(args []string) error {
 		Host:   host,
 		Port:   port,
 		NoOpen: noOpen,
+		Remote: remote,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to start web control server: %w", err)
+		return err
 	}
 
 	bootstrapURL := srv.BootstrapURL()
@@ -274,7 +267,7 @@ func controlStartCmd(args []string) error {
 		}
 
 		res, _ := sel.SelectBestProfile(ctx, providerID, cwd, candidates, accounts, nil)
-		if res.SelectedProfile != nil && res.SelectedProfile.Name != "" {
+		if res != nil && res.SelectedProfile != nil && res.SelectedProfile.Name != "" {
 			profileName = res.SelectedProfile.Name
 		} else {
 			def, _ := config.GetDefaultProfile(providerID)

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Workspace } from '../types';
-import { LayoutDashboard, Terminal, Cpu, History, FolderGit2, ShieldCheck, Plus, Trash2, Check, X, ExternalLink } from 'lucide-react';
+import { LayoutDashboard, Terminal, Cpu, History, FolderGit2, ShieldCheck, Plus, Trash2, ExternalLink } from 'lucide-react';
 
 interface SidebarProps {
   currentTab: string;

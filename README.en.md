@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/IAPro-Community"><img src="https://img.shields.io/badge/Organization-IAPro--Community-blueviolet?style=for-the-badge&logo=github" alt="IAPro Community"></a>
-  <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.23%2B-00ADD8?style=for-the-badge&logo=go" alt="Go Version"></a>
+  <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?style=for-the-badge&logo=go" alt="Go Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-green.svg?style=for-the-badge" alt="License"></a>
   <a href="https://kernel.org"><img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Platform"></a>
   <img src="https://img.shields.io/badge/Providers-Codex%20%7C%20AGY%20%7C%20Claude%20%7C%20OpenCode%20%7C%20Gemini%20%7C%20Cursor-7C3AED?style=for-the-badge" alt="Supported Providers">
@@ -32,7 +32,7 @@
 
 **IAPro AI Control (`ai`)** is the **official local and visual Control Plane of the <a href="https://github.com/IAPro-Community">IAPro Community</a>**, engineered to manage, supervise, and orchestrate multiple coding agents across the terminal and browser (including **Google AGY / Antigravity**, **Anthropic Claude Code**, **Cursor Agent**, **OpenAI Codex**, **OpenCode**, and **Google Gemini CLI**).
 
-It securely manages multiple projects and account identities, isolates authentication credentials in dedicated per-profile sandboxes, provides real-time supervised terminal multiplexing with lease-lock governance, and enables transactional handoffs across AI models without loss of reasoning context.
+It securely manages multiple projects and account identities, isolates authentication credentials in dedicated per-provider profiles (credential isolation, not process sandboxing), provides real-time supervised terminal multiplexing with lease-lock governance, and enables transactional work-context handoffs between providers without transferring private reasoning.
 
 ---
 
@@ -71,10 +71,10 @@ Launch the interactive control plane at any time by running `ai`:
 
 ## 🌟 Key Features
 
-### 1. 🛡️ Multi-Account Sandboxing & Credential Isolation
-- **Strictly Isolated State:** Each profile maintains its own isolated `HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, private D-Bus session, and dedicated `gnome-keyring-daemon` vault.
-- **Zero Token Collisions:** Google OAuth tokens, OpenAI, Anthropic, and custom API keys are restricted to secure per-profile directories with strict `0600` permissions.
-- **Configurable Isolation Presets:** Choose between `developer` (preserves git context and dotfiles), `strict` (hermetic sandbox), and `compat`.
+### 1. 🛡️ Multi-Account Credential Isolation
+- **Isolated State:** Each profile owns its `HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, private D-Bus session and dedicated `gnome-keyring-daemon` vault.
+- **Zero Token Collision:** Google OAuth tokens, OpenAI, Anthropic credentials and API keys stay strictly isolated in the profile folder with `0600` permissions.
+- **Configurable Isolation Presets:** Choose between `developer` (shares dotfiles and git context), `strict` (full credential & HOME isolation) and `compat`.
 - **Preserves Workspace Context:** Your working directory (`CWD`), user UID/GID, shell configurations, and git repositories remain fully preserved.
 
 ### 2. 🧠 Smart Account Selector
@@ -142,7 +142,7 @@ AI CLI Control Plane natively coordinates leading terminal AI coding assistants:
 
 #### 🔵 Google AGY / Antigravity (`agy`)
 - **Execution:** `ai agy` (smart selection) or `ai agy:google-work -c`
-- **Isolation:** Private sandboxed D-Bus session (`dbus-run-session`) with dedicated `gnome-keyring-daemon` and isolated `antigravity-oauth-token`.
+- **Isolation:** Private isolated D-Bus session (`dbus-run-session`) with dedicated `gnome-keyring-daemon` and isolated `antigravity-oauth-token`.
 - **Quotas:** Google AI Pro 5-Hour and Weekly limits (Gemini 2.5 Pro / Claude 3.7 Sonnet).
 - **Resumption:** Native conversation dispatch (`agy --conversation=<session-id>`).
 
@@ -306,7 +306,7 @@ Add-Content $PROFILE "`nai completion powershell | Out-String | Invoke-Expressio
 | Command | Description |
 | :--- | :--- |
 | `ai profiles` / `ai list` | Lists all configured profiles, accounts, plans, and statuses. |
-| `ai add <provider> <name>` | Creates a new isolated profile and initializes its sandbox. |
+| `ai add <provider> <name>` | Creates a new isolated profile and initializes its credential directory. |
 | `ai login <provider> <name>` | Triggers official CLI authentication for the profile. |
 | `ai logout <provider> <name>` | Removes credentials from the profile. |
 | `ai use <provider> <name>` | Sets the default profile for a provider. |
@@ -364,7 +364,7 @@ graph TD
         Scheduler --> GeminiAd["Gemini Adapter"]
     end
     
-    subgraph Sandboxes["Isolated Runtime Sandboxes"]
+    subgraph Sandboxes["Isolated Credential Profiles"]
         CodexAd --> CodexHome["CODEX_HOME (~/.local/share/ai-cli/profiles/codex/*)"]
         AgyAd --> AgyHome["D-Bus + Keyring (~/.local/share/ai-cli/profiles/agy/*)"]
         ClaudeAd --> ClaudeHome["Isolated Runtime (~/.local/share/ai-cli/profiles/claude/*)"]

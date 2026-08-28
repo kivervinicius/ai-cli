@@ -16,6 +16,7 @@ type ServerOptions struct {
 	Host   string
 	Port   int
 	NoOpen bool
+	Remote bool
 }
 
 type Server struct {
@@ -31,6 +32,11 @@ type Server struct {
 func NewServer(opts ServerOptions) (*Server, error) {
 	if opts.Host == "" {
 		opts.Host = "127.0.0.1"
+	}
+
+	// Enforce the loopback-default binding policy before opening any socket.
+	if err := ValidateBind(opts.Host, opts.Remote); err != nil {
+		return nil, err
 	}
 
 	addr := net.JoinHostPort(opts.Host, strconv.Itoa(opts.Port))
@@ -118,12 +124,36 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	})
 
 	s.httpServer = &http.Server{
-		Handler:      mux,
+		Handler:      s.withSecurityHeaders(mux),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 	}
 
 	return s, nil
+}
+
+// withSecurityHeaders applies defense-in-depth HTTP security headers to every
+// response, including CSP, MIME sniffing prevention and framing protection.
+func (s *Server) withSecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Content-Security-Policy",
+			"default-src 'self'; "+
+				"script-src 'self'; "+
+				"style-src 'self' 'unsafe-inline'; "+
+				"img-src 'self' data:; "+
+				"font-src 'self' data:; "+
+				"connect-src 'self' ws: wss:; "+
+				"base-uri 'self'; "+
+				"form-action 'self'; "+
+				"frame-ancestors 'none'; "+
+				"object-src 'none'")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+		h.Set("X-Frame-Options", "DENY")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) routeRuntime(w http.ResponseWriter, r *http.Request) {

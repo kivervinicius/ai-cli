@@ -17,15 +17,15 @@ const (
 type FailureKind string
 
 const (
-	FailureNone        FailureKind = "NONE"
-	FailureAuth        FailureKind = "AUTH_FAILURE"
-	FailureQuota       FailureKind = "QUOTA_FAILURE"
-	FailureRateLimit   FailureKind = "RATE_LIMIT_FAILURE"
-	FailureNetwork     FailureKind = "NETWORK_FAILURE"
-	FailureProvider    FailureKind = "PROVIDER_FAILURE"
-	FailureCommand     FailureKind = "COMMAND_FAILURE"
-	FailureUser        FailureKind = "USER_FAILURE"
-	FailureUnknown     FailureKind = "UNKNOWN_FAILURE"
+	FailureNone      FailureKind = "NONE"
+	FailureAuth      FailureKind = "AUTH_FAILURE"
+	FailureQuota     FailureKind = "QUOTA_FAILURE"
+	FailureRateLimit FailureKind = "RATE_LIMIT_FAILURE"
+	FailureNetwork   FailureKind = "NETWORK_FAILURE"
+	FailureProvider  FailureKind = "PROVIDER_FAILURE"
+	FailureCommand   FailureKind = "COMMAND_FAILURE"
+	FailureUser      FailureKind = "USER_FAILURE"
+	FailureUnknown   FailureKind = "UNKNOWN_FAILURE"
 )
 
 // UsageStatus represents the state and confidence of quota/usage data.
@@ -139,26 +139,26 @@ type Session struct {
 
 // WorkspaceInfo groups active sessions and bound profiles for a workspace directory.
 type WorkspaceInfo struct {
-	Path      string             `json:"path"`
-	Bindings  map[string]string  `json:"bindings"` // provider -> profile
-	Sessions  []Session          `json:"sessions"`
-	LastTouch time.Time          `json:"last_touch"`
+	Path      string            `json:"path"`
+	Bindings  map[string]string `json:"bindings"` // provider -> profile
+	Sessions  []Session         `json:"sessions"`
+	LastTouch time.Time         `json:"last_touch"`
 }
 
 // DetectionResult indicates whether a CLI provider binary is available locally.
 type DetectionResult struct {
-	Installed   bool   `json:"installed"`
-	Version     string `json:"version,omitempty"`
-	BinaryPath  string `json:"binary_path,omitempty"`
-	Error       string `json:"error,omitempty"`
+	Installed  bool   `json:"installed"`
+	Version    string `json:"version,omitempty"`
+	BinaryPath string `json:"binary_path,omitempty"`
+	Error      string `json:"error,omitempty"`
 }
 
 // Failure classifies an execution failure.
 type Failure struct {
-	Kind       FailureKind `json:"kind"`
-	Message    string      `json:"message"`
+	Kind       FailureKind    `json:"kind"`
+	Message    string         `json:"message"`
 	RetryAfter *time.Duration `json:"retry_after,omitempty"`
-	ResetAt    *time.Time  `json:"reset_at,omitempty"`
+	ResetAt    *time.Time     `json:"reset_at,omitempty"`
 }
 
 // IsolationPreset defines security isolation level.

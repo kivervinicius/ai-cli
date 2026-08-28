@@ -6,11 +6,11 @@ import (
 
 // RingBuffer is a thread-safe circular byte buffer with a maximum capacity.
 type RingBuffer struct {
-	mu       sync.RWMutex
-	buf      []byte
-	size     int
-	start    int
-	length   int
+	mu     sync.RWMutex
+	buf    []byte
+	size   int
+	start  int
+	length int
 }
 
 // NewRingBuffer creates a RingBuffer with the given maximum byte size.

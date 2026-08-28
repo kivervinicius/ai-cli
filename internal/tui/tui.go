@@ -64,18 +64,18 @@ type Model struct {
 	selSessIndex int
 	modalSelIdx  int
 
-	isSearching  bool
-	filterQuery  string
-	statusMsg    string
+	isSearching bool
+	filterQuery string
+	statusMsg   string
 
-	providers    []string
-	profiles     []model.Profile
-	accounts     map[string]model.AccountInfo
-	sessions     []conversation.Conversation
-	cfg          config.Config
-	selector     *scheduler.Selector
-	quotaEng     *quota.Engine
-	cooldown     *cooldown.Tracker
+	providers []string
+	profiles  []model.Profile
+	accounts  map[string]model.AccountInfo
+	sessions  []conversation.Conversation
+	cfg       config.Config
+	selector  *scheduler.Selector
+	quotaEng  *quota.Engine
+	cooldown  *cooldown.Tracker
 
 	chosenResult *SelectionResult
 }
@@ -446,7 +446,7 @@ func (m Model) View() string {
 		availWidth = 120
 	}
 
-	activeBorder := lipgloss.Color("39")   // Cyan/Blue
+	activeBorder := lipgloss.Color("39")    // Cyan/Blue
 	inactiveBorder := lipgloss.Color("240") // Dark gray
 
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
@@ -496,7 +496,7 @@ func (m Model) View() string {
 	sessBoxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(inactiveBorder).
-		Width(availWidth - 2).
+		Width(availWidth-2).
 		Height(8).
 		Padding(0, 1)
 

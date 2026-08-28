@@ -9,6 +9,7 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/control/driver"
 	"github.com/kivervinicius/ai-cli/internal/control/host"
+	"github.com/kivervinicius/ai-cli/internal/control/ids"
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
@@ -49,7 +50,7 @@ func NewLauncher() *Launcher {
 // Launch allocates, starts, and verifies a supervised runtime.
 func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.RuntimeSession, error) {
 	if opts.RuntimeID == "" {
-		opts.RuntimeID = fmt.Sprintf("%s-%d", opts.ProviderID, time.Now().UnixNano()%100000)
+		opts.RuntimeID = fmt.Sprintf("%s-%s", opts.ProviderID, ids.NewRuntimeID())
 	}
 	if opts.Workspace == "" {
 		cwd, _ := os.Getwd()

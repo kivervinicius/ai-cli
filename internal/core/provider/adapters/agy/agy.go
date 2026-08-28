@@ -119,13 +119,13 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 
 	// Set isolated environment
 	envOverrides := map[string]string{
-		"HOME":             home,
-		"XDG_CONFIG_HOME":  filepath.Join(home, ".config"),
-		"XDG_CACHE_HOME":   filepath.Join(home, ".cache"),
-		"XDG_DATA_HOME":    filepath.Join(home, ".local", "share"),
-		"XDG_STATE_HOME":   filepath.Join(home, ".local", "state"),
-		"PATH":             internalBin + ":" + os.Getenv("PATH"),
-		"BROWSER":          filepath.Join(internalBin, "ai-browser"),
+		"HOME":            home,
+		"XDG_CONFIG_HOME": filepath.Join(home, ".config"),
+		"XDG_CACHE_HOME":  filepath.Join(home, ".cache"),
+		"XDG_DATA_HOME":   filepath.Join(home, ".local", "share"),
+		"XDG_STATE_HOME":  filepath.Join(home, ".local", "state"),
+		"PATH":            internalBin + ":" + os.Getenv("PATH"),
+		"BROWSER":         filepath.Join(internalBin, "ai-browser"),
 	}
 
 	env := runtime.EnvSet(os.Environ(), envOverrides, "DBUS_SESSION_BUS_ADDRESS")
@@ -424,44 +424,44 @@ func (a *Adapter) ListConversations(ctx context.Context, p model.Profile, worksp
 			}
 			scanner := bufio.NewScanner(f)
 			for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line == "" {
-				continue
-			}
-			var entry struct {
-				Display        string `json:"display"`
-				Timestamp      int64  `json:"timestamp"`
-				Workspace      string `json:"workspace"`
-				ConversationID string `json:"conversationId"`
-			}
-			if json.Unmarshal([]byte(line), &entry) == nil && entry.ConversationID != "" {
-				if seen[entry.ConversationID] {
+				line := strings.TrimSpace(scanner.Text())
+				if line == "" {
 					continue
 				}
-				seen[entry.ConversationID] = true
+				var entry struct {
+					Display        string `json:"display"`
+					Timestamp      int64  `json:"timestamp"`
+					Workspace      string `json:"workspace"`
+					ConversationID string `json:"conversationId"`
+				}
+				if json.Unmarshal([]byte(line), &entry) == nil && entry.ConversationID != "" {
+					if seen[entry.ConversationID] {
+						continue
+					}
+					seen[entry.ConversationID] = true
 
-				t := time.UnixMilli(entry.Timestamp)
-				title := entry.Display
-				if strings.HasPrefix(title, "/") {
-					title = "AGY Session " + entry.ConversationID[:8]
+					t := time.UnixMilli(entry.Timestamp)
+					title := entry.Display
+					if strings.HasPrefix(title, "/") {
+						title = "AGY Session " + entry.ConversationID[:8]
+					}
+					ws := entry.Workspace
+					if ws == "" {
+						ws = workspace
+					}
+					sessions = append(sessions, model.Session{
+						ProviderID:      string(a.ID()),
+						ProfileID:       p.Name,
+						ID:              entry.ConversationID,
+						Title:           title,
+						Workspace:       ws,
+						CreatedAt:       t,
+						UpdatedAt:       t,
+						ResumeSupported: true,
+					})
 				}
-				ws := entry.Workspace
-				if ws == "" {
-					ws = workspace
-				}
-				sessions = append(sessions, model.Session{
-					ProviderID:      string(a.ID()),
-					ProfileID:       p.Name,
-					ID:              entry.ConversationID,
-					Title:           title,
-					Workspace:       ws,
-					CreatedAt:       t,
-					UpdatedAt:       t,
-					ResumeSupported: true,
-				})
 			}
-		}
-		f.Close()
+			f.Close()
 		}
 	}
 

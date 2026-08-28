@@ -279,5 +279,3 @@ func formatUsageSummary(snap model.UsageSnapshot) string {
 		return "UNKNOWN"
 	}
 }
-
-

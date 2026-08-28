@@ -106,7 +106,8 @@ func (s *Selector) SelectBestProfile(ctx context.Context, provider string, works
 			rejectSummaries = append(rejectSummaries, fmt.Sprintf("%s (%s)", ev.Profile.Name, ev.RejectReason))
 		}
 		if len(rejectSummaries) == 0 {
-			return nil, fmt.Errorf("no %s profiles configured", provider)
+			// Never return a nil result: callers rely on a non-nil SelectionResult.
+			return &SelectionResult{Evaluations: evals}, fmt.Errorf("no %s profiles configured", provider)
 		}
 		return &SelectionResult{
 			Evaluations: evals,

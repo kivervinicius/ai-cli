@@ -130,7 +130,7 @@ func TestGitBounding(t *testing.T) {
 	dir := os.TempDir() + "/handoff-git-test"
 	os.MkdirAll(dir, 0700)
 	defer os.RemoveAll(dir)
-	
+
 	cp := CaptureWorkCheckpoint(dir, "rt-1", "fake", "prof", "sess-1", "Test goal")
 	if cp.Workspace != dir {
 		t.Errorf("expected workspace %s, got %s", dir, cp.Workspace)
@@ -165,3 +165,51 @@ func TestAccountHandoff_CheckpointFailureAborts(t *testing.T) {
 	}
 }
 
+func TestVerifyResumeContinuity(t *testing.T) {
+	// Live process: this test process itself.
+	live := &registry.RuntimeSession{
+		RuntimeID: "rt-verify-live",
+		PID:       os.Getpid(),
+		State:     registry.StateRunning,
+	}
+
+	// Passing case: resume args reference the session ID.
+	if ok, reason := VerifyResumeContinuity(live, []string{"resume", "sess-abc"}, "sess-abc"); !ok {
+		t.Errorf("expected verification to pass, got: %s", reason)
+	}
+
+	// Failing: resume args reference a different session.
+	if ok, _ := VerifyResumeContinuity(live, []string{"resume", "sess-zzz"}, "sess-abc"); ok {
+		t.Error("verification must fail when resume args do not reference the session ID")
+	}
+
+	// Failing: process not alive.
+	dead := &registry.RuntimeSession{
+		RuntimeID: "rt-verify-dead",
+		PID:       99999999,
+		State:     registry.StateRunning,
+	}
+	if ok, _ := VerifyResumeContinuity(dead, []string{"resume", "sess-abc"}, "sess-abc"); ok {
+		t.Error("verification must fail when the target process is not alive")
+	}
+
+	// Failing: state not running.
+	stopped := &registry.RuntimeSession{
+		RuntimeID: "rt-verify-stopped",
+		PID:       os.Getpid(),
+		State:     registry.StateStopped,
+	}
+	if ok, _ := VerifyResumeContinuity(stopped, []string{"resume", "sess-abc"}, "sess-abc"); ok {
+		t.Error("verification must fail when the target runtime is not RUNNING")
+	}
+
+	// Failing: empty session ID.
+	if ok, _ := VerifyResumeContinuity(live, []string{"resume", ""}, ""); ok {
+		t.Error("verification must fail on empty session ID")
+	}
+
+	// Failing: nil session.
+	if ok, _ := VerifyResumeContinuity(nil, []string{"resume", "sess-abc"}, "sess-abc"); ok {
+		t.Error("verification must fail on nil session")
+	}
+}

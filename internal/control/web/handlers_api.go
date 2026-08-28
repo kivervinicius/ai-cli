@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kivervinicius/ai-cli/internal/buildinfo"
 	"github.com/kivervinicius/ai-cli/internal/control/driver"
 	"github.com/kivervinicius/ai-cli/internal/control/events"
 	"github.com/kivervinicius/ai-cli/internal/control/handoff"
@@ -61,7 +62,7 @@ func (h *APIHandler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":    "ok",
 		"timestamp": time.Now().Unix(),
-		"version":   "0.4.0",
+		"version":   buildinfo.Version,
 	})
 }
 
@@ -239,6 +240,14 @@ func (h *APIHandler) handleRuntimeDetail(w http.ResponseWriter, r *http.Request)
 				_ = client.Stop()
 				_ = client.Close()
 			}
+			// Wait for the process to actually exit before reporting STOPPED.
+			if s, ok := h.reg.Get(runtimeID); ok {
+				deadline := time.Now().Add(5 * time.Second)
+				for time.Now().Before(deadline) && s.PID > 0 && registry.IsProcessAlive(s.PID) {
+					time.Sleep(100 * time.Millisecond)
+					s, _ = h.reg.Get(runtimeID)
+				}
+			}
 			_ = h.reg.UpdateState(runtimeID, registry.StateStopped)
 			writeJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
 			return
@@ -302,10 +311,10 @@ func (h *APIHandler) handleRuntimeDetail(w http.ResponseWriter, r *http.Request)
 func (h *APIHandler) handleProviders(w http.ResponseWriter, r *http.Request) {
 	drivers := h.drivers.List()
 	type ProviderView struct {
-		ID           string                      `json:"id"`
-		Installed    bool                        `json:"installed"`
-		Version      string                      `json:"version"`
-		ControlLevel registry.ControlLevel       `json:"control_level"`
+		ID           string                       `json:"id"`
+		Installed    bool                         `json:"installed"`
+		Version      string                       `json:"version"`
+		ControlLevel registry.ControlLevel        `json:"control_level"`
 		Capabilities driver.EffectiveCapabilities `json:"capabilities"`
 	}
 

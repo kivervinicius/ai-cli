@@ -88,7 +88,7 @@ if [ "$INSTALL_SUCCESS" -eq 0 ]; then
         fi
     else
         echo "Could not download pre-built binary and Go compiler is not installed."
-        echo "Please install Go (>=1.22) from https://golang.org or download a binary from ${GITHUB_URL}/releases"
+        echo "Please install Go (>=1.25) from https://golang.org or download a binary from ${GITHUB_URL}/releases"
         exit 1
     fi
 fi

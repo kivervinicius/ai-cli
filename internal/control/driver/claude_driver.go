@@ -98,9 +98,9 @@ func (d *ClaudeDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effec
 			Tested:    true,
 		},
 		Approvals: CapabilityEvidence{
-			Status:    CapabilityUnsupported,
-			Reason:    "Claude handles approvals in interactive TUI prompt",
-			Tested:    false,
+			Status: CapabilityUnsupported,
+			Reason: "Claude handles approvals in interactive TUI prompt",
+			Tested: false,
 		},
 		NativeUIAttach: CapabilityEvidence{
 			Status: CapabilityUnsupported,

@@ -297,3 +297,18 @@
 
 
 
+
+## Date: 2026-08-28 — Final Production Readiness (branch fix/control-production-readiness)
+- Fixed P0 runtime crash: `controlStartCmd` nil-deref when provider has no profiles (scheduler returns non-nil result; guards added). Reproduced live, regression test added.
+- Runtime IDs: new `internal/control/ids` ULID package (golden vectors, round-trip, uniqueness, sortability); replaced `UnixNano()%100000` and `len(List())+1` everywhere.
+- Workspace IDs: canonical-path + SHA-256 (`ws-…`), distinct for same-basename paths; `List()` sorted by LastUsedAt DESC (deterministic).
+- Real Windows ConPTY: `terminal_windows.go` rewritten (CreatePseudoConsole/attribute list/CreateProcessW), truthful pipe fallback, `Backend` gained Wait/Signal/Kill/Mechanism; SessionHost lifecycle moved to backend; windows E2E test authored.
+- Protocol: bounded frame reader (no unbounded alloc, fuzz 307k), `ERROR_PROTOCOL_VERSION` enforcement (test).
+- Handoff: persistent launcher everywhere (Standalone removed from production paths); ResumeVerifier (no blind session-ID copy) before VERIFIED; ULID lineage/checkpoint IDs.
+- Security: CSP/XCTO/Referrer/Permissions/frame-ancestors headers; bind policy — public refused, private requires `--remote`, CGNAT 100.64/10; redaction extended (cookies/auth/quoted-JSON keys) + fuzz 149k.
+- Version: `internal/buildinfo` single source; fixed const-vs-ldflags bug; VERSION=0.4.0; GoReleaser ldflags verified on release binary.
+- Frontend: TS pinned 5.9.3, ESLint + Vitest added (3 tests), lint issues fixed.
+- CI: gofmt gate, windows/macos runtime E2E steps, PowerShell smoke, GoReleaser snapshot job.
+- Docs: README sandbox/hermetic terminology corrected to credential isolation; gofmt-clean whole repo.
+- Reports: DEV/FINAL_BASELINE_AUDIT.md, FINAL_PRODUCTION_AUDIT.md, FINAL_PLATFORM_MATRIX.md, FINAL_PROVIDER_MATRIX.md, FINAL_SECURITY_REPORT.md, FINAL_RELEASE_REPORT.md, FINAL_10_OF_10_SCORECARD.md.
+- Scorecard: 87/100 (8.7/10 CONDITIONAL GO). Blockers: Windows/macOS runtime E2E pending CI + local; session expiry/rotation; doctor v2; final independent review.

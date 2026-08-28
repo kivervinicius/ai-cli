@@ -3,6 +3,7 @@ package workspace
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -51,5 +52,45 @@ func TestWorkspaceStore_AddListRemove(t *testing.T) {
 		if p.Path == proj1 {
 			t.Errorf("proj1 should have been removed from disk persistence")
 		}
+	}
+}
+
+func TestWorkspaceIDDistinctByPath(t *testing.T) {
+	if makeWorkspaceID("/home/user/company/api") == makeWorkspaceID("/home/user/personal/api") {
+		t.Error("workspace IDs must differ for different canonical paths sharing a basename")
+	}
+	if makeWorkspaceID("/home/user/company/api") != makeWorkspaceID("/home/user/company/api") {
+		t.Error("workspace ID must be stable for the same path")
+	}
+	if !strings.HasPrefix(makeWorkspaceID("/tmp/x/y"), "ws-") {
+		t.Error("workspace ID must carry the ws- prefix")
+	}
+}
+
+func TestWorkspaceListSortedByRecency(t *testing.T) {
+	store := NewStore(filepath.Join(t.TempDir(), "projects.json"))
+	a := filepath.Join(t.TempDir(), "aaa")
+	b := filepath.Join(t.TempDir(), "bbb")
+	_ = os.MkdirAll(a, 0755)
+	_ = os.MkdirAll(b, 0755)
+
+	if _, err := store.Add(a, "a"); err != nil {
+		t.Fatalf("failed to add a: %v", err)
+	}
+	if _, err := store.Add(b, "b"); err != nil {
+		t.Fatalf("failed to add b: %v", err)
+	}
+	store.Touch(a)
+
+	list := store.List()
+	if len(list) < 2 {
+		t.Fatalf("expected at least 2 projects, got %d", len(list))
+	}
+	if list[0].Path != a {
+		t.Errorf("expected most recently used project first, got %s", list[0].Path)
+	}
+	// Deterministic ordering: two equal timestamps tie-break by ID.
+	if list[0].LastUsedAt.Before(list[1].LastUsedAt) {
+		t.Error("list must be ordered by LastUsedAt DESC")
 	}
 }

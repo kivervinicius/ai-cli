@@ -1,10 +1,13 @@
 package workspace
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -74,7 +77,7 @@ func (s *Store) ensureCwd(cwd string) error {
 	}
 
 	name := filepath.Base(clean)
-	id := makeID(name)
+	id := makeWorkspaceID(clean)
 	s.projects[clean] = Project{
 		ID:         id,
 		Name:       name,
@@ -134,6 +137,13 @@ func (s *Store) List() []Project {
 	for _, p := range s.projects {
 		result = append(result, p)
 	}
+	// Deterministic ordering: most recently used first, then ID for stability.
+	sort.SliceStable(result, func(i, j int) bool {
+		if !result[i].LastUsedAt.Equal(result[j].LastUsedAt) {
+			return result[i].LastUsedAt.After(result[j].LastUsedAt)
+		}
+		return result[i].ID < result[j].ID
+	})
 	return result
 }
 
@@ -165,7 +175,7 @@ func (s *Store) Add(path, name string) (Project, error) {
 
 	clean := filepath.Clean(absPath)
 	p := Project{
-		ID:         makeID(name),
+		ID:         makeWorkspaceID(clean),
 		Name:       name,
 		Path:       clean,
 		CreatedAt:  time.Now(),
@@ -213,19 +223,15 @@ func (s *Store) Touch(path string) {
 	}
 }
 
-func makeID(name string) string {
-	clean := strings.ToLower(strings.TrimSpace(name))
-	var sb strings.Builder
-	for _, r := range clean {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			sb.WriteRune(r)
-		} else if r == ' ' || r == '_' {
-			sb.WriteRune('-')
-		}
+// makeWorkspaceID derives a stable, collision-resistant identifier from the
+// canonical absolute path (symlinks resolved). Two workspaces sharing a
+// basename (e.g. /home/user/company/api and /home/user/personal/api) always
+// get distinct IDs.
+func makeWorkspaceID(path string) string {
+	clean := filepath.Clean(path)
+	if resolved, err := filepath.EvalSymlinks(clean); err == nil {
+		clean = filepath.Clean(resolved)
 	}
-	id := sb.String()
-	if id == "" {
-		id = fmt.Sprintf("proj-%d", time.Now().UnixNano()%100000)
-	}
-	return id
+	sum := sha256.Sum256([]byte(clean))
+	return "ws-" + hex.EncodeToString(sum[:16])
 }

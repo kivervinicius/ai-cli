@@ -22,13 +22,13 @@ var (
 // Config represents persistent application settings and user preferences.
 type Config struct {
 	ConfigVersion     int                            `json:"config_version"`
-	Defaults          map[string]string              `json:"defaults"`            // provider -> profile
+	Defaults          map[string]string              `json:"defaults"`             // provider -> profile
 	Priorities        map[string]map[string]int      `json:"priorities,omitempty"` // provider -> profile -> priority
 	Disabled          map[string]map[string]bool     `json:"disabled,omitempty"`   // provider -> profile -> true
 	Labels            map[string]map[string][]string `json:"labels,omitempty"`     // provider -> profile -> tags
 	Strategy          string                         `json:"strategy"`             // best-capacity, least-used, round-robin, sticky
 	StickyTTL         string                         `json:"sticky_ttl,omitempty"` // e.g. "30m"
-	IsolationPreset   model.IsolationPreset          `json:"isolation_preset"`    // developer, strict, compat
+	IsolationPreset   model.IsolationPreset          `json:"isolation_preset"`     // developer, strict, compat
 	Bindings          map[string]map[string]string   `json:"bindings,omitempty"`   // workspace -> provider -> profile
 	AutomaticFallback bool                           `json:"automatic_fallback"`
 	MaxConcurrency    int                            `json:"max_concurrency"`

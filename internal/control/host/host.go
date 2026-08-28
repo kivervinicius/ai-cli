@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -125,10 +126,8 @@ func (sh *SessionHost) Start() error {
 	l, err := protocol.Listen(sh.session.RuntimeID)
 	if err != nil {
 		// Clean up and terminate the spawned child process immediately so it is not orphaned
-		if sh.cmd != nil && sh.cmd.Process != nil {
-			_ = killProcessGroup(sh.cmd.Process)
-			_, _ = sh.cmd.Process.Wait()
-		}
+		_ = sh.termBackend.Kill()
+		_ = sh.termBackend.Wait()
 		_ = sh.termBackend.Close()
 		sh.session.State = registry.StateFailed
 		_ = registry.DefaultRegistry().UpdateState(sh.session.RuntimeID, registry.StateFailed)
@@ -182,8 +181,11 @@ func (sh *SessionHost) handleClient(conn net.Conn) {
 
 	// Read initial RPC command frames
 	for {
-		line, err := reader.ReadBytes('\n')
+		line, err := readBoundedLine(reader, MaxFrameSize)
 		if err != nil {
+			if err == errFrameTooLarge {
+				sh.broadcast([]byte("\r\n[AI Control] Error: oversized IPC frame rejected\r\n"))
+			}
 			sh.removeClient(conn)
 			_ = conn.Close()
 			return
@@ -211,6 +213,29 @@ func (sh *SessionHost) handleClient(conn net.Conn) {
 			_ = conn.SetDeadline(time.Time{})
 			sh.streamAttachedInput(conn, reader)
 			return
+		}
+	}
+}
+
+// errFrameTooLarge is returned when an IPC frame exceeds MaxFrameSize.
+var errFrameTooLarge = errors.New("IPC frame exceeds maximum allowed size")
+
+// readBoundedLine reads a newline-terminated frame while never allocating more
+// than limit bytes. This prevents a malicious peer from forcing unbounded
+// memory growth by omitting the newline (see readBytes-safety requirement).
+func readBoundedLine(r *bufio.Reader, limit int) ([]byte, error) {
+	var buf []byte
+	for {
+		b, err := r.ReadByte()
+		if err != nil {
+			return buf, err
+		}
+		if b == '\n' {
+			return buf, nil
+		}
+		buf = append(buf, b)
+		if len(buf) > limit {
+			return buf, errFrameTooLarge
 		}
 	}
 }
@@ -248,6 +273,15 @@ func (sh *SessionHost) streamAttachedInput(conn net.Conn, reader *bufio.Reader) 
 func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
+
+	// Protocol version is enforced: an incompatible client must not continue
+	// silently. Version 0 is accepted as legacy/unset.
+	if req.Version != 0 && req.Version != protocol.ProtocolVersion {
+		resp := protocol.NewErrorResponse("ERROR_PROTOCOL_VERSION")
+		data, _ := json.Marshal(resp)
+		_, _ = conn.Write(append(data, '\n'))
+		return
+	}
 
 	var resp protocol.Response
 
@@ -314,7 +348,17 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		resp, _ = protocol.NewResponse("terminated")
 
 	case protocol.CmdLeaseAcquire:
-		sh.activeWriter = conn
+		// The writer lease belongs to an attached streaming client, never to an
+		// out-of-band RPC connection. Prefer an attached client so early browser
+		// keystrokes are not dropped after acquire.
+		sh.activeWriter = nil
+		for c := range sh.clients {
+			sh.activeWriter = c
+			break
+		}
+		if sh.activeWriter == nil {
+			sh.activeWriter = conn
+		}
 		resp, _ = protocol.NewResponse("lease_acquired")
 
 	case protocol.CmdLeaseRelease:
@@ -428,12 +472,24 @@ func (sh *SessionHost) removeClient(conn net.Conn) {
 }
 
 func (sh *SessionHost) waitProcess() {
-	err := sh.cmd.Wait()
+	err := sh.termBackend.Wait()
 
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 
 	_ = sh.termBackend.Close()
+
+	// Tear down IPC surfaces so attached clients disconnect cleanly instead of
+	// hanging on a dead runtime.
+	if sh.listener != nil {
+		_ = sh.listener.Close()
+	}
+	sh.fanout.Close()
+	for c := range sh.clients {
+		_ = c.Close()
+	}
+	sh.clients = make(map[net.Conn]bool)
+	sh.activeWriter = nil
 
 	state := registry.StateStopped
 	if err != nil {
@@ -463,9 +519,7 @@ func (sh *SessionHost) Wait() {
 func (sh *SessionHost) Stop() error {
 	sh.stopOnce.Do(func() { close(sh.stopChan) })
 	sh.mu.Lock()
-	if sh.cmd != nil && sh.cmd.Process != nil {
-		_ = signalProcessGroup(sh.cmd.Process, os.Interrupt)
-	}
+	_ = sh.termBackend.Signal(os.Interrupt)
 	sh.mu.Unlock()
 
 	select {
@@ -482,9 +536,7 @@ func (sh *SessionHost) Terminate() error {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 
-	if sh.cmd != nil && sh.cmd.Process != nil {
-		_ = killProcessGroup(sh.cmd.Process)
-	}
+	_ = sh.termBackend.Kill()
 	if sh.listener != nil {
 		_ = sh.listener.Close()
 	}
