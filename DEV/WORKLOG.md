@@ -216,3 +216,21 @@
   - Rebuilt and validated Bun bundle in `web/dist`.
   - Rebuilt and installed binary at `/home/desenvolvedor/.local/bin/ai`.
 
+## 2026-08-28: IAPro-Community Identity & Ecosystem Integration
+
+- **What Changed**:
+  - **Web Control Center Branding (`web/`)**:
+    - Replaced generic icon with vibrant gradient `IAPro` brand emblem in `Sidebar.tsx`.
+    - Updated brand typography to `Control Center` with `IAPro Community • v0.4.0` badge.
+    - Updated page title in `index.html` to `IAPro Control Center | Agentic Control Plane`.
+    - Added direct link to `https://github.com/IAPro-Community` in the sidebar footer and top navigation bar.
+  - **Open-Source Documentation (`README.md` & `README.en.md`)**:
+    - Added `IAPro-Community` organization badges and official presentation banner.
+    - Added dedicated **Ecossistema IAPro Community** section highlighting the integration between **Orquestrador Maestro**, **IAPro Skill Library**, and **IAPro AI Control**.
+    - Updated contributing links and guidelines pointing to `https://github.com/IAPro-Community`.
+- **Verification**:
+  - `go test -race ./...` (47 passed, 0 failed across all packages).
+  - Web SPA rebuilt with Bun into `web/dist` and verified embedded in Go binary.
+  - Installed updated binary at `/home/desenvolvedor/.local/bin/ai`.
+
+

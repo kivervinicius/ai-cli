@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Workspace } from '../types';
-import { LayoutDashboard, Terminal, Cpu, History, FolderGit2, ShieldCheck, Plus, Trash2, Check, X } from 'lucide-react';
+import { LayoutDashboard, Terminal, Cpu, History, FolderGit2, ShieldCheck, Plus, Trash2, Check, X, ExternalLink } from 'lucide-react';
 
 interface SidebarProps {
   currentTab: string;
@@ -48,12 +48,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <aside className="w-64 bg-slate-950 border-r border-slate-800 flex flex-col h-full select-none">
       {/* Brand Header */}
       <div className="p-4 border-b border-slate-800 flex items-center space-x-3">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center font-black text-white text-sm shadow-lg shadow-sky-900/30">
-          AI
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-violet-600 via-indigo-600 to-sky-400 flex items-center justify-center font-black text-white text-[11px] shadow-lg shadow-indigo-950/50 tracking-tighter">
+          IAPro
         </div>
         <div>
-          <h1 className="text-sm font-bold text-slate-100 tracking-wide">AI Control Center</h1>
-          <p className="text-[11px] font-mono text-slate-400">Local Control Plane v0.4.0</p>
+          <h1 className="text-sm font-bold text-slate-100 tracking-wide">Control Center</h1>
+          <p className="text-[10px] font-mono text-indigo-400 font-semibold">IAPro Community • v0.4.0</p>
         </div>
       </div>
 
@@ -178,9 +178,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Footer Info */}
-      <div className="p-3 border-t border-slate-800/80 bg-slate-950/60 text-[11px] font-mono text-slate-400 flex items-center justify-between">
-        <span>Loopback Mode</span>
-        <span className="text-emerald-400">● 127.0.0.1</span>
+      <div className="p-3 border-t border-slate-800/80 bg-slate-950/60 text-[11px] font-mono text-slate-400 flex flex-col space-y-1">
+        <div className="flex items-center justify-between">
+          <a
+            href="https://github.com/IAPro-Community"
+            target="_blank"
+            rel="noreferrer"
+            className="text-slate-400 hover:text-sky-400 transition flex items-center space-x-1 text-[11px]"
+          >
+            <span>IAPro-Community</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+          <span className="text-emerald-400">● 127.0.0.1</span>
+        </div>
+        <div className="text-[10px] text-slate-500">
+          Agentic Software Engineering
+        </div>
       </div>
     </aside>
   );

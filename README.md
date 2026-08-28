@@ -1,12 +1,13 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="AI CLI Control Plane Banner" width="100%">
+  <img src="assets/banner.svg" alt="IAPro AI Control Banner" width="100%">
 </p>
 
 <p align="center">
-  <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.22%2B-00ADD8?style=for-the-badge&logo=go" alt="Versão Go"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" alt="Licença: MIT"></a>
+  <a href="https://github.com/IAPro-Community"><img src="https://img.shields.io/badge/Organization-IAPro--Community-blueviolet?style=for-the-badge&logo=github" alt="IAPro Community"></a>
+  <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.23%2B-00ADD8?style=for-the-badge&logo=go" alt="Versão Go"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-green.svg?style=for-the-badge" alt="Licença"></a>
   <a href="https://kernel.org"><img src="https://img.shields.io/badge/Plataforma-Linux%20%7C%20macOS%20%7C%20Windows-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Plataforma"></a>
-  <img src="https://img.shields.io/badge/Providers-Codex%20%7C%20AGY%20%7C%20Claude%20%7C%20OpenCode%20%7C%20Gemini-7C3AED?style=for-the-badge" alt="Provedores Suportados">
+  <img src="https://img.shields.io/badge/Providers-Codex%20%7C%20AGY%20%7C%20Claude%20%7C%20OpenCode%20%7C%20Gemini%20%7C%20Cursor-7C3AED?style=for-the-badge" alt="Provedores Suportados">
 </p>
 
 <p align="center">
@@ -14,14 +15,18 @@
 </p>
 
 <h3 align="center">
-  ⚡ Control Plane Local Inteligente, Isolamento de Credenciais &amp; Supervisor de Quotas para Coding CLIs de IA
+  ⚡ IAPro AI Control — Open-Source Local Control Plane &amp; Web Cockpit para Coding Agents
 </h3>
+
+<p align="center">
+  <i>Um projeto do ecossistema <strong><a href="https://github.com/IAPro-Community">IAPro Community</a></strong> para Engenharia de Software Agêntica</i>
+</p>
 
 ---
 
-O **AI CLI (`ai`)** é um **Control Plane local** de alta performance desenvolvido em Go para desenvolvedores e equipes que utilizam múltiplos assistentes e CLIs de IA no terminal (como **OpenAI Codex**, **Google AGY / Antigravity**, **Anthropic Claude Code**, **OpenCode** e **Google Gemini CLI**).
+O **IAPro AI Control (`ai`)** é o **Control Plane local e visual oficial da <a href="https://github.com/IAPro-Community">IAPro Community</a>**, projetado para gerenciar, supervisionar e orquestrar múltiplos coding agents no terminal e no navegador (como **Google AGY / Antigravity**, **Anthropic Claude Code**, **Cursor Agent**, **OpenAI Codex**, **OpenCode** e **Google Gemini CLI**).
 
-Ele gerencia de forma inteligente e segura múltiplas contas, isola autenticações e credenciais em sandboxes dedicados por perfil, monitora quotas de uso reais e autênticas sem dados fictícios, seleciona automaticamente a melhor conta para cada execução via pontuação multi-fator e retoma conversas entre contas sem bloqueios de rate limit (429).
+Ele gerencia de forma inteligente e segura múltiplos projetos, isola autenticações e credenciais em sandboxes dedicados por perfil, fornece terminal supervisionado em tempo real com governança de escrita e checkpoints de handoff para migração de raciocínio sem perda de contexto.
 
 ---
 
@@ -367,16 +372,31 @@ graph TD
 
 ---
 
+## 🌐 Ecossistema IAPro Community
+
+O **IAPro AI Control** integra o conjunto oficial de ferramentas para desenvolvimento agêntico da [IAPro Community](https://github.com/IAPro-Community):
+
+- **[Orquestrador Maestro](https://github.com/IAPro-Community)**: Metodologia e CLI de orquestração de missões com DEV Gates rigorosos e garantia formal de entrega.
+- **IAPro Skill Library**: Catálogo padronizado de capacidades executáveis para coding agents.
+- **IAPro AI Control**: Control Plane de alta performance, PTY multiplexer supervisionado e Web Cockpit visual para todos os agentes na sua máquina.
+
+### Contribua com a Comunidade
+Participe do desenvolvimento, reporte sugestões ou proponha novos drivers de coding agents:
+👉 **[https://github.com/IAPro-Community](https://github.com/IAPro-Community)**
+
+---
+
 ## 🤝 Contribuições
 
 Contribuições, sugestões de novos provedores e melhorias são muito bem-vindas!
-1. Faça um Fork do projeto.
+1. Faça um Fork do projeto em [IAPro-Community/ai-control](https://github.com/IAPro-Community).
 2. Crie uma branch para sua feature (`git checkout -b feat/nova-feature`).
-3. Envie seus commits (`git commit -m 'feat: adiciona novo adapter'`).
+3. Envie seus commits (`git commit -m 'feat: adiciona novo driver'`).
 4. Abra um Pull Request.
 
 ---
 
 ## 📄 Licença
 
-Distribuído sob a licença **MIT**. Consulte o arquivo [`LICENSE`](LICENSE) para obter mais informações.
+Distribuído sob a licença **Apache-2.0**. Consulte o arquivo [`LICENSE`](LICENSE) para obter mais informações.
+

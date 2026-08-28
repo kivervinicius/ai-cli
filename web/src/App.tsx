@@ -151,6 +151,17 @@ export const App: React.FC = () => {
           </div>
 
           <div className="flex items-center space-x-4">
+            <a
+              href="https://github.com/IAPro-Community"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-indigo-950/40 border border-indigo-800/50 text-indigo-300 hover:text-indigo-200 hover:border-indigo-600 transition shadow-sm"
+              title="Visit IAPro Community on GitHub"
+            >
+              <span className="w-2 h-2 rounded-full bg-violet-400 animate-ping"></span>
+              <span className="font-semibold text-[11px]">IAPro Community</span>
+            </a>
+
             <span className="flex items-center space-x-1.5 text-emerald-400 font-medium">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <span>Control Core Healthy</span>
