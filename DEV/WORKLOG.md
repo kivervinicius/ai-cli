@@ -69,3 +69,14 @@
   - Sockets now stay alive continuously for interactive sessions until explicit detach or process termination.
   - Rebuilt binary in `/home/desenvolvedor/.local/bin/ai`.
   - All tests passing with race detector (`go test -race ./...`).
+
+- **Fix: Precision Slash Interception & Readline Buffer Clearing (`Ctrl+U`)**:
+  - Implemented `StripANSI` helper in `internal/control/host/slash_router.go` to sanitize escape sequences and control characters before inspecting slash commands.
+  - In `internal/control/host/host.go`, when an `/ai` command is detected on Enter:
+    - Sends `\x15` (`Ctrl+U`) to the child process PTY to wipe the line from the CLI's readline buffer.
+    - Suppresses the `\r` (Enter) from reaching the child process.
+    - Broadcasts the formatted AI Control slash response directly to the user terminal.
+  - When `//ai` is detected, clears readline with `Ctrl+U` and sends `/ai <text>\r` to child process.
+  - Normal commands pass through directly with `\r`.
+  - Rebuilt binary in `/home/desenvolvedor/.local/bin/ai`.
+  - Tested with `go test -race ./...` (100% pass).

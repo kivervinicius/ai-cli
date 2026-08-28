@@ -17,9 +17,33 @@ type SlashResult struct {
 	ActionArg        string // Argument for special action (e.g. target profile)
 }
 
+// StripANSI removes ANSI escape sequences and non-printable control codes from input strings.
+func StripANSI(str string) string {
+	var b strings.Builder
+	inEsc := false
+	for i := 0; i < len(str); i++ {
+		c := str[i]
+		if c == 0x1b { // ESC
+			inEsc = true
+			continue
+		}
+		if inEsc {
+			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '~' {
+				inEsc = false
+			}
+			continue
+		}
+		if c >= 32 || c == '\t' {
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
 // RouteSlashCommand inspects terminal input lines and intercepts /ai commands.
 func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResult {
-	trimmed := strings.TrimRight(input, "\r\n")
+	clean := StripANSI(input)
+	trimmed := strings.TrimSpace(clean)
 
 	// 1. Check for escape prefix "//ai"
 	if strings.HasPrefix(trimmed, "//ai") {

@@ -307,11 +307,33 @@ func (sh *SessionHost) processAttachedInput(data []byte) {
 			line := sh.lineBuf.String()
 			sh.lineBuf.Reset()
 
-			route := RouteSlashCommand(line, sh.session)
-			if route.Intercepted {
-				if route.Response != "" {
+			clean := StripANSI(line)
+			trimmed := strings.TrimSpace(clean)
+
+			// 1. Check for escape prefix "//ai ..."
+			if strings.HasPrefix(trimmed, "//ai") {
+				// Clear the line from the child process readline buffer with Ctrl+U (0x15)
+				if sh.stdinWriter != nil {
+					_, _ = sh.stdinWriter.Write([]byte{0x15})
+					escaped := "/ai" + trimmed[4:] + "\r"
+					_, _ = sh.stdinWriter.Write([]byte(escaped))
+				}
+				continue
+			}
+
+			// 2. Check for reserved "/ai" commands
+			if strings.HasPrefix(trimmed, "/ai") {
+				// Wipe the typed /ai command from the child process readline buffer with Ctrl+U (0x15)
+				// and DO NOT send \r to child process.
+				if sh.stdinWriter != nil {
+					_, _ = sh.stdinWriter.Write([]byte{0x15})
+				}
+
+				route := RouteSlashCommand(trimmed, sh.session)
+				if route.Intercepted && route.Response != "" {
 					sh.broadcast([]byte("\r\n" + route.Response + "\r\n"))
 				}
+
 				switch route.Action {
 				case "detach":
 					for conn := range sh.clients {
@@ -324,17 +346,14 @@ func (sh *SessionHost) processAttachedInput(data []byte) {
 				continue
 			}
 
-			// If it was an escaped command "//ai ...", forward unescaped "/ai ...\r" to process
-			if strings.HasPrefix(line, "//ai") {
-				if sh.stdinWriter != nil {
-					_, _ = sh.stdinWriter.Write([]byte(route.ForwardToProcess + "\r"))
-				}
-				continue
-			}
-
-			// Normal line: send Enter to process
+			// 3. Normal line submission to child process
 			if sh.stdinWriter != nil {
 				_, _ = sh.stdinWriter.Write([]byte{'\r'})
+			}
+		} else if b == 0x03 || b == 0x15 { // Ctrl+C or Ctrl+U
+			sh.lineBuf.Reset()
+			if sh.stdinWriter != nil {
+				_, _ = sh.stdinWriter.Write([]byte{b})
 			}
 		} else if b == 0x7f || b == 0x08 { // Backspace
 			if sh.lineBuf.Len() > 0 {
@@ -347,21 +366,8 @@ func (sh *SessionHost) processAttachedInput(data []byte) {
 			}
 		} else {
 			sh.lineBuf.WriteByte(b)
-			curr := sh.lineBuf.String()
-
-			// Check if we are potentially typing a slash command prefix
-			isSlashPrefix := strings.HasPrefix("/ai", curr) ||
-				strings.HasPrefix("//ai", curr) ||
-				strings.HasPrefix(curr, "/ai") ||
-				strings.HasPrefix(curr, "//ai")
-
-			if !isSlashPrefix {
-				if sh.stdinWriter != nil {
-					_, _ = sh.stdinWriter.Write([]byte{b})
-				}
-			} else {
-				// Echo slash command character locally to attached clients
-				sh.broadcast([]byte{b})
+			if sh.stdinWriter != nil {
+				_, _ = sh.stdinWriter.Write([]byte{b})
 			}
 		}
 	}
