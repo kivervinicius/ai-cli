@@ -2,7 +2,6 @@ package host
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -41,12 +40,13 @@ type SessionHost struct {
 	cmd          *exec.Cmd
 	termBackend  terminal.Backend
 	ringBuffer   *RingBuffer
+	fanout       *BoundedFanout
 	listener     net.Listener
 	clients      map[net.Conn]bool
 	activeWriter net.Conn
 	stopChan     chan struct{}
 	doneChan     chan struct{}
-	lineBuf      bytes.Buffer
+	prefixRouter *SlashPrefixRouter
 	stopOnce     sync.Once
 }
 
@@ -63,14 +63,16 @@ func NewSessionHost(cfg Config) (*SessionHost, error) {
 	termBackend := terminal.NewBackend()
 
 	return &SessionHost{
-		session:     cfg.Session,
-		cfg:         cfg,
-		cmd:         cmd,
-		termBackend: termBackend,
-		ringBuffer:  NewRingBuffer(128 * 1024), // 128 KB terminal history
-		clients:     make(map[net.Conn]bool),
-		stopChan:    make(chan struct{}),
-		doneChan:    make(chan struct{}),
+		session:      cfg.Session,
+		cfg:          cfg,
+		cmd:          cmd,
+		termBackend:  termBackend,
+		ringBuffer:   NewRingBuffer(128 * 1024), // 128 KB terminal history
+		fanout:       NewBoundedFanout(256),
+		clients:      make(map[net.Conn]bool),
+		stopChan:     make(chan struct{}),
+		doneChan:     make(chan struct{}),
+		prefixRouter: NewSlashPrefixRouter(),
 	}, nil
 }
 
@@ -146,12 +148,7 @@ func (sh *SessionHost) streamReader(r io.Reader) {
 }
 
 func (sh *SessionHost) broadcast(data []byte) {
-	sh.mu.RLock()
-	defer sh.mu.RUnlock()
-
-	for conn := range sh.clients {
-		_, _ = conn.Write(data)
-	}
+	sh.fanout.Broadcast(data)
 }
 
 func (sh *SessionHost) serveIPC() {
@@ -248,6 +245,7 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 
 	case protocol.CmdAttach:
 		sh.clients[conn] = true
+		sh.fanout.AddClient(conn)
 		// Acquire single-writer lease if none active
 		if sh.activeWriter == nil {
 			sh.activeWriter = conn
@@ -258,6 +256,7 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 
 	case protocol.CmdDetach:
 		delete(sh.clients, conn)
+		sh.fanout.RemoveClient(conn)
 		if sh.activeWriter == conn {
 			sh.activeWriter = nil
 		}
@@ -276,7 +275,7 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		if req.Payload != nil {
 			var p protocol.InputPayload
 			if json.Unmarshal(req.Payload, &p) == nil && p.Data != "" {
-				sh.processAttachedInput(conn, []byte(p.Data))
+				sh.processAttachedInputLocked(conn, []byte(p.Data))
 			}
 		}
 		resp, _ = protocol.NewResponse("input_received")
@@ -300,7 +299,10 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 func (sh *SessionHost) processAttachedInput(conn net.Conn, data []byte) {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
+	sh.processAttachedInputLocked(conn, data)
+}
 
+func (sh *SessionHost) processAttachedInputLocked(conn net.Conn, data []byte) {
 	// Only active writer (or first attached client) can send input to child process
 	if sh.activeWriter != nil && sh.activeWriter != conn {
 		return
@@ -310,91 +312,60 @@ func (sh *SessionHost) processAttachedInput(conn net.Conn, data []byte) {
 	}
 
 	for _, b := range data {
-		if b == '\r' || b == '\n' {
-			line := sh.lineBuf.String()
-			sh.lineBuf.Reset()
+		out := sh.prefixRouter.ProcessByte(b)
+		if len(out.ForwardBytes) > 0 {
+			_, _ = sh.termBackend.Write(out.ForwardBytes)
+		}
+		if out.Action == ActionControlCommand && out.ControlCmd != "" {
+			sh.handleControlCommandLocked(out.ControlCmd)
+		}
+	}
+}
 
-			clean := StripANSI(line)
-			trimmed := strings.TrimSpace(clean)
+func (sh *SessionHost) handleControlCommandLocked(cmd string) {
+	route := RouteSlashCommand(cmd, sh.session)
+	if route.Intercepted && route.Response != "" {
+		sh.broadcast([]byte("\r\n" + route.Response + "\r\n"))
+	}
 
-			// 1. Check for escape prefix "//ai ..."
-			if strings.HasPrefix(trimmed, "//ai") {
-				// Clear the line from the child process readline buffer with Ctrl+U (0x15)
-				_, _ = sh.termBackend.Write([]byte{0x15})
-				escaped := "/ai" + trimmed[4:] + "\r"
-				_, _ = sh.termBackend.Write([]byte(escaped))
-				continue
-			}
-
-			// 2. Check for reserved "/ai" commands
-			if strings.HasPrefix(trimmed, "/ai") {
-				// Wipe the typed /ai command from the child process readline buffer with Ctrl+U (0x15)
-				_, _ = sh.termBackend.Write([]byte{0x15})
-
-				route := RouteSlashCommand(trimmed, sh.session)
-				if route.Intercepted && route.Response != "" {
-					sh.broadcast([]byte("\r\n" + route.Response + "\r\n"))
+	switch route.Action {
+	case "detach":
+		for c := range sh.clients {
+			_ = c.Close()
+		}
+		sh.clients = make(map[net.Conn]bool)
+		sh.fanout.Close()
+		sh.activeWriter = nil
+	case "stop":
+		go sh.Stop()
+	case "handoff":
+		if PerformAccountHandoff != nil {
+			go func(target string) {
+				_, err := PerformAccountHandoff(context.Background(), sh.session.RuntimeID, target)
+				if err != nil {
+					sh.broadcast([]byte(fmt.Sprintf("\r\n[AI Control] Handoff failed: %v\r\n", err)))
+				} else {
+					sh.broadcast([]byte("\r\n[AI Control] Handoff succeeded.\r\n"))
 				}
-
-				switch route.Action {
-				case "detach":
-					for c := range sh.clients {
-						_ = c.Close()
-					}
-					sh.clients = make(map[net.Conn]bool)
-					sh.activeWriter = nil
-				case "stop":
-					go sh.Stop()
-				case "handoff":
-					if PerformAccountHandoff != nil {
-						go func(target string) {
-							_, err := PerformAccountHandoff(context.Background(), sh.session.RuntimeID, target)
-							if err != nil {
-								sh.broadcast([]byte(fmt.Sprintf("\r\n[AI Control] Handoff failed: %v\r\n", err)))
-							} else {
-								sh.broadcast([]byte("\r\n[AI Control] Handoff succeeded.\r\n"))
-								// The old process will be quiesced and clients disconnected by PerformAccountHandoff via protocol.Stop()
-							}
-						}(route.ActionArg)
-					}
-				case "continue":
-					if PerformContextHandoff != nil {
-						go func(target string) {
-							// target is provider[:profile]
-							var provider, profile string
-							if idx := strings.Index(target, ":"); idx != -1 {
-								provider = target[:idx]
-								profile = target[idx+1:]
-							} else {
-								provider = target
-							}
-							_, err := PerformContextHandoff(context.Background(), sh.session.RuntimeID, provider, profile)
-							if err != nil {
-								sh.broadcast([]byte(fmt.Sprintf("\r\n[AI Control] Continue failed: %v\r\n", err)))
-							} else {
-								sh.broadcast([]byte("\r\n[AI Control] Continue succeeded.\r\n"))
-							}
-						}(route.ActionArg)
-					}
+			}(route.ActionArg)
+		}
+	case "continue":
+		if PerformContextHandoff != nil {
+			go func(target string) {
+				var provider, profile string
+				if idx := strings.Index(target, ":"); idx != -1 {
+					provider = target[:idx]
+					profile = target[idx+1:]
+				} else {
+					provider = target
 				}
-				continue
-			}
-
-			// 3. Normal line submission to child process
-			_, _ = sh.termBackend.Write([]byte{'\r'})
-		} else if b == 0x03 || b == 0x15 { // Ctrl+C or Ctrl+U
-			sh.lineBuf.Reset()
-			_, _ = sh.termBackend.Write([]byte{b})
-		} else if b == 0x7f || b == 0x08 { // Backspace
-			if sh.lineBuf.Len() > 0 {
-				buf := sh.lineBuf.Bytes()
-				sh.lineBuf.Reset()
-				sh.lineBuf.Write(buf[:len(buf)-1])
-			}
-			_, _ = sh.termBackend.Write([]byte{b})
-		} else {
-			sh.lineBuf.WriteByte(b)
-			_, _ = sh.termBackend.Write([]byte{b})
+				_, err := PerformContextHandoff(context.Background(), sh.session.RuntimeID, provider, profile)
+				if err != nil {
+					sh.broadcast([]byte(fmt.Sprintf("\r\n[AI Control] Context handoff failed: %v\r\n", err)))
+				} else {
+					sh.broadcast([]byte("\r\n[AI Control] Context handoff succeeded.\r\n"))
+				}
+			}(route.ActionArg)
 		}
 	}
 }
@@ -403,6 +374,7 @@ func (sh *SessionHost) removeClient(conn net.Conn) {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 	delete(sh.clients, conn)
+	sh.fanout.RemoveClient(conn)
 	if sh.activeWriter == conn {
 		sh.activeWriter = nil
 	}
@@ -469,6 +441,7 @@ func (sh *SessionHost) Terminate() error {
 	if sh.listener != nil {
 		_ = sh.listener.Close()
 	}
+	sh.fanout.Close()
 	_ = sh.termBackend.Close()
 	return nil
 }

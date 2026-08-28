@@ -124,3 +124,126 @@ func TestSessionHostLifecycle(t *testing.T) {
 		t.Errorf("stop request failed: %v", err)
 	}
 }
+
+func TestSessionHost_CmdInputNoDeadlock(t *testing.T) {
+	runtimeID := "rt-deadlock-test"
+	sess := registry.RuntimeSession{
+		RuntimeID:    runtimeID,
+		ProviderID:   "test",
+		ProfileID:    "default",
+		Workspace:    os.TempDir(),
+		State:        registry.StateStarting,
+		ControlLevel: registry.ControlLevelTerminal,
+	}
+
+	sh, err := NewSessionHost(Config{
+		Session: sess,
+		Binary:  "cat",
+		Args:    []string{},
+		Env:     os.Environ(),
+		Cwd:     os.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("failed to create SessionHost: %v", err)
+	}
+
+	if err := sh.Start(); err != nil {
+		t.Fatalf("failed to start SessionHost: %v", err)
+	}
+	defer sh.Stop()
+
+	time.Sleep(100 * time.Millisecond)
+
+	client, err := protocol.NewClient(runtimeID)
+	if err != nil {
+		t.Fatalf("failed to connect to SessionHost: %v", err)
+	}
+	defer client.Close()
+
+	// Send CmdInput via RPC with a strict timeout
+	done := make(chan error, 1)
+	go func() {
+		_, err := client.Send(protocol.CmdInput, protocol.InputPayload{Data: "hello\n"})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("CmdInput failed: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("DEADLOCK DETECTED: CmdInput hung for >2s due to reentrant mutex lock")
+	}
+}
+
+func TestSessionHost_SlowObserverDoesNotBlockWriter(t *testing.T) {
+	runtimeID := "rt-fanout-test"
+	sess := registry.RuntimeSession{
+		RuntimeID:    runtimeID,
+		ProviderID:   "test",
+		ProfileID:    "default",
+		Workspace:    os.TempDir(),
+		State:        registry.StateStarting,
+		ControlLevel: registry.ControlLevelTerminal,
+	}
+
+	sh, err := NewSessionHost(Config{
+		Session: sess,
+		Binary:  "cat",
+		Args:    []string{},
+		Env:     os.Environ(),
+		Cwd:     os.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("failed to create SessionHost: %v", err)
+	}
+
+	if err := sh.Start(); err != nil {
+		t.Fatalf("failed to start SessionHost: %v", err)
+	}
+	defer sh.Stop()
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Writer client
+	writer, err := protocol.NewClient(runtimeID)
+	if err != nil {
+		t.Fatalf("failed to connect writer: %v", err)
+	}
+	defer writer.Close()
+	_, _ = writer.Send(protocol.CmdAttach, nil)
+
+	// Observer client that never reads
+	observer, err := protocol.NewClient(runtimeID)
+	if err != nil {
+		t.Fatalf("failed to connect observer: %v", err)
+	}
+	defer observer.Close()
+	_, _ = observer.Send(protocol.CmdAttach, nil)
+
+	// Send large amount of input through writer
+	writeDone := make(chan error, 1)
+	go func() {
+		for i := 0; i < 50; i++ {
+			_, err := writer.RawConn().Write([]byte("echo test line\n"))
+			if err != nil {
+				writeDone <- err
+				return
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+		writeDone <- nil
+	}()
+
+	select {
+	case err := <-writeDone:
+		if err != nil {
+			t.Fatalf("writer failed while observer is slow: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("BLOCKED: writer was blocked by slow observer")
+	}
+}
+
+
