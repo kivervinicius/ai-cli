@@ -2,6 +2,7 @@ package host
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -206,11 +207,25 @@ func (sh *SessionHost) handleClient(conn net.Conn) {
 
 func (sh *SessionHost) streamAttachedInput(conn net.Conn, reader *bufio.Reader) {
 	_ = conn.SetDeadline(time.Time{})
-	buf := make([]byte, 1024)
+	buf := make([]byte, 2048)
 	for {
 		n, err := reader.Read(buf)
 		if n > 0 {
-			sh.processAttachedInput(conn, buf[:n])
+			chunk := buf[:n]
+			trimmed := bytes.TrimSpace(chunk)
+			if bytes.HasPrefix(trimmed, []byte("{\"version\":")) || bytes.HasPrefix(trimmed, []byte("{\"command\":")) {
+				var req protocol.Request
+				if json.Unmarshal(trimmed, &req) == nil && req.Command != "" {
+					sh.handleRPCRequest(conn, req)
+					if err != nil {
+						sh.removeClient(conn)
+						_ = conn.Close()
+						return
+					}
+					continue
+				}
+			}
+			sh.processAttachedInput(conn, chunk)
 		}
 		if err != nil {
 			sh.removeClient(conn)
@@ -290,6 +305,11 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 
 	default:
 		resp = protocol.NewErrorResponse(fmt.Sprintf("unknown command %q", req.Command))
+	}
+
+	// In attached streaming mode, do not echo RPC response back for CmdResize to avoid polluting stdout
+	if _, isAttached := sh.clients[conn]; isAttached && req.Command == protocol.CmdResize {
+		return
 	}
 
 	data, _ := json.Marshal(resp)

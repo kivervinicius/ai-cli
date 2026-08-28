@@ -421,7 +421,13 @@ func attachRuntime(runtimeID string) error {
 					return
 				case <-sigChan:
 					if w, h, err := term.GetSize(int(os.Stdin.Fd())); err == nil && w > 0 && h > 0 {
-						_ = client.Resize(h, w)
+						go func(rows, cols int) {
+							rpcClient, err := protocol.NewClient(runtimeID)
+							if err == nil {
+								_ = rpcClient.Resize(rows, cols)
+								_ = rpcClient.Close()
+							}
+						}(h, w)
 					}
 				}
 			}

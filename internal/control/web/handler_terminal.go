@@ -162,7 +162,13 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 
 		case "resize":
 			if msg.Rows > 0 && msg.Cols > 0 {
-				_ = client.Resize(msg.Rows, msg.Cols)
+				go func(r, c int) {
+					rpcClient, err := protocol.NewClient(runtimeID)
+					if err == nil {
+						_ = rpcClient.Resize(r, c)
+						_ = rpcClient.Close()
+					}
+				}(msg.Rows, msg.Cols)
 			}
 
 		case "lease_acquire":

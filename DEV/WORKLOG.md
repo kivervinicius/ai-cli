@@ -233,4 +233,19 @@
   - Web SPA rebuilt with Bun into `web/dist` and verified embedded in Go binary.
   - Installed updated binary at `/home/desenvolvedor/.local/bin/ai`.
 
+## 2026-08-28: Fix Raw Resize JSON Stdin Injection into Terminal
+
+- **Root Cause Analysis**:
+  - When the browser opened a terminal tab or the pane was resized, `TerminalPane.tsx` sent `{ type: "resize", rows, cols }` over WebSocket to `handler_terminal.go`.
+  - `handler_terminal.go` called `client.Resize()` using the *already attached* raw streaming connection.
+  - `client.Resize()` sent the JSON RPC request (`{"version":1,"command":"resize",...}\n`) down the attached pipe.
+  - Because `SessionHost` had switched that connection to raw streaming (`streamAttachedInput`), it treated the incoming JSON bytes as interactive user typing and wrote the entire JSON string into `sh.termBackend.Write` (the agent's PTY stdin).
+- **Fix**:
+  - **Out-of-Band Control Channel (`handler_terminal.go` & `control_cmd.go`)**: Window resize events now use a separate short-lived control client (`protocol.NewClient(runtimeID).Resize()`), leaving the attached PTY data stream strictly reserved for user keystrokes.
+  - **In-Stream Defense-in-Depth Filter (`host.go`)**: `streamAttachedInput` now checks for incoming `protocol.Request` JSON frames; if detected, it handles the RPC internally without ever writing the JSON into the child process PTY. Suppressed echoing RPC response back to attached stdout for `CmdResize`.
+- **Verification**:
+  - `go test -race ./...` (47 passed, 0 failed).
+  - Rebuilt `/home/desenvolvedor/.local/bin/ai`.
+
+
 
