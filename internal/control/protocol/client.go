@@ -102,6 +102,12 @@ func (c *Client) Stop() error {
 	return err
 }
 
+// Resize notifies the SessionHost of a window size change.
+func (c *Client) Resize(rows, cols int) error {
+	_, err := c.Send(CmdResize, ResizePayload{Rows: rows, Cols: cols})
+	return err
+}
+
 // RawConn returns the underlying network connection for interactive streaming (attach).
 func (c *Client) RawConn() net.Conn {
 	return c.conn

@@ -1,15 +1,17 @@
 package app
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 
 	"github.com/kivervinicius/ai-cli/internal/control/driver"
 	"github.com/kivervinicius/ai-cli/internal/control/handoff"
@@ -289,7 +291,36 @@ func attachRuntime(runtimeID string) error {
 	}
 	defer client.Close()
 
-	// Send Attach command to receive terminal history
+	// 1. Put user terminal into Raw Mode if stdin is a terminal
+	isTerm := term.IsTerminal(int(os.Stdin.Fd()))
+	if isTerm {
+		oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+		if err == nil {
+			defer func() {
+				_ = term.Restore(int(os.Stdin.Fd()), oldState)
+			}()
+		}
+
+		// 2. Register window resize signal listener
+		sigChan := make(chan os.Signal, 1)
+		protocol.NotifyWinSizeChange(sigChan)
+		defer signal.Stop(sigChan)
+
+		go func() {
+			for range sigChan {
+				if w, h, err := term.GetSize(int(os.Stdin.Fd())); err == nil && w > 0 && h > 0 {
+					_ = client.Resize(h, w)
+				}
+			}
+		}()
+
+		// Send initial terminal window size
+		if w, h, err := term.GetSize(int(os.Stdin.Fd())); err == nil && w > 0 && h > 0 {
+			_ = client.Resize(h, w)
+		}
+	}
+
+	// 3. Send Attach command to switch connection to raw streaming
 	resp, err := client.Send(protocol.CmdAttach, nil)
 	if err != nil {
 		return fmt.Errorf("attach failed: %w", err)
@@ -303,24 +334,20 @@ func attachRuntime(runtimeID string) error {
 
 	rawConn := client.RawConn()
 
-	// Stream stdout from runtime host to user terminal
+	// 4. Stream stdout from runtime host to user terminal
+	errChan := make(chan error, 2)
 	go func() {
-		_, _ = io.Copy(os.Stdout, rawConn)
+		_, copyErr := io.Copy(os.Stdout, rawConn)
+		errChan <- copyErr
 	}()
 
-	// Stream user stdin to runtime host
-	scanner := bufio.NewReader(os.Stdin)
-	for {
-		line, err := scanner.ReadBytes('\n')
-		if err != nil {
-			break
-		}
-		_, err = rawConn.Write(line)
-		if err != nil {
-			break
-		}
-	}
+	// 5. Stream user stdin to runtime host
+	go func() {
+		_, copyErr := io.Copy(rawConn, os.Stdin)
+		errChan <- copyErr
+	}()
 
+	<-errChan
 	return nil
 }
 

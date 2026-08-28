@@ -52,3 +52,11 @@
   - Updated `README.md` and `README.en.md` with Section 8 describing Supervised Mode and in-session `/ai` commands.
   - Generated comprehensive implementation report `AI_CONTROL_IMPLEMENTATION_REPORT.md`.
   - All 40+ tests passing with 0 data races (`go test -race ./...`).
+
+- **Fix: PTY Window Size, Raw Mode and Continuous I/O Streaming**:
+  - Implemented `pty.StartWithSize` in `internal/control/host/host.go` capturing live terminal rows and cols (with fallback 80x24).
+  - Implemented terminal Raw Mode (`term.MakeRaw`) during `attachRuntime` with graceful `defer term.Restore`.
+  - Added OS-agnostic window resize signal routing (`protocol.NotifyWinSizeChange` and `client.Resize`) on SIGWINCH.
+  - Replaced line-blocking reader with zero-latency continuous byte-by-byte raw streaming in `SessionHost.streamAttachedInput`.
+  - Upgraded dependencies cleanly in `go.mod` (`golang.org/x/term`).
+  - Tested with `go test -race ./...` (100% pass).
