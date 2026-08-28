@@ -46,6 +46,18 @@ func TestRedaction(t *testing.T) {
 			contains: "[REDACTED",
 			excludes: []string{"SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"},
 		},
+		{
+			name:     "AWS Access Key",
+			input:    "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE",
+			contains: "[REDACTED_AWS_KEY]",
+			excludes: []string{"AKIAIOSFODNN7EXAMPLE"},
+		},
+		{
+			name:     "GitHub Token",
+			input:    "GITHUB_TOKEN=ghp_1234567890abcdefghijklmnopqrstuvwxyz",
+			contains: "[REDACTED_GITHUB_TOKEN]",
+			excludes: []string{"ghp_1234567890abcdefghijklmnopqrstuvwxyz"},
+		},
 	}
 
 	for _, tc := range tests {

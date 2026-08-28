@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -329,15 +330,15 @@ func versionCmd(args []string) error {
 	if len(args) > 0 && args[0] == "--json" {
 		out := map[string]string{
 			"version": version,
-			"os":      "linux",
-			"arch":    "amd64",
-			"go":      "1.24.2",
+			"os":      runtime.GOOS,
+			"arch":    runtime.GOARCH,
+			"go":      runtime.Version(),
 		}
 		b, _ := json.MarshalIndent(out, "", "  ")
 		fmt.Println(string(b))
 		return nil
 	}
-	fmt.Printf("ai-cli %s (linux/amd64)\n", version)
+	fmt.Printf("ai-cli %s (%s/%s, %s)\n", version, runtime.GOOS, runtime.GOARCH, runtime.Version())
 	return nil
 }
 

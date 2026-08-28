@@ -496,7 +496,21 @@ func controlDoctorCmd(args []string) error {
 	reg := registry.DefaultRegistry()
 	staleCount, _ := reg.CleanupStale()
 
-	drivers := driver.DefaultRegistry().List()
+	var filterProvider string
+	for _, a := range args {
+		if !strings.HasPrefix(a, "-") {
+			filterProvider = strings.ToLower(a)
+			break
+		}
+	}
+
+	allDrivers := driver.DefaultRegistry().List()
+	var drivers []driver.ControlDriver
+	for _, d := range allDrivers {
+		if filterProvider == "" || d.ProviderID() == filterProvider {
+			drivers = append(drivers, d)
+		}
+	}
 	type driverReport struct {
 		Provider     string                       `json:"provider"`
 		Installed    bool                         `json:"installed"`
