@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	controltui "github.com/kivervinicius/ai-cli/internal/control/tui"
+	"github.com/kivervinicius/ai-cli/internal/control/web"
 	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/cooldown"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
@@ -52,6 +54,8 @@ func controlCmd(args []string) error {
 			return attachRuntime(target)
 		}
 		return nil
+	case "web":
+		return controlWebCmd(args[1:])
 	case "help", "-h", "--help":
 		controlHelp()
 		return nil
@@ -99,10 +103,69 @@ SUBCOMMANDS:
                                 Cross-provider context handoff
   cleanup                       Clean up stale runtime records and dead sockets
   doctor [--json]               Audit control runtime environment and drivers
+  web [--port <port>] [--no-open]
+                                Open browser-based Web Control Center
 
 FLAGS:
   --json                        Output in machine-readable JSON format
   -h, --help                    Show this help message`)
+}
+
+func controlWebCmd(args []string) error {
+	var port int
+	var host string = "127.0.0.1"
+	var noOpen bool
+
+	for i := 0; i < len(args); i++ {
+		if (args[i] == "--port" || args[i] == "-p") && i+1 < len(args) {
+			p, err := strconv.Atoi(args[i+1])
+			if err == nil {
+				port = p
+			}
+			i++
+		} else if (args[i] == "--listen" || args[i] == "-l") && i+1 < len(args) {
+			host = args[i+1]
+			i++
+		} else if args[i] == "--no-open" {
+			noOpen = true
+		}
+	}
+
+	srv, err := web.NewServer(web.ServerOptions{
+		Host:   host,
+		Port:   port,
+		NoOpen: noOpen,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to start web control server: %w", err)
+	}
+
+	bootstrapURL := srv.BootstrapURL()
+	fmt.Println("=== AI Control Center (Web UI) ===")
+	fmt.Printf("URL:       %s\n", srv.URL())
+	fmt.Printf("Bootstrap: %s\n\n", bootstrapURL)
+	fmt.Println("Press Ctrl+C to stop the Web Control Center.")
+
+	if !noOpen {
+		go func() {
+			time.Sleep(200 * time.Millisecond)
+			_ = web.OpenBrowser(bootstrapURL)
+		}()
+	}
+
+	// Trap SIGINT / SIGTERM for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		fmt.Println("\nShutting down AI Control Center...")
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+		os.Exit(0)
+	}()
+
+	return srv.Start()
 }
 
 // controlHostCmd is the internal background daemon worker running as: ai __control-host --runtime <runtime-id>

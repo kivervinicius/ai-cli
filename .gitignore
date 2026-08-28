@@ -40,3 +40,10 @@ tmp/
 *.swp
 *.swo
 *~
+
+# Frontend Web Build
+web/node_modules/
+web/dist/
+web/bun.lockb
+web/bun.lock
+
