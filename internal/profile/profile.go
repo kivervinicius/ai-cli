@@ -42,10 +42,10 @@ func ValidateName(s string) error {
 
 func ValidateProvider(p string) error {
 	switch strings.ToLower(p) {
-	case "codex", "agy", "claude", "opencode", "gemini":
+	case "codex", "agy", "claude", "opencode", "gemini", "cursor":
 		return nil
 	default:
-		return fmt.Errorf("unsupported provider %q (supported: codex, agy, claude, opencode, gemini)", p)
+		return fmt.Errorf("unsupported provider %q (supported: codex, agy, claude, opencode, gemini, cursor)", p)
 	}
 }
 
@@ -165,7 +165,7 @@ func List() ([]model.Profile, error) {
 	}
 	base := filepath.Join(data, "profiles")
 	var out []model.Profile
-	providers := []string{"agy", "codex", "claude", "opencode", "gemini"}
+	providers := []string{"agy", "codex", "claude", "cursor", "opencode", "gemini"}
 
 	cfg, _ := config.LoadConfig()
 

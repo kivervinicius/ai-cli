@@ -2,6 +2,18 @@
 
 import { Project, Agent, AgentDetail, RuntimeSession, AgentConfig, ConfigImpact } from '../types';
 
+export class NexusAPIError<TPayload = unknown> extends Error {
+  readonly status: number;
+  readonly payload: TPayload;
+
+  constructor(status: number, payload: TPayload, message: string) {
+    super(message);
+    this.name = 'NexusAPIError';
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
 let csrf = '';
 export function setNexusCSRF(token: string) {
   csrf = token;
@@ -17,7 +29,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(path, { ...options, headers });
   if (!res.ok) {
     const errBody = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(errBody.error || `HTTP ${res.status}`);
+    const message = typeof errBody?.error === 'string' ? errBody.error : `HTTP ${res.status}`;
+    throw new NexusAPIError(res.status, errBody, message);
   }
   return res.json();
 }
@@ -164,6 +177,27 @@ export const nexus = {
       method: 'POST',
       body: JSON.stringify({ branch, create }),
     }),
+
+  // Nexus Intelligence (optional; Direct mode never requires it)
+  getIntelligence: (projectId?: string) =>
+    request<import('../types').IntelligenceStatus>(
+      `/api/v1/intelligence${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`
+    ),
+  updateIntelligence: (
+    data: Omit<import('../types').IntelligenceStatus, 'available' | 'error'>,
+    projectId?: string
+  ) =>
+    request<import('../types').IntelligenceStatus>(
+      `/api/v1/intelligence${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`,
+      { method: 'PUT', body: JSON.stringify(data) }
+    ),
+  getClarification: (id: string) =>
+    request<import('../types').ClarificationCheckpoint>(`/api/v1/clarifications/${id}`),
+  resolveClarification: (id: string, answers: Record<string, string>) =>
+    request<{ plan: import('../types').WorkPlan; clarification: import('../types').ClarificationCheckpoint }>(
+      `/api/v1/clarifications/${id}/resolve`,
+      { method: 'POST', body: JSON.stringify({ answers }) }
+    ),
 
   // WorkPlans & Autonomous Mission Runner (Phase D, E, F, H)
   getPlans: (projectId: string) =>

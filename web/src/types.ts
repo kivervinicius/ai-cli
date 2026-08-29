@@ -85,6 +85,7 @@ export interface ProviderAccount {
   authenticated: boolean;
   is_default: boolean;
   available: boolean;
+  capabilities?: Record<string, string>;
   quota_remaining: number;
   quota_total: number;
   rate_limited: boolean;
@@ -314,6 +315,50 @@ export interface WorkPlan {
   structured_facts?: Record<string, string>;
   created_at: string;
   updated_at: string;
+}
+
+export type IntelligenceMode = 'OFF' | 'CLI' | 'OPENAI_COMPATIBLE';
+
+export interface IntelligenceStatus {
+  mode: IntelligenceMode;
+  provider?: string;
+  profile?: string;
+  base_url?: string;
+  model?: string;
+  api_key_env?: string;
+  api_key_file?: string;
+  available: boolean;
+  error?: string;
+}
+
+export interface ClarificationUnknown {
+  key: string;
+  level: 'BLOCKING' | 'IMPORTANT' | 'LOW_IMPACT';
+  question: string;
+  rationale: string;
+  suggested_options?: string[];
+  default_choice?: string;
+  answer?: string;
+  is_resolved: boolean;
+}
+
+export interface ClarificationCheckpoint {
+  id: string;
+  project_id: string;
+  goal: string;
+  status: 'PENDING' | 'RESOLVED' | 'CANCELLED';
+  intent: {
+    intent: string;
+    scope: string;
+    risk_level: string;
+    identified_goals: string[];
+    constraints: string[];
+    assumptions: string[];
+    suggested_stack?: string[];
+    created_at: string;
+  };
+  unknowns: ClarificationUnknown[];
+  facts: Record<string, string>;
 }
 
 export interface PlanRevision {

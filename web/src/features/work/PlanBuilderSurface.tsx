@@ -13,9 +13,10 @@ import {
   Route,
   Sparkles,
 } from 'lucide-react';
-import { Badge, Button, Card, Input } from '../../design-system';
+import { Badge, Button, Card, InlineAlert, Input } from '../../design-system';
 import { nexusApi } from '../../nexus/api';
-import type { Agent, MissionRun, PlanPhase, Project, WorkPackage, WorkPlan } from '../../types';
+import type { Agent, ClarificationCheckpoint, MissionRun, PlanPhase, Project, WorkPackage, WorkPlan } from '../../types';
+import { clarificationFromError, unresolvedBlocking } from './clarificationModel';
 
 export const PlanBuilderSurface: React.FC<{
   project: Project;
@@ -31,6 +32,9 @@ export const PlanBuilderSurface: React.FC<{
   const [activeRun, setActiveRun] = useState<MissionRun | null>(null);
   const [stepping, setStepping] = useState(false);
   const [expandedPhases, setExpandedPhases] = useState<Record<string, boolean>>({});
+  const [clarification, setClarification] = useState<ClarificationCheckpoint | null>(null);
+  const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
+  const [planError, setPlanError] = useState('');
 
   const loadPlans = useCallback(async () => {
     try {
@@ -55,22 +59,55 @@ export const PlanBuilderSurface: React.FC<{
     loadPlans();
   }, [loadPlans]);
 
+  const selectGeneratedPlan = (plan: WorkPlan) => {
+    setPlans((prev) => [plan, ...prev.filter((item) => item.id !== plan.id)]);
+    setSelectedPlan(plan);
+    setAutoGoal('');
+    setClarification(null);
+    setClarificationAnswers({});
+    if (plan.phases && plan.phases.length > 0) {
+      setExpandedPhases({ [plan.phases[0].id]: true });
+    }
+  };
+
   const handleGenerateAIPlan = async () => {
     if (!autoGoal.trim()) return;
     try {
       setGenerating(true);
+      setPlanError('');
+      setClarification(null);
       const plan = await nexusApi.createPlan(project.id, {
         goal: autoGoal,
         auto_plan: true,
       });
-      setPlans((prev) => [plan, ...prev]);
-      setSelectedPlan(plan);
-      setAutoGoal('');
-      if (plan.phases && plan.phases.length > 0) {
-        setExpandedPhases({ [plan.phases[0].id]: true });
-      }
+      selectGeneratedPlan(plan);
     } catch (e) {
-      console.error('Failed to generate plan:', e);
+      const checkpoint = clarificationFromError(e);
+      if (checkpoint) {
+        setClarification(checkpoint);
+        setClarificationAnswers(Object.fromEntries(checkpoint.unknowns.filter((item) => item.answer).map((item) => [item.key, item.answer || ''])));
+      } else {
+        setPlanError(e instanceof Error ? e.message : String(e));
+      }
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleResolveClarification = async () => {
+    if (!clarification) return;
+    try {
+      setGenerating(true);
+      setPlanError('');
+      const result = await nexusApi.resolveClarification(clarification.id, clarificationAnswers);
+      selectGeneratedPlan(result.plan);
+    } catch (e) {
+      const checkpoint = clarificationFromError(e);
+      if (checkpoint) {
+        setClarification(checkpoint);
+      } else {
+        setPlanError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
       setGenerating(false);
     }
@@ -205,6 +242,55 @@ export const PlanBuilderSurface: React.FC<{
           </Button>
         </div>
       </Card>
+
+      {planError && (
+        <InlineAlert tone="danger" title="Nexus Intelligence could not generate the plan">
+          {planError}. Direct AI sessions remain available; configure a real Intelligence provider in Settings to use AI Planning.
+        </InlineAlert>
+      )}
+
+      {clarification && (
+        <Card style={{ margin: '16px 0 24px', padding: '16px' }}>
+          <div style={{ marginBottom: 12 }}>
+            <strong>Clarification required before autonomous planning</strong>
+            <p style={{ margin: '6px 0 0', color: 'var(--color-text-muted)' }}>
+              Nexus stopped instead of guessing. These answers become durable facts in the WorkPlan.
+            </p>
+          </div>
+          <div style={{ display: 'grid', gap: 14 }}>
+            {unresolvedBlocking(clarification).map((item) => (
+              <label key={item.key} style={{ display: 'grid', gap: 6 }}>
+                <span><strong>{item.question}</strong></span>
+                {item.rationale && <small style={{ color: 'var(--color-text-muted)' }}>{item.rationale}</small>}
+                {item.suggested_options && item.suggested_options.length > 0 ? (
+                  <select
+                    value={clarificationAnswers[item.key] || ''}
+                    onChange={(event) => setClarificationAnswers((prev) => ({ ...prev, [item.key]: event.target.value }))}
+                  >
+                    <option value="">Choose…</option>
+                    {item.suggested_options.map((option) => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                ) : (
+                  <Input
+                    value={clarificationAnswers[item.key] || ''}
+                    onChange={(value) => setClarificationAnswers((prev) => ({ ...prev, [item.key]: value }))}
+                    placeholder="Answer required"
+                  />
+                )}
+              </label>
+            ))}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+            <Button
+              tone="brand"
+              disabled={generating || unresolvedBlocking(clarification).some((item) => !(clarificationAnswers[item.key] || '').trim())}
+              onClick={() => void handleResolveClarification()}
+            >
+              <ArrowRight size={14} /> Continue planning
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Main Two-Column Layout: Plan Hierarchy & Inspector/Runner */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: '24px' }}>

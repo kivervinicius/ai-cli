@@ -104,6 +104,8 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	mux.HandleFunc("/api/v1/maestro/advice", s.authMiddleware(nexusHandler.handleMaestroAdvice))
 
 	// WorkPlans & Intelligence (Phase C & D)
+	mux.HandleFunc("/api/v1/intelligence", s.authMiddleware(nexusHandler.handleIntelligence))
+	mux.HandleFunc("/api/v1/clarifications/", s.authMiddleware(nexusHandler.handleClarification))
 	mux.HandleFunc("/api/v1/plans/", s.routePlan(nexusHandler))
 
 	// Autonomous Mission Runs (Phase F & H)

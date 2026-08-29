@@ -8,9 +8,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
+	coreconfig "github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/runtime"
 )
 
@@ -134,17 +136,29 @@ func findMaestroBin() string {
 }
 
 func findOrquestradorDir() string {
-	// 1. Host user home
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		p := filepath.Join(home, ".orquestrador")
-		if fi, err := os.Stat(p); err == nil && fi.IsDir() {
-			return p
+	// Explicit override is useful for CI and non-standard installations.
+	if explicit := strings.TrimSpace(os.Getenv("NEXUS_ORQUESTRADOR_DIR")); explicit != "" {
+		if fi, err := os.Stat(explicit); err == nil && fi.IsDir() {
+			return filepath.Clean(explicit)
 		}
 	}
-	// 2. Profile homes
-	matches, _ := filepath.Glob("/home/desenvolvedor/.local/share/ai-manager/profiles/*/*/home/.orquestrador")
-	if len(matches) > 0 {
-		return matches[0]
+	// Host user home.
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		candidate := filepath.Join(home, ".orquestrador")
+		if fi, err := os.Stat(candidate); err == nil && fi.IsDir() {
+			return candidate
+		}
+	}
+	// Isolated ai-cli/Nexus profile homes under the canonical cross-platform DataDir.
+	if dataDir, err := coreconfig.DataDir(); err == nil && dataDir != "" {
+		pattern := filepath.Join(dataDir, "profiles", "*", "*", "home", ".orquestrador")
+		matches, _ := filepath.Glob(pattern)
+		sort.Strings(matches)
+		for _, candidate := range matches {
+			if fi, err := os.Stat(candidate); err == nil && fi.IsDir() {
+				return candidate
+			}
+		}
 	}
 	return ""
 }
@@ -232,22 +246,15 @@ func (c *MaestroClient) queryCapabilities() (*MaestroCapability, error) {
 		}
 	}
 
-	if len(skills) == 0 {
-		skills = []string{
-			"skill-saas-factory",
-			"skill-refactoring",
-			"skill-verification",
-			"skill-release",
-			"skill-security-audit",
-		}
-	}
-
+	sort.Strings(skills)
 	return &MaestroCapability{
-		Version:   version,
-		Modes:     []string{"OFF", "ASSIST", "ORCHESTRATE"},
-		Skills:    skills,
-		Gates:     []string{"plan-approval", "code-review", "dev-worklog-gate", "tdd-verification"},
-		Processes: []string{"plan-build-verify", "autonomous-coding", "refactor", "safe-release"},
+		Version: version,
+		Modes:   []string{"OFF", "ASSIST", "ORCHESTRATE"},
+		Skills:  skills,
+		// Gates and processes are intentionally empty unless the Maestro binary
+		// reports them through capabilities --json. Nexus never invents them.
+		Gates:     []string{},
+		Processes: []string{},
 	}, nil
 }
 
@@ -291,71 +298,18 @@ func (c *MaestroClient) GetAdvice(ctx AdviceContext, intent string) (*AdviceResp
 		}
 	}
 
-	// 2. Synthesize contextual engineering recommendations based on Orquestrador Maestro standards
-	required := []Recommendation{
-		{
-			ID:          "maestro-gate-worklog",
-			Type:        "process",
-			Title:       "Manter documentação durável em DEV/WORKLOG.md",
-			Description: "Todas as entregas substantivas devem registrar contexto, decisões e evidências no DEV/WORKLOG.md.",
-			Apply:       "DEV/WORKLOG.md",
-			Why:         "Garante persistência durável e governança sem depender apenas do histórico efêmero de chat.",
-			Risk:        "low",
-			Gates:       []string{"dev-worklog-gate"},
-			Verify:      "orquestrador-maestro check-dev-gates --project-path .",
-		},
-	}
-
-	recommended := []Recommendation{
-		{
-			ID:          "maestro-gate-verification",
-			Type:        "action",
-			Title:       "Executar suíte de testes de regressão antes de aprovação",
-			Description: "Validar testes unitários e de integração com detector de race conditions antes de finalizar tarefas.",
-			Apply:       "go test -race ./...",
-			Why:         "Previne regressões silenciosas em concorrência, PTY streams e estados persistidos.",
-			Risk:        "low",
-			Gates:       []string{"tdd-verification"},
-			Verify:      "go test -race ./...",
-		},
-		{
-			ID:          "maestro-skill-refactor",
-			Type:        "config",
-			Title:       "Aplicar Skill de Refatoração e Arquitetura Limpa",
-			Description: "Utilizar decomposição modular e isolamento de responsabilidades entre controladores e visão.",
-			Apply:       "orquestrador/skills/skill-refactoring",
-			Why:         "Mantém a base de código limpa, manutenível e escalável para novos agentes.",
-			Risk:        "low",
-			Skills:      []string{"skill-refactoring", "skill-verification"},
-		},
-	}
-
-	optional := []Recommendation{
-		{
-			ID:          "maestro-safe-release",
-			Type:        "process",
-			Title:       "Processo de Release Atômico",
-			Description: "Utilizar o assistente de release automatizado do Nexus para compilação e substituição atômica de binários.",
-			Apply:       "nexus release",
-			Why:         "Evita erros de kernel ETXTBSY durante atualizações em instâncias ativas.",
-			Risk:        "low",
-			Gates:       []string{"safe-release"},
-		},
-	}
-
-	version := "0.1.25"
+	// A failed/malformed advise command means the Maestro contract is unavailable.
+	// Do not synthesize skill IDs, gates or process advice inside Nexus.
+	version := MaestroVersion
 	if c.status.Capabilities != nil && c.status.Capabilities.Version != "" {
 		version = c.status.Capabilities.Version
 	}
-
 	return &AdviceResponse{
-		Version:     version,
-		Mode:        c.status.Mode,
-		Required:    required,
-		Recommended: recommended,
-		Optional:    optional,
-		Explanation: fmt.Sprintf("Diretrizes de engenharia do Orquestrador Maestro para o projeto %s.", ctx.ProjectID),
-	}, nil
+		Version:  version,
+		Mode:     MaestroOff,
+		Degraded: true,
+	}, fmt.Errorf("maestro advise unavailable or returned an invalid contract (MAESTRO_DEGRADED)")
+
 }
 
 func stringToReader(b []byte) *stringReader {

@@ -15,6 +15,26 @@ import (
 
 const CurrentConfigVersion = 1
 
+type IntelligenceMode string
+
+const (
+	IntelligenceOff              IntelligenceMode = "OFF"
+	IntelligenceCLI              IntelligenceMode = "CLI"
+	IntelligenceOpenAICompatible IntelligenceMode = "OPENAI_COMPATIBLE"
+)
+
+// IntelligenceConfig stores non-secret routing metadata for Nexus Intelligence.
+// API keys are resolved at runtime from APIKeyEnv or APIKeyFile; raw secrets are never persisted here.
+type IntelligenceConfig struct {
+	Mode       IntelligenceMode `json:"mode"`
+	Provider   string           `json:"provider,omitempty"`
+	Profile    string           `json:"profile,omitempty"`
+	BaseURL    string           `json:"base_url,omitempty"`
+	Model      string           `json:"model,omitempty"`
+	APIKeyEnv  string           `json:"api_key_env,omitempty"`
+	APIKeyFile string           `json:"api_key_file,omitempty"`
+}
+
 var (
 	configMu sync.RWMutex
 )
@@ -33,6 +53,7 @@ type Config struct {
 	AutomaticFallback bool                           `json:"automatic_fallback"`
 	MaxConcurrency    int                            `json:"max_concurrency"`
 	Language          string                         `json:"language,omitempty"`
+	Intelligence      IntelligenceConfig             `json:"intelligence,omitempty"`
 }
 
 // NewDefaultConfig returns a well-configured default Configuration.
@@ -50,6 +71,7 @@ func NewDefaultConfig() Config {
 		AutomaticFallback: true,
 		MaxConcurrency:    4,
 		Language:          "auto",
+		Intelligence:      IntelligenceConfig{Mode: IntelligenceOff},
 	}
 }
 
@@ -350,6 +372,9 @@ func LoadConfig() (Config, error) {
 	if cfg.Language == "" {
 		cfg.Language = "auto"
 	}
+	if cfg.Intelligence.Mode == "" {
+		cfg.Intelligence.Mode = IntelligenceOff
+	}
 
 	return cfg, nil
 }
@@ -485,6 +510,9 @@ func (c Config) Validate() []string {
 	}
 	if c.Language != "" && c.Language != "auto" && c.Language != "pt-BR" && c.Language != "en" && c.Language != "es" {
 		issues = append(issues, fmt.Sprintf("unknown language %q (allowed: auto, pt-BR, en, es)", c.Language))
+	}
+	if c.Intelligence.Mode != IntelligenceOff && c.Intelligence.Mode != IntelligenceCLI && c.Intelligence.Mode != IntelligenceOpenAICompatible {
+		issues = append(issues, fmt.Sprintf("unknown intelligence mode %q (allowed: OFF, CLI, OPENAI_COMPATIBLE)", c.Intelligence.Mode))
 	}
 	return issues
 }

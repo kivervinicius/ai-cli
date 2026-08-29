@@ -70,8 +70,7 @@ func (p *OpenAIIntelligenceProvider) Available(ctx context.Context) bool {
 
 func (p *OpenAIIntelligenceProvider) AnalyzeIntent(ctx context.Context, input string, contextData map[string]any) (*IntentAnalysis, error) {
 	if !p.Available(ctx) {
-		// Rule-based fallback if no API key is set
-		return FallbackAnalyzeIntent(input), nil
+		return nil, ErrIntelligenceUnavailable
 	}
 
 	sysPrompt := `You are an expert software engineering architect. Analyze the user's objective and output ONLY valid JSON matching this schema:
@@ -96,12 +95,12 @@ func (p *OpenAIIntelligenceProvider) AnalyzeIntent(ctx context.Context, input st
 
 	resBytes, err := p.doRequest(ctx, body)
 	if err != nil {
-		return FallbackAnalyzeIntent(input), nil
+		return nil, fmt.Errorf("analyze intent with %s: %w", p.Name(), err)
 	}
 
 	var parsed IntentAnalysis
 	if err := json.Unmarshal(resBytes, &parsed); err != nil {
-		return FallbackAnalyzeIntent(input), nil
+		return nil, fmt.Errorf("decode intent analysis from %s: %w", p.Name(), err)
 	}
 	parsed.CreatedAt = time.Now().UTC()
 	return &parsed, nil
@@ -109,7 +108,7 @@ func (p *OpenAIIntelligenceProvider) AnalyzeIntent(ctx context.Context, input st
 
 func (p *OpenAIIntelligenceProvider) EvaluateAmbiguities(ctx context.Context, intent *IntentAnalysis) ([]AmbiguityItem, error) {
 	if !p.Available(ctx) {
-		return FallbackAmbiguities(intent), nil
+		return nil, ErrIntelligenceUnavailable
 	}
 
 	sysPrompt := `Identify critical unknowns or architectural forks for the given intent.
@@ -141,25 +140,25 @@ Output ONLY valid JSON matching:
 
 	resBytes, err := p.doRequest(ctx, body)
 	if err != nil {
-		return FallbackAmbiguities(intent), nil
+		return nil, fmt.Errorf("evaluate ambiguities with %s: %w", p.Name(), err)
 	}
 
 	var wrapper struct {
 		Unknowns []AmbiguityItem `json:"unknowns"`
 	}
 	if err := json.Unmarshal(resBytes, &wrapper); err != nil {
-		return FallbackAmbiguities(intent), nil
+		return nil, fmt.Errorf("decode ambiguity analysis from %s: %w", p.Name(), err)
 	}
 	return wrapper.Unknowns, nil
 }
 
 func (p *OpenAIIntelligenceProvider) GeneratePlanOutline(ctx context.Context, intent *IntentAnalysis, facts map[string]string) ([]WorkPackageOutline, error) {
 	if !p.Available(ctx) {
-		return FallbackPlanOutline(intent, facts), nil
+		return nil, ErrIntelligenceUnavailable
 	}
 
 	sysPrompt := `Decompose the intent into a series of structured, reviewable WorkPackages.
-Each package must have clear acceptance criteria and required skills.
+Each package must have clear acceptance criteria. Do NOT invent Maestro skill identifiers; skills must be an empty array because Maestro is a separate authority.
 Output ONLY valid JSON matching:
 {
   "packages": [
@@ -169,7 +168,7 @@ Output ONLY valid JSON matching:
       "priority": "CRITICAL" | "HIGH" | "NORMAL" | "LOW",
       "dependencies": [],
       "role": "implementer" | "reviewer" | "tester" | "architect",
-      "skills": ["skill-refactoring", "skill-verification"],
+      "skills": [],
       "acceptance": ["criterion 1", "test passes"]
     }
   ]
@@ -193,14 +192,17 @@ Output ONLY valid JSON matching:
 
 	resBytes, err := p.doRequest(ctx, body)
 	if err != nil {
-		return FallbackPlanOutline(intent, facts), nil
+		return nil, fmt.Errorf("generate plan with %s: %w", p.Name(), err)
 	}
 
 	var wrapper struct {
 		Packages []WorkPackageOutline `json:"packages"`
 	}
 	if err := json.Unmarshal(resBytes, &wrapper); err != nil {
-		return FallbackPlanOutline(intent, facts), nil
+		return nil, fmt.Errorf("decode plan outline from %s: %w", p.Name(), err)
+	}
+	for i := range wrapper.Packages {
+		wrapper.Packages[i].Skills = nil
 	}
 	return wrapper.Packages, nil
 }
