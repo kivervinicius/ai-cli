@@ -322,3 +322,71 @@
 - Frontend: design tokens, UI primitives, AppShell (Nexus+Legacy nav), CommandPalette (Ctrl+K), ProjectsPage (project rail + agents + agent terminal); App.tsx de-goddified.
 - Maestro WIP salvage inventory (feat/cli-novo-wip): ~5k LOC planner classified KEEP_IN_MAESTRO; Mission concepts → Gate 7.
 - Evidence: go test -race 25 pkgs ok; frontend typecheck/lint/test/build ok; live vertical slice (project→agent→runtime RUNNING→terminal 101→persist across restart).
+
+## Date: 2026-08-29 — Nexus V1 Gates 3-8 + Independent Review
+
+### Gate 3: Agent Configuration
+- `AgentConfig` model with 9 config sections (Provider, Profile, Model, Workspace, Isolation, Maestro, Continuity, Environment, Allocation)
+- `AnalyzeImpact` returning safe/dangerous/risky change classification with restart requirement
+- `SafeApply` with transactional config update, revision creation, and launch compensation on commit failure
+- REST API: GET/PATCH `/api/v1/agents/:id/config`, POST `/api/v1/agents/:id/config/apply`, POST `/api/v1/agents/:id/config/impact`
+- Frontend: `AgentConfigurationDrawer` with all config sections, impact preview, Apply/Cancel buttons
+- TypeScript types: `AgentConfig`, `ConfigImpact`
+
+### Gate 4: Agent Terminal Broker
+- `AgentTerminalBroker` (`broker.go`) with per-agent connection management, writer lease governance
+- Protocol frames: `CmdRuntimeChanged`, `CmdAgentState`, `CmdContinuityState` with typed payloads
+- Nexus observer callbacks: `SetRuntimeObservers` wiring broker to start/stop/recover events
+- Frontend: Layout save/restore of open agents in project cockpit
+
+### Gate 5: Resource Scheduler
+- `ResourceScheduler` with 4 policies: Balanced, PreserveQuota, PreferProvider, Manual
+- Explainable `SchedulerDecision` with score, reason, rejected candidates, and explain path
+- Scoring: health bonus, quota awareness, user preference bonus (15% for prefer, 0-1 range)
+- Manual policy: rejects all when no explicit preference, score=0 for non-matching
+- REST API: GET `/api/v1/resources`, POST `/api/v1/resources/select`
+- Frontend: `ResourcePicker` with provider list, health badges, selection feedback
+
+### Gate 6: Maestro Assist
+- Maestro contract v1.0.0 with `AdviceRequest`/`AdviceResponse` and `Recommendation` types
+- `MaestroClient` with binary discovery, capability query, and degraded fallback
+- 3 modes: OFF (unavailable), ASSIST (default), ORCHESTRATE (beta)
+- REST API: GET `/api/v1/maestro`, POST `/api/v1/maestro/advice`
+- Frontend: `MaestroPage` with status display, degraded fallback, advice request, recommendation cards
+
+### Gate 7: Mission Beta (feature-flagged off by default)
+- SQLite migration 0002: `missions`, `mission_tasks`, `mission_assignments` tables
+- Mission lifecycle: DRAFT → PLANNING → READY → ACTIVE → PAUSED → COMPLETED/FAILED/CANCELLED
+- Task lifecycle: PENDING → READY → ACTIVE → BLOCKED → COMPLETED/FAILED/SKIPPED
+- CRUD: CreateMission, GetMission, ListMissions, UpdateMission, DeleteMission
+- Tasks: CreateTask, GetTask, ListTasks, UpdateTask with dependencies (JSON array)
+- Assignments: CreateAssignment, ListAssignments, UpdateAssignment
+- Stats: MissionStats with total/pending/active/completed/failed counts
+- REST API: projects/:id/missions, missions/:id, missions/:id/tasks, missions/:id/assign
+- Frontend: `MissionsPage` with mission list, detail view, task display, stats
+
+### Gate 8: Web-First Product Completion
+- Responsive sidebar: mobile overlay, collapsible with hamburger menu, escape key close
+- ARIA labels on navigation, command palette, and interactive elements
+- `aria-current="page"` on active nav items
+- Missions nav item added to NEXUS_NAV
+- Keyboard accessibility improvements
+
+### Independent Review (cavecrew-reviewer)
+- 19 findings total: 5 critical, 7 medium, 7 nit
+- **Critical fixes applied:**
+  1. `prodLauncher.Stop` now returns stop error instead of discarding (nexus.go)
+  2. TOCTOU CSRF race in `routeProject` — session captured once (server.go)
+  3. TOCTOU CSRF race in `routeAgent` — session captured once (server.go)
+  4. DELETE bypass in `handleProjectDetail` — now uses `nexus.DeleteProject` lifecycle guard
+  5. DELETE bypass in `handleAgentDetail` — now uses `nexus.DeleteAgent` lifecycle guard
+  6. Timeout path now calls `notifyAgentState("FAILED")` (nexus.go)
+  7. `stringReader.Read` returns `io.EOF` instead of `fmt.Errorf("EOF")` (maestro.go)
+
+### Verification
+- `go build ./...` — clean
+- `go test ./... -count=1 -timeout 120s` — 183 passed, 0 failed
+- `go vet ./...` — clean
+- `bunx tsc --noEmit` — clean
+- `bun run build` — 1587 modules, 0.76 MB bundle
+- Branch: `feat/nexus-v1`, HEAD: `82470ff6b4b7e368b41917e1d932798d1d327197`

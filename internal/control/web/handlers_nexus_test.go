@@ -201,3 +201,147 @@ func TestNexusProjectsAndAgentsAPI(t *testing.T) {
 	}
 	resp.Body.Close()
 }
+
+// TestNexusCSRFEnforcement verifies that all mutating Nexus REST routes reject
+// requests missing or invalid CSRF tokens (P0-2).
+func TestNexusCSRFEnforcement(t *testing.T) {
+	client, srv, csrf := csrfClient(t)
+	base := srv.URL()
+
+	// Create a project for sub-route testing.
+	projDir := t.TempDir()
+	body, _ := json.Marshal(map[string]string{"name": "CSRF Test", "path": projDir})
+	req, _ := http.NewRequest(http.MethodPost, base+"/api/v1/projects", bytes.NewReader(body))
+	req.Header.Set("X-CSRF-Token", csrf)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	var proj store.Project
+	_ = json.NewDecoder(resp.Body).Decode(&proj)
+	resp.Body.Close()
+
+	// Create an agent for sub-route testing.
+	abody, _ := json.Marshal(map[string]string{"name": "CSRF Agent"})
+	req, _ = http.NewRequest(http.MethodPost, base+"/api/v1/projects/"+proj.ID+"/agents", bytes.NewReader(abody))
+	req.Header.Set("X-CSRF-Token", csrf)
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+	var agent store.Agent
+	_ = json.NewDecoder(resp.Body).Decode(&agent)
+	resp.Body.Close()
+
+	// Helper: assert mutating request without CSRF returns 403.
+	assertNoCSRF := func(method, path string, body []byte) {
+		t.Helper()
+		var req *http.Request
+		if body != nil {
+			req, _ = http.NewRequest(method, base+path, bytes.NewReader(body))
+		} else {
+			req, _ = http.NewRequest(method, base+path, nil)
+		}
+		// No X-CSRF-Token header.
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", method, path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s %s without CSRF: expected 403, got %d", method, path, resp.StatusCode)
+		}
+	}
+
+	// Helper: assert mutating request with wrong CSRF returns 403.
+	assertBadCSRF := func(method, path string, body []byte) {
+		t.Helper()
+		var req *http.Request
+		if body != nil {
+			req, _ = http.NewRequest(method, base+path, bytes.NewReader(body))
+		} else {
+			req, _ = http.NewRequest(method, base+path, nil)
+		}
+		req.Header.Set("X-CSRF-Token", "forged-token-value")
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s (bad CSRF): %v", method, path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s %s with bad CSRF: expected 403, got %d", method, path, resp.StatusCode)
+		}
+	}
+
+	// --- Nexus routes (routeProject / routeAgent) ---
+	// Project PATCH without CSRF.
+	assertNoCSRF(http.MethodPatch, "/api/v1/projects/"+proj.ID, []byte(`{"name":"x"}`))
+	assertBadCSRF(http.MethodPatch, "/api/v1/projects/"+proj.ID, []byte(`{"name":"x"}`))
+
+	// Project DELETE without CSRF.
+	assertNoCSRF(http.MethodDelete, "/api/v1/projects/"+proj.ID, nil)
+	assertBadCSRF(http.MethodDelete, "/api/v1/projects/"+proj.ID, nil)
+
+	// Project layout PUT without CSRF.
+	assertNoCSRF(http.MethodPut, "/api/v1/projects/"+proj.ID+"/layout", []byte(`{"layout":"{}"}`))
+	assertBadCSRF(http.MethodPut, "/api/v1/projects/"+proj.ID+"/layout", []byte(`{"layout":"{}"}`))
+
+	// Agent create POST without CSRF.
+	assertNoCSRF(http.MethodPost, "/api/v1/projects/"+proj.ID+"/agents", []byte(`{"name":"x"}`))
+	assertBadCSRF(http.MethodPost, "/api/v1/projects/"+proj.ID+"/agents", []byte(`{"name":"x"}`))
+
+	// Agent PATCH without CSRF.
+	assertNoCSRF(http.MethodPatch, "/api/v1/agents/"+agent.ID, []byte(`{"name":"x"}`))
+	assertBadCSRF(http.MethodPatch, "/api/v1/agents/"+agent.ID, []byte(`{"name":"x"}`))
+
+	// Agent DELETE without CSRF.
+	assertNoCSRF(http.MethodDelete, "/api/v1/agents/"+agent.ID, nil)
+	assertBadCSRF(http.MethodDelete, "/api/v1/agents/"+agent.ID, nil)
+
+	// Agent start/stop/recover POST without CSRF.
+	assertNoCSRF(http.MethodPost, "/api/v1/agents/"+agent.ID+"/start", []byte(`{"provider":"fake"}`))
+	assertBadCSRF(http.MethodPost, "/api/v1/agents/"+agent.ID+"/start", []byte(`{"provider":"fake"}`))
+
+	assertNoCSRF(http.MethodPost, "/api/v1/agents/"+agent.ID+"/stop", nil)
+	assertBadCSRF(http.MethodPost, "/api/v1/agents/"+agent.ID+"/stop", nil)
+
+	assertNoCSRF(http.MethodPost, "/api/v1/agents/"+agent.ID+"/recover", nil)
+	assertBadCSRF(http.MethodPost, "/api/v1/agents/"+agent.ID+"/recover", nil)
+
+	// --- authMiddleware routes (projects list) ---
+	// Project list POST without CSRF.
+	assertNoCSRF(http.MethodPost, "/api/v1/projects", []byte(`{"name":"x","path":"`+projDir+`"}`))
+	assertBadCSRF(http.MethodPost, "/api/v1/projects", []byte(`{"name":"x","path":"`+projDir+`"}`))
+
+	// --- GET requests must NOT require CSRF ---
+	getReq, _ := http.NewRequest(http.MethodGet, base+"/api/v1/projects/"+proj.ID, nil)
+	getResp, err := client.Do(getReq)
+	if err != nil {
+		t.Fatalf("GET project: %v", err)
+	}
+	getResp.Body.Close()
+	if getResp.StatusCode != http.StatusOK {
+		t.Errorf("GET project without CSRF should be 200, got %d", getResp.StatusCode)
+	}
+
+	getAgentReq, _ := http.NewRequest(http.MethodGet, base+"/api/v1/agents/"+agent.ID, nil)
+	getAgentResp, err := client.Do(getAgentReq)
+	if err != nil {
+		t.Fatalf("GET agent: %v", err)
+	}
+	getAgentResp.Body.Close()
+	if getAgentResp.StatusCode != http.StatusOK {
+		t.Errorf("GET agent without CSRF should be 200, got %d", getAgentResp.StatusCode)
+	}
+
+	// Cleanup: delete agent then project (with CSRF).
+	dreq, _ := http.NewRequest(http.MethodDelete, base+"/api/v1/agents/"+agent.ID, nil)
+	dreq.Header.Set("X-CSRF-Token", csrf)
+	dresp, _ := client.Do(dreq)
+	dresp.Body.Close()
+
+	pdreq, _ := http.NewRequest(http.MethodDelete, base+"/api/v1/projects/"+proj.ID, nil)
+	pdreq.Header.Set("X-CSRF-Token", csrf)
+	pdresp, _ := client.Do(pdreq)
+	pdresp.Body.Close()
+}

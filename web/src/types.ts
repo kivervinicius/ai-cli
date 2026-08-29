@@ -156,3 +156,33 @@ export interface AgentDetail {
   lineage: LineageEntry[];
   revisions: AgentRevision[];
 }
+
+/* ---- Gate 3: Agent Configuration ---- */
+
+export interface AgentConfig {
+  provider: string;
+  profile: string;
+  model?: string;
+  options?: Record<string, any>;
+  workspace?: string;
+  isolation?: string;
+  maestro_mode?: string;
+  continuity_policy?: string;
+  environment?: Record<string, string>;
+  allocation?: {
+    prefer_provider?: string;
+    max_concurrent?: number;
+    quota_preserve?: boolean;
+    cooldown_seconds?: number;
+  };
+}
+
+export interface ConfigImpact {
+  mode: 'LIVE_SAME_RUNTIME' | 'RESTART_RUNTIME' | 'NEW_SESSION';
+  changed_fields: string[];
+  requires_restart: boolean;
+  requires_new_session: boolean;
+  current_config?: AgentConfig;
+  proposed_config?: AgentConfig;
+  warnings?: string[];
+}

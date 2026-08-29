@@ -1,6 +1,6 @@
-/* Nexus product API client (projects, agents, layouts). */
+/* Nexus product API client (projects, agents, layouts, config). */
 
-import { Project, Agent, AgentDetail, RuntimeSession } from '../types';
+import { Project, Agent, AgentDetail, RuntimeSession, AgentConfig, ConfigImpact } from '../types';
 
 let csrf = '';
 export function setNexusCSRF(token: string) {
@@ -52,4 +52,63 @@ export const nexus = {
     request<{ status: string }>(`/api/v1/agents/${id}/stop`, { method: 'POST', body: '{}' }),
   recoverAgent: (id: string) =>
     request<{ runtime: RuntimeSession }>(`/api/v1/agents/${id}/recover`, { method: 'POST', body: '{}' }),
+
+  // Agent config (Gate 3)
+  getAgentConfig: (id: string) =>
+    request<{ config: AgentConfig; revision: string; revisions: any[] }>(`/api/v1/agents/${id}/config`),
+  applyAgentConfig: (id: string, config: AgentConfig) =>
+    request<{ impact: ConfigImpact }>(`/api/v1/agents/${id}/config/apply`, {
+      method: 'POST',
+      body: JSON.stringify(config),
+    }),
+  previewAgentConfig: (id: string, config: AgentConfig) =>
+    request<{ impact: ConfigImpact }>(`/api/v1/agents/${id}/config/impact`, {
+      method: 'POST',
+      body: JSON.stringify(config),
+    }),
+
+  // Resource Scheduler (Gate 5)
+  listResources: () =>
+    request<{ accounts: any[]; policy: string }>('/api/v1/resources'),
+  selectResource: (provider: string, policy: string, agentId?: string) =>
+    request<{ decision: any }>('/api/v1/resources/select', {
+      method: 'POST',
+      body: JSON.stringify({ provider, policy, agent_id: agentId }),
+    }),
+
+  // Maestro Assist (Gate 6)
+  getMaestroStatus: () => request<any>('/api/v1/maestro'),
+  getMaestroAdvice: (projectId: string, agentId?: string, intent?: string) =>
+    request<any>('/api/v1/maestro/advice', {
+      method: 'POST',
+      body: JSON.stringify({ project_id: projectId, agent_id: agentId, intent }),
+    }),
+
+  // Missions (Gate 7 Beta)
+  listMissions: (projectId: string) =>
+    request<{ missions: any[] }>(`/api/v1/projects/${projectId}/missions`),
+  createMission: (projectId: string, data: { name: string; description?: string; goal?: string; scope?: string; risk_level?: string }) =>
+    request<any>(`/api/v1/projects/${projectId}/missions`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getMission: (missionId: string) =>
+    request<any>(`/api/v1/missions/${missionId}`),
+  updateMission: (missionId: string, data: any) =>
+    request<any>(`/api/v1/missions/${missionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  deleteMission: (missionId: string) =>
+    request<any>(`/api/v1/missions/${missionId}`, { method: 'DELETE' }),
+  addMissionTask: (missionId: string, data: { name: string; description?: string; kind?: string; priority?: number }) =>
+    request<any>(`/api/v1/missions/${missionId}/tasks`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  assignMissionAgent: (missionId: string, data: { task_id: string; agent_id: string }) =>
+    request<any>(`/api/v1/missions/${missionId}/assign`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };

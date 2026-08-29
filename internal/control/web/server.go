@@ -84,6 +84,17 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	mux.HandleFunc("/api/v1/projects/", s.routeProject(nexusHandler))
 	mux.HandleFunc("/api/v1/agents/", s.routeAgent(nexusHandler))
 
+	// Resource Scheduler (Gate 5)
+	mux.HandleFunc("/api/v1/resources", s.authMiddleware(nexusHandler.handleResourcesList))
+	mux.HandleFunc("/api/v1/resources/select", s.authMiddleware(nexusHandler.handleResourceSelect))
+
+	// Maestro Assist (Gate 6)
+	mux.HandleFunc("/api/v1/maestro", s.authMiddleware(nexusHandler.handleMaestroStatus))
+	mux.HandleFunc("/api/v1/maestro/advice", s.authMiddleware(nexusHandler.handleMaestroAdvice))
+
+	// Missions (Gate 7 Beta)
+	mux.HandleFunc("/api/v1/missions/", s.routeMission(nexusHandler))
+
 	// Static Files & SPA Routing
 	distFS, distErr := DistFileSystem()
 	var fileServer http.Handler
@@ -192,9 +203,18 @@ func (s *Server) routeProject(h *NexusHandler) http.HandlerFunc {
 			writeError(w, http.StatusForbidden, "invalid origin")
 			return
 		}
-		if s.auth.AuthenticateRequest(r) == nil {
+		sess := s.auth.AuthenticateRequest(r)
+		if sess == nil {
 			writeError(w, http.StatusUnauthorized, "authentication required")
 			return
+		}
+		// CSRF enforcement for all mutating methods (P0-2).
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+			csrf := r.Header.Get(csrfHeaderName)
+			if csrf == "" || csrf != sess.CSRFToken {
+				writeError(w, http.StatusForbidden, "invalid CSRF token")
+				return
+			}
 		}
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/layout"):
@@ -204,6 +224,12 @@ func (s *Server) routeProject(h *NexusHandler) http.HandlerFunc {
 				h.handleAgentsList(w, r)
 			} else {
 				h.handleAgentCreate(w, r)
+			}
+		case strings.HasSuffix(r.URL.Path, "/missions"):
+			if r.Method == http.MethodGet {
+				h.handleMissionsList(w, r)
+			} else {
+				h.handleMissionCreate(w, r)
 			}
 		default:
 			h.handleProjectDetail(w, r)
@@ -218,9 +244,18 @@ func (s *Server) routeAgent(h *NexusHandler) http.HandlerFunc {
 			writeError(w, http.StatusForbidden, "invalid origin")
 			return
 		}
-		if s.auth.AuthenticateRequest(r) == nil {
+		sess := s.auth.AuthenticateRequest(r)
+		if sess == nil {
 			writeError(w, http.StatusUnauthorized, "authentication required")
 			return
+		}
+		// CSRF enforcement for all mutating methods (P0-2).
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+			csrf := r.Header.Get(csrfHeaderName)
+			if csrf == "" || csrf != sess.CSRFToken {
+				writeError(w, http.StatusForbidden, "invalid CSRF token")
+				return
+			}
 		}
 
 		path := strings.TrimPrefix(r.URL.Path, "/api/v1/agents/")
@@ -248,9 +283,57 @@ func (s *Server) routeAgent(h *NexusHandler) http.HandlerFunc {
 			case "recover":
 				h.handleAgentRecover(w, r)
 				return
+			case "config":
+				if len(parts) >= 3 {
+					switch parts[2] {
+					case "apply":
+						h.handleAgentConfigApply(w, r)
+						return
+					case "impact":
+						h.handleAgentConfigImpact(w, r)
+						return
+					}
+				}
+				h.handleAgentConfigGet(w, r)
+				return
 			}
 		}
 		h.handleAgentDetail(w, r)
+	}
+}
+
+// routeMission dispatches mission tasks and assignments sub-routes.
+func (s *Server) routeMission(h *NexusHandler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.auth.ValidateOrigin(r) {
+			writeError(w, http.StatusForbidden, "invalid origin")
+			return
+		}
+		sess := s.auth.AuthenticateRequest(r)
+		if sess == nil {
+			writeError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+			csrf := r.Header.Get(csrfHeaderName)
+			if csrf == "" || csrf != sess.CSRFToken {
+				writeError(w, http.StatusForbidden, "invalid CSRF token")
+				return
+			}
+		}
+		path := strings.TrimPrefix(r.URL.Path, "/api/v1/missions/")
+		parts := strings.Split(path, "/")
+		if len(parts) >= 2 {
+			switch parts[1] {
+			case "tasks":
+				h.handleMissionTaskCreate(w, r)
+				return
+			case "assign":
+				h.handleMissionAssign(w, r)
+				return
+			}
+		}
+		h.handleMissionDetail(w, r)
 	}
 }
 

@@ -18,7 +18,15 @@ type NexusHandler struct {
 }
 
 func NewNexusHandler(auth *AuthManager) *NexusHandler {
-	return &NexusHandler{auth: auth, nexus: nexus.Default()}
+	n := nexus.Default()
+	// Wire runtime change notifications to the terminal broker (Gate 4).
+	broker := DefaultBroker()
+	n.SetRuntimeObservers(
+		broker.NotifyRuntimeChanged,
+		broker.NotifyAgentState,
+		broker.NotifyContinuity,
+	)
+	return &NexusHandler{auth: auth, nexus: n}
 }
 
 // handleProjectsList GET|POST /api/v1/projects
@@ -82,6 +90,8 @@ func (h *NexusHandler) handleProjectDetail(w http.ResponseWriter, r *http.Reques
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
+		// Touch MRU on access (P1 Project MRU).
+		_ = st.TouchProject(id)
 		layout, _ := st.GetLayout(id)
 		writeJSON(w, http.StatusOK, map[string]any{"project": proj, "layout": layout})
 
@@ -125,8 +135,8 @@ func (h *NexusHandler) handleProjectDetail(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusOK, proj)
 
 	case http.MethodDelete:
-		if err := st.DeleteProject(id); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+		if err := h.nexus.DeleteProject(id); err != nil {
+			writeError(w, http.StatusConflict, err.Error())
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
@@ -276,8 +286,8 @@ func (h *NexusHandler) handleAgentDetail(w http.ResponseWriter, r *http.Request)
 		}
 		writeJSON(w, http.StatusOK, agent)
 	case http.MethodDelete:
-		if err := st.DeleteAgent(id, agent.ProjectID); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+		if err := h.nexus.DeleteAgent(id, agent.ProjectID); err != nil {
+			writeError(w, http.StatusConflict, err.Error())
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
@@ -348,6 +358,401 @@ func (h *NexusHandler) resolveAgentRuntimeID(agentID string) (string, error) {
 	return gen.RuntimeID, nil
 }
 
+// handleAgentConfigGet GET /api/v1/agents/{id}/config
+func (h *NexusHandler) handleAgentConfigGet(w http.ResponseWriter, r *http.Request) {
+	id := agentIDFromPath(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "missing agent id")
+		return
+	}
+	st, err := h.nexus.OpenProject()
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	agent, err := st.GetAgent(id, "")
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	var cfg nexus.AgentConfig
+	if agent.CurrentRevisionID != "" {
+		rev, rerr := st.GetRevision(agent.CurrentRevisionID)
+		if rerr == nil {
+			cfg, _ = nexus.ParseAgentConfig(rev.Config)
+		}
+	}
+	revs, _ := st.ListRevisions(id)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"config":    cfg,
+		"revision":  agent.CurrentRevisionID,
+		"revisions": revs,
+	})
+}
+
+// handleAgentConfigApply POST /api/v1/agents/{id}/config/apply
+func (h *NexusHandler) handleAgentConfigApply(w http.ResponseWriter, r *http.Request) {
+	id := agentIDFromPath(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "missing agent id")
+		return
+	}
+	var cfg nexus.AgentConfig
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid config body")
+		return
+	}
+	impact, err := h.nexus.SafeApply(context.Background(), id, cfg)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"impact": impact})
+}
+
+// handleAgentConfigImpact POST /api/v1/agents/{id}/config/impact
+func (h *NexusHandler) handleAgentConfigImpact(w http.ResponseWriter, r *http.Request) {
+	id := agentIDFromPath(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "missing agent id")
+		return
+	}
+	var cfg nexus.AgentConfig
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid config body")
+		return
+	}
+	st, err := h.nexus.OpenProject()
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	agent, err := st.GetAgent(id, "")
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	var current nexus.AgentConfig
+	if agent.CurrentRevisionID != "" {
+		rev, rerr := st.GetRevision(agent.CurrentRevisionID)
+		if rerr == nil {
+			current, _ = nexus.ParseAgentConfig(rev.Config)
+		}
+	}
+	impact := nexus.AnalyzeImpact(current, cfg)
+	writeJSON(w, http.StatusOK, map[string]any{"impact": impact})
+}
+
+// handleResourcesList GET /api/v1/resources — returns available provider accounts
+// and the scheduler recommendation for the current context.
+func (h *NexusHandler) handleResourcesList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	// For now, return an empty list. Gate 5 full implementation requires
+	// driver discovery and profile enumeration.
+	writeJSON(w, http.StatusOK, map[string]any{
+		"accounts": []nexus.ProviderAccount{},
+		"policy":   "BALANCED",
+	})
+}
+
+// handleResourceSelect POST /api/v1/resources/select — run the scheduler
+// and return an explainable decision.
+func (h *NexusHandler) handleResourceSelect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body struct {
+		Provider  string `json:"provider"`
+		Policy    string `json:"policy"`
+		AgentID   string `json:"agent_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	// Use the scheduler with an empty account list for now.
+	// Full Gate 5 implementation will populate from driver discovery.
+	scheduler := nexus.NewResourceScheduler(nil, nexus.SchedulerPolicy(body.Policy))
+	decision := scheduler.Select(body.Provider, "", "", nil)
+	writeJSON(w, http.StatusOK, map[string]any{"decision": decision})
+}
+
+// handleMaestroStatus GET /api/v1/maestro — returns Maestro integration status.
+func (h *NexusHandler) handleMaestroStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	client := nexus.NewMaestroClient()
+	status := client.Status()
+	writeJSON(w, http.StatusOK, status)
+}
+
+// handleMaestroAdvice POST /api/v1/maestro/advice — request Maestro recommendations.
+func (h *NexusHandler) handleMaestroAdvice(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body struct {
+		ProjectID string `json:"project_id"`
+		AgentID   string `json:"agent_id"`
+		Intent    string `json:"intent"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	client := nexus.NewMaestroClient()
+	ctx := nexus.AdviceContext{
+		ProjectID: body.ProjectID,
+		AgentID:   body.AgentID,
+	}
+	resp, err := client.GetAdvice(ctx, body.Intent)
+	if err != nil {
+		// Return degraded response, not 500.
+		writeJSON(w, http.StatusOK, map[string]any{
+			"mode":     "OFF",
+			"error":    err.Error(),
+			"degraded": true,
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleMissionsList GET /api/v1/projects/{id}/missions — list missions for a project.
+func (h *NexusHandler) handleMissionsList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	st, err := h.nexus.OpenProject()
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	projectID := projectIDFromPath(r.URL.Path)
+	if projectID == "" {
+		writeError(w, http.StatusNotFound, "missing project id")
+		return
+	}
+	missions, err := st.ListMissions(projectID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"missions": missions})
+}
+
+// handleMissionCreate POST /api/v1/projects/{id}/missions — create a mission.
+func (h *NexusHandler) handleMissionCreate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	st, err := h.nexus.OpenProject()
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	projectID := projectIDFromPath(r.URL.Path)
+	if projectID == "" {
+		writeError(w, http.StatusNotFound, "missing project id")
+		return
+	}
+	var body struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Goal        string `json:"goal"`
+		Scope       string `json:"scope"`
+		RiskLevel   string `json:"risk_level"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	m := &store.Mission{
+		ProjectID:   projectID,
+		Name:        body.Name,
+		Description: body.Description,
+		Goal:        body.Goal,
+		Scope:       body.Scope,
+		RiskLevel:   body.RiskLevel,
+	}
+	if err := st.CreateMission(m); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, m)
+}
+
+// handleMissionDetail GET/PATCH/DELETE /api/v1/missions/{id}
+func (h *NexusHandler) handleMissionDetail(w http.ResponseWriter, r *http.Request) {
+	st, err := h.nexus.OpenProject()
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	missionID := missionIDFromPath(r.URL.Path)
+	if missionID == "" {
+		writeError(w, http.StatusNotFound, "missing mission id")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		m, err := st.GetMission(missionID)
+		if err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		tasks, _ := st.ListTasks(missionID)
+		assignments, _ := st.ListAssignments(missionID)
+		total, pending, active, completed, failed, _ := st.MissionStats(missionID)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"mission":     m,
+			"tasks":       tasks,
+			"assignments": assignments,
+			"stats":       map[string]int{"total": total, "pending": pending, "active": active, "completed": completed, "failed": failed},
+		})
+
+	case http.MethodPatch:
+		m, err := st.GetMission(missionID)
+		if err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		var body struct {
+			Name        *string `json:"name"`
+			Description *string `json:"description"`
+			Status      *string `json:"status"`
+			Goal        *string `json:"goal"`
+			Scope       *string `json:"scope"`
+			RiskLevel   *string `json:"risk_level"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid body")
+			return
+		}
+		if body.Name != nil {
+			m.Name = *body.Name
+		}
+		if body.Description != nil {
+			m.Description = *body.Description
+		}
+		if body.Status != nil {
+			m.Status = *body.Status
+		}
+		if body.Goal != nil {
+			m.Goal = *body.Goal
+		}
+		if body.Scope != nil {
+			m.Scope = *body.Scope
+		}
+		if body.RiskLevel != nil {
+			m.RiskLevel = *body.RiskLevel
+		}
+		if err := st.UpdateMission(m); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, m)
+
+	case http.MethodDelete:
+		if err := st.DeleteMission(missionID); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+// handleMissionTaskCreate POST /api/v1/missions/{id}/tasks — add a task to a mission.
+func (h *NexusHandler) handleMissionTaskCreate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	st, err := h.nexus.OpenProject()
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	missionID := missionIDFromPath(r.URL.Path)
+	if missionID == "" {
+		writeError(w, http.StatusNotFound, "missing mission id")
+		return
+	}
+	var body struct {
+		Name         string `json:"name"`
+		Description  string `json:"description"`
+		Kind         string `json:"kind"`
+		Priority     int    `json:"priority"`
+		Dependencies string `json:"dependencies"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	t := &store.MissionTask{
+		MissionID:    missionID,
+		Name:         body.Name,
+		Description:  body.Description,
+		Kind:         body.Kind,
+		Priority:     body.Priority,
+		Dependencies: body.Dependencies,
+	}
+	if err := st.CreateTask(t); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, t)
+}
+
+// handleMissionAssign POST /api/v1/missions/{id}/assign — assign an agent to a task.
+func (h *NexusHandler) handleMissionAssign(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	st, err := h.nexus.OpenProject()
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	missionID := missionIDFromPath(r.URL.Path)
+	if missionID == "" {
+		writeError(w, http.StatusNotFound, "missing mission id")
+		return
+	}
+	var body struct {
+		TaskID  string `json:"task_id"`
+		AgentID string `json:"agent_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	a := &store.MissionAssignment{
+		MissionID: missionID,
+		TaskID:    body.TaskID,
+		AgentID:   body.AgentID,
+	}
+	if err := st.CreateAssignment(a); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, a)
+}
+
 func projectIDFromPath(path string) string {
 	parts := strings.Split(strings.TrimPrefix(path, "/api/v1/projects/"), "/")
 	if len(parts) >= 1 && strings.HasSuffix(path, "/agents") {
@@ -361,6 +766,15 @@ func projectIDFromPath(path string) string {
 
 func agentIDFromPath(path string) string {
 	parts := strings.Split(strings.TrimPrefix(path, "/api/v1/agents/"), "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[0]
+}
+
+func missionIDFromPath(path string) string {
+	// Handle /api/v1/missions/{id} and /api/v1/missions/{id}/tasks and /api/v1/missions/{id}/assign
+	parts := strings.Split(strings.TrimPrefix(path, "/api/v1/missions/"), "/")
 	if len(parts) == 0 {
 		return ""
 	}

@@ -124,3 +124,72 @@ func MustJSON(v any) string {
 	b, _ := json.Marshal(v)
 	return string(b)
 }
+
+// Mission lifecycle states (Gate 7 Beta).
+const (
+	MissionDraft     = "DRAFT"
+	MissionPlanning  = "PLANNING"
+	MissionReady     = "READY"
+	MissionActive    = "ACTIVE"
+	MissionPaused    = "PAUSED"
+	MissionCompleted = "COMPLETED"
+	MissionFailed    = "FAILED"
+	MissionCancelled = "CANCELLED"
+)
+
+// MissionTask lifecycle states.
+const (
+	TaskPending   = "PENDING"
+	TaskReady     = "READY"
+	TaskActive    = "ACTIVE"
+	TaskBlocked   = "BLOCKED"
+	TaskCompleted = "COMPLETED"
+	TaskFailed    = "FAILED"
+	TaskSkipped   = "SKIPPED"
+)
+
+// Mission is a high-level goal分解 into tasks (Gate 7 Beta).
+type Mission struct {
+	ID          string     `json:"id"`
+	ProjectID   string     `json:"project_id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	Status      string     `json:"status"`
+	Goal        string     `json:"goal"`
+	Scope       string     `json:"scope"`     // "project" | "agent" | "task"
+	RiskLevel   string     `json:"risk_level"` // "low" | "medium" | "high"
+	Config      string     `json:"config"`     // JSON object
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	StartedAt   *time.Time `json:"started_at,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+}
+
+// MissionTask is a single unit of work within a mission.
+type MissionTask struct {
+	ID           string     `json:"id"`
+	MissionID    string     `json:"mission_id"`
+	Name         string     `json:"name"`
+	Description  string     `json:"description"`
+	Status       string     `json:"status"`
+	Kind         string     `json:"kind"`   // "action" | "config" | "security" | "verify"
+	Priority     int        `json:"priority"`
+	Dependencies string     `json:"dependencies"` // JSON array of task IDs
+	Config       string     `json:"config"`       // JSON object
+	Result       string     `json:"result"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	StartedAt    *time.Time `json:"started_at,omitempty"`
+	CompletedAt  *time.Time `json:"completed_at,omitempty"`
+}
+
+// MissionAssignment links a task to an agent.
+type MissionAssignment struct {
+	ID          string     `json:"id"`
+	MissionID   string     `json:"mission_id"`
+	TaskID      string     `json:"task_id"`
+	AgentID     string     `json:"agent_id"`
+	Status      string     `json:"status"` // "ASSIGNED" | "ACCEPTED" | "REJECTED" | "COMPLETED"
+	AssignedAt  time.Time  `json:"assigned_at"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+}
