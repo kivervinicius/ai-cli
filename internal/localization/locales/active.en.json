@@ -1,0 +1,13 @@
+{
+  "config.valid": "Configuration is valid.",
+  "config.issues": "Configuration issues found:",
+  "config.language_saved": "Language preference saved: {{.Language}}",
+  "error.lang_value": "--lang requires a language (pt-BR, en, or es)",
+  "error.unsupported_language": "unsupported language %q; supported: pt-BR, en, es, auto",
+  "error.config_usage": "usage: nexus config <show|validate|language <auto|pt-BR|en|es>>",
+  "help.header": "IAPro Nexus {{.Version}} - Autonomous Workspace OS for AI Coding Agents",
+  "help.usage": "Usage:",
+  "help.language": "  nexus --lang <locale>              Override language for this invocation\n  nexus config language <locale>     Persist language (auto, pt-BR, en, es)",
+  "tui.title": "IAPro Nexus", "tui.workspace": "Workspace: {{.Name}}", "tui.providers": "Providers", "tui.accounts": "Accounts ({{.Provider}})", "tui.sessions": "Recent Sessions (Universal Index)",
+  "tui.refreshed": "Refreshed runtimes", "tui.handoff": "To handoff, attach ([a]) and type: /nexus handoff <profile>", "tui.unknown": "unknown", "tui.now": "now", "tui.yesterday": "yesterday", "tui.minutes_ago": "{{.Count}} min ago", "tui.hours_ago": "{{.Count}} h ago", "tui.days_ago": "{{.Count}} days ago"
+}

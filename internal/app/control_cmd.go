@@ -78,22 +78,23 @@ func controlCmd(args []string) error {
 	case "doctor":
 		return controlDoctorCmd(args[1:])
 	default:
-		return fmt.Errorf("unknown control command %q. Run 'ai control --help' for usage", args[0])
+		return fmt.Errorf("unknown control command %q. Run '%s control --help' for usage", args[0], progName())
 	}
 }
 
 func controlHelp() {
-	fmt.Println(`AI Control Center — Supervised Agent Runtimes
+	p := progName()
+	fmt.Printf(`Nexus Control Center — Supervised Agent Runtimes
 
 USAGE:
-  ai control [subcommand] [flags]
-  ai ui
+  %s control [subcommand] [flags]
+  %s ui
 
 SUBCOMMANDS:
   (no args)                     Open interactive Bubble Tea Control Center
   start <provider> [--profile <name>] [args...]
                                 Start a supervised runtime session
-  running [--json]              List active managed runtimes
+  running [--json]              List active managed runtimes (alias: %s ps)
   status <runtime-id> [--json]  Display runtime details
   attach <runtime-id>           Connect terminal to running session
   stop <runtime-id>             Gracefully stop a runtime
@@ -104,11 +105,12 @@ SUBCOMMANDS:
   cleanup                       Clean up stale runtime records and dead sockets
   doctor [--json]               Audit control runtime environment and drivers
   web [--port <port>] [--no-open] [--listen <ip>] [--remote]
-                                Open browser-based Web Control Center
+                                Open browser-based Web Workspace OS
 
 FLAGS:
   --json                        Output in machine-readable JSON format
-  -h, --help                    Show this help message`)
+  -h, --help                    Show this help message
+`, p, p, p)
 }
 
 func controlWebCmd(args []string) error {
@@ -145,7 +147,7 @@ func controlWebCmd(args []string) error {
 	}
 
 	bootstrapURL := srv.BootstrapURL()
-	fmt.Println("=== AI Control Center (Web UI) ===")
+	fmt.Println("=== Nexus Control Center (Web UI) ===")
 	fmt.Printf("URL:       %s\n", srv.URL())
 	fmt.Printf("Bootstrap: %s\n\n", bootstrapURL)
 	fmt.Println("Press Ctrl+C to stop the Web Control Center.")
@@ -162,7 +164,7 @@ func controlWebCmd(args []string) error {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigChan
-		fmt.Println("\nShutting down AI Control Center...")
+		fmt.Println("\nShutting down Nexus Control Center...")
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(ctx)
@@ -230,7 +232,7 @@ func controlHostCmd(args []string) error {
 
 func controlStartCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: ai control start <provider> [--profile <name>] [args...]")
+		return fmt.Errorf("usage: %s start <provider> [--profile <name>] [args...]", progName())
 	}
 
 	providerID := args[0]
@@ -311,7 +313,7 @@ func controlRunningCmd(args []string) error {
 	}
 
 	if len(active) == 0 {
-		fmt.Println("No active supervised runtimes. Start one with: ai control start <provider>")
+		fmt.Printf("No active supervised runtimes. Start one with: %s start <provider>\n", progName())
 		return nil
 	}
 
@@ -327,7 +329,7 @@ func controlRunningCmd(args []string) error {
 
 func controlStatusCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: ai control status <runtime-id> [--json]")
+		return fmt.Errorf("usage: %s control status <runtime-id> [--json]", progName())
 	}
 	runtimeID := args[0]
 	jsonMode := hasFlag(args, "--json")
@@ -377,7 +379,7 @@ func controlStatusCmd(args []string) error {
 
 func controlAttachCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: ai control attach <runtime-id>")
+		return fmt.Errorf("usage: %s attach <runtime-id>", progName())
 	}
 	return attachRuntime(args[0])
 }
@@ -478,7 +480,7 @@ func attachRuntime(runtimeID string) error {
 
 func controlStopCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: ai control stop <runtime-id>")
+		return fmt.Errorf("usage: %s stop <runtime-id>", progName())
 	}
 	runtimeID := args[0]
 	reg := registry.DefaultRegistry()
@@ -516,7 +518,7 @@ func controlStopCmd(args []string) error {
 
 func controlHandoffCmd(args []string) error {
 	if len(args) < 2 {
-		return errors.New("usage: ai control handoff <runtime-id> <provider:profile>")
+		return fmt.Errorf("usage: %s handoff <runtime-id> <provider:profile>", progName())
 	}
 	runtimeID := args[0]
 	target := args[1]
@@ -532,7 +534,7 @@ func controlHandoffCmd(args []string) error {
 
 func controlContinueCmd(args []string) error {
 	if len(args) < 2 {
-		return errors.New("usage: ai control continue <runtime-id> --with <provider[:profile]>")
+		return fmt.Errorf("usage: %s continue <runtime-id> --with <provider[:profile]>", progName())
 	}
 	runtimeID := args[0]
 	var targetProvider, targetProfile string
@@ -651,7 +653,7 @@ func controlDoctorCmd(args []string) error {
 		return enc.Encode(report)
 	}
 
-	fmt.Println("=== AI Control Runtime Doctor ===")
+	fmt.Println("=== Nexus Control Runtime Doctor ===")
 	fmt.Printf("Platform:         %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	fmt.Printf("IPC Transport:    %s\n", ipcMechanism)
 	fmt.Printf("Terminal Engine:  %s\n", termMechanism)

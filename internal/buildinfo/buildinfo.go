@@ -31,7 +31,7 @@ func Platform() string { return runtime.GOOS + "/" + runtime.GOARCH }
 
 // String renders a single-line human-readable version string.
 func String() string {
-	return fmt.Sprintf("ai-cli %s (%s, %s) commit %s built %s",
+	return fmt.Sprintf("IAPro Nexus %s (%s, %s) commit %s built %s",
 		Version, Platform(), Go(), Commit, BuildDate)
 }
 

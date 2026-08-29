@@ -1,11 +1,11 @@
 version: 2
 
-project_name: ai-cli
+project_name: nexus
 
 builds:
-  - id: ai
-    main: ./cmd/ai
-    binary: ai
+  - id: nexus
+    main: ./cmd/nexus
+    binary: nexus
     env:
       - CGO_ENABLED=0
     goos:

@@ -42,14 +42,23 @@ func StripANSI(str string) string {
 	return b.String()
 }
 
-// RouteSlashCommand inspects terminal input lines and intercepts /ai commands with live usage data.
+// RouteSlashCommand inspects terminal input lines and intercepts /nexus or /ai commands with live usage data.
 func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResult {
 	clean := StripANSI(input)
 	trimmed := strings.TrimSpace(clean)
 
-	// 1. Check for escape prefix "//ai"
+	// 1. Check for escape prefix "//nexus" or "//ai"
+	if strings.HasPrefix(trimmed, "//nexus") {
+		escaped := "/nexus" + trimmed[7:]
+		if strings.HasSuffix(input, "\n") {
+			escaped += "\n"
+		}
+		return SlashResult{
+			Intercepted:      false,
+			ForwardToProcess: escaped,
+		}
+	}
 	if strings.HasPrefix(trimmed, "//ai") {
-		// Strip one slash: forward "/ai..." to the child process
 		escaped := "/ai" + trimmed[4:]
 		if strings.HasSuffix(input, "\n") {
 			escaped += "\n"
@@ -60,8 +69,10 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 		}
 	}
 
-	// 2. Check for reserved "/ai" command
-	if !strings.HasPrefix(trimmed, "/ai") {
+	// 2. Check for reserved "/nexus" or "/ai" command
+	isNexus := strings.HasPrefix(trimmed, "/nexus")
+	isAI := strings.HasPrefix(trimmed, "/ai")
+	if !isNexus && !isAI {
 		// Normal input: forward untouched
 		return SlashResult{
 			Intercepted:      false,
@@ -69,7 +80,12 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 		}
 	}
 
-	// It is an /ai command: intercept completely
+	prefix := "/nexus"
+	if isAI && !isNexus {
+		prefix = "/ai"
+	}
+
+	// It is a slash command: intercept completely
 	parts := strings.Fields(trimmed)
 	subcmd := ""
 	if len(parts) > 1 {
@@ -78,21 +94,21 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 
 	switch subcmd {
 	case "help", "?", "":
-		resp := `
+		resp := fmt.Sprintf(`
 ╔══════════════════════════════════════════════════════════════════╗
-║               AI CONTROL — UNIVERSAL SLASH COMMANDS             ║
+║             NEXUS CONTROL — UNIVERSAL SLASH COMMANDS            ║
 ╠══════════════════════════════════════════════════════════════════╣
-║  /ai status               Show current runtime status & quota   ║
-║  /ai accounts             List available accounts & quotas      ║
-║  /ai usage                Display honest usage metrics snapshot ║
-║  /ai handoff <profile>    Same-provider account handoff         ║
-║  /ai continue <provider>  Cross-provider context handoff        ║
-║  /ai control              Open Control Center TUI instructions  ║
-║  /ai detach               Detach from session (keeps alive)     ║
-║  /ai stop                 Gracefully terminate runtime session  ║
-║  //ai <text>              Escape prefix to send literal /ai     ║
+║  %s status               Show current runtime status & quota   ║
+║  %s accounts             List available accounts & quotas      ║
+║  %s usage                Display honest usage metrics snapshot ║
+║  %s handoff <profile>    Same-provider account handoff         ║
+║  %s continue <provider>  Cross-provider context handoff        ║
+║  %s control              Open Control Center TUI instructions  ║
+║  %s detach               Detach from session (keeps alive)     ║
+║  %s stop                 Gracefully terminate runtime session  ║
+║  /%s <text>              Escape prefix to send literal command ║
 ╚══════════════════════════════════════════════════════════════════╝
-`
+`, prefix, prefix, prefix, prefix, prefix, prefix, prefix, prefix, prefix)
 		return SlashResult{Intercepted: true, Response: resp}
 
 	case "status":
@@ -100,7 +116,7 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 		usageStr := formatUsageSummary(snap)
 
 		resp := fmt.Sprintf(`
-┌─ AI CONTROL STATUS ──────────────────────────────────────────┐
+┌─ NEXUS CONTROL STATUS ───────────────────────────────────────┐
 │  Runtime ID:       %-41s │
 │  Provider:         %-41s │
 │  Profile:          %-41s │
@@ -194,21 +210,21 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 		return SlashResult{
 			Intercepted: true,
 			Action:      "detach",
-			Response:    "\n[AI Control] Detached from runtime session. Host process remains running in background.\n",
+			Response:    "\n[Nexus Control] Detached from runtime session. Host process remains running in background.\n",
 		}
 
 	case "stop":
 		return SlashResult{
 			Intercepted: true,
 			Action:      "stop",
-			Response:    "\n[AI Control] Stopping runtime session...\n",
+			Response:    "\n[Nexus Control] Stopping runtime session...\n",
 		}
 
 	case "handoff":
 		if len(parts) < 3 {
 			return SlashResult{
 				Intercepted: true,
-				Response:    "Usage: /ai handoff <target-profile> (e.g. /ai handoff codex:work or /ai handoff work)\n",
+				Response:    fmt.Sprintf("Usage: %s handoff <target-profile> (e.g. %s handoff codex:work or %s handoff work)\n", prefix, prefix, prefix),
 			}
 		}
 		target := parts[2]
@@ -216,14 +232,14 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 			Intercepted: true,
 			Action:      "handoff",
 			ActionArg:   target,
-			Response:    fmt.Sprintf("\n[AI Control] Initiating same-provider account handoff to %s...\n", target),
+			Response:    fmt.Sprintf("\n[Nexus Control] Initiating same-provider account handoff to %s...\n", target),
 		}
 
 	case "continue":
 		if len(parts) < 3 {
 			return SlashResult{
 				Intercepted: true,
-				Response:    "Usage: /ai continue <target-provider[:profile]> (e.g. /ai continue claude or /ai continue claude:work)\n",
+				Response:    fmt.Sprintf("Usage: %s continue <target-provider[:profile]> (e.g. %s continue claude or %s continue claude:work)\n", prefix, prefix, prefix),
 			}
 		}
 		target := parts[2]
@@ -231,19 +247,19 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 			Intercepted: true,
 			Action:      "continue",
 			ActionArg:   target,
-			Response:    fmt.Sprintf("\n[AI Control] Creating cross-provider context envelope for %s...\n", target),
+			Response:    fmt.Sprintf("\n[Nexus Control] Creating cross-provider context envelope for %s...\n", target),
 		}
 
 	case "control", "ui":
 		return SlashResult{
 			Intercepted: true,
-			Response:    "\n[AI Control] To open the full Control Center, detach (/ai detach) and run: ai control\n",
+			Response:    fmt.Sprintf("\n[Nexus Control] To open the full Workspace OS, detach (%s detach) and run: nexus\n", prefix),
 		}
 
 	default:
 		return SlashResult{
 			Intercepted: true,
-			Response:    fmt.Sprintf("Unknown command %q. Type /ai help for available commands.\n", subcmd),
+			Response:    fmt.Sprintf("Unknown command %q. Type %s help for available commands.\n", subcmd, prefix),
 		}
 	}
 }

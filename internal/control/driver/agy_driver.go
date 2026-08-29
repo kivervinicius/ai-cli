@@ -60,7 +60,7 @@ func (d *AGYDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effectiv
 		Attach: CapabilityEvidence{
 			Status:          CapabilitySupported,
 			ProviderVersion: version,
-			Mechanism:       "AI Control IPC Socket/Pipe",
+			Mechanism:       "Nexus Control IPC Socket/Pipe",
 			Tested:          true,
 		},
 		StructuredEvents: CapabilityEvidence{

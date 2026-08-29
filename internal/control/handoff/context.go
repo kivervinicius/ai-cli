@@ -25,7 +25,7 @@ import (
 // FormatKickoffPrompt produces a clean, honest initial prompt for the target provider from a WorkCheckpoint.
 func FormatKickoffPrompt(cp WorkCheckpoint) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("=== AI Control Context Handoff (from %s:%s) ===\n", strings.ToUpper(cp.SourceProvider), cp.SourceProfile))
+	sb.WriteString(fmt.Sprintf("=== IAPro Nexus Context Handoff (from %s:%s) ===\n", strings.ToUpper(cp.SourceProvider), cp.SourceProfile))
 	sb.WriteString(fmt.Sprintf("Workspace: %s\n", cp.Workspace))
 	if cp.GitBranch != "" {
 		sb.WriteString(fmt.Sprintf("Active Git Branch: %s\n", cp.GitBranch))

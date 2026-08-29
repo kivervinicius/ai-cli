@@ -51,7 +51,7 @@ function reducer(model: WorkspaceModel, action: Action): WorkspaceModel {
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
-const defaultSurface = (): WorkspaceSurface => ({ id: 'project-overview', type: 'overview', title: 'Overview', closable: false });
+const defaultSurface = (): WorkspaceSurface => ({ id: 'project-overview', type: 'overview', title: 'Overview', titleKey: 'nav.overview', closable: false });
 
 export const WorkspaceProvider: React.FC<{
   projectId: string;

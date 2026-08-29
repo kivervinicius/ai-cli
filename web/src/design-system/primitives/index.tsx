@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef } from 'react';
 import { AlertCircle, CheckCircle2, Info, LoaderCircle, Search, TriangleAlert, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export type Tone = 'default' | 'brand' | 'success' | 'warning' | 'danger' | 'info' | 'ghost';
 
@@ -44,7 +45,7 @@ export const Segmented: React.FC<{ value: string; onChange: (value: string) => v
 
 export const Progress: React.FC<{ value: number; label: string }> = ({ value, label }) => <div className="nx-progress" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(value)}><span style={{ width: `${Math.min(100, Math.max(0, value))}%` }} /><small>{label}</small></div>;
 
-export const Spinner: React.FC<{ label?: string }> = ({ label = 'Loading…' }) => <div className="nx-spinner" role="status"><LoaderCircle size={16} aria-hidden="true" /><span>{label}</span></div>;
+export const Spinner: React.FC<{ label?: string }> = ({ label }) => { const { t } = useTranslation(); return <div className="nx-spinner" role="status"><LoaderCircle size={16} aria-hidden="true" /><span>{label ?? t('common.loading')}</span></div>; };
 
 export const EmptyState: React.FC<{ icon?: React.ReactNode; title: string; hint?: string; action?: React.ReactNode }> = ({ icon, title, hint, action }) => <div className="nx-empty-state">{icon}<strong>{title}</strong>{hint && <p>{hint}</p>}{action}</div>;
 
@@ -54,6 +55,7 @@ export const InlineAlert: React.FC<{ tone?: 'info' | 'success' | 'warning' | 'da
 };
 
 export const Dialog: React.FC<{ open: boolean; title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }> = ({ open, title, onClose, children, wide }) => {
+  const { t } = useTranslation();
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
@@ -67,7 +69,7 @@ export const Dialog: React.FC<{ open: boolean; title: string; onClose: () => voi
     return () => { window.removeEventListener('keydown', onKey); previousFocus.current?.focus?.(); };
   }, [open, onClose]);
   if (!open) return null;
-  return <div className="nx-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className="nx-dialog" data-wide={wide ? 'true' : 'false'}><header><h2 id={titleId}>{title}</h2><IconButton label="Close dialog" onClick={onClose}><X size={15} /></IconButton></header><div className="nx-dialog__body">{children}</div></div></div>;
+  return <div className="nx-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className="nx-dialog" data-wide={wide ? 'true' : 'false'}><header><h2 id={titleId}>{title}</h2><IconButton label={t('common.closeDialog')} onClick={onClose}><X size={15} /></IconButton></header><div className="nx-dialog__body">{children}</div></div></div>;
 };
 
-export const SearchInput: React.FC<{ value: string; onChange: (value: string) => void; placeholder?: string; autoFocus?: boolean }> = ({ value, onChange, placeholder = 'Search…', autoFocus }) => <label className="nx-search-input"><Search size={15} aria-hidden="true" /><input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} autoFocus={autoFocus} /></label>;
+export const SearchInput: React.FC<{ value: string; onChange: (value: string) => void; placeholder?: string; autoFocus?: boolean }> = ({ value, onChange, placeholder, autoFocus }) => { const { t } = useTranslation(); return <label className="nx-search-input"><Search size={15} aria-hidden="true" /><input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder ?? t('common.search')} autoFocus={autoFocus} /></label>; };

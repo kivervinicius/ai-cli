@@ -1,5 +1,7 @@
 # Smart Account Selection & Scheduling
 
+**🇬🇧 English** | [🇧🇷 Português](account-selection.pt-BR.md) | [🇪🇸 Español](account-selection.es.md)
+
 When you run `ai <provider>` (for example, `ai codex` or `ai claude`) without explicitly specifying a profile, `ai-cli` automatically selects the healthiest, highest-capacity account.
 
 ---

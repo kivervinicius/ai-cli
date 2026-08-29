@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -29,6 +30,8 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/core/security"
 	"github.com/kivervinicius/ai-cli/internal/core/session"
 	"github.com/kivervinicius/ai-cli/internal/core/telemetry"
+	"github.com/kivervinicius/ai-cli/internal/localization"
+	"github.com/kivervinicius/ai-cli/internal/nexus"
 	"github.com/kivervinicius/ai-cli/internal/profile"
 	"github.com/kivervinicius/ai-cli/internal/tui"
 )
@@ -49,14 +52,32 @@ func initRegistry() *provider.Registry {
 	return reg
 }
 
+func progName() string {
+	if len(os.Args) > 0 && os.Args[0] != "" {
+		base := filepath.Base(os.Args[0])
+		if base != "" && base != "." && base != "/" {
+			return base
+		}
+	}
+	return "nexus"
+}
+
 func Run(args []string) error {
 	initRegistry()
+	cfg, _ := config.LoadConfig()
+	localization.Set(localization.Resolve("", cfg.Language))
+	flagLanguage, remaining, err := localization.ExtractGlobalFlag(args)
+	if err != nil {
+		return err
+	}
+	args = remaining
+	localization.Set(localization.Resolve(flagLanguage, cfg.Language))
 
 	if len(args) == 0 {
 		return interactive()
 	}
 
-	// Short form: ai codex:work -- --model ... or ai codex:auto
+	// Short form: nexus codex:work -- --model ... or nexus codex:auto
 	if strings.Contains(args[0], ":") {
 		parts := strings.SplitN(args[0], ":", 2)
 		prov := parts[0]
@@ -75,6 +96,25 @@ func Run(args []string) error {
 		return nil
 	case "version", "--version", "-v":
 		return versionCmd(args[1:])
+	case "web":
+		return controlWebCmd(args[1:])
+	case "start":
+		return controlStartCmd(args[1:])
+	case "stop":
+		return controlStopCmd(args[1:])
+	case "ps", "running":
+		return controlRunningCmd(args[1:])
+	case "attach":
+		return controlAttachCmd(args[1:])
+	case "handoff":
+		return controlHandoffCmd(args[1:])
+	case "continue":
+		for _, a := range args[1:] {
+			if a == "--with" || strings.HasPrefix(a, "--with=") {
+				return controlContinueCmd(args[1:])
+			}
+		}
+		return resumeCmd(args[1:])
 	case "providers":
 		return providersCmd(args[1:])
 	case "profiles", "list", "ls":
@@ -101,7 +141,7 @@ func Run(args []string) error {
 		return completionCmd(args[1:])
 	case "run":
 		return runCmd(args[1:])
-	case "resume", "continue":
+	case "resume":
 		return resumeCmd(args[1:])
 	case "switch", "swap", "use":
 		return useCmd(args[1:])
@@ -131,6 +171,8 @@ func Run(args []string) error {
 		return exportCmd(args[1:])
 	case "issue-report":
 		return issueReportCmd(args[1:])
+	case "update", "upgrade":
+		return updateCmd(args[1:])
 	case "config":
 		return configCmd(args[1:])
 	case "control", "ui":
@@ -158,9 +200,9 @@ func Run(args []string) error {
 					return executeProviderWithSmartSelection(prov, prof, trimDashDash(args), true)
 				}
 			}
-			return fmt.Errorf("no default profile configured; specify provider, e.g.: ai codex")
+			return fmt.Errorf("no default profile configured; specify provider, e.g.: %s codex", progName())
 		}
-		return fmt.Errorf("unknown command %q; run 'ai help'", args[0])
+		return fmt.Errorf("unknown command %q; run '%s help'", args[0], progName())
 	}
 }
 
@@ -228,7 +270,7 @@ func executeProviderWithSmartSelection(provName, explicitProfile string, args []
 	}
 
 	if len(candidates) == 0 {
-		return fmt.Errorf("no profiles configured for provider %s. Run: ai add %s <name>", provName, provName)
+		return fmt.Errorf("no profiles configured for provider %s. Run: %s add %s <name>", provName, progName(), provName)
 	}
 
 	cwd, _ := os.Getwd()
@@ -297,31 +339,57 @@ func executeResume(provName, profName, sessionID string, args []string) error {
 }
 
 func usage() {
-	fmt.Printf("AI CLI Control Plane %s - Local Control Plane for AI Coding CLIs\n", buildinfo.Version)
-	fmt.Print(`Usage:
-  ai                              Open interactive control plane (TUI)
-  ai control [subcmd]             AI Control Center & Supervised Runtimes (alias: ai ui)
-  ai <provider> [flags]           Launch provider with intelligent account selection
-  ai <provider>:<profile> [flags] Launch specific profile (e.g. ai codex:work)
-  ai <provider>:auto [flags]      Explicit auto-selection
-  ai resume [id] [provider:name]  Resume previous session using provider-native syntax
-  ai providers [--json]           List installed providers, versions & capabilities
-  ai profiles [--json]            List configured profiles, auth status & priorities
-  ai usage [provider] [--json]    Display real-time quota metrics & cache freshness
-  ai sessions [search] [--json]   Universal session index across all providers
-  ai workspaces [--json]          View workspaces, session history & bindings
-  ai bind <provider>:<profile>    Bind current workspace to a preferred profile
-  ai unbind <provider>            Unbind current workspace
-  ai bindings [--json]            List all active workspace bindings
-  ai explain <provider>           Explain account selection decision and scores
-  ai doctor [--json]              Deep diagnostics of runtime, keyrings & CLIs
-  ai security [profile] [--json]  Audit file sharing and isolation boundary
-  ai history [--json]             View local session execution log
-  ai stats [--json]               Aggregated statistics (sessions, fallbacks, rate limits)
-  ai config <show|validate>       Manage control plane settings
-  ai completion <bash|zsh|fish>   Generate shell completion scripts
-  ai version [--json]             Display build and platform information
-`)
+	p := progName()
+	fmt.Println(localization.T("help.header", map[string]any{"Version": buildinfo.Version}))
+	fmt.Println(localization.T("help.usage"))
+	body := fmt.Sprintf(`
+  %s                              Open interactive Workspace OS (TUI)
+  %s web [flags]                  Launch IAPro Nexus Workspace OS (Web UI)
+  %s control [subcmd]             Nexus Supervised Agent Runtimes (alias: %s ui)
+  %s start <provider> [flags]     Start supervised agent runtime & attach
+  %s stop <runtime-id>            Stop running supervised runtime
+  %s ps / %s running              List active running supervised runtimes
+  %s attach <runtime-id>          Attach terminal to running runtime
+  %s handoff <id> <target>        Same-provider account handoff
+  %s continue <id> --with <prov>  Cross-provider context handoff
+
+  %s <provider> [flags]           Launch provider with intelligent account selection
+  %s <provider>:<profile> [flags] Launch specific profile (e.g. %s codex:work)
+  %s <provider>:auto [flags]      Explicit auto-selection
+  %s resume [id] [provider:name]  Resume previous session using provider-native syntax
+
+  %s providers [--json]           List installed providers, versions & capabilities
+  %s profiles [--json]            List configured profiles, auth status & priorities
+  %s add <provider> [name]        Add a new provider authentication profile
+  %s remove <provider> <name>     Remove an existing profile
+  %s login / logout <p> <name>    Run provider official login/logout flow
+  %s use <provider> <name>        Set default active profile for provider
+  %s status [provider[:profile]]  Display profile health, plan and account status
+  %s usage [provider] [--json]    Display real-time quota metrics & cache freshness
+  %s inspect <provider> <name>    Inspect profile configuration details
+
+  %s sessions [search] [--json]   Universal session index across all providers
+  %s workspaces [--json]          View workspaces, session history & bindings
+  %s bind <provider>:<profile>    Bind current workspace to a preferred profile
+  %s unbind <provider>            Unbind current workspace
+  %s bindings [--json]            List all active workspace bindings
+  %s explain <provider>           Explain account selection decision and scores
+  %s doctor [--json]              Deep diagnostics of runtime, keyrings & CLIs
+  %s security [profile] [--json]  Audit file sharing and isolation boundary
+  %s history [--json]             View local session execution log
+  %s stats [--json]               Aggregated statistics (sessions, fallbacks, rate limits)
+  %s config <show|validate>       Manage control plane settings
+  %s update                       Update Nexus and Orquestrador Maestro to latest
+  %s completion <bash|zsh|fish>   Generate shell completion scripts
+  %s version [--json]             Display build and platform information
+`,
+		p, p, p, p, p, p, p, p, p, p, p,
+		p, p, p, p, p,
+		p, p, p, p, p, p, p, p, p,
+		p, p, p, p, p, p, p, p, p, p, p, p, p, p,
+	)
+	fmt.Print(localization.HumanizeHelp(body))
+	fmt.Println(localization.T("help.language"))
 }
 
 func versionCmd(args []string) error {
@@ -415,7 +483,7 @@ func profilesCmd(args []string) error {
 	}
 
 	if len(ps) == 0 {
-		fmt.Println("No profiles configured. Example: ai add codex work")
+		fmt.Printf("No profiles configured. Example: %s add codex work\n", progName())
 		return nil
 	}
 
@@ -440,7 +508,7 @@ func profilesCmd(args []string) error {
 
 func addCmd(args []string) error {
 	if len(args) < 1 {
-		return errors.New("usage: ai add <provider> [name] [--no-login]")
+		return fmt.Errorf("usage: %s add <provider> [name] [--no-login]", progName())
 	}
 	providerName := args[0]
 	if err := profile.ValidateProvider(providerName); err != nil {
@@ -495,7 +563,7 @@ func addCmd(args []string) error {
 
 func removeCmd(args []string) error {
 	if len(args) < 2 {
-		return errors.New("usage: ai remove <provider> <name> [--yes]")
+		return fmt.Errorf("usage: %s remove <provider> <name> [--yes]", progName())
 	}
 	prov, name := args[0], args[1]
 	if !profile.Exists(prov, name) {
@@ -516,14 +584,14 @@ func removeCmd(args []string) error {
 
 func renameCmd(args []string) error {
 	if len(args) != 3 {
-		return errors.New("usage: ai rename <provider> <old_name> <new_name>")
+		return fmt.Errorf("usage: %s rename <provider> <old_name> <new_name>", progName())
 	}
 	return profile.Rename(args[0], args[1], args[2])
 }
 
 func loginCmd(args []string) error {
 	if len(args) != 2 {
-		return errors.New("usage: ai login <provider> <name>")
+		return fmt.Errorf("usage: %s login <provider> <name>", progName())
 	}
 	prov, name := args[0], args[1]
 	if !profile.Exists(prov, name) {
@@ -543,7 +611,7 @@ func loginCmd(args []string) error {
 
 func logoutCmd(args []string) error {
 	if len(args) != 2 {
-		return errors.New("usage: ai logout <provider> <name>")
+		return fmt.Errorf("usage: %s logout <provider> <name>", progName())
 	}
 	prov, name := args[0], args[1]
 	if !profile.Exists(prov, name) {
@@ -563,7 +631,7 @@ func logoutCmd(args []string) error {
 
 func useCmd(args []string) error {
 	if len(args) != 2 {
-		return errors.New("usage: ai use <provider> <name>")
+		return fmt.Errorf("usage: %s use <provider> <name>", progName())
 	}
 	if err := config.SetDefaultProfile(args[0], args[1]); err != nil {
 		return err
@@ -764,11 +832,11 @@ func workspacesCmd(args []string) error {
 
 func bindCmd(args []string) error {
 	if len(args) != 1 {
-		return errors.New("usage: ai bind <provider>:<profile>")
+		return fmt.Errorf("usage: %s bind <provider>:<profile>", progName())
 	}
 	parts := strings.SplitN(args[0], ":", 2)
 	if len(parts) != 2 {
-		return errors.New("usage: ai bind <provider>:<profile>")
+		return fmt.Errorf("usage: %s bind <provider>:<profile>", progName())
 	}
 	prov, prof := parts[0], parts[1]
 	cwd, _ := os.Getwd()
@@ -781,7 +849,7 @@ func bindCmd(args []string) error {
 
 func unbindCmd(args []string) error {
 	if len(args) != 1 {
-		return errors.New("usage: ai unbind <provider>")
+		return fmt.Errorf("usage: %s unbind <provider>", progName())
 	}
 	cwd, _ := os.Getwd()
 	if err := config.UnbindWorkspace(cwd, args[0]); err != nil {
@@ -813,7 +881,7 @@ func bindingsCmd(args []string) error {
 
 func explainCmd(args []string) error {
 	if len(args) != 1 {
-		return errors.New("usage: ai explain <provider>")
+		return fmt.Errorf("usage: %s explain <provider>", progName())
 	}
 	prov := args[0]
 	cfg, _ := config.LoadConfig()
@@ -852,7 +920,7 @@ func doctorCmd(args []string) error {
 		return nil
 	}
 
-	fmt.Println("=== AI CLI Diagnostics ===")
+	fmt.Println("=== IAPro Nexus Diagnostics ===")
 	for id, det := range detections {
 		if det.Installed {
 			fmt.Printf("✓ %-12s installed (%s) at %s\n", id, det.Version, det.BinaryPath)
@@ -870,6 +938,24 @@ func doctorCmd(args []string) error {
 			fmt.Printf("⚠ %s:%s unauthenticated (%s)\n", p.Provider, p.Name, acc.Status)
 		}
 	}
+
+	fmt.Println("\n=== Orquestrador Maestro ===")
+	maestroClient := nexus.NewMaestroClient()
+	mStatus := maestroClient.Status()
+	if mStatus.Available {
+		ver := "unknown"
+		if mStatus.Capabilities != nil {
+			ver = mStatus.Capabilities.Version
+		}
+		fmt.Printf("✓ Maestro status: AVAILABLE (v%s, mode: %s)\n", ver, mStatus.Mode)
+		if mStatus.Capabilities != nil && len(mStatus.Capabilities.Skills) > 0 {
+			fmt.Printf("  • Integrated skills: %s\n", strings.Join(mStatus.Capabilities.Skills, ", "))
+		}
+	} else {
+		fmt.Printf("⚠ Maestro status: DEGRADED (%s)\n", mStatus.Error)
+		fmt.Println("  Run: npm install -g @iapro/orquestrador-maestro-cli")
+	}
+
 	return nil
 }
 
@@ -983,7 +1069,7 @@ func issueReportCmd(args []string) error {
 
 	var sb strings.Builder
 	sb.WriteString("### Environment Diagnostics\n\n")
-	sb.WriteString(fmt.Sprintf("- AI CLI Version: `%s`\n", buildinfo.Version))
+	sb.WriteString(fmt.Sprintf("- IAPro Nexus Version: `%s`\n", buildinfo.Version))
 	sb.WriteString(fmt.Sprintf("- OS: `%s`\n\n", runtime.GOOS))
 	sb.WriteString("### Installed Providers\n\n")
 	for id, det := range detections {
@@ -1010,21 +1096,41 @@ func configCmd(args []string) error {
 		}
 		issues := cfg.Validate()
 		if len(issues) == 0 {
-			fmt.Println("✓ Configuration is valid.")
+			fmt.Println("✓ " + localization.T("config.valid"))
 			return nil
 		}
-		fmt.Println("Configuration issues found:")
+		fmt.Println(localization.T("config.issues"))
 		for _, is := range issues {
 			fmt.Printf("  ⚠ %s\n", is)
 		}
 		return nil
 	}
-	return errors.New("usage: ai config <show|validate>")
+	if args[0] == "language" {
+		if len(args) != 2 || !localization.IsSupported(args[1]) {
+			return errors.New(localization.T("error.config_usage"))
+		}
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			return err
+		}
+		value := args[1]
+		if value != "auto" {
+			value = localization.Normalize(value)
+		}
+		cfg.Language = value
+		if err := config.SaveConfig(cfg); err != nil {
+			return err
+		}
+		localization.Set(localization.Resolve("", value))
+		fmt.Println(localization.T("config.language_saved", map[string]any{"Language": value}))
+		return nil
+	}
+	return errors.New(localization.T("error.config_usage"))
 }
 
 func inspectCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: ai inspect <provider> <name>")
+		return fmt.Errorf("usage: %s inspect <provider> <name>", progName())
 	}
 	prov := args[0]
 	name := ""
@@ -1046,7 +1152,7 @@ func inspectCmd(args []string) error {
 
 func runCmd(args []string) error {
 	if len(args) < 1 {
-		return errors.New("usage: ai run <provider> [profile] [--] [args...]")
+		return fmt.Errorf("usage: %s run <provider> [profile] [--] [args...]", progName())
 	}
 	prov := args[0]
 	prof := ""
@@ -1126,49 +1232,67 @@ func paths() error {
 
 func completionCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: ai completion <bash|zsh|fish|powershell>")
+		return fmt.Errorf("usage: %s completion <bash|zsh|fish|powershell>", progName())
 	}
 	switch args[0] {
 	case "bash":
-		fmt.Print(`_ai_completion() {
+		fmt.Print(`_nexus_completion() {
     local cur prev opts
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="control ui providers profiles usage sessions workspaces bind unbind explain doctor security history stats config completion version codex agy claude opencode gemini"
+    opts="web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage inspect sessions workspaces bind unbind bindings explain doctor security history stats config update completion version codex agy claude opencode gemini"
     COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
     return 0
 }
-complete -F _ai_completion ai
+complete -F _nexus_completion nexus
+complete -F _nexus_completion ai
 `)
 	case "zsh":
-		fmt.Print(`#compdef ai
-_ai() {
+		fmt.Print(`#compdef nexus ai
+_nexus() {
     local -a commands
     commands=(
-        'control:AI Control Center & Supervised Runtimes'
+        'web:Launch IAPro Nexus Workspace OS (Web UI)'
+        'start:Start supervised agent runtime'
+        'stop:Stop running supervised runtime'
+        'ps:List active supervised runtimes'
+        'running:List active supervised runtimes'
+        'attach:Attach terminal to running runtime'
+        'handoff:Same-provider account handoff'
+        'continue:Cross-provider context handoff'
+        'control:Nexus Supervised Agent Runtimes'
         'ui:Interactive Control Center'
-        'providers:List AI providers'
+        'providers:List AI providers and capabilities'
         'profiles:List configured profiles'
+        'add:Add a provider authentication profile'
+        'remove:Remove a profile'
+        'login:Run provider official login flow'
+        'logout:Run provider official logout flow'
+        'use:Set default active profile for provider'
+        'status:Display profile health, plan and account status'
         'usage:Display quota and rate limits'
         'sessions:Universal session index'
         'doctor:Diagnostics and health checks'
         'security:Security and isolation audit'
+        'update:Update Nexus and Orquestrador Maestro'
     )
     _describe 'command' commands
 }
-_ai "$@"
+_nexus "$@"
 `)
 	case "fish":
-		fmt.Print(`complete -c ai -f -a "control ui providers profiles usage sessions doctor security history stats"
+		fmt.Print(`complete -c nexus -f -a "web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage sessions workspaces bind unbind explain doctor security history stats update config version"
+complete -c ai -f -a "web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage sessions workspaces bind unbind explain doctor security history stats update config version"
 `)
 	case "powershell", "pwsh":
-		fmt.Print(`Register-ArgumentCompleter -Native -CommandName ai -ScriptBlock {
+		fmt.Print(`Register-ArgumentCompleter -Native -CommandName @('nexus', 'ai') -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
     $commands = @(
-        'control', 'ui', 'providers', 'profiles', 'usage', 'sessions', 'workspaces',
-        'bind', 'unbind', 'explain', 'doctor', 'security',
-        'history', 'stats', 'config', 'completion', 'version',
+        'web', 'start', 'stop', 'ps', 'running', 'attach', 'handoff', 'continue', 'resume',
+        'control', 'ui', 'providers', 'profiles', 'add', 'remove', 'login', 'logout', 'use',
+        'status', 'usage', 'inspect', 'sessions', 'workspaces', 'bind', 'unbind', 'bindings',
+        'explain', 'doctor', 'security', 'history', 'stats', 'config', 'update', 'completion', 'version',
         'codex', 'agy', 'claude', 'opencode', 'gemini'
     )
     $commands | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {

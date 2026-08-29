@@ -1,32 +1,32 @@
-# Architecture: AI CLI Control Plane
+# Architecture: IAPro Nexus Workspace OS
 
 ```text
-                               ai CLI / TUI
-                                    │
-                         Provider Registry & Dispatcher
-                                    │
-        ┌──────────────┬────────────┼────────────┬──────────────┐
-        │              │            │            │              │
-      Codex           AGY         Claude      OpenCode        Gemini
-     Adapter        Adapter      Adapter      Adapter        Adapter
-        │              │            │            │              │
-    CODEX_HOME    profile HOME   CLAUDE_HOME  OPENCODE_HOME  GEMINI_HOME
-   per profile   XDG per profile per profile  per profile    per profile
-        │        D-Bus keyring      │            │              │
-        │              │            │            │              │
-  official codex  official agy official claude official opencode official gemini
-        │              │            │            │              │
-        └──────────────┴────────────┼────────────┴──────────────┘
-                                    │
-                            current directory
-                           same Linux UID/GID
+                                 nexus CLI / TUI / Web
+                                          │
+                            Provider Registry & Dispatcher
+                                          │
+         ┌──────────────┬────────────┼────────────┬──────────────┐
+         │              │            │            │              │
+       Codex           AGY         Claude      OpenCode        Gemini
+      Adapter        Adapter      Adapter      Adapter        Adapter
+         │              │            │            │              │
+     CODEX_HOME    profile HOME   CLAUDE_HOME  OPENCODE_HOME  GEMINI_HOME
+    per profile   XDG per profile per profile  per profile    per profile
+         │        D-Bus keyring      │            │              │
+         │              │            │            │              │
+   official codex  official agy official claude official opencode official gemini
+         │              │            │            │              │
+         └──────────────┴────────────┼────────────┴──────────────┘
+                                          │
+                                  current directory
+                                 same Linux UID/GID
 ```
 
 ---
 
 ## 1. Core Principles
 
-- **No Central OAuth Proxy**: Authentication and refresh tokens are owned by official CLIs. `ai-cli` manages process isolation, environment variables, and credential storage paths.
+- **No Central OAuth Proxy**: Authentication and refresh tokens are owned by official CLIs. `nexus` manages process isolation, environment variables, and credential storage paths.
 - **Honest Quota Engine**: Never presents missing data as 100%. Quotas explicitly report `LIVE`, `CACHED`, `UNKNOWN`, `RATE_LIMITED`, or `UNSUPPORTED`.
 - **Smart Account Selection**: Scores candidate accounts based on capacity, health, project bindings, and priorities.
 - **Automatic Fallback**: Recovers from 429 rate limits by switching to the next best account seamlessly.
@@ -37,7 +37,7 @@
 
 ```mermaid
 flowchart TB
-    CLI["ai CLI / Bubble Tea TUI"] --> Dispatcher["Command Dispatcher & Controller"]
+    CLI["nexus CLI / TUI / Web Workspace OS"] --> Dispatcher["Command Dispatcher & Controller"]
     Dispatcher --> Scheduler["Smart Account Selector"]
     Dispatcher --> Registry["Provider Registry"]
     Dispatcher --> SessionIndex["Universal Session Index"]
@@ -53,7 +53,7 @@ flowchart TB
     Registry --> OpenCodeAdapter["OpenCode Adapter"]
     Registry --> GeminiAdapter["Gemini CLI Adapter"]
 
-    CodexAdapter --> IsolatedRuntime["Isolated Process Runtime (TTY / Signals)"]
+    CodexAdapter --> IsolatedRuntime["Isolated Process Runtime (PTY / Signals)"]
     AGYAdapter --> IsolatedRuntime
     ClaudeAdapter --> IsolatedRuntime
     OpenCodeAdapter --> IsolatedRuntime
@@ -68,13 +68,13 @@ flowchart TB
 sequenceDiagram
     autonumber
     actor User
-    participant CLI as ai CLI
+    participant CLI as nexus CLI
     participant Selector as AccountSelector
     participant Runtime as IsolatedRuntime
     participant Adapter as ProviderAdapter
     participant Cooldown as CooldownTracker
 
-    User->>CLI: ai codex
+    User->>CLI: nexus codex
     CLI->>Selector: SelectBestProfile(codex)
     Selector-->>CLI: Selected: profile-work (Capacity: 85%)
     CLI->>Runtime: RunInteractive(profile-work, args)
@@ -104,9 +104,9 @@ sequenceDiagram
 
 ---
 
-## 5. AI Control Plane Architecture
+## 5. Nexus Supervised Runtimes Architecture
 
-The AI Control Plane introduces a supervised runtime model where AI developer tools execute inside a managed host wrapper. This wrapper provides cross-provider interoperability, resilient handoffs, and capability discovery.
+The Nexus Control Plane introduces a supervised runtime model where AI developer tools execute inside a managed host wrapper. This wrapper provides cross-provider interoperability, resilient handoffs, and capability discovery.
 
 ### Core Concepts
 
@@ -117,7 +117,7 @@ The AI Control Plane introduces a supervised runtime model where AI developer to
 
 ### Inter-Process Control Flow
 
-1. The `ai control start` command provisions a new `registry.RuntimeSession`, spawns `ai __control-host` in the background, and immediately attaches to the new socket.
+1. The `nexus start` (or `nexus control start`) command provisions a new `registry.RuntimeSession`, spawns `nexus __control-host` in the background, and immediately attaches to the new socket.
 2. The background `SessionHost` runs the actual provider CLI (via PTY) and broadcasts stdout to all attached clients via a ring buffer.
 3. Attached user terminals send input which the `SessionHost` intercepts using a `SlashRouter`.
-4. Commands like `/ai handoff` trigger asynchronous transactional handoff routines that quiesce the current process, launch the target process, and safely link session IDs before stopping the source process.
+4. Commands like `/nexus handoff` (or `/ai handoff`) trigger asynchronous transactional handoff routines that quiesce the current process, launch the target process, and safely link session IDs before stopping the source process.

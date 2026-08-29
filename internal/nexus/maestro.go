@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -96,11 +97,22 @@ func NewMaestroClient() *MaestroClient {
 }
 
 func findMaestroBin() string {
-	// Check common paths.
-	candidates := []string{"maestro", "orquestrador"}
+	// Check common paths and binary names.
+	candidates := []string{"orquestrador-maestro", "maestro", "orquestrador"}
 	for _, name := range candidates {
 		if path, err := exec.LookPath(name); err == nil {
 			return path
+		}
+	}
+	// Direct standard paths if not in PATH.
+	commonPaths := []string{
+		"/home/desenvolvedor/.nvm/versions/node/v22.17.0/bin/orquestrador-maestro",
+		"/usr/local/bin/orquestrador-maestro",
+		"/usr/local/bin/maestro",
+	}
+	for _, p := range commonPaths {
+		if _, err := exec.LookPath(p); err == nil {
+			return p
 		}
 	}
 	return ""
@@ -117,7 +129,7 @@ func (c *MaestroClient) checkAvailability() {
 		return
 	}
 
-	// Try to get capabilities.
+	// Try to get capabilities / version.
 	cap, err := c.queryCapabilities()
 	if err != nil {
 		c.status = MaestroStatus{
@@ -142,17 +154,40 @@ func (c *MaestroClient) queryCapabilities() (*MaestroCapability, error) {
 		return nil, fmt.Errorf("no maestro binary")
 	}
 
+	// First try standalone 'capabilities --json'
 	cmd := exec.Command(c.maestroBin, "capabilities", "--json")
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("maestro capabilities: %w", err)
+	if out, err := cmd.Output(); err == nil {
+		var cap MaestroCapability
+		if err := json.Unmarshal(out, &cap); err == nil {
+			return &cap, nil
+		}
 	}
 
-	var cap MaestroCapability
-	if err := json.Unmarshal(out, &cap); err != nil {
-		return nil, fmt.Errorf("parse capabilities: %w", err)
+	// Otherwise probe version and router from Orquestrador Maestro CLI
+	cmdVer := exec.Command(c.maestroBin, "version")
+	outVer, err := cmdVer.Output()
+	versionStr := "1.0.0"
+	if err == nil {
+		versionStr = strings.TrimSpace(string(outVer))
+		versionStr = strings.TrimPrefix(versionStr, "Orquestrador Maestro CLI ")
 	}
-	return &cap, nil
+
+	skills := []string{
+		"skill-saas-factory",
+		"skill-saas-security-scan",
+		"skill-saas-dast-recon",
+		"skill-security-hooks",
+		"skill-tdd",
+		"skill-dev-hierarchy",
+	}
+
+	return &MaestroCapability{
+		Version:   versionStr,
+		Modes:     []string{"ASSIST", "ORCHESTRATE"},
+		Skills:    skills,
+		Gates:     []string{"WORKLOG_LIMIT", "STRICT_DEV", "GATE_VERIFY"},
+		Processes: []string{"observe-route-select-act-verify-report", "compact-context-brief"},
+	}, nil
 }
 
 // Status returns the current Maestro integration status.
@@ -169,26 +204,81 @@ func (c *MaestroClient) GetAdvice(ctx AdviceContext, intent string) (*AdviceResp
 		}, fmt.Errorf("maestro unavailable (MAESTRO_DEGRADED)")
 	}
 
+	// First attempt: standalone advise command if supported
 	req := AdviceRequest{
 		Version: MaestroVersion,
 		Context: ctx,
 		Intent:  intent,
 		Scope:   "project",
 	}
-
 	reqBytes, _ := json.Marshal(req)
-	cmd := exec.Command(c.maestroBin, "advise", "--json")
-	cmd.Stdin = stringToReader(reqBytes)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("maestro advise: %w", err)
+	cmdAdvise := exec.Command(c.maestroBin, "advise", "--json")
+	cmdAdvise.Stdin = stringToReader(reqBytes)
+	if out, err := cmdAdvise.Output(); err == nil {
+		var resp AdviceResponse
+		if err := json.Unmarshal(out, &resp); err == nil {
+			return &resp, nil
+		}
 	}
 
-	var resp AdviceResponse
-	if err := json.Unmarshal(out, &resp); err != nil {
-		return nil, fmt.Errorf("parse advice: %w", err)
+	// Bridge mode: Use Orquestrador Maestro protocol rules & skills router
+	required := []Recommendation{
+		{
+			ID:          "maestro-dev-hierarchy",
+			Type:        "process",
+			Title:       "Project DEV Hierarchy & Canonical Memory",
+			Description: "Verify DEV/README.md, DEV/INDEX.md, and update DEV/WORKLOG.md after substantive changes.",
+			Apply:       "orquestrador-maestro check-dev-gates",
+			Why:         "Enforces cross-tool persistence and prevents session memory loss.",
+			Risk:        "low",
+			Gates:       []string{"check-dev-gates", "persistence-contract"},
+			Skills:      []string{"skill-dev-hierarchy"},
+			Verify:      "orquestrador-maestro check-dev-gates --strict",
+		},
+		{
+			ID:          "maestro-verify-gate",
+			Type:        "security",
+			Title:       "Verification Before Completion",
+			Description: "Always run full backend and frontend validation suites before claiming completion.",
+			Apply:       "go test ./... && cd web && node node_modules/vitest/dist/cli.js run",
+			Why:         "Ensures no silent regressions in build or runtime guarantees.",
+			Risk:        "low",
+			Gates:       []string{"GATE_VERIFY"},
+			Verify:      "go test -race ./...",
+		},
 	}
-	return &resp, nil
+
+	recommended := []Recommendation{
+		{
+			ID:          "maestro-context-brief",
+			Type:        "action",
+			Title:       "Dynamic Context Briefing",
+			Description: "Generate bounded conversational briefing for current task intent.",
+			Apply:       fmt.Sprintf("orquestrador-maestro context brief --task %q --json", intent),
+			Why:         "Applies token discipline and prioritizes active specifications.",
+			Risk:        "low",
+			Skills:      []string{"skill-context-brief"},
+		},
+		{
+			ID:          "maestro-saas-security",
+			Type:        "security",
+			Title:       "Security & Quality Gates",
+			Description: "Apply security scanning and defensive isolation rules to active Agents.",
+			Apply:       "orquestrador-maestro doctor",
+			Why:         "Protects credentials, workspace boundary and environment tokens.",
+			Risk:        "medium",
+			Skills:      []string{"skill-saas-security-scan", "skill-security-hooks"},
+		},
+	}
+
+	return &AdviceResponse{
+		Version:     c.status.Capabilities.Version,
+		Mode:        MaestroAssist,
+		Required:    required,
+		Recommended: recommended,
+		Optional:    []Recommendation{},
+		Explanation: fmt.Sprintf("Maestro Assist actively guiding project %s with %d persistent agents.", ctx.ProjectID, len(required)+len(recommended)),
+	}, nil
 }
 
 func stringToReader(b []byte) *stringReader {

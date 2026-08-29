@@ -70,7 +70,7 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
 
         {availableProfiles.length === 0 ? (
           <div className="p-4 bg-amber-950/40 border border-amber-800/60 rounded text-amber-300 text-xs font-mono">
-            No alternative profiles found for provider {runtimeProvider}. Add more accounts via <code>ai {runtimeProvider} login</code>.
+            No alternative profiles found for provider {runtimeProvider}. Add more accounts via <code>nexus add {runtimeProvider}</code>.
           </div>
         ) : (
           <div className="space-y-2">

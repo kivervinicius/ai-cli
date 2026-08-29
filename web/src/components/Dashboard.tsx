@@ -156,7 +156,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="text-slate-600 text-[11px]">
               Click <span className="text-sky-400">"Launch Agent"</span> above or run{' '}
               <code className="text-slate-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">
-                ai control start &lt;provider&gt;
+                nexus start &lt;provider&gt;
               </code>{' '}
               to start one.
             </div>

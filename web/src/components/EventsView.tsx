@@ -1,4 +1,5 @@
 import React from 'react';
+import i18n from '../i18n';
 import { EventRecord } from '../types';
 
 interface EventsViewProps {
@@ -32,7 +33,7 @@ export const EventsView: React.FC<EventsViewProps> = ({ events }) => {
                   <span className="text-slate-500">[{ev.runtime_id}]</span>
                 </div>
                 <span className="text-[10px] text-slate-500">
-                  {new Date(ev.timestamp).toLocaleTimeString()}
+                  {new Date(ev.timestamp).toLocaleTimeString(i18n.language)}
                 </span>
               </div>
               <div className="mt-1 text-slate-300">{ev.summary}</div>

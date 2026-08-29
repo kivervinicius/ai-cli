@@ -64,3 +64,22 @@ func TestConfigValidation(t *testing.T) {
 		t.Fatalf("expected 3 validation issues, got %d: %+v", len(issues), issues)
 	}
 }
+
+func TestConfigLanguageBackwardCompatibility(t *testing.T) {
+	t.Setenv("AI_CLI_CONFIG_DIR", t.TempDir())
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Language != "auto" {
+		t.Fatalf("language=%q", cfg.Language)
+	}
+	cfg.Language = "es"
+	if err := SaveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadConfig()
+	if err != nil || loaded.Language != "es" {
+		t.Fatalf("language=%q err=%v", loaded.Language, err)
+	}
+}

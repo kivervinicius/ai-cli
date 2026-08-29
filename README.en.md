@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">🇧🇷 Português</a> &nbsp;|&nbsp; <strong>🇬🇧 English</strong>
+  <a href="README.md">🇧🇷 Português</a> &nbsp;|&nbsp; <strong>🇬🇧 English</strong> &nbsp;|&nbsp; <a href="README.es.md">🇪🇸 Español</a>
 </p>
 
 <h3 align="center">
@@ -35,7 +35,7 @@ with real technical depth for terminal veterans.
 
 ## 1. What is IAPro Nexus?
 
-**IAPro Nexus** (in this repository the binary is still named `ai`) is a **local
+**IAPro Nexus** (canonical binary `nexus`, with `ai` alias for full backward compatibility) is a **local
 control workspace for coding agents** — the AI assistants that work inside your
 terminal (Codex, Claude Code, Gemini CLI, OpenCode, AGY, Cursor Agent).
 
@@ -47,7 +47,7 @@ In short, Nexus does three things:
    restarts, account changes and even provider switches. What changes is the
    "runtime generation" (the concrete execution), not the agent's identity.
 3. **Web-first** — the official interface is a local web dashboard
-   (`ai control web`) with real terminals (xterm.js) inside the browser. No giant
+   (`nexus web`) with real terminals (xterm.js) inside the browser. No giant
    mandatory terminal, nothing to install beyond a single binary.
 
 Nexus is **Powered by Maestro**: the [Orquestrador Maestro](https://github.com/IAPro-Community/Orquestrador-Maestro)
@@ -90,16 +90,16 @@ source if needed.
 ```bash
 git clone https://github.com/kivervinicius/ai-cli.git
 cd ai-cli
-make build          # produces ./ai
+make build          # produces ./bin/nexus
 sudo make install   # optional: install to /usr/local/bin
 ```
 
 ### Verify
 
 ```bash
-ai version
-# ai-cli 0.4.1 (linux/amd64, go1.25.0) commit <sha> built <date>
-ai doctor
+nexus version
+# IAPro Nexus 0.4.1 (linux/amd64, go1.25.0) commit <sha> built <date>
+nexus doctor
 ```
 
 ---
@@ -109,7 +109,9 @@ ai doctor
 ### 3.1 Open the Web dashboard
 
 ```bash
-ai control web
+nexus web
+# or the classic alias:
+nexus control web
 ```
 
 It prints a URL like:
@@ -197,46 +199,47 @@ Inside the project:
 
 ## 5. CLI reference
 
-The binary remains `ai` (the `iapro` command arrives in Gate 8). Classic-mode
-compatibility is preserved.
+The canonical command is `nexus`, with the `ai` alias preserved for full backward compatibility.
 
 ### Main commands
 
 ```bash
-ai                     # Classic TUI (legacy mode)
-ai ui                  # AI Control TUI (alias of: ai control)
-ai control web         # Web dashboard (recommended)
-ai control start fake  # Start a supervised runtime (test provider)
-ai version             # Version, commit, build, go, platform
-ai doctor              # Full diagnostics
-ai providers           # Detected providers + honest capabilities
-ai usage               # Quota/usage (honest status)
-ai profiles            # Configured profiles/accounts
-ai handoff ...         # Account handoff (same provider)
-ai continue ...        # Context handoff (new provider, NEW session)
+nexus                  # Interactive Workspace OS (TUI)
+nexus web              # Web Workspace OS dashboard (recommended)
+nexus start codex      # Start a supervised runtime & attach terminal
+nexus stop <id>        # Gracefully stop a supervised runtime
+nexus ps               # List active supervised runtimes
+nexus attach <id>      # Reconnect terminal to an existing runtime
+nexus handoff <id> ... # Account handoff (same provider)
+nexus continue <id> ...# Context handoff (new provider, NEW session)
+nexus version          # Version, commit, build, go, platform
+nexus doctor           # Full diagnostics of runtimes, keyrings & Maestro
+nexus providers        # Detected providers + honest capabilities
+nexus usage            # Real-time quota/usage (honest status)
+nexus profiles         # Configured profiles/accounts
 ```
 
 ### Classic mode (direct provider launch)
 
 ```bash
-ai codex:work          # Codex on the "work" profile
-ai codex:auto          # Codex with automatic account selection
-ai claude              # Claude Code
-ai gemini              # Gemini CLI
-ai opencode            # OpenCode
-ai agy                 # AGY / Antigravity
+nexus codex:work       # Codex on the "work" profile
+nexus codex:auto       # Codex with automatic account selection
+nexus claude           # Claude Code
+nexus gemini           # Gemini CLI
+nexus opencode         # OpenCode
+nexus agy              # AGY / Antigravity
 ```
 
-### `/ai` slash commands inside a supervised runtime
+### `/nexus` slash commands inside a supervised runtime
 
 ```text
-/ai status    /ai usage    /ai accounts    /ai handoff codex:work
-/ai continue  /ai detach   /ai stop        /ai help
+/nexus status    /nexus usage    /nexus accounts    /nexus handoff codex:work
+/nexus continue  /nexus detach   /nexus stop        /nexus help
 ```
 
-- `/ai ...` is **intercepted by Nexus** (never leaks to the provider — zero bytes).
+- `/nexus ...` (and the `/ai ...` alias) is **intercepted by Nexus** (never leaks to the provider — zero bytes).
 - `/help`, `/model`, `/resume` pass **normally to the provider**.
-- To send a literal `/ai` to the provider, type `//ai ...`.
+- To send a literal `/nexus` to the provider, type `//nexus ...`.
 
 ---
 
@@ -270,11 +273,11 @@ LIVE · CACHED · ESTIMATED · UNKNOWN · RATE_LIMITED · UNAVAILABLE
 `UNKNOWN` **never** becomes 100%. Each reading shows its source and freshness:
 
 ```bash
-ai usage
-ai usage codex --json
+nexus usage
+nexus usage codex --json
 ```
 
-Inside a runtime: `/ai usage`.
+Inside a runtime: `/nexus usage`.
 
 ---
 
@@ -297,7 +300,7 @@ Presets: `developer` (shares dotfiles/git), `strict` (full isolation), `compat`.
 ### Account Handoff (same provider, another account/profile)
 
 ```bash
-ai control handoff <runtime-id> codex:work
+nexus handoff <runtime-id> codex:work
 ```
 
 It is **transactional**: preflight → checkpoint (barrier) → source quiesce →
@@ -309,7 +312,7 @@ must actually reference the session) → lineage update. Failures land in
 ### Context Handoff (different provider → NEW session)
 
 ```bash
-ai control continue <runtime-id> --with claude
+nexus continue <runtime-id> --with claude
 ```
 
 Never called "resume": it is a **new session** fed by a safe checkpoint
@@ -326,7 +329,7 @@ The dashboard listens on loopback by default. To access from another machine:
 
 ```bash
 # On machine A (where agents run):
-ai control web --no-open
+nexus web --no-open
 
 # On machine B:
 ssh -N -L 8080:127.0.0.1:<PORT> user@machine-a
@@ -336,7 +339,7 @@ ssh -N -L 8080:127.0.0.1:<PORT> user@machine-a
 ### Via private VPN (Tailscale/WireGuard/corporate)
 
 ```bash
-ai control web --listen <private-ip> --remote
+nexus web --listen <private-ip> --remote
 ```
 
 `--remote` is an **explicit opt-in**. Public addresses (`8.8.8.8`, etc.) are

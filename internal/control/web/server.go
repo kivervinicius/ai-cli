@@ -95,6 +95,10 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	// Missions (Gate 7 Beta)
 	mux.HandleFunc("/api/v1/missions/", s.routeMission(nexusHandler))
 
+	// System Updates (Auto-update for Nexus & Maestro)
+	mux.HandleFunc("/api/v1/system/updates", s.authMiddleware(nexusHandler.handleSystemUpdates))
+	mux.HandleFunc("/api/v1/system/update", s.authMiddleware(nexusHandler.handleSystemUpdate))
+
 	// Static Files & SPA Routing
 	distFS, distErr := DistFileSystem()
 	var fileServer http.Handler
@@ -137,7 +141,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("<h1>AI Control Center</h1><p>Web frontend initializing...</p>"))
+		_, _ = w.Write([]byte("<h1>IAPro Nexus Workspace OS</h1><p>Web frontend initializing...</p>"))
 	})
 
 	s.httpServer = &http.Server{

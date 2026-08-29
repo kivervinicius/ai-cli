@@ -61,7 +61,7 @@ func (d *ClaudeDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effec
 		Attach: CapabilityEvidence{
 			Status:          CapabilitySupported,
 			ProviderVersion: version,
-			Mechanism:       "AI Control IPC Socket/Pipe",
+			Mechanism:       "Nexus Control IPC Socket/Pipe",
 			Tested:          true,
 		},
 		StructuredEvents: CapabilityEvidence{

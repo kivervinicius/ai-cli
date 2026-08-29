@@ -3,6 +3,7 @@ import { Columns2, ExternalLink, GripVertical, Maximize2, Minimize2, Rows2, X } 
 import { IconButton } from '../design-system';
 import { findStackContaining, listStacks, type WorkspaceNode, type WorkspaceSplit, type WorkspaceStack, type WorkspaceSurface } from './model';
 import { useWorkspace } from './WorkspaceProvider';
+import { useTranslation } from 'react-i18next';
 
 function useCompactViewport(): boolean {
   const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 720px)').matches);
@@ -72,25 +73,31 @@ const WorkspaceSplitView: React.FC<{ split: WorkspaceSplit; renderSurface: (surf
 };
 
 const WorkspaceStackView: React.FC<{ stack: WorkspaceStack; renderSurface: (surface: WorkspaceSurface) => React.ReactNode; popoutSurface?: (surface: WorkspaceSurface) => void }> = ({ stack, renderSurface, popoutSurface }) => {
+  const { t } = useTranslation();
   const { activate, close, move, split, maximize, model } = useWorkspace();
   const [draggedSurface, setDraggedSurface] = useState<string | null>(null);
   const active = useMemo(() => stack.tabs.find((tab) => tab.id === stack.activeId) ?? stack.tabs[0], [stack]);
   const canClose = active?.closable !== false;
+  const legacyTitleKeys: Record<string, string> = { overview: 'nav.overview', work: 'nav.work', missions: 'nav.missions', agents: 'nav.agents', maestro: 'nav.maestro', sessions: 'nav.sessions', settings: 'nav.settings', resources: 'nav.resources', 'legacy-runtimes': 'nav.runtimes', 'legacy-providers': 'nav.providers', 'legacy-events': 'nav.events' };
+  const displayTitle = (surface: WorkspaceSurface) => {
+    const key = surface.titleKey || legacyTitleKeys[surface.type];
+    return key ? t(key, surface.titleParams) : surface.title;
+  };
   return <section className="nx-workspace-stack" data-stack-id={stack.id} onDragOver={(event) => { if (event.dataTransfer.types.includes('application/x-nexus-surface')) event.preventDefault(); }} onDrop={(event) => {
     const id = event.dataTransfer.getData('application/x-nexus-surface') || draggedSurface;
     if (id) move(id, stack.id);
     setDraggedSurface(null);
   }}>
     <header className="nx-workspace-stack__tabs">
-      <div className="nx-workspace-tabs" role="tablist" aria-label="Open workspace surfaces">
-        {stack.tabs.map((surface) => <button draggable key={surface.id} type="button" role="tab" aria-selected={stack.activeId === surface.id} data-active={stack.activeId === surface.id ? 'true' : 'false'} className="nx-workspace-tab" onDragStart={(event) => { setDraggedSurface(surface.id); event.dataTransfer.setData('application/x-nexus-surface', surface.id); event.dataTransfer.effectAllowed = 'move'; }} onClick={() => activate(surface.id)}><span>{surface.title}</span>{surface.closable !== false && <span className="nx-workspace-tab__close" role="button" aria-label={`Close ${surface.title}`} onClick={(event) => { event.stopPropagation(); close(surface.id); }}><X size={11} /></span>}</button>)}
+      <div className="nx-workspace-tabs" role="tablist" aria-label={t('shell.openSurfaces')}>
+        {stack.tabs.map((surface) => <button draggable key={surface.id} type="button" role="tab" aria-selected={stack.activeId === surface.id} data-active={stack.activeId === surface.id ? 'true' : 'false'} className="nx-workspace-tab" onDragStart={(event) => { setDraggedSurface(surface.id); event.dataTransfer.setData('application/x-nexus-surface', surface.id); event.dataTransfer.effectAllowed = 'move'; }} onClick={() => activate(surface.id)}><span>{displayTitle(surface)}</span>{surface.closable !== false && <span className="nx-workspace-tab__close" role="button" aria-label={t("workspace.closeNamed", { name: displayTitle(surface) })} onClick={(event) => { event.stopPropagation(); close(surface.id); }}><X size={11} /></span>}</button>)}
       </div>
       {active && <div className="nx-workspace-stack__actions">
-        <IconButton label="Split right" onClick={() => split(active.id, { ...active, id: `${active.id}:clone:${Date.now()}`, title: `${active.title} copy` }, 'horizontal')}><Columns2 size={13} /></IconButton>
-        <IconButton label="Split down" onClick={() => split(active.id, { ...active, id: `${active.id}:clone:${Date.now()}`, title: `${active.title} copy` }, 'vertical')}><Rows2 size={13} /></IconButton>
-        {popoutSurface && <IconButton label="Pop out surface" onClick={() => popoutSurface(active)}><ExternalLink size={13} /></IconButton>}
-        <IconButton label={model.maximizedSurfaceId === active.id ? 'Restore surface' : 'Maximize surface'} onClick={() => maximize(active.id)}>{model.maximizedSurfaceId === active.id ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</IconButton>
-        {canClose && <IconButton label="Close surface" onClick={() => close(active.id)}><X size={13} /></IconButton>}
+        <IconButton label={t('workspace.splitRight')} onClick={() => split(active.id, { ...active, id: `${active.id}:clone:${Date.now()}`, title: `${active.title} copy`, titleKey: 'workspace.copy', titleParams: { name: displayTitle(active) } }, 'horizontal')}><Columns2 size={13} /></IconButton>
+        <IconButton label={t('workspace.splitDown')} onClick={() => split(active.id, { ...active, id: `${active.id}:clone:${Date.now()}`, title: `${active.title} copy`, titleKey: 'workspace.copy', titleParams: { name: displayTitle(active) } }, 'vertical')}><Rows2 size={13} /></IconButton>
+        {popoutSurface && <IconButton label={t('workspace.popout')} onClick={() => popoutSurface(active)}><ExternalLink size={13} /></IconButton>}
+        <IconButton label={t(model.maximizedSurfaceId === active.id ? 'workspace.restore' : 'workspace.maximize')} onClick={() => maximize(active.id)}>{model.maximizedSurfaceId === active.id ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</IconButton>
+        {canClose && <IconButton label={t('workspace.close')} onClick={() => close(active.id)}><X size={13} /></IconButton>}
       </div>}
     </header>
     <div className="nx-workspace-stack__body">

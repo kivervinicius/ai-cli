@@ -4,6 +4,8 @@ export interface WorkspaceSurface {
   id: string;
   type: string;
   title: string;
+  titleKey?: string;
+  titleParams?: Record<string, string | number>;
   subtitle?: string;
   icon?: string;
   closable?: boolean;

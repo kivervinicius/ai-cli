@@ -1,4 +1,4 @@
-BINARY=ai
+BINARY=nexus
 MODULE=github.com/kivervinicius/ai-cli
 
 VERSION   ?= $(shell cat VERSION 2>/dev/null || echo dev)
@@ -15,7 +15,7 @@ LDFLAGS = -s -w \
 all: build
 
 build:
-	go build -ldflags="$(LDFLAGS)" -o $(BINARY) ./cmd/ai
+	go build -ldflags="$(LDFLAGS)" -o $(BINARY) ./cmd/nexus
 
 test:
 	go test -v ./...

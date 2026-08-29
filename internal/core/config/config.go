@@ -32,6 +32,7 @@ type Config struct {
 	Bindings          map[string]map[string]string   `json:"bindings,omitempty"`   // workspace -> provider -> profile
 	AutomaticFallback bool                           `json:"automatic_fallback"`
 	MaxConcurrency    int                            `json:"max_concurrency"`
+	Language          string                         `json:"language,omitempty"`
 }
 
 // NewDefaultConfig returns a well-configured default Configuration.
@@ -48,10 +49,16 @@ func NewDefaultConfig() Config {
 		Bindings:          make(map[string]map[string]string),
 		AutomaticFallback: true,
 		MaxConcurrency:    4,
+		Language:          "auto",
 	}
 }
 
 func getBaseHome() string {
+	if v := os.Getenv("NEXUS_REAL_HOME"); v != "" {
+		if st, err := os.Stat(v); err == nil && st.IsDir() {
+			return v
+		}
+	}
 	if v := os.Getenv("AI_REAL_HOME"); v != "" {
 		if st, err := os.Stat(v); err == nil && st.IsDir() {
 			return v
@@ -64,10 +71,16 @@ func getBaseHome() string {
 	}
 	if h, err := os.UserHomeDir(); err == nil && h != "" {
 		norm := filepath.ToSlash(h)
+		if idx := strings.Index(norm, "/.local/share/nexus/profiles"); idx != -1 {
+			return filepath.FromSlash(norm[:idx])
+		}
 		if idx := strings.Index(norm, "/.local/share/ai-manager/profiles"); idx != -1 {
 			return filepath.FromSlash(norm[:idx])
 		}
 		if idx := strings.Index(norm, "/.local/share/ai-cli/profiles"); idx != -1 {
+			return filepath.FromSlash(norm[:idx])
+		}
+		if idx := strings.Index(norm, "/AppData/Local/nexus/profiles"); idx != -1 {
 			return filepath.FromSlash(norm[:idx])
 		}
 		if idx := strings.Index(norm, "/AppData/Local/ai-manager/profiles"); idx != -1 {
@@ -101,6 +114,9 @@ func getBaseHome() string {
 
 // ConfigDir returns the XDG/Windows-compliant config directory with ai-manager fallback.
 func ConfigDir() (string, error) {
+	if v := os.Getenv("NEXUS_CONFIG_DIR"); v != "" {
+		return filepath.Abs(v)
+	}
 	if v := os.Getenv("AI_MANAGER_CONFIG_DIR"); v != "" {
 		return filepath.Abs(v)
 	}
@@ -121,17 +137,18 @@ func ConfigDir() (string, error) {
 
 	// Check XDG_CONFIG_HOME
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" && !strings.Contains(filepath.ToSlash(xdg), "/profiles/") {
-		candidates = append(candidates, filepath.Join(xdg, "ai-cli"), filepath.Join(xdg, "ai-manager"))
+		candidates = append(candidates, filepath.Join(xdg, "nexus"), filepath.Join(xdg, "ai-cli"), filepath.Join(xdg, "ai-manager"))
 	}
 
 	// Check APPDATA on Windows
 	if appData := os.Getenv("APPDATA"); appData != "" {
-		candidates = append(candidates, filepath.Join(appData, "ai-cli"), filepath.Join(appData, "ai-manager"))
+		candidates = append(candidates, filepath.Join(appData, "nexus"), filepath.Join(appData, "ai-cli"), filepath.Join(appData, "ai-manager"))
 	}
 
 	// Standard ~/.config
 	configBase := filepath.Join(home, ".config")
 	candidates = append(candidates,
+		filepath.Join(configBase, "nexus"),
 		filepath.Join(configBase, "ai-cli"),
 		filepath.Join(configBase, "ai-manager"),
 	)
@@ -149,6 +166,9 @@ func ConfigDir() (string, error) {
 
 // DataDir returns the XDG/Windows-compliant data directory with ai-manager fallback.
 func DataDir() (string, error) {
+	if v := os.Getenv("NEXUS_DATA_DIR"); v != "" {
+		return filepath.Abs(v)
+	}
 	if v := os.Getenv("AI_MANAGER_DATA_DIR"); v != "" {
 		return filepath.Abs(v)
 	}
@@ -169,20 +189,21 @@ func DataDir() (string, error) {
 
 	// Check XDG_DATA_HOME
 	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" && !strings.Contains(filepath.ToSlash(xdg), "/profiles/") {
-		candidates = append(candidates, filepath.Join(xdg, "ai-cli"), filepath.Join(xdg, "ai-manager"))
+		candidates = append(candidates, filepath.Join(xdg, "nexus"), filepath.Join(xdg, "ai-cli"), filepath.Join(xdg, "ai-manager"))
 	}
 
 	// Check LOCALAPPDATA / APPDATA on Windows
 	if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
-		candidates = append(candidates, filepath.Join(localAppData, "ai-cli"), filepath.Join(localAppData, "ai-manager"))
+		candidates = append(candidates, filepath.Join(localAppData, "nexus"), filepath.Join(localAppData, "ai-cli"), filepath.Join(localAppData, "ai-manager"))
 	}
 	if appData := os.Getenv("APPDATA"); appData != "" {
-		candidates = append(candidates, filepath.Join(appData, "ai-cli"), filepath.Join(appData, "ai-manager"))
+		candidates = append(candidates, filepath.Join(appData, "nexus"), filepath.Join(appData, "ai-cli"), filepath.Join(appData, "ai-manager"))
 	}
 
 	// Standard ~/.local/share
 	dataBase := filepath.Join(home, ".local", "share")
 	candidates = append(candidates,
+		filepath.Join(dataBase, "nexus"),
 		filepath.Join(dataBase, "ai-cli"),
 		filepath.Join(dataBase, "ai-manager"),
 	)
@@ -199,6 +220,9 @@ func DataDir() (string, error) {
 
 // StateDir returns the XDG/Windows-compliant state directory.
 func StateDir() (string, error) {
+	if v := os.Getenv("NEXUS_STATE_DIR"); v != "" {
+		return filepath.Abs(v)
+	}
 	if v := os.Getenv("AI_MANAGER_STATE_DIR"); v != "" {
 		return filepath.Abs(v)
 	}
@@ -218,15 +242,16 @@ func StateDir() (string, error) {
 	var candidates []string
 
 	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" && !strings.Contains(filepath.ToSlash(xdg), "/profiles/") {
-		candidates = append(candidates, filepath.Join(xdg, "ai-cli"), filepath.Join(xdg, "ai-manager"))
+		candidates = append(candidates, filepath.Join(xdg, "nexus"), filepath.Join(xdg, "ai-cli"), filepath.Join(xdg, "ai-manager"))
 	}
 
 	if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
-		candidates = append(candidates, filepath.Join(localAppData, "ai-cli", "state"), filepath.Join(localAppData, "ai-manager", "state"))
+		candidates = append(candidates, filepath.Join(localAppData, "nexus", "state"), filepath.Join(localAppData, "ai-cli", "state"), filepath.Join(localAppData, "ai-manager", "state"))
 	}
 
 	stateBase := filepath.Join(home, ".local", "state")
 	candidates = append(candidates,
+		filepath.Join(stateBase, "nexus"),
 		filepath.Join(stateBase, "ai-cli"),
 		filepath.Join(stateBase, "ai-manager"),
 	)
@@ -321,6 +346,9 @@ func LoadConfig() (Config, error) {
 	}
 	if cfg.MaxConcurrency <= 0 {
 		cfg.MaxConcurrency = 4
+	}
+	if cfg.Language == "" {
+		cfg.Language = "auto"
 	}
 
 	return cfg, nil
@@ -454,6 +482,9 @@ func (c Config) Validate() []string {
 	}
 	if c.MaxConcurrency < 1 || c.MaxConcurrency > 32 {
 		issues = append(issues, "max_concurrency must be between 1 and 32")
+	}
+	if c.Language != "" && c.Language != "auto" && c.Language != "pt-BR" && c.Language != "en" && c.Language != "es" {
+		issues = append(issues, fmt.Sprintf("unknown language %q (allowed: auto, pt-BR, en, es)", c.Language))
 	}
 	return issues
 }

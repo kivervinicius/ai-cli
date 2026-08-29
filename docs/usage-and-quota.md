@@ -1,5 +1,7 @@
 # Usage, Capacity & Honest Quota Engine
 
+**🇬🇧 English** | [🇧🇷 Português](usage-and-quota.pt-BR.md) | [🇪🇸 Español](usage-and-quota.es.md)
+
 A core principle of `ai-cli` is **never to fabricate quota or present unknown values as 100%**.
 
 ---

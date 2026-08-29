@@ -16,6 +16,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/quota"
 	"github.com/kivervinicius/ai-cli/internal/core/scheduler"
+	"github.com/kivervinicius/ai-cli/internal/localization"
 	"github.com/kivervinicius/ai-cli/internal/profile"
 )
 
@@ -515,8 +516,8 @@ func (m Model) View() string {
 	var sb strings.Builder
 
 	// Header line
-	headerLeft := fmt.Sprintf("%s %s", titleStyle.Render("AI CLI Control Plane"), subStyle.Render("v0.4.0"))
-	headerRight := subStyle.Render(fmt.Sprintf("Workspace: ~/%s", projName))
+	headerLeft := fmt.Sprintf("%s %s", titleStyle.Render(localization.T("tui.title")), subStyle.Render("v0.4.0"))
+	headerRight := subStyle.Render(localization.T("tui.workspace", map[string]any{"Name": "~/" + projName}))
 	gap := availWidth - lipgloss.Width(headerLeft) - lipgloss.Width(headerRight) - 2
 	if gap < 2 {
 		gap = 2
@@ -525,7 +526,7 @@ func (m Model) View() string {
 
 	// 1. Providers List
 	var provLines []string
-	provLines = append(provLines, lipgloss.NewStyle().Bold(true).Render("Providers"))
+	provLines = append(provLines, lipgloss.NewStyle().Bold(true).Render(localization.T("tui.providers")))
 	for i, pr := range m.providers {
 		c := counts[pr]
 		dot := inactiveDot
@@ -550,7 +551,7 @@ func (m Model) View() string {
 
 	// 2. Accounts List
 	var accLines []string
-	accTitle := fmt.Sprintf("Accounts (%s)", formatProviderName(m.currentProvider()))
+	accTitle := localization.T("tui.accounts", map[string]any{"Provider": formatProviderName(m.currentProvider())})
 	accLines = append(accLines, lipgloss.NewStyle().Bold(true).Render(accTitle))
 	profs := m.filteredProfiles()
 	if len(profs) == 0 {
@@ -609,7 +610,7 @@ func (m Model) View() string {
 
 	// 3. Sessions Box
 	var sessLines []string
-	sessLines = append(sessLines, lipgloss.NewStyle().Bold(true).Render("Recent Sessions (Universal Index)"))
+	sessLines = append(sessLines, lipgloss.NewStyle().Bold(true).Render(localization.T("tui.sessions")))
 	filteredSess := m.filteredSessions()
 	if len(filteredSess) == 0 {
 		sessLines = append(sessLines, subStyle.Render("  Nenhuma sessão recente encontrada."))
@@ -831,22 +832,22 @@ func formatProviderName(p string) string {
 
 func formatTimeAgo(t time.Time) string {
 	if t.IsZero() {
-		return "desconhecido"
+		return localization.T("tui.unknown")
 	}
 	diff := time.Since(t)
 	if diff < time.Minute {
-		return "agora"
+		return localization.T("tui.now")
 	}
 	if diff < time.Hour {
-		return fmt.Sprintf("há %d min", int(diff.Minutes()))
+		return localization.T("tui.minutes_ago", map[string]any{"Count": int(diff.Minutes())})
 	}
 	if diff < 24*time.Hour {
-		return fmt.Sprintf("há %d h", int(diff.Hours()))
+		return localization.T("tui.hours_ago", map[string]any{"Count": int(diff.Hours())})
 	}
 	if diff < 48*time.Hour {
-		return "ontem"
+		return localization.T("tui.yesterday")
 	}
-	return fmt.Sprintf("há %d dias", int(diff.Hours()/24))
+	return localization.T("tui.days_ago", map[string]any{"Count": int(diff.Hours() / 24)})
 }
 
 // ShowMenu launches the interactive control plane TUI.

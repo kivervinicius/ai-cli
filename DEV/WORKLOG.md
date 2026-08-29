@@ -1,4 +1,19 @@
-# Worklog: AI CLI Control Plane Evolution
+# Worklog: IAPro Nexus Evolution & Project Alignment
+
+## Date: 2026-08-29
+- **Project Alignment, Modern Command Dispatch & Full Rebranding**:
+  - Rebranded product to **IAPro Nexus** with canonical binary `nexus` (and `ai` symlink alias).
+  - Renamed `cmd/ai/` -> `cmd/nexus/` with updated build targets in `Makefile` and `.goreleaser.yaml`.
+  - Added direct root shortcuts for all modern commands: `nexus web`, `nexus start <provider>`, `nexus stop <id>`, `nexus ps` / `nexus running`, `nexus attach <id>`, `nexus handoff <id> <target>`, and `nexus continue <id> --with <provider>`.
+  - Upgraded CLI help output (`nexus help`) to list all commands clearly categorized by Workspace OS, Agent runtimes, Profiles & Auth, Universal Sessions, and Diagnostics.
+  - Implemented dynamic executable name detection (`progName()`) across all subcommands, usage errors, and completion generators.
+  - Upgraded shell autocompletions for Bash, Zsh, Fish, and PowerShell (`nexus completion <shell>`) registering both `nexus` and `ai`.
+  - Added support for `NEXUS_CONFIG_DIR`, `NEXUS_DATA_DIR`, `NEXUS_STATE_DIR`, and `NEXUS_REAL_HOME` with fallback to `AI_CLI_*` / `AI_MANAGER_*`.
+  - Updated socket paths and pipes to `nexus-control-*` with fallback support.
+  - Supported `/nexus` as the primary slash command prefix in supervised PTY terminals (with `/ai` alias).
+  - Rebranded web frontend package to `iapro-nexus-web`, updated command hints, and rebuilt assets.
+  - Updated `install.sh`, `install.ps1`, `uninstall.sh`, `README.md`, `README.en.md`, `ARCHITECTURE.md`, and `.github/workflows/ci.yml`.
+  - All 43 frontend tests and all Go test packages passing (`go test -race ./...`).
 
 ## Date: 2026-08-28
 - **Fix: Multi-Quota Awareness & Smart Capacity Selection**:
@@ -427,3 +442,64 @@
 ### Verdict: CONDITIONAL_GO
 
 Linux runtime fully verified. Windows/macOS build-verified only (conditional limitation).
+
+---
+
+## 2026-08-29 — Definitive Maestro Dependency Installation & Integration
+
+**Objective**: Fix Maestro degraded state (`maestro binary not found`) permanently, ensure dependency is checked/installed in `install.sh` / `install.ps1`, update Go bridge in `internal/nexus/maestro.go`, and add Maestro status to `nexus doctor`.
+
+### Changes Applied
+1. `internal/nexus/maestro.go`:
+   - Updated binary detection to locate `orquestrador-maestro`, `maestro`, and `orquestrador` across PATH and standard Node/system directories.
+   - Added dynamic capability loader querying version and providing active skills catalog (`skill-saas-factory`, `skill-security-hooks`, `skill-tdd`, `skill-dev-hierarchy`).
+   - Implemented advice bridge linking Orquestrador Maestro protocol rules & context briefing for active project guidance.
+2. `install.sh` & `install.ps1`:
+   - Automatically check for `@iapro/orquestrador-maestro-cli` and install via npm if missing.
+   - Create symlinks/aliases (`maestro` and `orquestrador`) in the target binary directory (`~/.local/bin`).
+3. `internal/app/app.go`:
+   - Added Orquestrador Maestro status report to `nexus doctor` / `ai doctor`.
+
+### Verification
+- `go test ./...`: ALL PASS
+- `nexus doctor`: Reports `Maestro status: AVAILABLE (v0.1.22, mode: ASSIST)`
+- `/api/v1/maestro` & `/api/v1/maestro/advice`: Returns HTTP 200 with structured recommendations
+
+---
+
+## 2026-08-29 — Auto-Update System for IAPro Nexus & Orquestrador Maestro
+
+**Objective**: Guarantee that IAPro Nexus and Orquestrador Maestro are self-updating and always maintained in sync.
+
+### Changes Applied
+1. `internal/app/update.go` & `internal/app/app.go`:
+   - Implemented `nexus update` / `ai update` CLI command that checks and pulls `@iapro/orquestrador-maestro-cli@latest`, runs skills sync (`orquestrador-maestro update --non-interactive`), and updates the Nexus binary and symlinks.
+2. `internal/control/web/handlers_nexus.go` & `server.go`:
+   - Added REST endpoints `GET /api/v1/system/updates` and `POST /api/v1/system/update`.
+3. `web/src/features/settings/SettingsSurface.tsx` & `web/src/nexus/api.ts`:
+   - Added **Updates & Maintenance** card in the Settings view with real-time version status and a **"Update Nexus & Maestro"** action.
+
+### Verification
+- `nexus update`: Successfully upgraded Orquestrador Maestro to `0.1.25` and synchronized skills.
+- `nexus doctor`: Reports `Maestro status: AVAILABLE (v0.1.25, mode: ASSIST)`.
+- `go test ./...`: All 37 packages passing cleanly.
+- Frontend test suite: 9 files / 36 tests passing.
+
+---
+
+## 2026-08-29 — Web UI Update Notification System
+
+**Objective**: Notify users in real-time in the Web UI whenever new updates for Nexus or Orquestrador Maestro are available.
+
+### Changes Applied
+1. `internal/control/web/handlers_nexus.go`:
+   - Updated `handleSystemUpdates` to query the npm registry for the latest `@iapro/orquestrador-maestro-cli` release and report `update_available: true/false`.
+2. `web/src/nexus/api.ts`:
+   - Added update response types with `update_available` flag.
+3. `web/src/app/NexusShell.tsx` & `web/src/app/workspace-os.css`:
+   - Added animated badge button `[Update available]` in the topbar status area.
+   - Clicking the badge takes the user directly to the Settings surface to perform the 1-click update.
+
+### Verification
+- `go test ./...`: ALL PASS
+- `web vitest`: ALL 36 TESTS PASS

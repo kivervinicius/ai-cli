@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <strong>🇧🇷 Português (Brasil)</strong> &nbsp;|&nbsp; <a href="README.en.md">🇬🇧 English</a>
+  <strong>🇧🇷 Português (Brasil)</strong> &nbsp;|&nbsp; <a href="README.en.md">🇬🇧 English</a> &nbsp;|&nbsp; <a href="README.es.md">🇪🇸 Español</a>
 </p>
 
 <h3 align="center">
@@ -37,7 +37,7 @@ Se preferir, a versão em inglês está em [`README.en.md`](README.en.md).
 
 ## 1. O que é o IAPro Nexus?
 
-O **IAPro Nexus** (neste repositório o binário ainda se chama `ai`) é um
+O **IAPro Nexus** (binário canônico `nexus`, com alias `ai` para compatibilidade total) é um
 **workspace de controle local para coding agents** — os assistentes de IA que
 trabalham dentro do seu terminal (Codex, Claude Code, Gemini CLI, OpenCode, AGY,
 Cursor Agent).
@@ -49,7 +49,7 @@ Em resumo, o Nexus faz três coisas:
 2. **Mantém Agentes persistentes** — um "Agente" (ex.: *Backend Developer*)
    sobrevive a reinícios, trocas de conta e até trocas de provedor. O que muda é
    a "geração de runtime" (a execução concreta), não a identidade do agente.
-3. **Web-first** — a interface oficial é um painel web local (`ai control web`),
+3. **Web-first** — a interface oficial é um painel web local (`nexus web`),
    com terminais reais (xterm.js) dentro do navegador. Sem terminal gigante
    obrigatório, sem instalar nada além de um binário.
 
@@ -93,16 +93,16 @@ compilar do fonte.
 ```bash
 git clone https://github.com/kivervinicius/ai-cli.git
 cd ai-cli
-make build          # gera ./ai
+make build          # gera ./bin/nexus
 sudo make install   # opcional: instala em /usr/local/bin
 ```
 
 ### Verificar
 
 ```bash
-ai version
-# ai-cli 0.4.1 (linux/amd64, go1.25.0) commit <sha> built <data>
-ai doctor
+nexus version
+# IAPro Nexus 0.4.1 (linux/amd64, go1.25.0) commit <sha> built <data>
+nexus doctor
 ```
 
 ---
@@ -112,7 +112,9 @@ ai doctor
 ### 3.1 Abrir o painel Web
 
 ```bash
-ai control web
+nexus web
+# ou o alias clássico:
+nexus control web
 ```
 
 O comando imprime uma URL como:
@@ -125,7 +127,7 @@ Abra essa URL no navegador. Ela troca o token por um cookie de sessão seguro e
 redireciona para o painel. O painel **só escuta em `127.0.0.1`** (loopback) — nada
 de exposição pública por padrão.
 
-> 💡 Quer abrir sem navegador automático? Use `ai control web --no-open` e copie
+> 💡 Quer abrir sem navegador automático? Use `nexus web --no-open` e copie
 > a URL manualmente.
 
 ### 3.2 Criar um Projeto
@@ -158,16 +160,15 @@ Dentro do projeto:
 
 - **Stop** encerra a geração de runtime atual.
 - Se a máquina reiniciar ou o processo morrer, o agente **continua existindo**
-  (ele é persistente), mas o runtime não. O estado aparece como `RECOVERABLE`.
-  Clique em **Recover** para tentar retomar a sessão (ou iniciar uma nova, de
-  forma honesta e clara).
+   (ele é persistente), mas o runtime não. O estado aparece como `RECOVERABLE`.
+   Clique em **Recover** para tentar retomar a sessão (ou iniciar uma nova, de
+   forma honesta e clara).
 
 ### 3.6 Navegação e atalhos
 
 - **`Ctrl/Cmd + K`**: paleta de comandos (abrir projeto, iniciar agente, etc.).
 - Menu lateral: **Overview · Projects · Agents · Resources · Maestro · Sessions ·
-  Settings** (algumas seções chegam nos próximos Gates) e a área **Legacy**
-  (Runtimes · Providers · Events).
+  Settings** e a área **Legacy** (Runtimes · Providers · Events).
 
 ---
 
@@ -202,48 +203,49 @@ Dentro do projeto:
 
 ## 5. CLI — referência
 
-O binário continua `ai` (o comando `iapro` chega no Gate 8). Compatibilidade
-com o modo clássico é mantida.
+O comando canônico é `nexus`, com o alias `ai` preservado para compatibilidade total.
 
 ### Comandos principais
 
 ```bash
-ai                     # TUI clássica (modo legado)
-ai ui                  # TUI do AI Control (alias de: ai control)
-ai control web         # Painel Web (recomendado)
-ai control start fake  # Sobe um runtime supervisionado (provedor de teste)
-ai version             # Versão, commit, build, go, plataforma
-ai doctor              # Diagnóstico completo
-ai providers           # Provedores detectados + capacidades honestas
-ai usage               # Quota/uso (status honesto)
-ai profiles            # Perfis/contas configurados
-ai handoff ...         # Handoff de conta (mesmo provedor)
-ai continue ...        # Handoff de contexto (novo provedor, NOVA sessão)
+nexus                  # Workspace OS interativo (TUI)
+nexus web              # Painel Web Workspace OS (recomendado)
+nexus start codex      # Inicia runtime supervisionado e conecta terminal
+nexus stop <id>        # Encerra runtime supervisionado com segurança
+nexus ps               # Lista runtimes supervisionados ativos
+nexus attach <id>      # Reconecta terminal a um runtime existente
+nexus handoff <id> ... # Handoff de conta (mesmo provedor)
+nexus continue <id> ...# Handoff de contexto (novo provedor, NOVA sessão)
+nexus version          # Versão, commit, build, go, plataforma
+nexus doctor           # Diagnóstico completo de runtimes, chaveiros e Maestro
+nexus providers        # Provedores detectados + capacidades honestas
+nexus usage            # Quota/uso em tempo real (status honesto)
+nexus profiles         # Perfis/contas configurados
 ```
 
 ### Modo clássico (lançamento direto de provedor)
 
 ```bash
-ai codex:work          # Codex no perfil "work"
-ai codex:auto          # Codex com seleção automática de conta
-ai claude              # Claude Code
-ai gemini              # Gemini CLI
-ai opencode            # OpenCode
-ai agy                 # AGY / Antigravity
+nexus codex:work       # Codex no perfil "work"
+nexus codex:auto       # Codex com seleção automática de conta
+nexus claude           # Claude Code
+nexus gemini           # Gemini CLI
+nexus opencode         # OpenCode
+nexus agy              # AGY / Antigravity
 ```
 
-### Slash `/ai` dentro de um terminal supervisionado
+### Slash `/nexus` dentro de um terminal supervisionado
 
 Dentro de um runtime supervisionado, digite:
 
 ```text
-/ai status    /ai usage    /ai accounts    /ai handoff codex:work
-/ai continue  /ai detach   /ai stop        /ai help
+/nexus status    /nexus usage    /nexus accounts    /nexus handoff codex:work
+/nexus continue  /nexus detach   /nexus stop        /nexus help
 ```
 
-- `/ai ...` é **interceptado pelo Nexus** (nunca vaza para o provedor — zero bytes).
+- `/nexus ...` (e o alias `/ai ...`) é **interceptado pelo Nexus** (nunca vaza para o provedor — zero bytes).
 - `/help`, `/model`, `/resume` seguem **normalmente para o provedor**.
-- Para enviar um `/ai` literal ao provedor, escreva `//ai ...`.
+- Para enviar um `/nexus` literal ao provedor, escreva `//nexus ...`.
 
 ---
 
@@ -277,11 +279,11 @@ LIVE · CACHED · ESTIMATED · UNKNOWN · RATE_LIMITED · UNAVAILABLE
 `UNKNOWN` **nunca** vira 100%. Cada leitura mostra fonte e frescor:
 
 ```bash
-ai usage
-ai usage codex --json
+nexus usage
+nexus usage codex --json
 ```
 
-Dentro de um runtime: `/ai usage`.
+Dentro de um runtime: `/nexus usage`.
 
 ---
 
@@ -305,7 +307,7 @@ Presets: `developer` (compartilha dotfiles/git), `strict` (isolamento completo),
 ### Account Handoff (mesmo provedor, outra conta/perfil)
 
 ```bash
-ai control handoff <runtime-id> codex:work
+nexus handoff <runtime-id> codex:work
 ```
 
 É **transacional**: preflight → checkpoint (barreira) → quiesce do fonte →
@@ -317,7 +319,7 @@ realmente referenciar a sessão) → atualiza lineage. Falhas caem em
 ### Context Handoff (provedor diferente → NOVA sessão)
 
 ```bash
-ai control continue <runtime-id> --with claude
+nexus continue <runtime-id> --with claude
 ```
 
 Nunca é chamado de "resume": é uma **sessão nova** alimentada por um checkpoint
@@ -334,7 +336,7 @@ O painel Web escuta em loopback por padrão. Para acessar de outra máquina:
 
 ```bash
 # Na máquina A (onde os agentes rodam):
-ai control web --no-open
+nexus web --no-open
 
 # Na máquina B:
 ssh -N -L 8080:127.0.0.1:<PORT> user@machine-a
@@ -344,7 +346,7 @@ ssh -N -L 8080:127.0.0.1:<PORT> user@machine-a
 ### Via VPN privada (Tailscale/WireGuard/empresa)
 
 ```bash
-ai control web --listen <ip-privado> --remote
+nexus web --listen <ip-privado> --remote
 ```
 
 `--remote` é um **opt-in explícito**. Endereços públicos (`8.8.8.8`, etc.) são

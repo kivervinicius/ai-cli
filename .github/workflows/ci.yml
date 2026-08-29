@@ -79,7 +79,7 @@ jobs:
         run: go test -race -v -count=1 ./internal/control/host/... ./internal/control/web/...
 
       - name: Build Binary
-        run: go build -v ./cmd/ai
+        run: go build -v ./cmd/nexus
 
   test-windows:
     name: Windows E2E (ConPTY, Named Pipe, PowerShell)
@@ -112,13 +112,13 @@ jobs:
         run: go test -v -count=1 ./internal/control/host/... ./internal/control/web/...
 
       - name: Build Binary
-        run: go build -v -o ai.exe ./cmd/ai
+        run: go build -v -o nexus.exe ./cmd/nexus
 
       - name: PowerShell Smoke Test
         shell: pwsh
         run: |
-          .\ai.exe version
-          .\ai.exe control --help | Select-Object -First 5
+          .\nexus.exe version
+          .\nexus.exe control --help | Select-Object -First 5
 
   test-macos:
     name: macOS E2E (PTY, Socket, Resize, Install)
@@ -149,11 +149,11 @@ jobs:
         run: go test -race -v -count=1 ./internal/control/web/...
 
       - name: Build Binary
-        run: go build -v -o ai ./cmd/ai
+        run: go build -v -o nexus ./cmd/nexus
 
       - name: Installer Smoke Test (local install.sh)
         run: |
-          ./ai version
+          ./nexus version
           # install.sh release-download path requires a GitHub release; build-from-source fallback is exercised by running from a source checkout
           bash -n install.sh
 
@@ -183,9 +183,9 @@ jobs:
           ls -la dist/
           ls dist/*.tar.gz dist/*.zip 2>/dev/null
           test -f dist/checksums.txt && echo "checksums present"
-          test -f dist/ai-cli_Linux_x86_64.tar.gz && echo "linux/amd64 OK"
-          test -f dist/ai-cli_Linux_arm64.tar.gz && echo "linux/arm64 OK"
-          test -f dist/ai-cli_Darwin_x86_64.tar.gz && echo "darwin/amd64 OK"
-          test -f dist/ai-cli_Darwin_arm64.tar.gz && echo "darwin/arm64 OK"
-          test -f dist/ai-cli_Windows_x86_64.zip && echo "windows/amd64 OK"
-          test -f dist/ai-cli_Windows_arm64.zip && echo "windows/arm64 OK"
+          test -f dist/nexus_Linux_x86_64.tar.gz && echo "linux/amd64 OK"
+          test -f dist/nexus_Linux_arm64.tar.gz && echo "linux/arm64 OK"
+          test -f dist/nexus_Darwin_x86_64.tar.gz && echo "darwin/amd64 OK"
+          test -f dist/nexus_Darwin_arm64.tar.gz && echo "darwin/arm64 OK"
+          test -f dist/nexus_Windows_x86_64.zip && echo "windows/amd64 OK"
+          test -f dist/nexus_Windows_arm64.zip && echo "windows/arm64 OK"

@@ -11,7 +11,8 @@ Write-Host "=== AI CLI Installer (Zero-Clone for PowerShell) ===" -ForegroundCol
 
 # 1. Determine platform and target directory
 $IsWindowsOS = ($IsWindows -or ($env:OS -like "*Windows*"))
-$BinaryName = if ($IsWindowsOS) { "ai.exe" } else { "ai" }
+$BinaryName = if ($IsWindowsOS) { "nexus.exe" } else { "nexus" }
+$AiAliasName = if ($IsWindowsOS) { "ai.exe" } else { "ai" }
 
 if ($IsWindowsOS) {
     $TargetDir = Join-Path $env:LOCALAPPDATA "Programs\ai-cli"
@@ -39,7 +40,7 @@ $Arch = if ([System.Environment]::Is64BitOperatingSystem) {
 
 $OsName = if ($IsWindowsOS) { "Windows" } elseif ($IsMacOS) { "Darwin" } else { "Linux" }
 $ArchiveExt = if ($IsWindowsOS) { "zip" } else { "tar.gz" }
-$ArchiveName = "ai-cli_${OsName}_${Arch}.${ArchiveExt}"
+$ArchiveName = "nexus_${OsName}_${Arch}.${ArchiveExt}"
 $DownloadUrl = "$GithubUrl/releases/latest/download/$ArchiveName"
 
 $TempDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
@@ -57,6 +58,9 @@ try {
             tar -xzf $ZipPath -C $TempDir
         }
         $ExtractedBin = Join-Path $TempDir $BinaryName
+        if (-not (Test-Path $ExtractedBin)) {
+            $ExtractedBin = Join-Path $TempDir $AiAliasName
+        }
         if (Test-Path $ExtractedBin) {
             Copy-Item -Path $ExtractedBin -Destination $TargetPath -Force
             $Installed = $true
@@ -70,13 +74,16 @@ try {
 if (-not $Installed) {
     if (Get-Command go -ErrorAction SilentlyContinue) {
         Write-Host "Building from source via Go..." -ForegroundColor Yellow
-        if (Test-Path "./cmd/ai/main.go") {
+        if (Test-Path "./cmd/nexus/main.go") {
+            go build -ldflags="-s -w" -o $TargetPath ./cmd/nexus
+            $Installed = $true
+        } elseif (Test-Path "./cmd/ai/main.go") {
             go build -ldflags="-s -w" -o $TargetPath ./cmd/ai
             $Installed = $true
         } else {
             Write-Host "Fetching latest source code..." -ForegroundColor Yellow
             $env:GOBIN = $TargetDir
-            go install "github.com/$Repo/cmd/ai@latest" 2>$null
+            go install "github.com/$Repo/cmd/nexus@latest" 2>$null
             if ($LASTEXITCODE -eq 0) {
                 $Installed = $true
             } else {
@@ -84,7 +91,11 @@ if (-not $Installed) {
                 git clone --depth 1 "$GithubUrl.git" $CloneDir
                 Push-Location $CloneDir
                 try {
-                    go build -ldflags="-s -w" -o $TargetPath ./cmd/ai
+                    if (Test-Path "./cmd/nexus") {
+                        go build -ldflags="-s -w" -o $TargetPath ./cmd/nexus
+                    } else {
+                        go build -ldflags="-s -w" -o $TargetPath ./cmd/ai
+                    }
                     $Installed = $true
                 } finally {
                     Pop-Location
@@ -99,7 +110,29 @@ if (-not $Installed) {
 
 Remove-Item -Path $TempDir -Recurse -Force -ErrorAction SilentlyContinue
 
-Write-Host "✓ Successfully installed AI CLI to $TargetPath" -ForegroundColor Green
+# Create ai alias/copy for backward compatibility
+$AiAliasPath = Join-Path $TargetDir $AiAliasName
+if (Test-Path $TargetPath) {
+    Copy-Item -Path $TargetPath -Destination $AiAliasPath -Force
+}
+
+# Check and install Maestro dependency
+Write-Host "`nChecking Orquestrador Maestro dependency..." -ForegroundColor Yellow
+if (-not (Get-Command orquestrador-maestro -ErrorAction SilentlyContinue) -and -not (Get-Command maestro -ErrorAction SilentlyContinue)) {
+    if (Get-Command npm -ErrorAction SilentlyContinue) {
+        Write-Host "Installing Orquestrador Maestro CLI (@iapro/orquestrador-maestro-cli)..." -ForegroundColor Yellow
+        npm install -g @iapro/orquestrador-maestro-cli 2>$null
+    }
+}
+
+$MaestroCmd = Get-Command orquestrador-maestro -ErrorAction SilentlyContinue
+if ($MaestroCmd) {
+    $MaestroAliasPath = Join-Path $TargetDir "maestro.cmd"
+    Set-Content -Path $MaestroAliasPath -Value "@echo off`r`norquestrador-maestro %*" -Force
+    Write-Host "✓ Linked Maestro alias ($MaestroAliasPath)" -ForegroundColor Green
+}
+
+Write-Host "✓ Successfully installed IAPro Nexus to $TargetPath" -ForegroundColor Green
 
 # 4. Ensure TargetDir is in User PATH
 if ($IsWindowsOS) {
@@ -116,6 +149,6 @@ if ($IsWindowsOS) {
 }
 
 Write-Host "`nSetup complete!" -ForegroundColor Green
-Write-Host "Run 'ai doctor' to verify provider dependencies." -ForegroundColor White
-Write-Host "To enable shell completion in PowerShell, add this to your `$PROFILE:" -ForegroundColor Gray
-Write-Host "  ai completion powershell | Out-String | Invoke-Expression" -ForegroundColor Cyan
+Write-Host "Run 'nexus doctor' to verify provider and Maestro dependencies." -ForegroundColor White
+Write-Host "To start the Workspace OS:" -ForegroundColor Cyan
+Write-Host "  nexus web" -ForegroundColor Cyan

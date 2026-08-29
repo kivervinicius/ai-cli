@@ -109,7 +109,7 @@ func TestControlPlaneCLICommands(t *testing.T) {
 	out, err := captureStdout(func() error {
 		return Run([]string{"version"})
 	})
-	if err != nil || !strings.Contains(out, "ai-cli") {
+	if err != nil || !strings.Contains(out, "Nexus") {
 		t.Fatalf("version failed: %s, %v", out, err)
 	}
 
@@ -224,7 +224,7 @@ func TestControlPlaneCLICommands(t *testing.T) {
 	out, err = captureStdout(func() error {
 		return Run([]string{"doctor"})
 	})
-	if err != nil || !strings.Contains(out, "AI CLI Diagnostics") {
+	if err != nil || !strings.Contains(out, "Nexus Diagnostics") {
 		t.Fatalf("doctor failed: %s, %v", out, err)
 	}
 

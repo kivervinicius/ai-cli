@@ -184,7 +184,7 @@ func (sh *SessionHost) handleClient(conn net.Conn) {
 		line, err := readBoundedLine(reader, MaxFrameSize)
 		if err != nil {
 			if err == errFrameTooLarge {
-				sh.broadcast([]byte("\r\n[AI Control] Error: oversized IPC frame rejected\r\n"))
+				sh.broadcast([]byte("\r\n[Nexus Control] Error: oversized IPC frame rejected\r\n"))
 			}
 			sh.removeClient(conn)
 			_ = conn.Close()
@@ -434,9 +434,9 @@ func (sh *SessionHost) handleControlCommandLocked(cmd string) {
 			go func(target string) {
 				_, err := PerformAccountHandoff(context.Background(), sh.session.RuntimeID, target)
 				if err != nil {
-					sh.broadcast([]byte(fmt.Sprintf("\r\n[AI Control] Handoff failed: %v\r\n", err)))
+					sh.broadcast([]byte(fmt.Sprintf("\r\n[Nexus Control] Handoff failed: %v\r\n", err)))
 				} else {
-					sh.broadcast([]byte("\r\n[AI Control] Handoff succeeded.\r\n"))
+					sh.broadcast([]byte("\r\n[Nexus Control] Handoff succeeded.\r\n"))
 				}
 			}(route.ActionArg)
 		}
@@ -452,9 +452,9 @@ func (sh *SessionHost) handleControlCommandLocked(cmd string) {
 				}
 				_, err := PerformContextHandoff(context.Background(), sh.session.RuntimeID, provider, profile)
 				if err != nil {
-					sh.broadcast([]byte(fmt.Sprintf("\r\n[AI Control] Context handoff failed: %v\r\n", err)))
+					sh.broadcast([]byte(fmt.Sprintf("\r\n[Nexus Control] Context handoff failed: %v\r\n", err)))
 				} else {
-					sh.broadcast([]byte("\r\n[AI Control] Context handoff succeeded.\r\n"))
+					sh.broadcast([]byte("\r\n[Nexus Control] Context handoff succeeded.\r\n"))
 				}
 			}(route.ActionArg)
 		}

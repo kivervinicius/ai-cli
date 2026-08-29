@@ -11,16 +11,16 @@ import (
 
 func main() {
 	base := filepath.Base(os.Args[0])
-	if base == "ai-browser" || base == "xdg-open" {
+	if base == "nexus-browser" || base == "ai-browser" || base == "xdg-open" {
 		if err := browser.Open(os.Args[1:]); err != nil {
-			fmt.Fprintln(os.Stderr, "ai-cli browser helper:", err)
+			fmt.Fprintln(os.Stderr, "Nexus browser helper:", err)
 			os.Exit(1)
 		}
 		return
 	}
 
 	if err := app.Run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "ai:", err)
+		fmt.Fprintf(os.Stderr, "%s: %v\n", base, err)
 		os.Exit(1)
 	}
 }

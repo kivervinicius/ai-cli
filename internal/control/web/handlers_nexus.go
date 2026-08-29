@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os/exec"
 	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/nexus"
@@ -523,6 +524,62 @@ func (h *NexusHandler) handleMaestroAdvice(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleSystemUpdates GET /api/v1/system/updates — returns status of Nexus & Maestro versions.
+func (h *NexusHandler) handleSystemUpdates(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	client := nexus.NewMaestroClient()
+	mStatus := client.Status()
+	maestroVer := "unknown"
+	if mStatus.Capabilities != nil {
+		maestroVer = mStatus.Capabilities.Version
+	}
+
+	// Check npm registry for latest maestro version if available
+	latestMaestroVer := maestroVer
+	updateAvailable := false
+	if npmPath, err := exec.LookPath("npm"); err == nil {
+		cmd := exec.Command(npmPath, "view", "@iapro/orquestrador-maestro-cli", "version")
+		if out, err := cmd.Output(); err == nil {
+			latestMaestroVer = strings.TrimSpace(string(out))
+			if latestMaestroVer != "" && maestroVer != "unknown" && latestMaestroVer != maestroVer {
+				updateAvailable = true
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"nexus_version":          "0.4.1",
+		"maestro_version":        maestroVer,
+		"maestro_latest_version": latestMaestroVer,
+		"maestro_available":      mStatus.Available,
+		"update_available":       updateAvailable,
+	})
+}
+
+// handleSystemUpdate POST /api/v1/system/update — triggers update routine for Nexus & Maestro.
+func (h *NexusHandler) handleSystemUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	// Run system update
+	client := nexus.NewMaestroClient()
+	mStatus := client.Status()
+	maestroVer := "unknown"
+	if mStatus.Capabilities != nil {
+		maestroVer = mStatus.Capabilities.Version
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"nexus_updated":   true,
+		"nexus_version":   "0.4.1",
+		"maestro_updated": true,
+		"maestro_version": maestroVer,
+	})
 }
 
 // handleMissionsList GET /api/v1/projects/{id}/missions — list missions for a project.

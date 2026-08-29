@@ -111,4 +111,21 @@ export const nexus = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  // System Updates
+  getSystemUpdates: () => request<{
+    nexus_version: string;
+    maestro_version: string;
+    maestro_latest_version?: string;
+    maestro_available: boolean;
+    update_available: boolean;
+  }>('/api/v1/system/updates'),
+  performSystemUpdate: () =>
+    request<{
+      nexus_updated: boolean;
+      nexus_version: string;
+      maestro_updated: boolean;
+      maestro_version: string;
+      error?: string;
+    }>('/api/v1/system/update', { method: 'POST', body: '{}' }),
 };
