@@ -324,8 +324,12 @@ func (h *APIHandler) handleProviders(w http.ResponseWriter, r *http.Request) {
 		if !showInternal && d.ProviderID() == "fake" {
 			continue
 		}
-		det, _ := d.Detect(r.Context())
-		caps := d.EffectiveCaps(r.Context(), model.Profile{Name: "default", Provider: d.ProviderID()})
+		// Bound provider detection: a slow/hung provider binary must never stall
+		// the whole endpoint (server WriteTimeout would otherwise kill the conn).
+		pctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		det, _ := d.Detect(pctx)
+		caps := d.EffectiveCaps(pctx, model.Profile{Name: "default", Provider: d.ProviderID()})
+		cancel()
 		res = append(res, ProviderView{
 			ID:           d.ProviderID(),
 			Installed:    det.Installed,

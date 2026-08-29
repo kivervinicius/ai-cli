@@ -22,6 +22,25 @@ const (
 	MaestroOrchestrate = "ORCHESTRATE"
 )
 
+// Agent lifecycle states (§40, §29). RECOVERABLE/RECOVERING describe agents whose
+// runtime died (e.g. machine reboot): the Agent persists, the Runtime does not.
+const (
+	AgentStopped     = "STOPPED"
+	AgentStarting    = "STARTING"
+	AgentWorking     = "WORKING"
+	AgentWaiting     = "WAITING"
+	AgentApproval    = "APPROVAL"
+	AgentRateLimited = "RATE_LIMITED"
+	AgentDetached    = "DETACHED"
+	AgentReconfig    = "RECONFIGURING"
+	AgentHandoff     = "HANDOFF"
+	AgentRecoverable = "RECOVERABLE"
+	AgentRecovering  = "RECOVERING"
+	AgentStopping    = "STOPPING"
+	AgentFailed      = "FAILED"
+	AgentStale       = "STALE"
+)
+
 // Project is the root of the Nexus domain (§14-15). Identity is a stable
 // ULID-based ID, never derived from basename/path.
 type Project struct {

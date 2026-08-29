@@ -87,10 +87,14 @@ func TestServer_BootstrapAndAuth(t *testing.T) {
 
 	// 5. Query providers endpoint
 	provResp, err := client.Get(srv.URL() + "/api/v1/providers")
-	if err != nil || provResp.StatusCode != http.StatusOK {
-		t.Errorf("providers endpoint failed: %v, status: %d", err, provResp.StatusCode)
+	if err != nil {
+		t.Errorf("providers endpoint request failed: %v", err)
+	} else {
+		defer provResp.Body.Close()
+		if provResp.StatusCode != http.StatusOK {
+			t.Errorf("providers endpoint failed: status: %d", provResp.StatusCode)
+		}
 	}
-	provResp.Body.Close()
 
 	// 6. Test Origin enforcement
 	badReq, _ := http.NewRequest(http.MethodGet, srv.URL()+"/api/v1/workspaces", nil)

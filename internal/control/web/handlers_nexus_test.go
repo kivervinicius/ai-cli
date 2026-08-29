@@ -120,7 +120,7 @@ func TestNexusProjectsAndAgentsAPI(t *testing.T) {
 		t.Fatalf("expected agent %s, got %+v", agent.ID, agents)
 	}
 
-	// Agent detail (generations/lineage empty).
+	// Agent detail (generations/lineage empty) + effective state fields.
 	resp, err = client.Get(base + "/api/v1/agents/" + agent.ID)
 	if err != nil {
 		t.Fatalf("agent detail: %v", err)
@@ -130,6 +130,24 @@ func TestNexusProjectsAndAgentsAPI(t *testing.T) {
 	resp.Body.Close()
 	if detail["agent"] == nil || detail["generations"] == nil {
 		t.Fatalf("agent detail missing fields: %+v", detail)
+	}
+	if _, hasState := detail["effective_state"]; !hasState {
+		t.Errorf("agent detail must include effective_state")
+	}
+	if rec, _ := detail["recoverable"].(bool); rec {
+		t.Errorf("stopped agent with no generation must not be recoverable")
+	}
+
+	// Recover on an agent with no runtime must fail cleanly (not 500/panic).
+	recReq, _ := http.NewRequest(http.MethodPost, base+"/api/v1/agents/"+agent.ID+"/recover", nil)
+	recReq.Header.Set("X-CSRF-Token", csrf)
+	recResp, err := client.Do(recReq)
+	if err != nil {
+		t.Fatalf("recover agent (no runtime): %v", err)
+	}
+	_ = recResp.Body.Close()
+	if recResp.StatusCode == http.StatusInternalServerError {
+		t.Errorf("recover without runtime must not 500, got %d", recResp.StatusCode)
 	}
 
 	// Layout round-trip.

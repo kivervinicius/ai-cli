@@ -7,11 +7,26 @@ import { Button, Badge, Card, Input, EmptyState, Spinner } from '../ui/primitive
 const agentTone = (status: string) =>
   status === 'WORKING'
     ? 'success'
-    : status === 'WAITING' || status === 'RATE_LIMITED'
+    : status === 'WAITING' || status === 'RATE_LIMITED' || status === 'RECOVERABLE'
       ? 'warning'
       : status === 'FAILED' || status === 'STALE'
         ? 'danger'
-        : 'default';
+        : status === 'RECOVERING'
+          ? 'brand'
+          : 'default';
+
+const continuityLabel = (c: string) =>
+  c === 'NATIVE_RESUME_VERIFIED'
+    ? 'resume verified'
+    : c === 'NATIVE_RESUME_UNVERIFIED'
+      ? 'resume unverified'
+      : c === 'CONTEXT_RECOVERED_NEW_SESSION'
+        ? 'new session'
+        : c === 'REATTACHED_SAME_RUNTIME'
+          ? 'reattached'
+          : c === 'LIVE_SAME_RUNTIME'
+            ? 'same runtime'
+            : c;
 
 export const ProjectsPage: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -98,6 +113,18 @@ export const ProjectsPage: React.FC = () => {
       setAgents(list);
     } catch (e: any) {
       setError(e.message || 'failed to stop agent');
+    }
+  };
+
+  const recoverAgent = async (agent: Agent) => {
+    setError('');
+    try {
+      await nexus.recoverAgent(agent.id);
+      const list = await nexus.listAgents(agent.project_id);
+      setAgents(list);
+      setTerminalAgent(agent.id);
+    } catch (e: any) {
+      setError(e.message || 'failed to recover agent');
     }
   };
 
@@ -195,13 +222,20 @@ export const ProjectsPage: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-slate-100 truncate">{a.name}</span>
                       <Badge tone={agentTone(a.status)}>{a.status}</Badge>
+                      {a.continuity_status && a.continuity_status !== 'LIVE_SAME_RUNTIME' && (
+                        <Badge tone="info">{continuityLabel(a.continuity_status)}</Badge>
+                      )}
                     </div>
                     <div className="text-[11px] font-mono text-slate-500 truncate">
                       {a.id} · continuity {a.continuity_status}
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {a.status === 'WORKING' || a.status === 'STARTING' ? (
+                    {a.status === 'RECOVERABLE' ? (
+                      <Button size="sm" tone="warning" onClick={() => recoverAgent(a)}>
+                        Recover
+                      </Button>
+                    ) : a.status === 'WORKING' || a.status === 'STARTING' || a.status === 'RECOVERING' ? (
                       <Button size="sm" tone="danger" onClick={() => stopAgent(a)}>
                         Stop
                       </Button>
@@ -210,7 +244,7 @@ export const ProjectsPage: React.FC = () => {
                         {startingAgent === a.id ? 'Starting…' : 'Start'}
                       </Button>
                     )}
-                    <Button size="sm" onClick={() => setTerminalAgent(a.id)} disabled={a.status !== 'WORKING' && a.status !== 'STARTING'}>
+                    <Button size="sm" onClick={() => setTerminalAgent(a.id)} disabled={a.status !== 'WORKING' && a.status !== 'STARTING' && a.status !== 'RECOVERING'}>
                       Terminal
                     </Button>
                   </div>

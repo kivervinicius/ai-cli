@@ -50,4 +50,6 @@ export const nexus = {
     }),
   stopAgent: (id: string) =>
     request<{ status: string }>(`/api/v1/agents/${id}/stop`, { method: 'POST', body: '{}' }),
+  recoverAgent: (id: string) =>
+    request<{ runtime: RuntimeSession }>(`/api/v1/agents/${id}/recover`, { method: 'POST', body: '{}' }),
 };

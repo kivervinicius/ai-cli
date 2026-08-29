@@ -246,11 +246,14 @@ func (h *NexusHandler) handleAgentDetail(w http.ResponseWriter, r *http.Request)
 		generations, _ := st.ListGenerations(id)
 		lineage, _ := st.ListLineage(id)
 		revisions, _ := st.ListRevisions(id)
+		effectiveState, _ := h.nexus.EffectiveAgentState(id)
 		writeJSON(w, http.StatusOK, map[string]any{
-			"agent":       agent,
-			"generations": generations,
-			"lineage":     lineage,
-			"revisions":   revisions,
+			"agent":           agent,
+			"generations":     generations,
+			"lineage":         lineage,
+			"revisions":       revisions,
+			"effective_state": effectiveState,
+			"recoverable":     effectiveState == store.AgentRecoverable,
 		})
 	case http.MethodPatch:
 		var body struct {
@@ -315,6 +318,21 @@ func (h *NexusHandler) handleAgentStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
+}
+
+// handleAgentRecover POST /api/v1/agents/{id}/recover
+func (h *NexusHandler) handleAgentRecover(w http.ResponseWriter, r *http.Request) {
+	id := agentIDFromPath(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "missing agent id")
+		return
+	}
+	sess, err := h.nexus.RecoverAgent(context.Background(), id)
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"runtime": sess})
 }
 
 // resolveAgentRuntimeID maps an agent to its current runtime generation ID.
