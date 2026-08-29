@@ -36,7 +36,6 @@ const logo = existsSync(resolve(webDir, 'public/logo.png')) ? resolve(webDir, 'p
 if (existsSync(logo)) await cp(logo, resolve(distDir, 'logo.png'));
 
 const manifest = {
-  generatedAt: new Date().toISOString(),
   files: ['index.html', 'bundle.css', 'bundle.js', ...(existsSync(resolve(distDir, 'logo.png')) ? ['logo.png'] : [])],
   builder: 'node+esbuild+tailwind',
 };
