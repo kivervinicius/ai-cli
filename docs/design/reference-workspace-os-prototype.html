@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IAPro Nexus — Layout Prototype</title>
+  <style>
+    :root{
+      --bg:#0b0d12;
+      --panel:#11151d;
+      --panel-2:#171c26;
+      --panel-3:#1e2532;
+      --line:#283142;
+      --text:#eef2f8;
+      --muted:#98a2b3;
+      --soft:#c6ceda;
+      --accent:#8b5cf6;
+      --accent-2:#6d5dfc;
+      --green:#2dd4bf;
+      --yellow:#fbbf24;
+      --red:#fb7185;
+      --blue:#60a5fa;
+      --shadow:0 14px 40px rgba(0,0,0,.26);
+      --radius:14px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    button,input,select{font:inherit}
+    button{cursor:pointer}
+    .app{display:grid;grid-template-columns:248px 1fr;height:100vh;overflow:hidden}
+    .sidebar{
+      border-right:1px solid var(--line);
+      background:linear-gradient(180deg,#0e1118 0%,#0a0c10 100%);
+      display:flex;flex-direction:column;min-width:0
+    }
+    .brand{padding:18px 16px 14px;border-bottom:1px solid var(--line)}
+    .brand-row{display:flex;align-items:center;gap:10px}
+    .brand-mark{
+      width:34px;height:34px;border-radius:10px;
+      display:grid;place-items:center;font-weight:800;
+      background:linear-gradient(135deg,var(--accent),#4f46e5);
+      box-shadow:0 8px 24px rgba(139,92,246,.3)
+    }
+    .brand h1{font-size:15px;margin:0}
+    .brand p{font-size:11px;color:var(--muted);margin:2px 0 0}
+    .nav{padding:12px 10px;display:grid;gap:4px}
+    .nav button,.project-btn{
+      width:100%;border:0;background:transparent;color:var(--soft);
+      display:flex;align-items:center;justify-content:space-between;
+      padding:9px 10px;border-radius:10px;text-align:left
+    }
+    .nav button:hover,.project-btn:hover{background:var(--panel-2);color:#fff}
+    .nav .active,.project-btn.active{background:rgba(139,92,246,.14);color:#fff}
+    .nav-left{display:flex;gap:9px;align-items:center}
+    .icon{width:18px;text-align:center;color:var(--muted)}
+    .section-title{padding:13px 16px 7px;color:#667085;font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+    .projects{padding:0 10px;display:grid;gap:4px;overflow:auto}
+    .project-meta{font-size:10px;color:var(--muted)}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block}
+    .side-bottom{margin-top:auto;padding:12px;border-top:1px solid var(--line)}
+    .maestro-mini{padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+    .maestro-mini strong{font-size:12px}
+    .maestro-mini p{font-size:11px;color:var(--muted);line-height:1.4;margin:6px 0 9px}
+    .main{display:flex;flex-direction:column;min-width:0;overflow:hidden}
+    .topbar{
+      height:60px;border-bottom:1px solid var(--line);display:flex;align-items:center;
+      justify-content:space-between;padding:0 18px;background:rgba(11,13,18,.92)
+    }
+    .breadcrumbs{display:flex;align-items:center;gap:8px;font-size:13px}
+    .breadcrumbs .muted{color:var(--muted)}
+    .top-actions{display:flex;align-items:center;gap:8px}
+    .btn{
+      border:1px solid var(--line);background:var(--panel-2);color:var(--text);
+      padding:8px 11px;border-radius:9px
+    }
+    .btn:hover{border-color:#3a455a;background:#1c2330}
+    .btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent-2));border-color:transparent}
+    .btn.ghost{background:transparent}
+    .workspace{display:grid;grid-template-columns:minmax(0,1fr) 330px;min-height:0;flex:1}
+    .content{overflow:auto;padding:18px}
+    .rightbar{border-left:1px solid var(--line);background:#0d1016;overflow:auto;padding:16px}
+    .hero{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}
+    .hero h2{font-size:23px;margin:0 0 4px}
+    .hero p{font-size:12px;color:var(--muted);margin:0}
+    .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+    .chip{padding:4px 7px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:10px;background:#10141b}
+    .chip.good{color:#8ff3de;border-color:rgba(45,212,191,.25);background:rgba(45,212,191,.07)}
+    .chip.warn{color:#fcd777;border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.07)}
+    .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px;overflow:auto}
+    .tab{
+      background:transparent;border:0;color:var(--muted);padding:10px 12px;border-bottom:2px solid transparent;white-space:nowrap
+    }
+    .tab.active{color:#fff;border-color:var(--accent)}
+    .grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+    .card-head{display:flex;align-items:center;justify-content:space-between;padding:13px 14px;border-bottom:1px solid var(--line)}
+    .card-head h3{font-size:12px;margin:0}
+    .card-body{padding:14px}
+    .summary{grid-column:span 4}
+    .agents{grid-column:span 8}
+    .terminal-card{grid-column:span 12}
+    .summary-number{font-size:26px;font-weight:750}
+    .summary-label{font-size:11px;color:var(--muted);margin-top:3px}
+    .metric-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+    .mini-metric{padding:10px;background:var(--panel-2);border-radius:10px}
+    .mini-metric strong{display:block;font-size:14px}
+    .mini-metric span{font-size:10px;color:var(--muted)}
+    .agent-list{display:grid;gap:8px}
+    .agent{
+      border:1px solid var(--line);background:var(--panel-2);border-radius:12px;
+      padding:11px;display:grid;grid-template-columns:minmax(0,1fr) 160px 150px auto;gap:12px;align-items:center
+    }
+    .agent:hover{border-color:#394559}
+    .agent-title{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700}
+    .agent-sub{font-size:10px;color:var(--muted);margin-top:4px}
+    .state{font-size:10px;font-weight:800;padding:4px 7px;border-radius:999px;display:inline-block}
+    .state.run{color:#7df5dc;background:rgba(45,212,191,.1)}
+    .state.wait{color:#ffd769;background:rgba(251,191,36,.1)}
+    .state.stop{color:#aab2c0;background:#252b36}
+    .quota{display:grid;gap:5px}
+    .quota-top{display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
+    .bar{height:6px;border-radius:999px;background:#252d3a;overflow:hidden}
+    .bar > i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--blue));border-radius:999px}
+    .agent-actions{display:flex;gap:6px;justify-content:flex-end}
+    .icon-btn{width:30px;height:30px;border:1px solid var(--line);border-radius:8px;background:#10151d;color:var(--soft)}
+    .terminal-shell{background:#080a0e;border-radius:12px;border:1px solid #222a36;overflow:hidden}
+    .terminal-toolbar{
+      height:42px;background:#0f131a;border-bottom:1px solid #222a36;display:flex;align-items:center;justify-content:space-between;padding:0 10px
+    }
+    .terminal-tabs{display:flex;gap:5px;align-items:center;overflow:auto}
+    .terminal-tab{
+      border:1px solid transparent;background:transparent;color:var(--muted);padding:6px 9px;border-radius:7px;font-size:11px
+    }
+    .terminal-tab.active{background:#1a2030;color:#fff;border-color:#30394a}
+    .terminal-actions{display:flex;gap:5px}
+    .terminal{
+      min-height:330px;padding:15px 16px;font:12px/1.6 "SFMono-Regular",Consolas,"Liberation Mono",monospace;color:#cfd7e6;
+      white-space:pre-wrap;overflow:auto
+    }
+    .prompt{color:#8ff3de}.cmd{color:#fff}.dim{color:#667085}.purple{color:#b9a4ff}.yellow{color:#ffd45c}
+    .terminal-status{
+      display:flex;align-items:center;justify-content:space-between;border-top:1px solid #222a36;padding:7px 10px;background:#0d1118;font-size:10px;color:var(--muted)
+    }
+    .right-section{margin-bottom:14px}
+    .right-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .right-title h4{font-size:11px;margin:0}
+    .advisor-card{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:12px;margin-bottom:8px}
+    .advisor-card.high{border-color:rgba(251,113,133,.32)}
+    .advisor-card.med{border-color:rgba(251,191,36,.28)}
+    .advisor-card strong{font-size:11px}
+    .advisor-card p{font-size:10px;color:var(--muted);line-height:1.45;margin:6px 0 10px}
+    .advisor-actions{display:flex;gap:6px}
+    .tiny{font-size:10px;padding:6px 8px}
+    .process{display:grid;gap:7px}
+    .process-step{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--muted)}
+    .process-step .step-dot{width:17px;height:17px;border-radius:50%;display:grid;place-items:center;background:#252c38;color:#b8c0cc;font-size:9px}
+    .process-step.done{color:#bfeee4}
+    .process-step.done .step-dot{background:rgba(45,212,191,.13);color:#5eead4}
+    .process-step.active{color:#fff}
+    .process-step.active .step-dot{background:rgba(139,92,246,.18);color:#c4b5fd}
+    .event{padding:8px 0;border-bottom:1px solid rgba(40,49,66,.65);display:grid;grid-template-columns:46px 1fr;gap:8px}
+    .event:last-child{border-bottom:0}
+    .event time{font-size:9px;color:#667085}
+    .event p{font-size:10px;color:var(--soft);margin:0;line-height:1.4}
+    .modal-backdrop{
+      position:fixed;inset:0;background:rgba(0,0,0,.64);display:none;place-items:center;padding:20px;z-index:50
+    }
+    .modal-backdrop.open{display:grid}
+    .modal{
+      width:min(760px,96vw);max-height:88vh;overflow:auto;background:#111620;border:1px solid #30394a;border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.55)
+    }
+    .modal-head,.modal-foot{padding:14px 16px;display:flex;align-items:center;justify-content:space-between}
+    .modal-head{border-bottom:1px solid var(--line)}
+    .modal-foot{border-top:1px solid var(--line)}
+    .modal-head h3{margin:0;font-size:14px}
+    .modal-body{padding:16px}
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .field{display:grid;gap:6px}
+    .field.full{grid-column:1/-1}
+    .field label{font-size:10px;color:var(--muted);font-weight:700}
+    .field input,.field select{
+      width:100%;background:#0c1016;border:1px solid var(--line);color:#fff;padding:9px;border-radius:9px;outline:none
+    }
+    .field input:focus,.field select:focus{border-color:var(--accent)}
+    .note{
+      margin-top:14px;padding:11px;border:1px solid rgba(96,165,250,.22);background:rgba(96,165,250,.06);border-radius:10px;font-size:10px;line-height:1.5;color:#c6d8f8
+    }
+    .restart-plan{margin-top:12px;padding:11px;background:#0c1016;border:1px solid var(--line);border-radius:10px}
+    .restart-plan strong{font-size:11px}
+    .restart-plan ul{margin:8px 0 0 16px;padding:0;color:var(--muted);font-size:10px;line-height:1.6}
+    .mission-panel{display:none}
+    .mission-panel.open{display:block}
+    .mission-card{
+      margin-bottom:12px;padding:14px;border:1px solid rgba(139,92,246,.28);background:linear-gradient(180deg,rgba(139,92,246,.08),rgba(139,92,246,.03));border-radius:14px
+    }
+    .mission-card h3{font-size:13px;margin:0 0 5px}
+    .mission-card p{font-size:10px;color:var(--muted);margin:0 0 12px}
+    .mission-steps{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+    .mission-step{padding:9px;background:#111620;border:1px solid var(--line);border-radius:9px;font-size:10px;color:var(--muted)}
+    .mission-step.done{border-color:rgba(45,212,191,.28);color:#baf6e9}
+    .mission-step.active{border-color:rgba(139,92,246,.42);color:#fff}
+    @media(max-width:1180px){
+      .workspace{grid-template-columns:1fr}
+      .rightbar{display:none}
+      .summary,.agents{grid-column:span 12}
+    }
+    @media(max-width:800px){
+      .app{grid-template-columns:72px 1fr}
+      .brand h1,.brand p,.nav-label,.section-title,.projects .project-name,.projects .project-meta,.maestro-mini{display:none}
+      .brand-row{justify-content:center}
+      .nav button,.project-btn{justify-content:center}
+      .workspace{display:block}
+      .content{padding:12px}
+      .agent{grid-template-columns:1fr auto}
+      .quota,.agent .agent-state-col{display:none}
+      .topbar{padding:0 10px}
+      .hero{flex-direction:column}
+      .form-grid{grid-template-columns:1fr}
+      .mission-steps{grid-template-columns:1fr 1fr}
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-row">
+        <div class="brand-mark">N</div>
+        <div>
+          <h1>IAPro Nexus</h1>
+          <p>powered by Maestro</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav">
+      <button class="active"><span class="nav-left"><span class="icon">◫</span><span class="nav-label">Projects</span></span><span>4</span></button>
+      <button><span class="nav-left"><span class="icon">◎</span><span class="nav-label">Agents</span></span><span>6</span></button>
+      <button><span class="nav-left"><span class="icon">⌁</span><span class="nav-label">Resources</span></span></button>
+      <button><span class="nav-left"><span class="icon">↺</span><span class="nav-label">Sessions</span></span></button>
+      <button><span class="nav-left"><span class="icon">✦</span><span class="nav-label">Maestro</span></span></button>
+    </div>
+
+    <div class="section-title">Projects</div>
+    <div class="projects">
+      <button class="project-btn active" data-project="Omega">
+        <span class="project-name"><span class="dot"></span>&nbsp;&nbsp;Omega</span>
+        <span class="project-meta">2</span>
+      </button>
+      <button class="project-btn" data-project="Omnia">
+        <span class="project-name">Omnia</span><span class="project-meta">1</span>
+      </button>
+      <button class="project-btn" data-project="Infra">
+        <span class="project-name">Infra</span><span class="project-meta">2</span>
+      </button>
+      <button class="project-btn" data-project="Megan">
+        <span class="project-name">Megan</span><span class="project-meta">1</span>
+      </button>
+    </div>
+
+    <div class="side-bottom">
+      <div class="maestro-mini">
+        <strong>Maestro Assist</strong>
+        <p>Processo saudável. 1 recomendação de segurança disponível.</p>
+        <button class="btn tiny" onclick="toggleMission()">Mission Mode</button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="breadcrumbs">
+        <span class="muted">Projects</span><span>›</span><strong id="crumbProject">Omega</strong>
+      </div>
+      <div class="top-actions">
+        <button class="btn ghost">Search</button>
+        <button class="btn" onclick="simulateReattach()">Reattach all</button>
+        <button class="btn primary" onclick="openAgentModal()">+ Start Agent</button>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <section class="content">
+        <div class="hero">
+          <div>
+            <h2 id="projectTitle">Omega</h2>
+            <p id="projectPath">/home/kiver/projects/omega · feature/escola-conectada</p>
+            <div class="chips">
+              <span class="chip good">2 agents active</span>
+              <span class="chip">Maestro: Assist</span>
+              <span class="chip warn">1 recommendation</span>
+            </div>
+          </div>
+          <div>
+            <button class="btn" onclick="toggleMission()">Mission Mode</button>
+            <button class="btn primary" onclick="openAgentModal()">+ Agent</button>
+          </div>
+        </div>
+
+        <div id="missionPanel" class="mission-panel">
+          <div class="mission-card">
+            <h3>Optional Mission · OAuth Migration</h3>
+            <p>Mission Mode uses Maestro to refine the goal, recommend process/skills, build a semantic plan and coordinate agents. It is optional.</p>
+            <div class="mission-steps">
+              <div class="mission-step done">1. Discovery ✓</div>
+              <div class="mission-step done">2. Architecture ✓</div>
+              <div class="mission-step active">3. Implementation</div>
+              <div class="mission-step">4. Security Review</div>
+              <div class="mission-step">5. Verification</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <button class="tab active">Overview</button>
+          <button class="tab">Agents</button>
+          <button class="tab">Workspace</button>
+          <button class="tab">Maestro</button>
+          <button class="tab">Events</button>
+          <button class="tab">Usage</button>
+        </div>
+
+        <div class="grid">
+          <div class="card summary">
+            <div class="card-head"><h3>Project health</h3><span class="chip good">Healthy</span></div>
+            <div class="card-body">
+              <div class="summary-number">74%</div>
+              <div class="summary-label">Combined available AI capacity</div>
+              <div class="metric-row">
+                <div class="mini-metric"><strong>2</strong><span>active</span></div>
+                <div class="mini-metric"><strong>1</strong><span>waiting</span></div>
+                <div class="mini-metric"><strong>0</strong><span>failed</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card agents">
+            <div class="card-head">
+              <h3>Agents</h3>
+              <div><button class="btn tiny" onclick="openAgentModal()">Add agent</button></div>
+            </div>
+            <div class="card-body">
+              <div class="agent-list">
+                <div class="agent">
+                  <div>
+                    <div class="agent-title">Codex <span class="state run">WORKING</span></div>
+                    <div class="agent-sub">personal · runtime rt_7fa21 · session 0195abc</div>
+                  </div>
+                  <div class="quota">
+                    <div class="quota-top"><span>Availability</span><span>76%</span></div>
+                    <div class="bar"><i style="width:76%"></i></div>
+                  </div>
+                  <div class="agent-state-col">
+                    <div class="agent-sub">Terminal attached</div>
+                    <div class="agent-sub">Maestro process: Standard</div>
+                  </div>
+                  <div class="agent-actions">
+                    <button class="icon-btn" title="Terminal" onclick="selectTerminal('codex')">▣</button>
+                    <button class="icon-btn" title="Agent options" onclick="openAgentModal('Codex')">⚙</button>
+                  </div>
+                </div>
+
+                <div class="agent">
+                  <div>
+                    <div class="agent-title">Claude <span class="state wait">WAITING</span></div>
+                    <div class="agent-sub">work · runtime rt_34c12 · session claude-88d</div>
+                  </div>
+                  <div class="quota">
+                    <div class="quota-top"><span>Availability</span><span>58%</span></div>
+                    <div class="bar"><i style="width:58%"></i></div>
+                  </div>
+                  <div class="agent-state-col">
+                    <div class="agent-sub">Waiting for input</div>
+                    <div class="agent-sub">Security review recommended</div>
+                  </div>
+                  <div class="agent-actions">
+                    <button class="icon-btn" title="Terminal" onclick="selectTerminal('claude')">▣</button>
+                    <button class="icon-btn" title="Agent options" onclick="openAgentModal('Claude')">⚙</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card terminal-card">
+            <div class="card-head">
+              <h3>Live terminals</h3>
+              <div>
+                <button class="btn tiny" onclick="toggleSplit()">Split</button>
+                <button class="btn tiny" onclick="simulateDetach()">Detach</button>
+                <button class="btn tiny" onclick="simulateReattach()">Reattach</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="terminalGrid" style="display:grid;grid-template-columns:1fr;gap:10px">
+                <div class="terminal-shell">
+                  <div class="terminal-toolbar">
+                    <div class="terminal-tabs">
+                      <button id="tabCodex" class="terminal-tab active" onclick="selectTerminal('codex')">Codex · Omega</button>
+                      <button id="tabClaude" class="terminal-tab" onclick="selectTerminal('claude')">Claude · Omega</button>
+                      <button class="terminal-tab">+</button>
+                    </div>
+                    <div class="terminal-actions">
+                      <button class="icon-btn" title="Open in new window">↗</button>
+                      <button class="icon-btn" title="Settings" onclick="openAgentModal()">⚙</button>
+                    </div>
+                  </div>
+                  <div id="terminalContent" class="terminal"><span class="purple">IAPro Nexus attached to existing runtime rt_7fa21</span>
+<span class="dim">Session: 0195abc · scrollback restored · writer lease acquired</span>
+
+<span class="prompt">~/omega</span> <span class="cmd">$ codex resume 0195abc</span>
+
+<span class="dim">› Context restored from provider session.</span>
+<span class="cmd">› revise os testes desse módulo e mantenha compatibilidade</span>
+
+Inspecting repository...
+Running tests...
+
+<span class="prompt">~/omega</span> <span class="cmd">$ go test ./...</span>
+ok   internal/control/host
+ok   internal/control/runtime
+<span class="yellow">waiting for next instruction...</span></div>
+                  <div class="terminal-status">
+                    <span id="terminalState">ATTACHED · CONTROL</span>
+                    <span>Runtime stays alive if this view closes</span>
+                  </div>
+                </div>
+
+                <div id="splitTerminal" class="terminal-shell" style="display:none">
+                  <div class="terminal-toolbar">
+                    <div class="terminal-tabs"><button class="terminal-tab active">Claude · Omega</button></div>
+                    <div class="terminal-actions"><button class="icon-btn">↗</button></div>
+                  </div>
+                  <div class="terminal"><span class="purple">Attached to runtime rt_34c12</span>
+<span class="dim">Session: claude-88d · VIEW ONLY</span>
+
+<span class="prompt">~/omega</span> <span class="cmd">$ claude --resume claude-88d</span>
+
+Reviewing authentication changes...
+<span class="yellow">Approval/input required.</span></div>
+                  <div class="terminal-status"><span>ATTACHED · VIEW ONLY</span><span>Single writer enforced by Control Core</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="rightbar">
+        <div class="right-section">
+          <div class="right-title"><h4>Maestro Advisor</h4><span class="chip">ASSIST</span></div>
+
+          <div class="advisor-card high">
+            <strong>HIGH · Security-sensitive change</strong>
+            <p>Authentication-related files changed. Maestro recommends adding Security Review before completion.</p>
+            <div class="advisor-actions">
+              <button class="btn tiny primary">Apply</button>
+              <button class="btn tiny">Explain</button>
+            </div>
+          </div>
+
+          <div class="advisor-card med">
+            <strong>MEDIUM · Isolation</strong>
+            <p>This work spans many files. Use an isolated worktree for the next agent.</p>
+            <div class="advisor-actions">
+              <button class="btn tiny">Apply</button>
+              <button class="btn tiny">Ignore</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="right-section">
+          <div class="right-title"><h4>Process</h4><span class="chip good">healthy</span></div>
+          <div class="process">
+            <div class="process-step done"><span class="step-dot">✓</span> Understand context</div>
+            <div class="process-step done"><span class="step-dot">✓</span> Plan</div>
+            <div class="process-step active"><span class="step-dot">3</span> Implementation</div>
+            <div class="process-step"><span class="step-dot">4</span> Security review</div>
+            <div class="process-step"><span class="step-dot">5</span> Verification</div>
+          </div>
+        </div>
+
+        <div class="right-section">
+          <div class="right-title"><h4>Recent events</h4><span></span></div>
+          <div class="event"><time>16:42</time><p>Codex runtime attached in browser.</p></div>
+          <div class="event"><time>16:39</time><p>Claude entered WAITING state.</p></div>
+          <div class="event"><time>16:34</time><p>Maestro recommended Security Review.</p></div>
+          <div class="event"><time>16:31</time><p>Codex usage refreshed: 76% available.</p></div>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>
+
+<div id="agentModal" class="modal-backdrop" onclick="if(event.target===this)closeAgentModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3 id="agentModalTitle">Agent options · Codex</h3>
+        <div class="agent-sub">Settings are persisted with the Agent definition. Runtime/session continuity is handled separately.</div>
+      </div>
+      <button class="icon-btn" onclick="closeAgentModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field">
+          <label>Provider</label>
+          <select><option>Codex</option><option>Claude</option><option>Gemini</option><option>OpenCode</option><option>Cursor</option></select>
+        </div>
+        <div class="field">
+          <label>Profile / Account</label>
+          <select><option>personal · 76%</option><option>work · 12%</option><option>Automatic (smart allocation)</option></select>
+        </div>
+        <div class="field">
+          <label>Model / Preset</label>
+          <select><option>Provider default</option><option>Fast</option><option>Balanced</option><option>Deep</option></select>
+        </div>
+        <div class="field">
+          <label>Allocation policy</label>
+          <select><option>Balanced</option><option>Preserve quota</option><option>Prefer this provider</option><option>Manual</option></select>
+        </div>
+        <div class="field">
+          <label>Isolation</label>
+          <select><option>Project workspace</option><option>Isolated worktree</option><option>Dedicated HOME/profile</option></select>
+        </div>
+        <div class="field">
+          <label>Maestro mode</label>
+          <select><option>Assist</option><option>Off</option><option>Orchestrate (Mission)</option></select>
+        </div>
+        <div class="field full">
+          <label>Additional provider options</label>
+          <input value="--example-provider-option" />
+        </div>
+        <div class="field">
+          <label>On quota exhaustion</label>
+          <select><option>Propose best handoff</option><option>Same-provider auto handoff</option><option>Wait for reset</option><option>Manual only</option></select>
+        </div>
+        <div class="field">
+          <label>When settings require restart</label>
+          <select><option>Safe restart + verified resume</option><option>Ask before restart</option><option>Never restart automatically</option></select>
+        </div>
+      </div>
+
+      <div class="note">
+        <strong>State guarantee</strong><br>
+        Closing/reopening a Web terminal only detaches and reattaches to the same RuntimeID; the provider process remains alive. If a setting requires restarting the provider, Nexus persists the Agent definition and runtime metadata, creates a checkpoint, restarts the provider and uses provider-native resume only when continuity can be verified. Otherwise it clearly creates a new session with preserved project context.
+      </div>
+
+      <div class="restart-plan">
+        <strong>Planned safe apply</strong>
+        <ul>
+          <li>Persist Agent settings and current RuntimeID/ProviderSessionID.</li>
+          <li>Determine whether this setting is hot-applicable or requires provider restart.</li>
+          <li>If hot-applicable: apply without touching the terminal/session.</li>
+          <li>If restart required: checkpoint → stop → restart → native resume → verify session.</li>
+          <li>If resume cannot be verified: do not claim continuity; offer Context Handoff/new session.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeAgentModal()">Cancel</button>
+      <div>
+        <button class="btn">Save only</button>
+        <button class="btn primary" onclick="applyAgentSettings()">Apply safely</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const terminals = {
+    codex: `<span class="purple">IAPro Nexus attached to existing runtime rt_7fa21</span>
+<span class="dim">Session: 0195abc · scrollback restored · writer lease acquired</span>
+
+<span class="prompt">~/omega</span> <span class="cmd">$ codex resume 0195abc</span>
+
+<span class="dim">› Context restored from provider session.</span>
+<span class="cmd">› revise os testes desse módulo e mantenha compatibilidade</span>
+
+Inspecting repository...
+Running tests...
+
+<span class="prompt">~/omega</span> <span class="cmd">$ go test ./...</span>
+ok   internal/control/host
+ok   internal/control/runtime
+<span class="yellow">waiting for next instruction...</span>`,
+    claude: `<span class="purple">Attached to runtime rt_34c12</span>
+<span class="dim">Session: claude-88d · scrollback restored</span>
+
+<span class="prompt">~/omega</span> <span class="cmd">$ claude --resume claude-88d</span>
+
+Reviewing authentication changes...
+Found 2 security-sensitive paths.
+
+<span class="yellow">Waiting for approval/input...</span>`
+  };
+
+  function openAgentModal(agent='Codex'){
+    document.getElementById('agentModalTitle').textContent = 'Agent options · ' + agent;
+    document.getElementById('agentModal').classList.add('open');
+  }
+  function closeAgentModal(){ document.getElementById('agentModal').classList.remove('open'); }
+
+  function applyAgentSettings(){
+    closeAgentModal();
+    const state = document.getElementById('terminalState');
+    state.textContent = 'APPLYING · CHECKPOINTING';
+    setTimeout(()=>state.textContent='RESTARTED · SESSION VERIFIED · ATTACHED',900);
+  }
+
+  function selectTerminal(name){
+    document.getElementById('terminalContent').innerHTML = terminals[name];
+    document.getElementById('tabCodex').classList.toggle('active',name==='codex');
+    document.getElementById('tabClaude').classList.toggle('active',name==='claude');
+  }
+
+  function toggleSplit(){
+    const el=document.getElementById('splitTerminal');
+    const grid=document.getElementById('terminalGrid');
+    const show=el.style.display==='none';
+    el.style.display=show?'block':'none';
+    grid.style.gridTemplateColumns=show?'1fr 1fr':'1fr';
+  }
+
+  function simulateDetach(){
+    document.getElementById('terminalState').textContent='DETACHED · RUNTIME STILL RUNNING';
+  }
+
+  function simulateReattach(){
+    const state=document.getElementById('terminalState');
+    state.textContent='REATTACHING...';
+    setTimeout(()=>state.textContent='ATTACHED · CONTROL · SCROLLBACK RESTORED',650);
+  }
+
+  function toggleMission(){
+    document.getElementById('missionPanel').classList.toggle('open');
+  }
+
+  const projectInfo = {
+    Omega:['/home/kiver/projects/omega · feature/escola-conectada','2 agents active'],
+    Omnia:['/home/kiver/projects/omnia · feature/builder','1 agent active'],
+    Infra:['/home/kiver/projects/infra · main','2 agents active'],
+    Megan:['/home/kiver/projects/megan · feat/production','1 agent active']
+  };
+  document.querySelectorAll('.project-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      document.querySelectorAll('.project-btn').forEach(x=>x.classList.remove('active'));
+      btn.classList.add('active');
+      const p=btn.dataset.project;
+      document.getElementById('projectTitle').textContent=p;
+      document.getElementById('crumbProject').textContent=p;
+      document.getElementById('projectPath').textContent=projectInfo[p][0];
+    });
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "generatedAt": "2026-08-29T13:11:29.115Z",
+  "files": [
+    "index.html",
+    "bundle.css",
+    "bundle.js",
+    "logo.png"
+  ],
+  "builder": "node+esbuild+tailwind"
+}

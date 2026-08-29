@@ -6,9 +6,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vitest run",
-    "build:css": "tailwindcss -i src/index.css -o dist/bundle.css --minify",
-    "build:js": "bun build src/index.tsx --outdir dist --entry-naming bundle.[ext] --minify",
-    "build": "bun run build:css && bun run build:js && cp index.html dist/index.html && cp ../logo.png dist/logo.png && cp -r dist/* ../internal/control/web/dist/"
+    "build:css": "node node_modules/@tailwindcss/cli/dist/index.mjs -i src/index.css -o dist/bundle.css --minify",
+    "build:js": "node scripts/build.mjs",
+    "build": "node scripts/build.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.475.0",
