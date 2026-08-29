@@ -1,0 +1,160 @@
+package app
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/kivervinicius/ai-cli/internal/nexus"
+	"github.com/kivervinicius/ai-cli/internal/nexus/store"
+)
+
+func planCmd(args []string) error {
+	if len(args) == 0 || args[0] == "help" || args[0] == "-h" {
+		fmt.Println("Usage: nexus plan [list|create|show|compile|run] [args...]")
+		return nil
+	}
+
+	n := nexus.Default()
+	st, err := n.OpenProject()
+	if err != nil {
+		return err
+	}
+
+	switch args[0] {
+	case "list", "ls":
+		projects, err := st.ListProjects()
+		if err != nil {
+			return err
+		}
+		if len(projects) == 0 {
+			fmt.Println("Nenhum projeto encontrado. Registre um projeto com: nexus projects add <caminho>")
+			return nil
+		}
+		projID := projects[0].ID
+		if len(args) > 1 {
+			projID = args[1]
+		}
+		plans, err := n.ListWorkPlans(context.Background(), projID)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("=== WorkPlans do Projeto (%s) ===\n", projID)
+		for _, p := range plans {
+			fmt.Printf("- [%s] %s (Rev %d, Status: %s, Fases: %d)\n", p.ID, p.Title, p.CurrentRevision, p.Status, len(p.Phases))
+		}
+		return nil
+
+	case "create":
+		if len(args) < 2 {
+			return fmt.Errorf("informe o objetivo do plano, ex: nexus plan create \"Implementar auth JWT\"")
+		}
+		projects, err := st.ListProjects()
+		if err != nil || len(projects) == 0 {
+			return fmt.Errorf("nenhum projeto ativo; registre um projeto primeiro")
+		}
+		goal := strings.Join(args[1:], " ")
+		plan, err := n.GeneratePlanFromIntent(context.Background(), projects[0].ID, goal)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Plano criado com sucesso: %s [%s]\n", plan.Title, plan.ID)
+		for _, ph := range plan.Phases {
+			fmt.Printf("  Fase: %s (%d pacotes)\n", ph.Title, len(ph.Packages))
+			for _, pkg := range ph.Packages {
+				fmt.Printf("    * [%s] %s (%s)\n", pkg.ID, pkg.Title, pkg.Priority)
+			}
+		}
+		return nil
+
+	case "show":
+		if len(args) < 2 {
+			return fmt.Errorf("informe o ID do plano, ex: nexus plan show <plan-id>")
+		}
+		plan, err := n.GetWorkPlan(context.Background(), args[1])
+		if err != nil {
+			return err
+		}
+		out, _ := json.MarshalIndent(plan, "", "  ")
+		fmt.Println(string(out))
+		return nil
+
+	default:
+		return fmt.Errorf("subcomando de plano desconhecido: %s", args[0])
+	}
+}
+
+func agentsCmd(args []string) error {
+	n := nexus.Default()
+	st, err := n.OpenProject()
+	if err != nil {
+		return err
+	}
+
+	projects, err := st.ListProjects()
+	if err != nil || len(projects) == 0 {
+		fmt.Println("Nenhum projeto encontrado.")
+		return nil
+	}
+
+	projID := projects[0].ID
+	if len(args) > 1 && !strings.HasPrefix(args[1], "-") {
+		projID = args[1]
+	}
+
+	agents, err := st.ListAgents(projID)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("=== Agentes Nexus (%s) ===\n", projID)
+	for _, a := range agents {
+		eff, _ := n.EffectiveAgentState(a.ID)
+		fmt.Printf("- [%s] %s (Papel: %s, Status Real: %s, Revisão: %s)\n",
+			a.ID, a.Name, a.Role, eff, a.CurrentRevisionID)
+	}
+	return nil
+}
+
+func projectsCmd(args []string) error {
+	n := nexus.Default()
+	st, err := n.OpenProject()
+	if err != nil {
+		return err
+	}
+
+	if len(args) == 0 || args[0] == "list" || args[0] == "ls" {
+		projects, err := st.ListProjects()
+		if err != nil {
+			return err
+		}
+		fmt.Println("=== Projetos Registrados no Nexus ===")
+		for _, p := range projects {
+			fmt.Printf("- [%s] %s (%s, Branch: %s)\n", p.ID, p.Name, p.CanonicalPath, p.DefaultBranch)
+		}
+		return nil
+	}
+
+	if args[0] == "add" {
+		if len(args) < 2 {
+			return fmt.Errorf("informe o caminho do projeto, ex: nexus projects add /caminho/do/projeto")
+		}
+		dir := args[1]
+		name := ""
+		if len(args) > 2 {
+			name = args[2]
+		}
+		proj, err := st.CreateProject(store.Project{
+			CanonicalPath: dir,
+			Name:          name,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Projeto registrado com sucesso: %s [%s]\n", proj.Name, proj.ID)
+		return nil
+	}
+
+	return fmt.Errorf("subcomando de projeto desconhecido: %s", args[0])
+}

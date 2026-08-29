@@ -3,20 +3,23 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os/exec"
 	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/buildinfo"
 	"github.com/kivervinicius/ai-cli/internal/nexus"
+	"github.com/kivervinicius/ai-cli/internal/nexus/runner"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
 
 // NexusHandler serves the Nexus product API (projects, agents, generations,
 // lineage, layouts) on top of the shared control core.
 type NexusHandler struct {
-	auth  *AuthManager
-	nexus *nexus.Nexus
+	auth                  *AuthManager
+	nexus                 *nexus.Nexus
+	hostFilesystemEnabled bool
 }
 
 func NewNexusHandler(auth *AuthManager) *NexusHandler {
@@ -28,7 +31,11 @@ func NewNexusHandler(auth *AuthManager) *NexusHandler {
 		broker.NotifyAgentState,
 		broker.NotifyContinuity,
 	)
-	return &NexusHandler{auth: auth, nexus: n}
+	return &NexusHandler{auth: auth, nexus: n, hostFilesystemEnabled: true}
+}
+
+func (h *NexusHandler) setHostFilesystemEnabled(enabled bool) {
+	h.hostFilesystemEnabled = enabled
 }
 
 // handleProjectsList GET|POST /api/v1/projects
@@ -204,6 +211,12 @@ func (h *NexusHandler) handleAgentsList(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Reconcile effective live state for every agent in the list (§29 honest state).
+	for i := range agents {
+		if eff, err := h.nexus.EffectiveAgentState(agents[i].ID); err == nil && eff != "" {
+			agents[i].Status = eff
+		}
+	}
 	writeJSON(w, http.StatusOK, agents)
 }
 
@@ -259,6 +272,9 @@ func (h *NexusHandler) handleAgentDetail(w http.ResponseWriter, r *http.Request)
 		lineage, _ := st.ListLineage(id)
 		revisions, _ := st.ListRevisions(id)
 		effectiveState, _ := h.nexus.EffectiveAgentState(id)
+		if effectiveState != "" {
+			agent.Status = effectiveState
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"agent":           agent,
 			"generations":     generations,
@@ -412,6 +428,15 @@ func (h *NexusHandler) handleAgentConfigApply(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "invalid config body")
 		return
 	}
+	if strings.TrimSpace(cfg.Provider) != "" {
+		if strings.TrimSpace(cfg.Profile) == "" {
+			cfg.Profile = "default"
+		}
+		if _, err := h.nexus.ValidateResource(cfg.Provider, cfg.Profile); err != nil {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+	}
 	impact, err := h.nexus.SafeApply(context.Background(), id, cfg)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -474,8 +499,8 @@ func (h *NexusHandler) handleResourcesList(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// handleResourceSelect POST /api/v1/resources/select — run the scheduler
-// and return an explainable decision.
+// handleResourceSelect POST /api/v1/resources/select — persist a manually
+// selected, eligible resource for an Agent.
 func (h *NexusHandler) handleResourceSelect(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -495,12 +520,43 @@ func (h *NexusHandler) handleResourceSelect(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusBadRequest, "agent_id, provider and profile are required")
 		return
 	}
-	allocation, err := h.nexus.AllocateResource(context.Background(), body.AgentID, body.Provider, body.Profile, nexus.SchedulerPolicy(body.Policy))
+	if body.Policy != "" && nexus.SchedulerPolicy(body.Policy) != nexus.PolicyManual {
+		writeError(w, http.StatusBadRequest, "resource allocation requires MANUAL policy; use a recommendation endpoint for automatic selection")
+		return
+	}
+	allocation, err := h.nexus.AllocateResource(context.Background(), body.AgentID, body.Provider, body.Profile, nexus.PolicyManual)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, allocation)
+}
+
+// handleResourceRecommend POST /api/v1/resources/recommend — evaluate accounts against TaskRequirements
+func (h *NexusHandler) handleResourceRecommend(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req struct {
+		Requirements nexus.TaskRequirements `json:"requirements"`
+		Policy       string                 `json:"policy"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	accounts, err := h.nexus.ListResources()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	policy := nexus.SchedulerPolicy(strings.ToUpper(req.Policy))
+	if policy == "" {
+		policy = nexus.PolicyBalanced
+	}
+	result := nexus.RecommendResources(accounts, req.Requirements, policy)
+	writeJSON(w, http.StatusOK, result)
 }
 
 // handleMaestroStatus GET /api/v1/maestro — returns Maestro integration status.
@@ -847,4 +903,422 @@ func missionIDFromPath(path string) string {
 		return ""
 	}
 	return parts[0]
+}
+
+// ProjectGitBranchesResponse is returned by GET /api/v1/projects/:id/git/branches
+type ProjectGitBranchesResponse struct {
+	ProjectID      string   `json:"project_id"`
+	CanonicalPath  string   `json:"canonical_path"`
+	CurrentBranch  string   `json:"current_branch"`
+	DefaultBranch  string   `json:"default_branch"`
+	Branches       []string `json:"branches"`
+	RemoteBranches []string `json:"remote_branches"`
+	IsClean        bool     `json:"is_clean"`
+	ModifiedCount  int      `json:"modified_count"`
+}
+
+// handleProjectGitBranches GET /api/v1/projects/{projectID}/git/branches
+func (h *NexusHandler) handleProjectGitBranches(w http.ResponseWriter, r *http.Request) {
+	st, err := h.nexus.OpenProject()
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	projectID := projectIDFromPath(r.URL.Path)
+	if projectID == "" {
+		writeError(w, http.StatusNotFound, "missing project id")
+		return
+	}
+	proj, err := st.GetProject(projectID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+
+	dir := proj.CanonicalPath
+	current := getGitBranch(dir)
+	if current == "" {
+		current = proj.DefaultBranch
+	}
+	if current == "" {
+		current = "main"
+	}
+
+	// 1. List local branches
+	var branches []string
+	cmdList := exec.Command("git", "branch", "--list", "--no-color")
+	cmdList.Dir = dir
+	if out, err := cmdList.Output(); err == nil {
+		lines := strings.Split(string(out), "\n")
+		for _, l := range lines {
+			name := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "*"))
+			if name != "" && !strings.Contains(name, "->") {
+				branches = append(branches, name)
+			}
+		}
+	}
+	if len(branches) == 0 {
+		branches = []string{current}
+	}
+
+	// 2. List remote branches
+	var remoteBranches []string
+	cmdRemote := exec.Command("git", "branch", "-r", "--no-color")
+	cmdRemote.Dir = dir
+	if out, err := cmdRemote.Output(); err == nil {
+		lines := strings.Split(string(out), "\n")
+		for _, l := range lines {
+			name := strings.TrimSpace(l)
+			if name != "" && !strings.Contains(name, "->") {
+				remoteBranches = append(remoteBranches, name)
+			}
+		}
+	}
+
+	// 3. Status check for uncommitted changes
+	isClean := true
+	modifiedCount := 0
+	cmdStatus := exec.Command("git", "status", "--porcelain")
+	cmdStatus.Dir = dir
+	if out, err := cmdStatus.Output(); err == nil {
+		trimmed := strings.TrimSpace(string(out))
+		if trimmed != "" {
+			lines := strings.Split(trimmed, "\n")
+			modifiedCount = len(lines)
+			isClean = false
+		}
+	}
+
+	resp := ProjectGitBranchesResponse{
+		ProjectID:      proj.ID,
+		CanonicalPath:  proj.CanonicalPath,
+		CurrentBranch:  current,
+		DefaultBranch:  proj.DefaultBranch,
+		Branches:       branches,
+		RemoteBranches: remoteBranches,
+		IsClean:        isClean,
+		ModifiedCount:  modifiedCount,
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleProjectGitCheckout POST /api/v1/projects/{projectID}/git/checkout
+func (h *NexusHandler) handleProjectGitCheckout(w http.ResponseWriter, r *http.Request) {
+	st, err := h.nexus.OpenProject()
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	projectID := projectIDFromPath(r.URL.Path)
+	if projectID == "" {
+		writeError(w, http.StatusNotFound, "missing project id")
+		return
+	}
+	proj, err := st.GetProject(projectID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+
+	var body struct {
+		Branch string `json:"branch"`
+		Create bool   `json:"create"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Branch) == "" {
+		writeError(w, http.StatusBadRequest, "branch is required")
+		return
+	}
+	targetBranch := strings.TrimSpace(body.Branch)
+	// Basic sanitization against flags or illegal chars
+	if strings.HasPrefix(targetBranch, "-") || strings.ContainsAny(targetBranch, " ~^:?*[\\") {
+		writeError(w, http.StatusBadRequest, "invalid branch name")
+		return
+	}
+
+	// Safety policy: Check if any agent is actively working in the canonical project tree (A10).
+	agents, _ := st.ListAgents(projectID)
+	for _, a := range agents {
+		eff, _ := h.nexus.EffectiveAgentState(a.ID)
+		if eff == store.AgentWorking || eff == store.AgentStarting || eff == store.AgentRecovering {
+			isDirectCanonical := true
+			if a.CurrentRevisionID != "" {
+				if rev, rerr := st.GetRevision(a.CurrentRevisionID); rerr == nil {
+					if cfg, perr := nexus.ParseAgentConfig(rev.Config); perr == nil {
+						if cfg.Isolation == "worktree" {
+							isDirectCanonical = false
+						}
+					}
+				}
+			}
+			if isDirectCanonical {
+				writeError(w, http.StatusConflict, fmt.Sprintf("cannot checkout branch: agent %q (%s) is actively running in the project workspace (stop agent or migrate to worktree isolation first)", a.Name, a.ID))
+				return
+			}
+		}
+	}
+
+	dir := proj.CanonicalPath
+	var cmd *exec.Cmd
+	if body.Create {
+		cmd = exec.Command("git", "checkout", "-b", targetBranch)
+	} else {
+		cmd = exec.Command("git", "checkout", targetBranch)
+	}
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("git checkout failed: %s (%s)", strings.TrimSpace(string(out)), err.Error()))
+		return
+	}
+
+	// Update project's default branch in database
+	proj.DefaultBranch = targetBranch
+	_ = st.UpdateProject(proj)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success":        true,
+		"current_branch": targetBranch,
+		"output":         strings.TrimSpace(string(out)),
+	})
+}
+
+// handleProjectPlans GET/POST /api/v1/projects/{projectID}/plans
+func (h *NexusHandler) handleProjectPlans(w http.ResponseWriter, r *http.Request) {
+	projectID := projectIDFromPath(r.URL.Path)
+	if projectID == "" {
+		writeError(w, http.StatusNotFound, "missing project id")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		plans, err := h.nexus.ListWorkPlans(r.Context(), projectID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if plans == nil {
+			plans = []store.WorkPlan{}
+		}
+		writeJSON(w, http.StatusOK, plans)
+
+	case http.MethodPost:
+		var body struct {
+			Title       string            `json:"title"`
+			Description string            `json:"description"`
+			Goal        string            `json:"goal"`
+			AutoPlan    bool              `json:"auto_plan"`
+			Phases      []store.PlanPhase `json:"phases"`
+			Facts       map[string]string `json:"facts"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid body")
+			return
+		}
+
+		if body.AutoPlan && strings.TrimSpace(body.Goal) != "" {
+			plan, err := h.nexus.GeneratePlanFromIntent(r.Context(), projectID, body.Goal)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			writeJSON(w, http.StatusCreated, plan)
+			return
+		}
+
+		if strings.TrimSpace(body.Title) == "" {
+			writeError(w, http.StatusBadRequest, "title is required")
+			return
+		}
+
+		plan, err := h.nexus.CreateWorkPlan(r.Context(), projectID, body.Title, body.Description, body.Phases, body.Facts)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, plan)
+
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+// handlePlanDetail GET/PUT/DELETE /api/v1/plans/{id}
+func (h *NexusHandler) handlePlanDetail(w http.ResponseWriter, r *http.Request) {
+	planID := strings.TrimPrefix(r.URL.Path, "/api/v1/plans/")
+	slashIdx := strings.Index(planID, "/")
+	if slashIdx != -1 {
+		planID = planID[:slashIdx]
+	}
+	if planID == "" {
+		writeError(w, http.StatusNotFound, "missing plan id")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		plan, err := h.nexus.GetWorkPlan(r.Context(), planID)
+		if err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		revisions, _ := h.nexus.ListPlanRevisions(r.Context(), planID)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"plan":      plan,
+			"revisions": revisions,
+		})
+
+	case http.MethodPut:
+		var body struct {
+			Plan          store.WorkPlan `json:"plan"`
+			ChangeSummary string         `json:"change_summary"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid body")
+			return
+		}
+		body.Plan.ID = planID
+		updated, rev, err := h.nexus.UpdateWorkPlan(r.Context(), body.Plan, body.ChangeSummary)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"plan":     updated,
+			"revision": rev,
+		})
+
+	case http.MethodDelete:
+		if err := h.nexus.DeleteWorkPlan(r.Context(), planID); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+// handlePlanCompile POST /api/v1/plans/{id}/compile
+func (h *NexusHandler) handlePlanCompile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	planID := strings.TrimPrefix(r.URL.Path, "/api/v1/plans/")
+	planID = strings.TrimSuffix(planID, "/compile")
+	if planID == "" {
+		writeError(w, http.StatusNotFound, "missing plan id")
+		return
+	}
+
+	var body struct {
+		PhaseID   string `json:"phase_id"`
+		PackageID string `json:"package_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.PackageID == "" {
+		writeError(w, http.StatusBadRequest, "package_id is required")
+		return
+	}
+
+	compiled, err := h.nexus.CompilePackagePrompt(r.Context(), planID, body.PhaseID, body.PackageID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, compiled)
+}
+
+// handlePlanRun POST /api/v1/plans/{id}/run
+func (h *NexusHandler) handlePlanRun(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	planID := strings.TrimPrefix(r.URL.Path, "/api/v1/plans/")
+	planID = strings.TrimSuffix(planID, "/run")
+
+	plan, err := h.nexus.GetWorkPlan(r.Context(), planID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	st, err := h.nexus.OpenProject()
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+
+	proj, err := st.GetProject(plan.ProjectID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+
+	var body struct {
+		AgentID  string `json:"agent_id"`
+		MaxRetry int    `json:"max_retries"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	contract := runner.DefaultAutonomyContract()
+	if body.MaxRetry > 0 {
+		contract.MaxRetries = body.MaxRetry
+	}
+
+	run, err := h.nexus.Runner().StartMissionRun(r.Context(), *plan, proj.CanonicalPath, contract, body.AgentID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, run)
+}
+
+// handleRunsList GET /api/v1/runs
+func (h *NexusHandler) handleRunsList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	runs := h.nexus.Runner().Leases().ListActiveRuns()
+	writeJSON(w, http.StatusOK, runs)
+}
+
+// handleRunDetail GET/POST /api/v1/runs/{id}
+func (h *NexusHandler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
+	runID := strings.TrimPrefix(r.URL.Path, "/api/v1/runs/")
+	run, ok := h.nexus.Runner().Leases().GetRun(runID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "run not found")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, run)
+
+	case http.MethodPost:
+		// Step run execution
+		st, _ := h.nexus.OpenProject()
+		proj, err := st.GetProject(run.ProjectID)
+		workspace := ""
+		if err == nil {
+			workspace = proj.CanonicalPath
+		}
+		done, err := h.nexus.Runner().ExecuteNextStep(r.Context(), run, workspace)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"run":       run,
+			"completed": done,
+		})
+
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
 }

@@ -260,3 +260,26 @@ func TestControlPlaneCLICommands(t *testing.T) {
 		t.Fatalf("control doctor failed: %s, %v", out, err)
 	}
 }
+
+func TestPerformSystemUpdateDoesNotClaimNexusBinaryUpdated(t *testing.T) {
+	binDir := t.TempDir()
+	writeExecutable := func(name, body string) {
+		t.Helper()
+		path := filepath.Join(binDir, name)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body+"\n"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeExecutable("npm", "exit 0")
+	writeExecutable("orquestrador-maestro", "if [ \"$1\" = \"version\" ]; then echo 0.1.0; fi")
+	t.Setenv("PATH", binDir)
+	t.Setenv("HOME", t.TempDir())
+
+	result := PerformSystemUpdate()
+	if result.NexusUpdated {
+		t.Fatal("update must not claim that the Nexus binary was updated when no binary update ran")
+	}
+	if !strings.Contains(result.Error, "Nexus binary update") {
+		t.Fatalf("missing honest Nexus update status: %+v", result)
+	}
+}

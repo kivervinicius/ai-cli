@@ -153,41 +153,41 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 				if p.Name == session.ProfileID {
 					activeMarker = "> "
 				}
-			info := profile.GetAccountInfo(p.Provider, p.Name)
-			qv := profile.GetQuotaView(p.Provider, p.Name, "", "")
+				info := profile.GetAccountInfo(p.Provider, p.Name)
+				qv := profile.GetQuotaView(p.Provider, p.Name, "", "")
 
-			authStatus := "AUTH_OK"
-			if !info.Authenticated {
-				authStatus = "NO_AUTH"
-			}
+				authStatus := "AUTH_OK"
+				if !info.Authenticated {
+					authStatus = "NO_AUTH"
+				}
 
-			capStr := "UNKNOWN"
-			bottleneck, _ := qv.Bottleneck()
-			if qv.Status == string(model.UsageLive) || qv.Status == string(model.UsageCached) {
-				capStr = fmt.Sprintf("%.0f%% left", bottleneck)
-			}
-			if qv.Status == string(model.UsageRateLimited) {
-				capStr = "429 LIMITED"
-			}
+				capStr := "UNKNOWN"
+				bottleneck, _ := qv.Bottleneck()
+				if qv.Status == string(model.UsageLive) || qv.Status == string(model.UsageCached) {
+					capStr = fmt.Sprintf("%.0f%% left", bottleneck)
+				}
+				if qv.Status == string(model.UsageRateLimited) {
+					capStr = "429 LIMITED"
+				}
 
-			availLabel := qv.AvailabilityLabel()
-			if qv.IsAvailable() {
-				allUnavailable = false
-			}
+				availLabel := qv.AvailabilityLabel()
+				if qv.IsAvailable() {
+					allUnavailable = false
+				}
 
-			freshStr := qv.Status
-			resetStr := "-"
-			for _, g := range qv.ModelGroups {
-				for _, w := range g.Windows {
-					if w.ResetDesc != "" {
-						resetStr = w.ResetDesc
+				freshStr := qv.Status
+				resetStr := "-"
+				for _, g := range qv.ModelGroups {
+					for _, w := range g.Windows {
+						if w.ResetDesc != "" {
+							resetStr = w.ResetDesc
+							break
+						}
+					}
+					if resetStr != "-" {
 						break
 					}
 				}
-				if resetStr != "-" {
-					break
-				}
-			}
 
 				lines = append(lines, fmt.Sprintf("%s%-14s %-12s %-14s %-14s %-14s %s",
 					activeMarker, p.Name, authStatus, capStr, availLabel, freshStr, resetStr,

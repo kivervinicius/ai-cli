@@ -75,7 +75,11 @@ func Run(args []string) error {
 	localization.Set(localization.Resolve(flagLanguage, cfg.Language))
 
 	if len(args) == 0 {
-		return interactive()
+		return interactive(nil)
+	}
+
+	if len(args) == 1 && args[0] == "--tui" {
+		return interactiveTUI()
 	}
 
 	// Short form: nexus codex:work -- --model ... or nexus codex:auto
@@ -99,8 +103,14 @@ func Run(args []string) error {
 		return versionCmd(args[1:])
 	case "release":
 		return release.Run(".")
-	case "web":
+	case "web", "open":
 		return controlWebCmd(args[1:])
+	case "plan", "plans":
+		return planCmd(args[1:])
+	case "agents", "agent":
+		return agentsCmd(args[1:])
+	case "projects", "project":
+		return projectsCmd(args[1:])
 	case "start":
 		return controlStartCmd(args[1:])
 	case "stop":
@@ -225,7 +235,17 @@ func trimDashDash(args []string) []string {
 	return args
 }
 
-func interactive() error {
+func interactive(args []string) error {
+	for _, a := range args {
+		if a == "--tui" {
+			return interactiveTUI()
+		}
+	}
+	// Default primary product experience: Launch Web Workspace OS (§Phase I)
+	return controlWebCmd(args)
+}
+
+func interactiveTUI() error {
 	res, err := tui.ShowMenu()
 	if err != nil {
 		return err

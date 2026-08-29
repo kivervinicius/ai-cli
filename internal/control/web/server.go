@@ -14,6 +14,10 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/nexus"
 )
 
+// DefaultPort is the default TCP port for the Web Control Center when no
+// --port flag or NEXUS_WEB_PORT environment variable is provided.
+const DefaultPort = 3000
+
 type ServerOptions struct {
 	Host   string
 	Port   int
@@ -34,6 +38,9 @@ type Server struct {
 func NewServer(opts ServerOptions) (*Server, error) {
 	if opts.Host == "" {
 		opts.Host = "127.0.0.1"
+	}
+	if opts.Port <= 0 || opts.Port > 65535 {
+		opts.Port = DefaultPort
 	}
 
 	// Enforce the loopback-default binding policy before opening any socket.
@@ -58,6 +65,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 
 	api := NewAPIHandler(auth)
 	nexusHandler := NewNexusHandler(auth)
+	nexusHandler.setHostFilesystemEnabled(hostFilesystemEnabled(opts.Host))
 	terminalHub := NewTerminalHub(auth)
 
 	s := &Server{
@@ -89,10 +97,18 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	// Resource Scheduler (Gate 5)
 	mux.HandleFunc("/api/v1/resources", s.authMiddleware(nexusHandler.handleResourcesList))
 	mux.HandleFunc("/api/v1/resources/select", s.authMiddleware(nexusHandler.handleResourceSelect))
+	mux.HandleFunc("/api/v1/resources/recommend", s.authMiddleware(nexusHandler.handleResourceRecommend))
 
 	// Maestro Assist (Gate 6)
 	mux.HandleFunc("/api/v1/maestro", s.authMiddleware(nexusHandler.handleMaestroStatus))
 	mux.HandleFunc("/api/v1/maestro/advice", s.authMiddleware(nexusHandler.handleMaestroAdvice))
+
+	// WorkPlans & Intelligence (Phase C & D)
+	mux.HandleFunc("/api/v1/plans/", s.routePlan(nexusHandler))
+
+	// Autonomous Mission Runs (Phase F & H)
+	mux.HandleFunc("/api/v1/runs", s.authMiddleware(nexusHandler.handleRunsList))
+	mux.HandleFunc("/api/v1/runs/", s.routeRun(nexusHandler))
 
 	// Missions (Gate 7 Beta)
 	mux.HandleFunc("/api/v1/missions/", s.routeMission(nexusHandler))
@@ -241,11 +257,70 @@ func (s *Server) routeProject(h *NexusHandler) http.HandlerFunc {
 			} else {
 				h.handleAgentCreate(w, r)
 			}
+		case strings.HasSuffix(r.URL.Path, "/plans"):
+			h.handleProjectPlans(w, r)
 		case strings.HasSuffix(r.URL.Path, "/open-os"):
 			h.handleProjectOpenOS(w, r)
+		case strings.HasSuffix(r.URL.Path, "/git/branches"):
+			h.handleProjectGitBranches(w, r)
+		case strings.HasSuffix(r.URL.Path, "/git/checkout"):
+			h.handleProjectGitCheckout(w, r)
 		default:
 			h.handleProjectDetail(w, r)
 		}
+	}
+}
+
+// routePlan dispatches plan detail, compile, and run routes.
+func (s *Server) routePlan(h *NexusHandler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.auth.ValidateOrigin(r) {
+			writeError(w, http.StatusForbidden, "invalid origin")
+			return
+		}
+		sess := s.auth.AuthenticateRequest(r)
+		if sess == nil {
+			writeError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+			csrf := r.Header.Get(csrfHeaderName)
+			if csrf == "" || csrf != sess.CSRFToken {
+				writeError(w, http.StatusForbidden, "invalid CSRF token")
+				return
+			}
+		}
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/compile"):
+			h.handlePlanCompile(w, r)
+		case strings.HasSuffix(r.URL.Path, "/run"):
+			h.handlePlanRun(w, r)
+		default:
+			h.handlePlanDetail(w, r)
+		}
+	}
+}
+
+// routeRun dispatches autonomous mission run detail and step actions.
+func (s *Server) routeRun(h *NexusHandler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.auth.ValidateOrigin(r) {
+			writeError(w, http.StatusForbidden, "invalid origin")
+			return
+		}
+		sess := s.auth.AuthenticateRequest(r)
+		if sess == nil {
+			writeError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+			csrf := r.Header.Get(csrfHeaderName)
+			if csrf == "" || csrf != sess.CSRFToken {
+				writeError(w, http.StatusForbidden, "invalid CSRF token")
+				return
+			}
+		}
+		h.handleRunDetail(w, r)
 	}
 }
 

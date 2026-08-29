@@ -124,7 +124,7 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 		"XDG_CACHE_HOME":         filepath.Join(home, ".cache"),
 		"XDG_DATA_HOME":          filepath.Join(home, ".local", "share"),
 		"XDG_STATE_HOME":         filepath.Join(home, ".local", "state"),
-		"PATH":                   internalBin + ":" + os.Getenv("PATH"),
+		"PATH":                   runtime.EnhancedPATH(internalBin, filepath.Dir(bin)),
 		"BROWSER":                filepath.Join(internalBin, "ai-browser"),
 		"PYTHON_KEYRING_BACKEND": "keyring.backends.null.Keyring",
 	}

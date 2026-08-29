@@ -105,6 +105,8 @@ button { color:inherit; }
 .nx-statusbar-left,.nx-statusbar-center,.nx-statusbar-right{display:flex;align-items:center;gap:10px}
 .nx-statusbar-item{display:inline-flex;align-items:center;gap:5px}
 .nx-statusbar-branch{color:var(--nx-accent-text);font-family:var(--nx-font-mono);font-size:11px}
+.nx-statusbar-btn{background:transparent;border:1px solid transparent;border-radius:4px;padding:2px 6px;cursor:pointer;transition:all .15s ease}
+.nx-statusbar-btn:hover{background:var(--nx-surface-3, rgba(255,255,255,0.06));border-color:var(--nx-border);color:var(--nx-text-primary)}
 .nx-statusbar-working{color:var(--nx-warning);font-weight:600}
 .nx-status-dot{width:6px;height:6px;border-radius:50%}
 .nx-status-dot--working{background:var(--nx-warning);box-shadow:0 0 6px var(--nx-warning)}
@@ -112,6 +114,25 @@ button { color:inherit; }
 .nx-statusbar-version{font-family:var(--nx-font-mono);font-size:11px;color:var(--nx-muted)}
 .nx-statusbar-version strong{color:var(--nx-text-soft)}
 .nx-statusbar-local{color:var(--nx-success)}
+
+/* Branch Switcher Modal */
+.nx-branch-switcher{display:flex;flex-direction:column;gap:12px}
+.nx-branch-status-row{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--nx-surface-2, rgba(255,255,255,0.03));border:1px solid var(--nx-border);border-radius:8px;font-size:12.5px}
+.nx-branch-current{display:flex;align-items:center;gap:6px;color:var(--nx-text-muted)}
+.nx-branch-current strong{color:var(--nx-accent-text);font-family:var(--nx-font-mono)}
+.nx-branch-search-row{display:flex;align-items:center;gap:8px}
+.nx-branch-create-box{padding:10px;background:var(--nx-surface-2, rgba(255,255,255,0.02));border:1px solid var(--nx-border);border-radius:8px}
+.nx-branch-create-input-group{display:flex;gap:8px;margin-top:6px}
+.nx-branch-list-container{max-height:260px;overflow-y:auto;border:1px solid var(--nx-border);border-radius:8px;background:var(--nx-surface-1, rgba(0,0,0,0.2))}
+.nx-branch-items{list-style:none;margin:0;padding:4px}
+.nx-branch-item{width:100%;display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:transparent;border:0;border-radius:6px;color:var(--nx-text-primary);font-size:12.5px;font-family:var(--nx-font-mono);cursor:pointer;transition:all .12s;text-align:left}
+.nx-branch-item:hover{background:var(--nx-surface-3, rgba(255,255,255,0.06));color:var(--nx-accent-text)}
+.nx-branch-item--active{background:color-mix(in srgb,var(--nx-accent) 15%,transparent);color:var(--nx-accent-text);font-weight:600}
+.nx-branch-item-name{display:flex;align-items:center;gap:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nx-branch-active-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--nx-success);font-weight:600}
+.nx-branch-empty{padding:24px;text-align:center;color:var(--nx-text-muted);font-size:13px;display:flex;flex-direction:column;align-items:center;gap:10px}
+.nx-branch-loading{padding:24px;display:flex;justify-content:center}
+.nx-branch-footer-info{padding:0 4px}
 
 /* Welcome Modal */
 .nx-welcome-modal{display:grid;gap:14px}

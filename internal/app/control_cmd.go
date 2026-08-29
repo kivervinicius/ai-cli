@@ -106,6 +106,7 @@ SUBCOMMANDS:
   doctor [--json]               Audit control runtime environment and drivers
   web [--port <port>] [--no-open] [--listen <ip>] [--remote]
                                 Open browser-based Web Workspace OS
+                                Default port: 3000 (override with NEXUS_WEB_PORT env var)
 
 FLAGS:
   --json                        Output in machine-readable JSON format
@@ -119,10 +120,18 @@ func controlWebCmd(args []string) error {
 	var noOpen bool
 	var remote bool
 
+	// Resolve port: CLI flag > env var > default (3000)
+	port = web.DefaultPort
+	if envPort := os.Getenv("NEXUS_WEB_PORT"); envPort != "" {
+		if p, err := strconv.Atoi(envPort); err == nil && p > 0 && p <= 65535 {
+			port = p
+		}
+	}
+
 	for i := 0; i < len(args); i++ {
 		if (args[i] == "--port" || args[i] == "-p") && i+1 < len(args) {
 			p, err := strconv.Atoi(args[i+1])
-			if err == nil {
+			if err == nil && p > 0 && p <= 65535 {
 				port = p
 			}
 			i++

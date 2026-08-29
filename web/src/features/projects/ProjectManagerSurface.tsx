@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   LayoutGrid,
@@ -19,7 +19,6 @@ import {
   Check,
   Sparkles,
   Layers,
-  CheckCircle2,
   Zap,
   FolderOpen,
   RefreshCw,
@@ -27,10 +26,12 @@ import {
   Terminal,
   Code2,
 } from 'lucide-react';
-import { Button, Card, Dialog, EmptyState, IconButton, Input, Badge, Segmented } from '../../design-system';
+import { Button, Card, Dialog, EmptyState, IconButton, Input, Badge, Segmented, Select, InlineAlert, Spinner } from '../../design-system';
 import { nexus } from '../../nexus/api';
 import type { Agent, Project } from '../../types';
 import { AddProjectModal } from './AddProjectModal';
+import { DirectoryBrowserModal } from './DirectoryBrowserModal';
+import { ProjectScanModal } from './ProjectScanModal';
 
 export const ProjectManagerSurface: React.FC<{
   projects: Project[];
@@ -57,6 +58,10 @@ export const ProjectManagerSurface: React.FC<{
   const [templateOpen, setTemplateOpen] = useState(false);
   const [configProject, setConfigProject] = useState<Project | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [dirPickerOpen, setDirPickerOpen] = useState(false);
+  const [scanModalOpen, setScanModalOpen] = useState(false);
+  const [newPath, setNewPath] = useState('');
+  const [newName, setNewName] = useState('');
 
   // Project configuration state
   const [cfgName, setCfgName] = useState('');
@@ -66,6 +71,11 @@ export const ProjectManagerSurface: React.FC<{
   const [cfgPolicy, setCfgPolicy] = useState('BALANCED');
   const [cfgBusy, setCfgBusy] = useState(false);
   const [cfgSuccess, setCfgSuccess] = useState(false);
+  const [cfgBranchList, setCfgBranchList] = useState<string[]>([]);
+  const [cfgBranchStatus, setCfgBranchStatus] = useState<{ isClean: boolean; count: number } | null>(null);
+  const [_cfgBranchLoading, setCfgBranchLoading] = useState(false);
+  const [cfgBranchSwitching, setCfgBranchSwitching] = useState(false);
+  const [cfgBranchAlert, setCfgBranchAlert] = useState<{ tone: 'success' | 'danger'; message: string } | null>(null);
 
   // Stats calculation
   const totalAgents = agents.length;
@@ -90,7 +100,7 @@ export const ProjectManagerSurface: React.FC<{
     return list;
   }, [projects, query, sortBy]);
 
-  const handleOpenConfig = (p: Project) => {
+  const handleOpenConfig = async (p: Project) => {
     setConfigProject(p);
     setCfgName(p.name);
     setCfgBranch(p.default_branch || 'main');
@@ -98,6 +108,40 @@ export const ProjectManagerSurface: React.FC<{
     setCfgIsolation(p.default_isolation || 'project');
     setCfgPolicy(p.resource_policy || 'BALANCED');
     setCfgSuccess(false);
+    setCfgBranchAlert(null);
+    setCfgBranchLoading(true);
+    try {
+      const res = await nexus.getProjectBranches(p.id);
+      setCfgBranchList(res.branches || []);
+      setCfgBranchStatus({ isClean: res.is_clean, count: res.modified_count });
+      if (res.current_branch) {
+        setCfgBranch(res.current_branch);
+      }
+    } catch {
+      setCfgBranchList([]);
+      setCfgBranchStatus(null);
+    } finally {
+      setCfgBranchLoading(false);
+    }
+  };
+
+  const handleDirectCheckout = async (targetBranch: string) => {
+    if (!configProject || !targetBranch.trim() || cfgBranchSwitching) return;
+    setCfgBranchSwitching(true);
+    setCfgBranchAlert(null);
+    try {
+      const res = await nexus.checkoutProjectBranch(configProject.id, targetBranch.trim());
+      if (res.success) {
+        setCfgBranch(res.current_branch);
+        setCfgBranchAlert({ tone: 'success', message: `✓ Alternado com sucesso para branch ${res.current_branch}` });
+        const updated = { ...configProject, default_branch: res.current_branch };
+        onProjectUpdated(updated);
+      }
+    } catch (err: any) {
+      setCfgBranchAlert({ tone: 'danger', message: err?.message || 'Falha ao trocar de branch' });
+    } finally {
+      setCfgBranchSwitching(false);
+    }
   };
 
   const handleSaveConfig = async () => {
@@ -546,10 +590,57 @@ export const ProjectManagerSurface: React.FC<{
               <Input value={cfgName} onChange={setCfgName} placeholder={configProject.name} />
             </label>
 
-            <label>
-              {t('projectManager.branch')}
-              <Input value={cfgBranch} onChange={setCfgBranch} placeholder="main" mono />
-            </label>
+            {/* Git Branch Management & Selector */}
+            <div className="nx-config-branch-section">
+              <div className="nx-config-branch-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--nx-text-primary)' }}>
+                  {t('projectManager.branch', 'Branch Padrão / Galho')}
+                </span>
+                {cfgBranchStatus && (
+                  <Badge tone={cfgBranchStatus.isClean ? 'success' : 'warning'}>
+                    {cfgBranchStatus.isClean
+                      ? t('git.cleanTree', '● Árvore limpa')
+                      : t('git.dirtyTree', `● ${cfgBranchStatus.count} alterações`)}
+                  </Badge>
+                )}
+              </div>
+
+              {cfgBranchAlert && (
+                <div style={{ marginBottom: '8px' }}>
+                  <InlineAlert tone={cfgBranchAlert.tone}>
+                    {cfgBranchAlert.message}
+                  </InlineAlert>
+                </div>
+              )}
+
+              <div className="nx-config-branch-controls" style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '12px' }}>
+                {cfgBranchList.length > 0 ? (
+                  <Select
+                    value={cfgBranch}
+                    onChange={setCfgBranch}
+                    options={cfgBranchList.map((b) => ({ value: b, label: b }))}
+                    className="nx-flex-1"
+                  />
+                ) : (
+                  <Input
+                    value={cfgBranch}
+                    onChange={setCfgBranch}
+                    placeholder="main"
+                    mono
+                    className="nx-flex-1"
+                  />
+                )}
+                <Button
+                  size="sm"
+                  tone="brand"
+                  disabled={cfgBranchSwitching || !cfgBranch.trim()}
+                  onClick={() => handleDirectCheckout(cfgBranch)}
+                  title={t('git.checkoutNow', 'Trocar de branch agora no repositório local')}
+                >
+                  {cfgBranchSwitching ? <Spinner label="" /> : <><GitBranch size={12} /> {t('git.checkoutBtn', 'Checkout')}</>}
+                </Button>
+              </div>
+            </div>
 
             <label>
               {t('overview.maestroMode')}

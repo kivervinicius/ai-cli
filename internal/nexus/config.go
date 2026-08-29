@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"time"
+
+	"github.com/kivervinicius/ai-cli/internal/control/launcher"
+	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
 
 // AgentConfig is the persistent, revisioned configuration for an Agent (Gate 3).
@@ -15,8 +19,8 @@ type AgentConfig struct {
 	Model            string            `json:"model,omitempty"`
 	Options          map[string]any    `json:"options,omitempty"`
 	Workspace        string            `json:"workspace,omitempty"`
-	Isolation        string            `json:"isolation,omitempty"`        // "project" | "global" | "none"
-	MaestroMode      string            `json:"maestro_mode,omitempty"`    // "OFF" | "ASSIST" | "ORCHESTRATE"
+	Isolation        string            `json:"isolation,omitempty"`         // "project" | "global" | "none"
+	MaestroMode      string            `json:"maestro_mode,omitempty"`      // "OFF" | "ASSIST" | "ORCHESTRATE"
 	ContinuityPolicy string            `json:"continuity_policy,omitempty"` // "auto" | "native" | "new_session"
 	Environment      map[string]string `json:"environment,omitempty"`
 	Allocation       *AllocationPolicy `json:"allocation,omitempty"`
@@ -24,26 +28,26 @@ type AgentConfig struct {
 
 // AllocationPolicy controls how provider resources are allocated to an agent.
 type AllocationPolicy struct {
-	PreferProvider   string `json:"prefer_provider,omitempty"`
-	MaxConcurrent    int    `json:"max_concurrent,omitempty"`
-	QuotaPreserve    bool   `json:"quota_preserve,omitempty"`
-	CooldownSeconds  int    `json:"cooldown_seconds,omitempty"`
+	PreferProvider  string `json:"prefer_provider,omitempty"`
+	MaxConcurrent   int    `json:"max_concurrent,omitempty"`
+	QuotaPreserve   bool   `json:"quota_preserve,omitempty"`
+	CooldownSeconds int    `json:"cooldown_seconds,omitempty"`
 }
 
 // OptionSpec describes a single configuration option owned by a provider driver.
 // The UI renders these generically — no provider-specific React conditionals.
 type OptionSpec struct {
-	Key              string   `json:"key"`
-	Label            string   `json:"label"`
-	Description      string   `json:"description,omitempty"`
-	Type             string   `json:"type"` // "string" | "number" | "boolean" | "select" | "multiselect" | "text"
-	Default          any      `json:"default,omitempty"`
-	Choices          []Choice `json:"choices,omitempty"`
-	Validation       string   `json:"validation,omitempty"`       // regex or rule name
-	Sensitive        bool     `json:"sensitive,omitempty"`
-	Advanced         bool     `json:"advanced,omitempty"`
-	RestartRequired  bool     `json:"restart_required,omitempty"` // continuity impact
-	Group            string   `json:"group,omitempty"`            // UI section grouping
+	Key             string   `json:"key"`
+	Label           string   `json:"label"`
+	Description     string   `json:"description,omitempty"`
+	Type            string   `json:"type"` // "string" | "number" | "boolean" | "select" | "multiselect" | "text"
+	Default         any      `json:"default,omitempty"`
+	Choices         []Choice `json:"choices,omitempty"`
+	Validation      string   `json:"validation,omitempty"` // regex or rule name
+	Sensitive       bool     `json:"sensitive,omitempty"`
+	Advanced        bool     `json:"advanced,omitempty"`
+	RestartRequired bool     `json:"restart_required,omitempty"` // continuity impact
+	Group           string   `json:"group,omitempty"`            // UI section grouping
 }
 
 // Choice is a labeled value for select/multiselect options.
@@ -64,13 +68,13 @@ const (
 
 // ConfigImpact describes the result of comparing current vs proposed config.
 type ConfigImpact struct {
-	Mode             ImpactMode     `json:"mode"`
-	ChangedFields    []string       `json:"changed_fields"`
-	RequiresRestart  bool           `json:"requires_restart"`
-	RequiresNewSess  bool           `json:"requires_new_session"`
-	CurrentConfig    *AgentConfig   `json:"current_config,omitempty"`
-	ProposedConfig   *AgentConfig   `json:"proposed_config,omitempty"`
-	Warnings         []string       `json:"warnings,omitempty"`
+	Mode            ImpactMode   `json:"mode"`
+	ChangedFields   []string     `json:"changed_fields"`
+	RequiresRestart bool         `json:"requires_restart"`
+	RequiresNewSess bool         `json:"requires_new_session"`
+	CurrentConfig   *AgentConfig `json:"current_config,omitempty"`
+	ProposedConfig  *AgentConfig `json:"proposed_config,omitempty"`
+	Warnings        []string     `json:"warnings,omitempty"`
 }
 
 // ParseAgentConfig deserializes a JSON config string into AgentConfig.
@@ -154,9 +158,10 @@ func AnalyzeImpact(current, proposed AgentConfig) ConfigImpact {
 	return impact
 }
 
-// SafeApply applies a config change atomically: creates revision, analyzes
-// impact, and if the agent has a live runtime that needs restart, performs
-// the restart. Returns the impact for UI preview.
+// SafeApply applies a config change transactionally: validates candidate config,
+// analyzes impact, stops previous runtime gracefully if restart is needed,
+// launches generation N+1 without creating duplicate revisions, commits
+// revision atomically, and provides automatic rollback on launch failure.
 func (n *Nexus) SafeApply(ctx context.Context, agentID string, proposed AgentConfig) (*ConfigImpact, error) {
 	st, err := n.OpenProject()
 	if err != nil {
@@ -168,8 +173,15 @@ func (n *Nexus) SafeApply(ctx context.Context, agentID string, proposed AgentCon
 		return nil, err
 	}
 
+	// Resolve project canonical workspace (§14).
+	proj, perr := st.GetProject(agent.ProjectID)
+	if perr != nil {
+		return nil, fmt.Errorf("resolve agent project: %w", perr)
+	}
+
 	// Load current config from the agent's current revision.
 	var current AgentConfig
+	oldRevID := agent.CurrentRevisionID
 	if agent.CurrentRevisionID != "" {
 		rev, rerr := st.GetRevision(agent.CurrentRevisionID)
 		if rerr == nil {
@@ -183,39 +195,123 @@ func (n *Nexus) SafeApply(ctx context.Context, agentID string, proposed AgentCon
 		return &impact, nil // no-op
 	}
 
-	// Create new immutable config revision (N+1).
+	// Validate required fields
+	if proposed.Provider == "" {
+		return nil, fmt.Errorf("provider is required (no implicit fallback)")
+	}
+	if proposed.Profile == "" {
+		proposed.Profile = "default"
+	}
+
+	// Case 1: Live change (e.g. MaestroMode, Allocation Policy) — no restart needed.
+	if !impact.RequiresRestart && !impact.RequiresNewSess {
+		rev, err := st.AddRevision(agentID, proposed.ConfigJSON())
+		if err != nil {
+			return nil, fmt.Errorf("create config revision: %w", err)
+		}
+		agent.CurrentRevisionID = rev.ID
+		if err := st.UpdateAgent(agent); err != nil {
+			return nil, fmt.Errorf("update agent revision: %w", err)
+		}
+		return &impact, nil
+	}
+
+	// Case 2: Restart required — execute ReconfigureTransaction (A5).
+	oldGen, gerr := st.CurrentGeneration(agentID)
+	wasAlive := gerr == nil && n.runtimeAlive(oldGen.RuntimeID)
+
+	// Step 1: Freeze writer & set RECONFIGURING state.
+	agent.Status = store.AgentReconfig
+	_ = st.UpdateAgent(agent)
+	n.notifyAgentState(agentID, "RECONFIGURING")
+
+	// Step 2: Stop old runtime if it was alive.
+	if wasAlive {
+		if err := n.StopAgent(ctx, agentID); err != nil {
+			// Rollback to previous state
+			agent.Status = store.AgentWorking
+			_ = st.UpdateAgent(agent)
+			n.notifyAgentState(agentID, "WORKING")
+			return nil, fmt.Errorf("stop current runtime for config apply: %w", err)
+		}
+	}
+
+	// Step 3: Create single immutable config revision (N+1).
 	rev, err := st.AddRevision(agentID, proposed.ConfigJSON())
 	if err != nil {
+		agent.Status = store.AgentRecoverable
+		_ = st.UpdateAgent(agent)
 		return nil, fmt.Errorf("create config revision: %w", err)
 	}
 
-	// Update agent's current revision.
+	// Step 4: Launch generation N+1 with proposed config directly.
+	sess, err := n.launcher.Launch(ctx, launcher.LaunchOptions{
+		ProviderID:  proposed.Provider,
+		ProfileID:   proposed.Profile,
+		Workspace:   proj.CanonicalPath,
+		Model:       proposed.Model,
+		Environment: proposed.Environment,
+		Isolation:   proposed.Isolation,
+		Options:     proposed.Options,
+	})
+	if err != nil {
+		// Launch failed: rollback current revision pointer to oldRevID and mark RECOVERABLE
+		agent.CurrentRevisionID = oldRevID
+		agent.Status = store.AgentRecoverable
+		_ = st.UpdateAgent(agent)
+		n.notifyAgentState(agentID, "RECOVERABLE")
+		return nil, fmt.Errorf("launch runtime generation for config apply: %w", err)
+	}
+
+	// Step 5: Commit runtime generation N+1.
+	newGen := store.RuntimeGeneration{
+		AgentID:         agentID,
+		RevisionID:      rev.ID,
+		RuntimeID:       sess.RuntimeID,
+		Provider:        proposed.Provider,
+		Profile:         proposed.Profile,
+		ProviderSession: sess.ProviderSessionID,
+		Continuity:      store.ContinuityLiveSameRuntime,
+		StartedAt:       time.Now().UTC(),
+		State:           "RUNNING",
+	}
+	if _, err := st.AddGeneration(newGen); err != nil {
+		n.stopRuntime(sess.RuntimeID)
+		agent.CurrentRevisionID = oldRevID
+		agent.Status = store.AgentRecoverable
+		_ = st.UpdateAgent(agent)
+		return nil, fmt.Errorf("commit runtime generation: %w", err)
+	}
+
+	// Step 6: Atomically switch Agent current revision and status to WORKING.
+	agent.Status = store.AgentWorking
 	agent.CurrentRevisionID = rev.ID
-	if err := st.UpdateAgent(agent); err != nil {
-		return nil, fmt.Errorf("update agent revision: %w", err)
+	agent.ContinuityStatus = store.ContinuityLiveSameRuntime
+	now := time.Now().UTC()
+	agent.LastStartedAt = &now
+	_ = st.UpdateAgent(agent)
+
+	// Step 7: Record lineage edge if provider or session changed.
+	if wasAlive && oldGen.RuntimeID != "" {
+		_ = st.AddLineage(store.LineageEntry{
+			AgentID:       agentID,
+			Relation:      "RECONFIGURE_RESTART",
+			SourceRuntime: oldGen.RuntimeID,
+			SourceSession: oldGen.ProviderSession,
+			TargetRuntime: sess.RuntimeID,
+			TargetSession: sess.ProviderSessionID,
+			CreatedAt:     time.Now().UTC(),
+		})
 	}
 
-	// If the agent has a live runtime and the config requires restart, do it.
-	if impact.RequiresRestart || impact.RequiresNewSess {
-		gen, gerr := st.CurrentGeneration(agentID)
-		if gerr == nil && n.runtimeAlive(gen.RuntimeID) {
-			// Stop the current runtime.
-			if err := n.StopAgent(ctx, agentID); err != nil {
-				return nil, fmt.Errorf("stop for config apply: %w", err)
-			}
-
-			// Start with new config.
-			profile := proposed.Profile
-			if profile == "" {
-				profile = "default"
-			}
-			sess, err := n.StartAgent(ctx, agentID, proposed.Provider, profile)
-			if err != nil {
-				return nil, fmt.Errorf("restart for config apply: %w", err)
-			}
-			_ = sess // runtime is now running with new config
-		}
+	// Step 8: Notify terminal broker and observers.
+	oldRuntimeID := ""
+	if wasAlive {
+		oldRuntimeID = oldGen.RuntimeID
 	}
+	n.notifyRuntimeChanged(agentID, oldRuntimeID, sess.RuntimeID, proposed.Provider, proposed.Profile, store.ContinuityLiveSameRuntime)
+	n.notifyAgentState(agentID, "WORKING")
+	n.notifyContinuity(agentID, store.ContinuityLiveSameRuntime)
 
 	return &impact, nil
 }

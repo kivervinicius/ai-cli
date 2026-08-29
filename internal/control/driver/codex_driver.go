@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
@@ -148,6 +149,7 @@ func (d *CodexDriver) BuildCommand(ctx context.Context, p model.Profile, extraAr
 		"CODEX_CONFIG_DIR": home,
 		"AI_PROFILE":       p.Name,
 		"AI_PROVIDER":      "codex",
+		"PATH":             runtime.EnhancedPATH(filepath.Dir(bin)),
 	})
 
 	return bin, extraArgs, env, nil

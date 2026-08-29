@@ -145,6 +145,7 @@ func (d *ClaudeDriver) BuildCommand(ctx context.Context, p model.Profile, extraA
 		"CLAUDE_CONFIG_DIR": filepath.Join(home, ".claude"),
 		"AI_PROFILE":        p.Name,
 		"AI_PROVIDER":       "claude",
+		"PATH":              runtime.EnhancedPATH(filepath.Dir(bin)),
 	})
 
 	return bin, extraArgs, env, nil

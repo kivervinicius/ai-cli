@@ -209,9 +209,9 @@ func GroupDisplayName(groupKey string) string {
 
 // sortGroupOrder defines a stable display order for model groups.
 var sortGroupOrder = map[string]int{
-	"":            0,
-	"gemini":      1,
-	"claude_gpt":  2,
+	"":           0,
+	"gemini":     1,
+	"claude_gpt": 2,
 }
 
 // SortModelGroups orders model groups for consistent display.

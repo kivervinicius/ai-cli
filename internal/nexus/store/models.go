@@ -156,7 +156,7 @@ type Mission struct {
 	Description string     `json:"description"`
 	Status      string     `json:"status"`
 	Goal        string     `json:"goal"`
-	Scope       string     `json:"scope"`     // "project" | "agent" | "task"
+	Scope       string     `json:"scope"`      // "project" | "agent" | "task"
 	RiskLevel   string     `json:"risk_level"` // "low" | "medium" | "high"
 	Config      string     `json:"config"`     // JSON object
 	CreatedAt   time.Time  `json:"created_at"`
@@ -172,7 +172,7 @@ type MissionTask struct {
 	Name         string     `json:"name"`
 	Description  string     `json:"description"`
 	Status       string     `json:"status"`
-	Kind         string     `json:"kind"`   // "action" | "config" | "security" | "verify"
+	Kind         string     `json:"kind"` // "action" | "config" | "security" | "verify"
 	Priority     int        `json:"priority"`
 	Dependencies string     `json:"dependencies"` // JSON array of task IDs
 	Config       string     `json:"config"`       // JSON object

@@ -5,9 +5,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
-  Sparkles,
   ExternalLink,
-  ShieldAlert,
   Layers,
 } from 'lucide-react';
 import { Dialog, Button, Badge } from '../../design-system';

@@ -173,14 +173,14 @@ export const AddProjectModal: React.FC<{
       <DirectoryBrowserModal
         open={dirPickerOpen}
         onClose={() => setDirPickerOpen(false)}
-        onSelect={handleDirectorySelected}
+        onSelectPath={handleDirectorySelected}
       />
 
       {/* Project Auto-Scan Modal */}
       <ProjectScanModal
         open={scanModalOpen}
         onClose={() => setScanModalOpen(false)}
-        onImport={(imported) => {
+        onProjectImported={(imported: Project) => {
           onCreated(imported);
           onClose();
         }}

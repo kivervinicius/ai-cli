@@ -10,8 +10,6 @@ import {
   Menu,
   MoonStar,
   Network,
-  Wifi,
-  Sparkles,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Badge, IconButton } from '../design-system';
@@ -29,7 +27,7 @@ export const NexusShell: React.FC<{
   rail: React.ReactNode;
   children: React.ReactNode;
   onOpenRail: () => void;
-  onOpenSurface: (kind: string) => void;
+  onOpenSurface?: (kind: string) => void;
   onCommand: () => void;
   onOpenWelcome: () => void;
   onOpenProjectManager: () => void;
@@ -43,7 +41,7 @@ export const NexusShell: React.FC<{
   rail,
   children,
   onOpenRail,
-  onOpenSurface,
+  onOpenSurface: _onOpenSurface,
   onCommand,
   onOpenWelcome,
   onOpenProjectManager,

@@ -94,6 +94,7 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 		"HOME":            home,
 		"GEMINI_CLI_HOME": home,
 		"XDG_CONFIG_HOME": filepath.Join(home, ".config"),
+		"PATH":            runtime.EnhancedPATH(filepath.Dir(bin)),
 	}
 	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
 		envMap["SSH_AUTH_SOCK"] = sock

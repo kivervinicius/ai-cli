@@ -27,15 +27,12 @@ type TerminalMessage struct {
 }
 
 type TerminalHub struct {
-	auth   *AuthManager
-	mu     sync.Mutex
-	leases map[string]*websocket.Conn // runtimeID -> active writer conn
+	auth *AuthManager
 }
 
 func NewTerminalHub(auth *AuthManager) *TerminalHub {
 	return &TerminalHub{
-		auth:   auth,
-		leases: make(map[string]*websocket.Conn),
+		auth: auth,
 	}
 }
 
@@ -170,54 +167,6 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 		}
 	}()
 
-	// Lease allocation
-	h.mu.Lock()
-	hasLease := false
-	if h.leases[runtimeID] == nil {
-		h.leases[runtimeID] = ws
-		hasLease = true
-	}
-	h.mu.Unlock()
-
-	defer func() {
-		h.mu.Lock()
-		if h.leases[runtimeID] == ws {
-			delete(h.leases, runtimeID)
-			// Out-of-band RPC — separate connection, never pollutes PTY stdin
-			go func() {
-				if c, err := protocol.NewClient(runtimeID); err == nil {
-					_, _ = c.Send(protocol.CmdLeaseRelease, nil)
-					_ = c.Close()
-				}
-			}()
-		}
-		h.mu.Unlock()
-	}()
-
-	role = "VIEW_ONLY"
-	if hasLease {
-		role = "CONTROL"
-		// Out-of-band RPC acquire
-		go func() {
-			if c, err := protocol.NewClient(runtimeID); err == nil {
-				_, _ = c.Send(protocol.CmdLeaseAcquire, nil)
-				_ = c.Close()
-			}
-		}()
-	} else {
-		// Out-of-band RPC release (view-only attach)
-		go func() {
-			if c, err := protocol.NewClient(runtimeID); err == nil {
-				_, _ = c.Send(protocol.CmdLeaseRelease, nil)
-				_ = c.Close()
-			}
-		}()
-	}
-	_ = safeWriteJSON(TerminalMessage{
-		Type: "lease",
-		Role: role,
-	})
-
 	// 1. Pump stdout from child process to browser
 	go func() {
 		buf := make([]byte, 2048)
@@ -257,11 +206,8 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 
 		switch msg.Type {
 		case "input":
-			h.mu.Lock()
-			currentWriter := h.leases[runtimeID]
-			h.mu.Unlock()
-
-			if currentWriter == ws && msg.Data != "" {
+			// Authoritative writer check on Agent level (§45, A6)
+			if broker.IsWriter(agentID, ws) && msg.Data != "" {
 				_, _ = rawConn.Write([]byte(msg.Data))
 			}
 
@@ -277,38 +223,31 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 			}
 
 		case "lease_acquire":
-			h.mu.Lock()
-			h.leases[runtimeID] = ws
-			h.mu.Unlock()
-			// Out-of-band RPC acquire
-			go func() {
-				if c, err := protocol.NewClient(runtimeID); err == nil {
-					_, _ = c.Send(protocol.CmdLeaseAcquire, nil)
-					_ = c.Close()
-				}
-			}()
-			_ = safeWriteJSON(TerminalMessage{
-				Type: "lease",
-				Role: "CONTROL",
-			})
+			if broker.TakeControl(agentID, ws) {
+				_ = safeWriteJSON(TerminalMessage{
+					Type: "lease",
+					Role: "CONTROL",
+				})
+				go func() {
+					if c, err := protocol.NewClient(runtimeID); err == nil {
+						_, _ = c.Send(protocol.CmdLeaseAcquire, nil)
+						_ = c.Close()
+					}
+				}()
+			}
 
 		case "lease_release":
-			h.mu.Lock()
-			if h.leases[runtimeID] == ws {
-				delete(h.leases, runtimeID)
-			}
-			h.mu.Unlock()
-			// Out-of-band RPC release
+			broker.ReleaseControl(agentID, ws)
+			_ = safeWriteJSON(TerminalMessage{
+				Type: "lease",
+				Role: "VIEW_ONLY",
+			})
 			go func() {
 				if c, err := protocol.NewClient(runtimeID); err == nil {
 					_, _ = c.Send(protocol.CmdLeaseRelease, nil)
 					_ = c.Close()
 				}
 			}()
-			_ = safeWriteJSON(TerminalMessage{
-				Type: "lease",
-				Role: "VIEW_ONLY",
-			})
 		}
 	}
 }

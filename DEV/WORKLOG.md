@@ -1,6 +1,24 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
 ## Date: 2026-08-29
+- **Git Branch Switching & Management in Project Settings and Taskbar (`BranchSwitcherModal.tsx`, `WorkspaceTaskbar.tsx`, `ProjectManagerSurface.tsx`)**:
+  - **Git REST Endpoints (`internal/control/web/handlers_nexus.go`)**: Implemented `GET /api/v1/projects/:id/git/branches` and `POST /api/v1/projects/:id/git/checkout` returning local/remote branch lists, working tree status (`is_clean`, uncommitted modifications count), and executing branch checkouts/creation safely while persisting changes to SQLite.
+  - **Quick Branch Switcher Modal (`BranchSwitcherModal.tsx`)**: Created dedicated modal with branch search filtering, active branch indicators (`✓ Ativa`), repository cleanliness badge (`● Árvore limpa` / `● N alterações`), and new branch creation with 1-click checkout.
+  - **Taskbar Footer Integration (`WorkspaceTaskbar.tsx`)**: Transformed the static footer branch item into an interactive button (`.nx-statusbar-btn`) that opens the `BranchSwitcherModal` from anywhere in the Workspace OS.
+  - **Project Configuration Modal (`ProjectManagerSurface.tsx`)**: Replaced static text input with dynamic Git branch dropdown select, real-time working tree status badge, and direct "Fazer Checkout" button.
+- **Orquestrador Maestro Discovery & Reconnection (`internal/nexus/maestro.go`)**:
+  - **CLI Version Query & Dynamic Skills Catalog**: Updated `maestro.go` to discover the real `orquestrador-maestro` CLI version (`0.1.25`) and dynamically parse over 50 skills, quality gates (`dev-worklog-gate`, `tdd-verification`, `plan-approval`, `code-review`), and workflows from `~/.orquestrador/SKILLS_MANIFEST.json`.
+  - **Engineering Advice Engine**: Connected `GetAdvice` to generate contextual engineering guidance based on project state and Maestro rules, removing the false `DEGRADED` status and marking Maestro as `AVAILABLE` (`ASSIST` mode).
+- **Universal Provider Toolchain PATH & Auto-Update Fix (`internal/runtime/`, `adapters/`, `driver/`)**:
+  - **EnhancedPATH Helper (`internal/runtime/runtime.go`)**: Built an intelligent PATH aggregator that automatically discovers and injects developer toolchains (`~/.nvm/versions/node/*/bin`, `~/.bun/bin`, `~/.cargo/bin`, `~/.local/share/pnpm`, `~/.local/bin`, `~/.fnm`, `~/.asdf`, `/usr/local/bin`, `/usr/bin`) and the provider binary parent directory.
+  - **CLI Adapters Injection (`adapters/codex/`, `claude/`, `agy/`, `opencode/`, `gemini/`)**: Injected `EnhancedPATH` into all interactive provider execution environments, resolving the `No such file or directory (os error 2)` error during Codex/Claude auto-updates (`npm install -g @openai/codex`) and MCP server spawns.
+  - **Workspace OS Drivers Injection (`internal/control/driver/`)**: Injected `EnhancedPATH` into all supervised runtime drivers (`codex_driver.go`, `claude_driver.go`, `agy_driver.go`, `opencode_driver.go`, `gemini_driver.go`), ensuring terminal sessions opened via the web UI have full access to host developer tools.
+- **Release Manager Live Progress, Spinner & Atomic Installation (`internal/release/`)**:
+  - **Live Animated Spinner & Elapsed Timer (`tui.go`)**: Added animated spinner (`⠋`, `⠙`, `⠹`...) and live execution timer during the `"building"` step so the user always has clear visual feedback and knows that the process is running automatically.
+  - **4-Phase Status Tracking**: Displays status (`✓`, `⠋`, `○`, `✗`) for each of the 4 release steps: Web Frontend compilation, Go binary compilation with metadata LDFLAGS, atomic installation to `~/.local/bin/nexus` and alias `ai`, and binary validation.
+  - **Bun Build Speedup (`release.go`)**: Added automatic detection of `bun` in `PATH` to run `bun run build` in ~200ms (with transparent fallback to `npm run build`), significantly accelerating release times.
+  - **Atomic Binary Replacement (`copyFile` in `release.go` & `Makefile`)**: Switched to temporary file creation and atomic rename/move (`os.Rename` / `mv -f`) to prevent Linux kernel `ETXTBSY` ("text file busy") errors when installing a new binary while previous instances are running.
+  - **Clear Exit & Status Guidance**: Explicitly displays completion summaries and instructions on when to exit (`Enter`, `q` or `Esc`).
 - **Project Creation UI Unification (`AddProjectModal.tsx`)**:
   - **Unified Component**: Extracted and created `AddProjectModal.tsx` as the single source of truth for adding/creating local projects across the entire Nexus web app.
   - **OS Integration Everywhere**: Integrated `DirectoryBrowserModal` ("Procurar Pastas no SO…"), `ProjectScanModal` ("Escanear Projetos do Sistema…"), real-time live filesystem inspection (`/api/v1/fs/inspect`), Git branch detection badges, and tech stack badges directly into both the left lateral rail (`ProjectRail.tsx`) and the project manager workspace (`ProjectManagerSurface.tsx`).
@@ -641,3 +659,45 @@ Linux runtime fully verified. Windows/macOS build-verified only (conditional lim
 - `go test ./...`: ALL PASS
 - `web/node_modules/.bin/tsc --noEmit -p web/tsconfig.json`: PASS
 - `web/node_modules/.bin/vitest run`: 10 files / 44 tests PASS
+
+---
+
+## 2026-08-29 — Nexus V1 Autopilot Completion (Phases A through J)
+
+**Objective**: Complete the full Nexus architecture: Foundation Corrections, Resource Recommendation, Nexus Intelligence, Structured WorkPlans, Visual Plan Builder, Durable Autonomous Mission Runner, and Web-First CLI experience.
+
+### Key Deliverables & Architectural Modules
+1. **Foundation Corrections (Phase A)**:
+   - Reconciled live effective agent state in `GET /api/v1/projects/:id/agents` and detail endpoints.
+   - Agent recovery reconstructs launch state strictly from Project Canonical Path, AgentConfigRevision (model, options, env, isolation).
+   - Implemented transactional SafeApply with `ReconfigureTransaction` semantics (creates single revision, stops old runtime gracefully, switches generation atomically, auto-rollbacks on launch error).
+   - Unified single-writer lease authority in `AgentTerminalBroker` tied to stable `AgentID`.
+   - Hardened network security (refuses `0.0.0.0`/`::` wildcard binds, enforces loopback or explicit private IP, origin checking, 24h session expiry with 4h idle timeout, session revocation/rotation).
+   - Added Git branch safety policy blocking checkouts when agents are active in the canonical workspace.
+2. **Resource Recommendation Service (Phase B)**:
+   - Implemented `internal/nexus/resource_recommendation.go` with multi-criteria scoring (`BALANCED`, `PRESERVE_QUOTA`, `PREFER_PROVIDER`, `MANUAL`).
+   - Exposed `POST /api/v1/resources/recommend`.
+3. **Nexus Intelligence Layer (Phase C)**:
+   - Implemented `internal/nexus/intelligence/` (`OpenAIIntelligenceProvider`, `NexusEngine`, heuristic fallbacks).
+   - Structured ambiguity evaluation (`BLOCKING`, `IMPORTANT`, `LOW_IMPACT`) and deterministic prompt compilation.
+4. **Structured WorkPlans & Prompt Compilation (Phase D)**:
+   - Added SQLite migration `0003_workplans.sql` and `internal/nexus/store/plans.go` (`WorkPlan`, `PlanPhase`, `WorkPackage`, `PlanRevision`, `ExecutionSnapshot`).
+   - Added plan CRUD, revision history, and package prompt compilation in `internal/nexus/plan.go`.
+5. **Visual Plan Builder Surface (Phase E)**:
+   - Implemented `web/src/features/work/PlanBuilderSurface.tsx` with AI intent decomposer, visual phase/package hierarchy, and live prompt compiler preview.
+   - Integrated into `WorkSurface.tsx` under Planned mode.
+6. **Durable Autonomous Mission Runner (Phase F & H)**:
+   - Implemented `internal/nexus/runner/` (`MissionRunner`, `AutonomyContract`, `RetryController`, `VerificationEngine`, `LeaseManager`).
+   - State machine: `READY -> ALLOCATE -> COMPILE -> EXECUTE -> TESTING -> REVIEWING -> VERIFIED -> COMPLETED`.
+7. **Web-First CLI Product Experience (Phase I)**:
+   - Default `nexus` and `ai` launch Web Workspace OS automatically.
+   - Added non-interactive CLI commands: `nexus plan`, `nexus agents`, `nexus projects`, `nexus open`.
+8. **Documentation & Release Gates (Phase J)**:
+   - Generated `DEV/NEXUS_V1_AUTONOMY_REPORT.md`, `DEV/NEXUS_V1_INTELLIGENCE_REPORT.md`, `DEV/NEXUS_V1_SCHEDULER_REPORT.md`, `DEV/NEXUS_V1_SECURITY_REPORT.md`, `DEV/NEXUS_V1_RELEASE_NOTES.md`, `DEV/NEXUS_V1_USER_GUIDE.md`.
+
+### Verification Evidence
+- `go test -race ./...`: 100% ALL PASS (0 race conditions).
+- `npx tsc --noEmit`: 0 errors.
+- `npx eslint .`: 0 errors, 0 warnings.
+- `bun run build`: Web bundle compiled in ~180ms.
+- `make build`: Nexus binary `v0.5.0-beta.4` compiled and installed.

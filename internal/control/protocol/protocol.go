@@ -11,24 +11,24 @@ const ProtocolVersion = 1
 type CommandType string
 
 const (
-	CmdPing             CommandType = "ping"
-	CmdStatus           CommandType = "status"
-	CmdMetadata         CommandType = "metadata"
-	CmdAttach           CommandType = "attach"
-	CmdDetach           CommandType = "detach"
-	CmdResize           CommandType = "resize"
-	CmdInput            CommandType = "input"
-	CmdStop             CommandType = "stop"
-	CmdTerminate        CommandType = "terminate"
-	CmdHandoff          CommandType = "handoff"
-	CmdContinue         CommandType = "continue"
-	CmdEvents           CommandType = "events"
-	CmdSlash            CommandType = "slash"
-	CmdLeaseAcquire     CommandType = "lease_acquire"
-	CmdLeaseRelease     CommandType = "lease_release"
-	CmdRuntimeChanged   CommandType = "runtime_changed"   // Gate 4: notify WS clients of generation switch
-	CmdAgentState       CommandType = "agent_state"       // Gate 4: push effective agent state
-	CmdContinuityState  CommandType = "continuity_state"  // Gate 4: push continuity status
+	CmdPing            CommandType = "ping"
+	CmdStatus          CommandType = "status"
+	CmdMetadata        CommandType = "metadata"
+	CmdAttach          CommandType = "attach"
+	CmdDetach          CommandType = "detach"
+	CmdResize          CommandType = "resize"
+	CmdInput           CommandType = "input"
+	CmdStop            CommandType = "stop"
+	CmdTerminate       CommandType = "terminate"
+	CmdHandoff         CommandType = "handoff"
+	CmdContinue        CommandType = "continue"
+	CmdEvents          CommandType = "events"
+	CmdSlash           CommandType = "slash"
+	CmdLeaseAcquire    CommandType = "lease_acquire"
+	CmdLeaseRelease    CommandType = "lease_release"
+	CmdRuntimeChanged  CommandType = "runtime_changed"  // Gate 4: notify WS clients of generation switch
+	CmdAgentState      CommandType = "agent_state"      // Gate 4: push effective agent state
+	CmdContinuityState CommandType = "continuity_state" // Gate 4: push continuity status
 )
 
 // Request is a versioned command request sent to a SessionHost.
@@ -79,12 +79,12 @@ type ContinuePayload struct {
 
 // RuntimeChangedPayload notifies WS clients that the agent's runtime generation changed (Gate 4).
 type RuntimeChangedPayload struct {
-	AgentID        string `json:"agent_id"`
-	OldRuntimeID   string `json:"old_runtime_id,omitempty"`
-	NewRuntimeID   string `json:"new_runtime_id"`
-	Provider       string `json:"provider"`
-	Profile        string `json:"profile"`
-	Continuity     string `json:"continuity"`
+	AgentID      string `json:"agent_id"`
+	OldRuntimeID string `json:"old_runtime_id,omitempty"`
+	NewRuntimeID string `json:"new_runtime_id"`
+	Provider     string `json:"provider"`
+	Profile      string `json:"profile"`
+	Continuity   string `json:"continuity"`
 }
 
 // AgentStatePayload pushes the honest effective agent state to WS clients (Gate 4).
@@ -95,7 +95,7 @@ type AgentStatePayload struct {
 
 // ContinuityStatePayload pushes continuity status updates (Gate 4).
 type ContinuityStatePayload struct {
-	AgentID   string `json:"agent_id"`
+	AgentID    string `json:"agent_id"`
 	Continuity string `json:"continuity"`
 }
 

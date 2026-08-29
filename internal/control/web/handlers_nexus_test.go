@@ -345,3 +345,63 @@ func TestNexusCSRFEnforcement(t *testing.T) {
 	pdresp, _ := client.Do(pdreq)
 	pdresp.Body.Close()
 }
+
+func TestAgentConfigApplyRejectsUnallocatedProvider(t *testing.T) {
+	client, srv, csrf := csrfClient(t)
+	projectDir := t.TempDir()
+	projectBody, _ := json.Marshal(map[string]string{"name": "Config validation", "path": projectDir})
+	projectReq, _ := http.NewRequest(http.MethodPost, srv.URL()+"/api/v1/projects", bytes.NewReader(projectBody))
+	projectReq.Header.Set("X-CSRF-Token", csrf)
+	projectResp, err := client.Do(projectReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer projectResp.Body.Close()
+	if projectResp.StatusCode != http.StatusCreated {
+		t.Fatalf("create project: got %d", projectResp.StatusCode)
+	}
+	var project store.Project
+	if err := json.NewDecoder(projectResp.Body).Decode(&project); err != nil {
+		t.Fatal(err)
+	}
+
+	agentReq, _ := http.NewRequest(http.MethodPost, srv.URL()+"/api/v1/projects/"+project.ID+"/agents", bytes.NewBufferString(`{"name":"Agent"}`))
+	agentReq.Header.Set("X-CSRF-Token", csrf)
+	agentResp, err := client.Do(agentReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer agentResp.Body.Close()
+	if agentResp.StatusCode != http.StatusCreated {
+		t.Fatalf("create agent: got %d", agentResp.StatusCode)
+	}
+	var agent store.Agent
+	if err := json.NewDecoder(agentResp.Body).Decode(&agent); err != nil {
+		t.Fatal(err)
+	}
+
+	applyReq, _ := http.NewRequest(http.MethodPost, srv.URL()+"/api/v1/agents/"+agent.ID+"/config/apply", bytes.NewBufferString(`{"provider":"not-a-provider","profile":"default"}`))
+	applyReq.Header.Set("X-CSRF-Token", csrf)
+	applyResp, err := client.Do(applyReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer applyResp.Body.Close()
+	if applyResp.StatusCode != http.StatusConflict {
+		t.Fatalf("unallocated provider must be rejected, got %d", applyResp.StatusCode)
+	}
+}
+
+func TestResourceAllocationRejectsAutomaticPolicy(t *testing.T) {
+	client, srv, csrf := csrfClient(t)
+	request, _ := http.NewRequest(http.MethodPost, srv.URL()+"/api/v1/resources/select", bytes.NewBufferString(`{"agent_id":"agt_example","provider":"codex","profile":"default","policy":"BALANCED"}`))
+	request.Header.Set("X-CSRF-Token", csrf)
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("manual allocation endpoint must reject automatic policy, got %d", response.StatusCode)
+	}
+}

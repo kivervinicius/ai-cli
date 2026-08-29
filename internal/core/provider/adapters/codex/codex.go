@@ -123,6 +123,7 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 		"XDG_CACHE_HOME":   filepath.Join(home, ".cache"),
 		"XDG_DATA_HOME":    filepath.Join(home, ".local", "share"),
 		"XDG_STATE_HOME":   filepath.Join(home, ".local", "state"),
+		"PATH":             runtime.EnhancedPATH(filepath.Dir(bin)),
 	}
 	env := runtime.EnvSet(os.Environ(), envOverrides)
 	return runtime.RunInteractive(bin, args, env, cwd)
