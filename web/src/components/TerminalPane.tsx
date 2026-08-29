@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { Shield, ShieldAlert, XSquare, Pencil, Check } from 'lucide-react';
+import { pushNotifications } from '../notifications/PushNotificationManager';
 
 interface TerminalPaneProps {
   runtimeId: string;
@@ -88,6 +89,21 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           term.write(msg.data);
         } else if (msg.type === 'lease') {
           setRole(msg.role === 'CONTROL' ? 'CONTROL' : 'VIEW_ONLY');
+        } else if (msg.type === 'title' && msg.data) {
+          setCustomTitle(msg.data);
+          if (onUpdateTitle) onUpdateTitle(runtimeId, msg.data);
+        } else if (msg.type === 'attention') {
+          if (msg.dynamic_title) {
+            setCustomTitle(msg.dynamic_title);
+            if (onUpdateTitle) onUpdateTitle(runtimeId, msg.dynamic_title);
+          }
+          pushNotifications.sendPush({
+            runtimeId,
+            projectName: msg.project_name,
+            reason: msg.attention_reason || 'QUESTION',
+            context: msg.context || msg.summary || 'Atenção necessária no terminal',
+            dynamicTitle: msg.dynamic_title,
+          });
         } else if (msg.type === 'error') {
           setErrorMsg(msg.data);
         }

@@ -275,6 +275,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				profs := m.filteredProfiles()
 				if idx < len(profs) {
 					p := profs[idx]
+					// Check availability before launching.
+					snap, _ := m.quotaEng.GetCachedUsage(p.Provider, p.Name)
+					acc := m.accounts[p.Provider+":"+p.Name]
+					qv := quota.BuildQuotaView(snap, acc.Email, acc.Plan)
+					if !qv.IsAvailable() {
+						reason := qv.AvailabilityLabel()
+						m.statusMsg = fmt.Sprintf("⚠ %s:%s indisponível (%s). Selecione outra conta.", p.Provider, p.Name, reason)
+						return m, nil
+					}
 					m.chosenResult = &SelectionResult{
 						Action:      ActionRunProfile,
 						Provider:    p.Provider,
@@ -360,6 +369,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				profs := m.filteredProfiles()
 				if len(profs) > 0 {
 					p := profs[m.selAccIndex%len(profs)]
+					// Check availability before launching.
+					snap, _ := m.quotaEng.GetCachedUsage(p.Provider, p.Name)
+					acc := m.accounts[p.Provider+":"+p.Name]
+					qv := quota.BuildQuotaView(snap, acc.Email, acc.Plan)
+					if !qv.IsAvailable() {
+						reason := qv.AvailabilityLabel()
+						m.statusMsg = fmt.Sprintf("⚠ %s:%s indisponível (%s). Selecione outra conta.", p.Provider, p.Name, reason)
+						return m, nil
+					}
 					m.chosenResult = &SelectionResult{
 						Action:      ActionRunProfile,
 						Provider:    p.Provider,
@@ -456,6 +474,7 @@ func (m Model) View() string {
 	activeDot := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42")).Render("●")
 	inactiveDot := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("○")
 	warnStar := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("208")).Render("★")
+	warnStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("208"))
 	btnStyle := lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("252")).Padding(0, 1)
 
 	// Render Modals if active
@@ -588,12 +607,17 @@ func (m Model) View() string {
 
 			planStr := lipgloss.NewStyle().Foreground(lipgloss.Color("213")).Render(fmt.Sprintf("%-12s", acc.Plan))
 
-			qDetails := profile.GetQuotaDetails(p.Provider, p.Name, acc.Plan, acc.Email)
-			bar := qDetails.FiveHour.ProgressBar
+			qv := profile.GetQuotaView(p.Provider, p.Name, acc.Plan, acc.Email)
+			bottleneck, _ := qv.Bottleneck()
+			bar := quota.RenderBarWithPercent(bottleneck, qv.Status, 10)
 			if bar == "" {
 				bar = "[ UNKNOWN  ] UNK"
 			}
-			barStr := subStyle.Render(bar)
+			availTag := ""
+			if !qv.IsAvailable() {
+				availTag = warnStyle.Render(" " + qv.AvailabilityLabel())
+			}
+			barStr := subStyle.Render(bar) + availTag
 
 			starStr := " "
 			if isDef {
@@ -705,6 +729,7 @@ func (m Model) renderQuotaModal(width int) string {
 	subStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
 	accentStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
 	magentaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("213"))
+	groupStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
 
 	profs := m.filteredProfiles()
 	if len(profs) == 0 {
@@ -712,23 +737,33 @@ func (m Model) renderQuotaModal(width int) string {
 	}
 	p := profs[m.selAccIndex%len(profs)]
 	acc := m.accounts[p.Provider+":"+p.Name]
-	qDetails := profile.GetQuotaDetails(p.Provider, p.Name, acc.Plan, acc.Email)
+	qv := profile.GetQuotaView(p.Provider, p.Name, acc.Plan, acc.Email)
 
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render(fmt.Sprintf("📊 Limites & Quota — %s (%s)", p.Name, strings.ToUpper(p.Provider))) + "\n\n")
 	sb.WriteString(fmt.Sprintf(" Conta:   %s (%s)\n", accentStyle.Render(acc.Email), magentaStyle.Render(acc.Plan)))
-	sb.WriteString(fmt.Sprintf(" Status:  %s\n\n", acc.Status))
+	sb.WriteString(fmt.Sprintf(" Status:  %s\n", acc.Status))
+
+	// Availability line
+	availLabel := qv.AvailabilityLabel()
+	availColor := "42" // green
+	if !qv.IsAvailable() {
+		availColor = "208" // orange
+	}
+	availStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(availColor))
+	sb.WriteString(fmt.Sprintf(" Quota:   %s\n\n", availStyle.Render(availLabel)))
 
 	sb.WriteString(accentStyle.Render("MODELOS & CAPACIDADE:") + "\n")
-	sb.WriteString(fmt.Sprintf("  Limite 5 Horas: %s\n", qDetails.FiveHour.ProgressBar))
-	if qDetails.FiveHour.ResetsIn != "" {
-		sb.WriteString(subStyle.Render(fmt.Sprintf("                  Reset em %s\n", qDetails.FiveHour.ResetsIn)))
-	}
-	sb.WriteString("\n")
-
-	sb.WriteString(fmt.Sprintf("  Limite Semanal: %s\n", qDetails.Weekly.ProgressBar))
-	if qDetails.Weekly.ResetsIn != "" {
-		sb.WriteString(subStyle.Render(fmt.Sprintf("                  Reset em %s\n", qDetails.Weekly.ResetsIn)))
+	for _, group := range qv.ModelGroups {
+		if qv.HasMultipleGroups() && group.Name != "" {
+			sb.WriteString(fmt.Sprintf("\n  %s\n", groupStyle.Render(group.Name+":")))
+		}
+		for _, w := range group.Windows {
+			sb.WriteString(fmt.Sprintf("  %s: %s\n", w.Label, w.Bar))
+			if w.ResetDesc != "" {
+				sb.WriteString(subStyle.Render(fmt.Sprintf("                  Reset em %s\n", w.ResetDesc)))
+			}
+		}
 	}
 	sb.WriteString("\n")
 

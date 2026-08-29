@@ -163,16 +163,48 @@ func (b *AgentTerminalBroker) ReleaseControl(agentID string, conn *websocket.Con
 	}
 }
 
-// NotifyRuntimeChanged broadcasts a runtime_changed frame to all observers
-// of the given agent. Called by the Nexus layer when a generation switch occurs.
-func (b *AgentTerminalBroker) NotifyRuntimeChanged(agentID string, oldRuntimeID, newRuntimeID, provider, profile, continuity string) {
+// WatchRuntimeChanged returns a channel that is closed when the runtime
+// generation changes for the given agent. Returns nil if agent has no state.
+func (b *AgentTerminalBroker) WatchRuntimeChanged(agentID string) <-chan struct{} {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
 	state, ok := b.agents[agentID]
 	if !ok {
+		return nil
+	}
+	return state.runtimeChanged
+}
+
+// CurrentRuntimeID returns the current runtime ID for an agent, or empty string.
+func (b *AgentTerminalBroker) CurrentRuntimeID(agentID string) string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	state, ok := b.agents[agentID]
+	if !ok {
+		return ""
+	}
+	return state.runtimeID
+}
+
+// NotifyRuntimeChanged broadcasts a runtime_changed frame to all observers
+// of the given agent. Called by the Nexus layer when a generation switch occurs.
+func (b *AgentTerminalBroker) NotifyRuntimeChanged(agentID string, oldRuntimeID, newRuntimeID, provider, profile, continuity string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	state, ok := b.agents[agentID]
+	if !ok {
 		return
 	}
+
+	state.runtimeID = newRuntimeID
+
+	if state.runtimeChanged != nil {
+		close(state.runtimeChanged)
+	}
+	state.runtimeChanged = make(chan struct{})
 
 	payload := protocol.RuntimeChangedPayload{
 		AgentID:      agentID,

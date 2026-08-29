@@ -301,6 +301,34 @@ func (h *APIHandler) handleRuntimeDetail(w http.ResponseWriter, r *http.Request)
 			}
 			writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "title": payload.Title})
 			return
+
+		case "respond":
+			var payload struct {
+				Input string `json:"input"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid payload")
+				return
+			}
+			client, err := protocol.NewClient(runtimeID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to connect to runtime: "+err.Error())
+				return
+			}
+			defer client.Close()
+
+			inputStr := payload.Input
+			if !strings.HasSuffix(inputStr, "\n") {
+				inputStr += "\n"
+			}
+			inputBytes, _ := json.Marshal(protocol.InputPayload{Data: inputStr})
+			_, err = client.Send(protocol.CmdInput, inputBytes)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to send response: "+err.Error())
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "sent": payload.Input})
+			return
 		}
 	}
 

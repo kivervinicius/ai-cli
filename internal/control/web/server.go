@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kivervinicius/ai-cli/internal/nexus"
 )
 
 type ServerOptions struct {
@@ -98,6 +100,12 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	// System Updates (Auto-update for Nexus & Maestro)
 	mux.HandleFunc("/api/v1/system/updates", s.authMiddleware(nexusHandler.handleSystemUpdates))
 	mux.HandleFunc("/api/v1/system/update", s.authMiddleware(nexusHandler.handleSystemUpdate))
+
+	// OS Filesystem & Discovery Routes
+	mux.HandleFunc("/api/v1/fs/browse", s.authMiddleware(nexusHandler.handleFSBrowse))
+	mux.HandleFunc("/api/v1/fs/scan", s.authMiddleware(nexusHandler.handleFSScan))
+	mux.HandleFunc("/api/v1/fs/inspect", s.authMiddleware(nexusHandler.handleFSInspect))
+	mux.HandleFunc("/api/v1/fs/mkdir", s.authMiddleware(nexusHandler.handleFSMkdir))
 
 	// Static Files & SPA Routing
 	distFS, distErr := DistFileSystem()
@@ -191,7 +199,11 @@ func (s *Server) routeRuntime(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			runtimeID := parts[0]
-			s.terminal.HandleWebSocket(w, r, runtimeID)
+			agentID, err := nexus.Default().ResolveAgentByRuntimeID(runtimeID)
+			if err != nil || agentID == "" {
+				agentID = runtimeID
+			}
+			s.terminal.HandleWebSocket(w, r, agentID, runtimeID)
 			return
 		}
 	}
@@ -229,12 +241,8 @@ func (s *Server) routeProject(h *NexusHandler) http.HandlerFunc {
 			} else {
 				h.handleAgentCreate(w, r)
 			}
-		case strings.HasSuffix(r.URL.Path, "/missions"):
-			if r.Method == http.MethodGet {
-				h.handleMissionsList(w, r)
-			} else {
-				h.handleMissionCreate(w, r)
-			}
+		case strings.HasSuffix(r.URL.Path, "/open-os"):
+			h.handleProjectOpenOS(w, r)
 		default:
 			h.handleProjectDetail(w, r)
 		}
@@ -267,12 +275,13 @@ func (s *Server) routeAgent(h *NexusHandler) http.HandlerFunc {
 
 		// WebSocket terminal: /api/v1/agents/:id/terminal
 		if len(parts) == 2 && parts[1] == "terminal" && r.Method == http.MethodGet {
-			runtimeID, err := h.resolveAgentRuntimeID(parts[0])
+			agentID := parts[0]
+			runtimeID, err := h.resolveAgentRuntimeID(agentID)
 			if err != nil {
 				writeError(w, http.StatusNotFound, "agent has no active runtime: "+err.Error())
 				return
 			}
-			s.terminal.HandleWebSocket(w, r, runtimeID)
+			s.terminal.HandleWebSocket(w, r, agentID, runtimeID)
 			return
 		}
 

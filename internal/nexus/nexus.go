@@ -143,6 +143,20 @@ func (n *Nexus) OpenProject() (*store.Store, error) {
 	return n.st, nil
 }
 
+// ResolveAgentByRuntimeID returns the agent ID that owns the given runtime, or
+// an error if the runtime generation is not found.
+func (n *Nexus) ResolveAgentByRuntimeID(runtimeID string) (string, error) {
+	st, err := n.OpenProject()
+	if err != nil {
+		return "", err
+	}
+	gen, err := st.GenerationByRuntimeID(runtimeID)
+	if err != nil {
+		return "", fmt.Errorf("runtime %s not found: %w", runtimeID, err)
+	}
+	return gen.AgentID, nil
+}
+
 // StartAgent launches a supervised runtime for an agent, records a config
 // revision and a runtime generation, and updates agent status. The runtime
 // starts in the agent's project canonical path (P0-1). Empty provider is
@@ -169,19 +183,31 @@ func (n *Nexus) StartAgent(ctx context.Context, agentID, provider, profile strin
 		return nil, fmt.Errorf("resolve agent project: %w", perr)
 	}
 
-	// Create config revision only on config mutation, not every restart (P1).
-	rev, err := st.AddRevision(agentID, store.MustJSON(map[string]string{
-		"provider": provider,
-		"profile":  profile,
-	}))
+	var agentCfg AgentConfig
+	if agent.CurrentRevisionID != "" {
+		if rev, rerr := st.GetRevision(agent.CurrentRevisionID); rerr == nil {
+			agentCfg, _ = ParseAgentConfig(rev.Config)
+		}
+	}
+	agentCfg.Provider = provider
+	agentCfg.Profile = profile
+	if agentCfg.Profile == "" {
+		agentCfg.Profile = "default"
+	}
+
+	rev, err := st.AddRevision(agentID, agentCfg.ConfigJSON())
 	if err != nil {
 		return nil, err
 	}
 
 	sess, err := n.launcher.Launch(ctx, launcher.LaunchOptions{
-		ProviderID: provider,
-		ProfileID:  profile,
-		Workspace:  proj.CanonicalPath,
+		ProviderID:  provider,
+		ProfileID:   agentCfg.Profile,
+		Workspace:   proj.CanonicalPath,
+		Model:       agentCfg.Model,
+		Environment: agentCfg.Environment,
+		Isolation:   agentCfg.Isolation,
+		Options:     agentCfg.Options,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("start agent runtime: %w", err)

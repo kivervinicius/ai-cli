@@ -26,6 +26,10 @@ type LaunchOptions struct {
 	Args              []string
 	Standalone        bool // If true, runs host in-process instead of spawning detached daemon
 	Timeout           time.Duration
+	Model       string            `json:"model,omitempty"`
+	Environment map[string]string `json:"environment,omitempty"`
+	Isolation   string            `json:"isolation,omitempty"`
+	Options     map[string]any    `json:"options,omitempty"`
 }
 
 // Launcher unifies supervised SessionHost spawning and handshake verification across all commands.
@@ -73,6 +77,11 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 	bin, extraArgs, env, err := d.BuildCommand(ctx, prof, opts.Args)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build command for %s:%s: %w", opts.ProviderID, opts.ProfileID, err)
+	}
+	for k, v := range opts.Environment {
+		if k != "" {
+			env = append(env, k+"="+v)
+		}
 	}
 
 	title := opts.Title

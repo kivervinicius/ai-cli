@@ -37,7 +37,15 @@ Providers: codex · claude · gemini · opencode · agy · cursor · fake
 
 - Writer lease lives in the Control Core (SessionHost); the Web/agent terminal broker is a client, not a second system (§92).
 - Agent terminal WS resolves current generation → SessionHost → PTY/ConPTY; xterm is keyed by AgentID, never destroyed on runtime change (§30-31).
+- **AgentTerminalBroker** observes runtime generation changes and emits `runtime_changed` frames to connected browsers, enabling seamless reconnection without terminal remount.
 - Reconnect: bounded ring-buffer replay + live stream; browser close never stops the provider (§25).
+
+## Resource discovery
+
+- `Nexus.ListResources()` discovers provider accounts via `profile.List()` + `driver.Detect()`, returning real health and quota status.
+- `Nexus.AllocateResource()` validates and persists a provider/profile selection to the agent's `AgentConfig` revision.
+- `Nexus.ResolveStartParams()` resolves provider/profile from explicit params, `AgentConfig`, or returns `REQUIRED_RESOURCE_SELECTION` error.
+- All resource logic lives in the service layer (`internal/nexus/`); Web and TUI consume the same API.
 
 ## Security posture
 

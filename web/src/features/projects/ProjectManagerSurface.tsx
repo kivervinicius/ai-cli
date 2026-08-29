@@ -1,0 +1,618 @@
+import React, { useState, useMemo, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+  LayoutGrid,
+  List,
+  Search,
+  Plus,
+  FolderGit2,
+  GitBranch,
+  Bot,
+  Activity,
+  ShieldCheck,
+  BrainCircuit,
+  Settings,
+  ArrowRight,
+  Trash2,
+  ExternalLink,
+  Copy,
+  Check,
+  Sparkles,
+  Layers,
+  CheckCircle2,
+  Zap,
+  FolderOpen,
+  RefreshCw,
+  Folder,
+  Terminal,
+  Code2,
+} from 'lucide-react';
+import { Button, Card, Dialog, EmptyState, IconButton, Input, Badge, Segmented } from '../../design-system';
+import { nexus } from '../../nexus/api';
+import type { Agent, Project } from '../../types';
+import { AddProjectModal } from './AddProjectModal';
+
+export const ProjectManagerSurface: React.FC<{
+  projects: Project[];
+  selectedProject: Project;
+  agents: Agent[];
+  onSelectProject: (project: Project) => void;
+  onProjectCreated: (project: Project) => void;
+  onProjectUpdated: (project: Project) => void;
+  onOpenOverview: () => void;
+}> = ({
+  projects,
+  selectedProject,
+  agents,
+  onSelectProject,
+  onProjectCreated,
+  onProjectUpdated,
+  onOpenOverview,
+}) => {
+  const { t } = useTranslation();
+  const [query, setQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [sortBy, setSortBy] = useState<'mru' | 'name'>('mru');
+  const [addOpen, setAddOpen] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [configProject, setConfigProject] = useState<Project | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Project configuration state
+  const [cfgName, setCfgName] = useState('');
+  const [cfgBranch, setCfgBranch] = useState('');
+  const [cfgMaestro, setCfgMaestro] = useState<'OFF' | 'ASSIST' | 'ORCHESTRATE'>('ASSIST');
+  const [cfgIsolation, setCfgIsolation] = useState('project');
+  const [cfgPolicy, setCfgPolicy] = useState('BALANCED');
+  const [cfgBusy, setCfgBusy] = useState(false);
+  const [cfgSuccess, setCfgSuccess] = useState(false);
+
+  // Stats calculation
+  const totalAgents = agents.length;
+  const workingAgents = agents.filter((a) => a.status === 'WORKING').length;
+
+  const handleCopyPath = (id: string, path: string) => {
+    navigator.clipboard.writeText(path);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const filtered = useMemo(() => {
+    let list = projects.filter(
+      (p) =>
+        p.name.toLowerCase().includes(query.toLowerCase()) ||
+        p.canonical_path.toLowerCase().includes(query.toLowerCase()) ||
+        (p.default_branch || '').toLowerCase().includes(query.toLowerCase())
+    );
+    if (sortBy === 'name') {
+      list = [...list].sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return list;
+  }, [projects, query, sortBy]);
+
+  const handleOpenConfig = (p: Project) => {
+    setConfigProject(p);
+    setCfgName(p.name);
+    setCfgBranch(p.default_branch || 'main');
+    setCfgMaestro(p.maestro_mode || 'ASSIST');
+    setCfgIsolation(p.default_isolation || 'project');
+    setCfgPolicy(p.resource_policy || 'BALANCED');
+    setCfgSuccess(false);
+  };
+
+  const handleSaveConfig = async () => {
+    if (!configProject) return;
+    setCfgBusy(true);
+    try {
+      const updated = await nexus.updateProject(configProject.id, {
+        name: cfgName.trim() || configProject.name,
+        default_branch: cfgBranch.trim() || 'main',
+        maestro_mode: cfgMaestro,
+        default_isolation: cfgIsolation,
+        resource_policy: cfgPolicy,
+      });
+      onProjectUpdated(updated);
+      setCfgSuccess(true);
+      setTimeout(() => {
+        setConfigProject(null);
+      }, 800);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCfgBusy(false);
+    }
+  };
+
+  const handleDelete = async (p: Project) => {
+    if (window.confirm(t('projectManager.confirmRemove'))) {
+      try {
+        await nexus.deleteProject(p.id);
+        window.location.reload();
+      } catch (err) {
+        alert(err instanceof Error ? err.message : String(err));
+      }
+    }
+  };
+
+  const handleOpenOS = (p: Project, action: 'filemanager' | 'terminal' | 'editor') => {
+    nexus.openProjectInOS(p.id, action).catch((err) => {
+      console.error('Failed to launch OS action', err);
+    });
+  };
+
+  const handleDirectorySelected = (path: string, suggestedName?: string) => {
+    setNewPath(path);
+    if (suggestedName && !newName) {
+      setNewName(suggestedName);
+    }
+    setAddOpen(true);
+  };
+
+  return (
+    <div className="nx-surface-scroll nx-projects-surface">
+      {/* Header & Overview Stats */}
+      <div className="nx-page-header">
+        <div>
+          <span className="nx-eyebrow">{t('projectManager.desktopsTitle')}</span>
+          <h1>{t('projectManager.title')}</h1>
+          <p>{t('projectManager.desktopsSubtitle')}</p>
+        </div>
+        <div className="nx-page-header__actions">
+          <Button tone="brand" onClick={() => setAddOpen(true)}>
+            <Plus size={14} />
+            <span>{t('projectManager.addNew')}</span>
+          </Button>
+          <Button tone="ghost" onClick={() => setDirPickerOpen(true)}>
+            <FolderOpen size={14} />
+            <span>{t('projectManager.browseOS')}</span>
+          </Button>
+          <Button tone="ghost" onClick={() => setScanModalOpen(true)}>
+            <RefreshCw size={14} />
+            <span>{t('projectManager.scanOS')}</span>
+          </Button>
+          <Button onClick={() => setTemplateOpen(true)}>
+            <Sparkles size={14} />
+            <span>{t('projectManager.templatesTitle')}</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* OS Metrics Grid */}
+      <div className="nx-metric-grid">
+        <Card className="nx-metric-card">
+          <span className="nx-metric-card__icon">
+            <FolderGit2 size={18} />
+          </span>
+          <div>
+            <strong>{projects.length}</strong>
+            <span>{t('projectManager.statsWorkspaces')}</span>
+          </div>
+        </Card>
+
+        <Card className="nx-metric-card">
+          <span className="nx-metric-card__icon">
+            <Bot size={18} />
+          </span>
+          <div>
+            <strong>{totalAgents}</strong>
+            <span>{t('projectManager.statsAgents')}</span>
+          </div>
+        </Card>
+
+        <Card className="nx-metric-card">
+          <span className="nx-metric-card__icon">
+            <Activity size={18} />
+          </span>
+          <div>
+            <strong>{workingAgents}</strong>
+            <span>{t('projectManager.statsWorking')}</span>
+          </div>
+        </Card>
+
+        <Card className="nx-metric-card">
+          <span className="nx-metric-card__icon">
+            <ShieldCheck size={18} />
+          </span>
+          <div>
+            <strong>{selectedProject.maestro_mode || 'ASSIST'}</strong>
+            <span>{t('overview.maestroMode')}</span>
+          </div>
+        </Card>
+      </div>
+
+      {/* Action Toolbar */}
+      <div className="nx-projects-toolbar">
+        <div className="nx-projects-search">
+          <Search size={14} className="nx-projects-search-icon" />
+          <Input
+            value={query}
+            onChange={setQuery}
+            placeholder={t('projectManager.searchPlaceholder')}
+          />
+        </div>
+
+        <div className="nx-projects-toolbar-actions">
+          <Segmented
+            options={[
+              { value: 'mru', label: t('projectManager.sortMRU') },
+              { value: 'name', label: t('projectManager.sortName') },
+            ]}
+            value={sortBy}
+            onChange={(v) => setSortBy(v as any)}
+            ariaLabel={t('projectManager.sortBy')}
+          />
+
+          <div className="nx-view-toggles">
+            <IconButton
+              label={t('projectManager.viewGrid')}
+              onClick={() => setViewMode('grid')}
+              tone={viewMode === 'grid' ? 'brand' : 'ghost'}
+            >
+              <LayoutGrid size={15} />
+            </IconButton>
+            <IconButton
+              label={t('projectManager.viewList')}
+              onClick={() => setViewMode('list')}
+              tone={viewMode === 'list' ? 'brand' : 'ghost'}
+            >
+              <List size={15} />
+            </IconButton>
+          </div>
+        </div>
+      </div>
+
+      {/* Grid View */}
+      {viewMode === 'grid' && (
+        <div className="nx-desktop-grid">
+          {filtered.map((proj) => {
+            const isActive = proj.id === selectedProject.id;
+            return (
+              <Card
+                key={proj.id}
+                className={`nx-desktop-card ${isActive ? 'nx-desktop-card--active' : ''}`}
+                onClick={() => onSelectProject(proj)}
+              >
+                <div className="nx-desktop-card__header">
+                  <div className="nx-desktop-card__brand">
+                    <span className="nx-desktop-avatar">
+                      {proj.name.slice(0, 2).toUpperCase()}
+                    </span>
+                    <div className="nx-desktop-title-stack">
+                      <strong>{proj.name}</strong>
+                      <span className="nx-desktop-branch">
+                        <GitBranch size={11} />
+                        {proj.default_branch || 'main'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {isActive ? (
+                    <Badge tone="success">
+                      <Check size={11} />
+                      {t('projectManager.activeDesktop')}
+                    </Badge>
+                  ) : (
+                    <Badge tone="default">{proj.default_isolation || 'project'}</Badge>
+                  )}
+                </div>
+
+                <div
+                  className="nx-desktop-card__path"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCopyPath(proj.id, proj.canonical_path);
+                  }}
+                  title="Click to copy canonical path"
+                >
+                  <code>{proj.canonical_path}</code>
+                  {copiedId === proj.id ? <Check size={12} /> : <Copy size={12} />}
+                </div>
+
+                <div className="nx-desktop-card__tags">
+                  <span className="nx-tag-pill">
+                    <BrainCircuit size={11} />
+                    Maestro: {proj.maestro_mode || 'ASSIST'}
+                  </span>
+                  <span className="nx-tag-pill">
+                    <Zap size={11} />
+                    {proj.resource_policy || 'BALANCED'}
+                  </span>
+                </div>
+
+                {/* OS Integration Quick Launchers */}
+                <div className="nx-os-quick-launchers" onClick={(e) => e.stopPropagation()}>
+                  <span className="nx-os-launchers-label">OS:</span>
+                  <IconButton
+                    label={t('projectManager.openInFM')}
+                    onClick={() => handleOpenOS(proj, 'filemanager')}
+                  >
+                    <Folder size={13} />
+                  </IconButton>
+                  <IconButton
+                    label={t('projectManager.openInTerm')}
+                    onClick={() => handleOpenOS(proj, 'terminal')}
+                  >
+                    <Terminal size={13} />
+                  </IconButton>
+                  <IconButton
+                    label={t('projectManager.openInEditor')}
+                    onClick={() => handleOpenOS(proj, 'editor')}
+                  >
+                    <Code2 size={13} />
+                  </IconButton>
+                </div>
+
+                <div className="nx-desktop-card__footer" onClick={(e) => e.stopPropagation()}>
+                  {isActive ? (
+                    <Button size="sm" tone="ghost" onClick={onOpenOverview}>
+                      <ExternalLink size={12} />
+                      <span>{t('projectManager.openOverview')}</span>
+                    </Button>
+                  ) : (
+                    <Button size="sm" tone="brand" onClick={() => onSelectProject(proj)}>
+                      <span>{t('projectManager.switchDesktop')}</span>
+                      <ArrowRight size={12} />
+                    </Button>
+                  )}
+
+                  <div className="nx-desktop-card__actions">
+                    <IconButton
+                      label={t('projectManager.configTitle')}
+                      onClick={() => handleOpenConfig(proj)}
+                    >
+                      <Settings size={13} />
+                    </IconButton>
+                    {projects.length > 1 && !isActive && (
+                      <IconButton
+                        label={t('projectManager.remove')}
+                        onClick={() => handleDelete(proj)}
+                      >
+                        <Trash2 size={13} />
+                      </IconButton>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* List View */}
+      {viewMode === 'list' && (
+        <Card className="nx-desktop-list-card">
+          <table className="nx-desktop-table">
+            <thead>
+              <tr>
+                <th>{t('projectManager.desktopsTitle')}</th>
+                <th>{t('projectManager.branch')}</th>
+                <th>Maestro</th>
+                <th>{t('projectManager.resourcePolicy')}</th>
+                <th>OS</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((proj) => {
+                const isActive = proj.id === selectedProject.id;
+                return (
+                  <tr
+                    key={proj.id}
+                    className={isActive ? 'nx-row--active' : ''}
+                    onClick={() => onSelectProject(proj)}
+                  >
+                    <td>
+                      <div className="nx-table-proj-cell">
+                        <span className="nx-desktop-avatar nx-desktop-avatar--sm">
+                          {proj.name.slice(0, 2).toUpperCase()}
+                        </span>
+                        <div>
+                          <strong>{proj.name}</strong>
+                          <small>{proj.canonical_path}</small>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="nx-desktop-branch">
+                        <GitBranch size={11} /> {proj.default_branch || 'main'}
+                      </span>
+                    </td>
+                    <td>
+                      <Badge tone={proj.maestro_mode === 'OFF' ? 'default' : 'brand'}>
+                        {proj.maestro_mode || 'ASSIST'}
+                      </Badge>
+                    </td>
+                    <td>
+                      <span className="nx-tag-pill">{proj.resource_policy || 'BALANCED'}</span>
+                    </td>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <div className="nx-table-os-actions">
+                        <IconButton
+                          label={t('projectManager.openInFM')}
+                          onClick={() => handleOpenOS(proj, 'filemanager')}
+                        >
+                          <Folder size={12} />
+                        </IconButton>
+                        <IconButton
+                          label={t('projectManager.openInTerm')}
+                          onClick={() => handleOpenOS(proj, 'terminal')}
+                        >
+                          <Terminal size={12} />
+                        </IconButton>
+                        <IconButton
+                          label={t('projectManager.openInEditor')}
+                          onClick={() => handleOpenOS(proj, 'editor')}
+                        >
+                          <Code2 size={12} />
+                        </IconButton>
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
+                      <div className="nx-table-actions">
+                        {isActive ? (
+                          <Badge tone="success">{t('projectManager.active')}</Badge>
+                        ) : (
+                          <Button size="sm" tone="ghost" onClick={() => onSelectProject(proj)}>
+                            {t('projectManager.switch')}
+                          </Button>
+                        )}
+                        <IconButton
+                          label={t('projectManager.configTitle')}
+                          onClick={() => handleOpenConfig(proj)}
+                        >
+                          <Settings size={13} />
+                        </IconButton>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
+
+      {/* Empty State */}
+      {filtered.length === 0 && (
+        <EmptyState
+          icon={<FolderGit2 size={32} />}
+          title={t('projectManager.noProjects')}
+          action={
+            <Button tone="brand" onClick={() => setAddOpen(true)}>
+              {t('projectManager.addNew')}
+            </Button>
+          }
+        />
+      )}
+
+      {/* Add Project Modal with OS Explorer & Scanner integration */}
+      <AddProjectModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onCreated={(proj) => {
+          onProjectCreated(proj);
+          onSelectProject(proj);
+        }}
+      />
+
+      {/* Starter Templates Modal */}
+      <Dialog
+        open={templateOpen}
+        onClose={() => setTemplateOpen(false)}
+        title={t('projectManager.templatesTitle')}
+      >
+        <div className="nx-templates-modal">
+          <div className="nx-template-card" onClick={() => { setNewName('Fullstack SaaS App'); setNewPath('/projetos/saas-app'); setTemplateOpen(false); setAddOpen(true); }}>
+            <div className="nx-template-icon"><Layers size={20} /></div>
+            <div>
+              <strong>{t('projectManager.templateFullstack')}</strong>
+              <p>React + Go/Node microservices with Maestro SaaS architecture guidelines.</p>
+            </div>
+            <Button size="sm" tone="brand">{t('projectManager.useTemplate')}</Button>
+          </div>
+
+          <div className="nx-template-card" onClick={() => { setNewName('Core Microservice API'); setNewPath('/projetos/api-service'); setTemplateOpen(false); setAddOpen(true); }}>
+            <div className="nx-template-icon"><Zap size={20} /></div>
+            <div>
+              <strong>{t('projectManager.templateApi')}</strong>
+              <p>REST / gRPC microservice scaffolded with TDD loop and schema verification.</p>
+            </div>
+            <Button size="sm" tone="brand">{t('projectManager.useTemplate')}</Button>
+          </div>
+
+          <div className="nx-template-card" onClick={() => { setNewName('Developer CLI Tool'); setNewPath('/projetos/cli-tool'); setTemplateOpen(false); setAddOpen(true); }}>
+            <div className="nx-template-icon"><Bot size={20} /></div>
+            <div>
+              <strong>{t('projectManager.templateCli')}</strong>
+              <p>Cobra / Commander command-line application with automated integration tests.</p>
+            </div>
+            <Button size="sm" tone="brand">{t('projectManager.useTemplate')}</Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Project Configuration Modal */}
+      {configProject && (
+        <Dialog
+          open={Boolean(configProject)}
+          onClose={() => setConfigProject(null)}
+          title={`${t('projectManager.configTitle')} · ${configProject.name}`}
+        >
+          <div className="nx-form-stack">
+            <p className="nx-muted-copy">{t('projectManager.configSubtitle')}</p>
+
+            <label>
+              {t('projectManager.addName')}
+              <Input value={cfgName} onChange={setCfgName} placeholder={configProject.name} />
+            </label>
+
+            <label>
+              {t('projectManager.branch')}
+              <Input value={cfgBranch} onChange={setCfgBranch} placeholder="main" mono />
+            </label>
+
+            <label>
+              {t('overview.maestroMode')}
+              <Segmented
+                options={[
+                  { value: 'ASSIST', label: 'ASSIST' },
+                  { value: 'ORCHESTRATE', label: 'ORCHESTRATE' },
+                  { value: 'OFF', label: 'OFF' },
+                ]}
+                value={cfgMaestro}
+                onChange={(v) => setCfgMaestro(v as any)}
+                ariaLabel={t('overview.maestroMode')}
+              />
+            </label>
+
+            <label>
+              {t('projectManager.resourcePolicy')}
+              <Segmented
+                options={[
+                  { value: 'BALANCED', label: 'BALANCED' },
+                  { value: 'PERFORMANCE', label: 'PERFORMANCE' },
+                  { value: 'COST', label: 'COST' },
+                ]}
+                value={cfgPolicy}
+                onChange={(v) => setCfgPolicy(v as any)}
+                ariaLabel={t('projectManager.resourcePolicy')}
+              />
+            </label>
+
+            {cfgSuccess && (
+              <p style={{ color: 'var(--nx-success, #10b981)', fontSize: '12px', margin: 0 }}>
+                ✓ {t('projectManager.saved')}
+              </p>
+            )}
+
+            <div className="nx-dialog-actions">
+              <Button onClick={() => setConfigProject(null)}>{t('common.closeDialog')}</Button>
+              <Button tone="brand" disabled={cfgBusy} onClick={handleSaveConfig}>
+                {cfgBusy ? t('projectManager.saving') : t('projectManager.saveChanges')}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+
+      {/* Directory Browser Modal */}
+      <DirectoryBrowserModal
+        open={dirPickerOpen}
+        onClose={() => setDirPickerOpen(false)}
+        initialPath={newPath || undefined}
+        onSelectPath={handleDirectorySelected}
+      />
+
+      {/* Project Scanner Modal */}
+      <ProjectScanModal
+        open={scanModalOpen}
+        onClose={() => setScanModalOpen(false)}
+        onProjectImported={(proj) => {
+          onProjectCreated(proj);
+          onSelectProject(proj);
+          setScanModalOpen(false);
+        }}
+      />
+    </div>
+  );
+};

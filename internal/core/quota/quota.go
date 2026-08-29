@@ -112,12 +112,14 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 			windows := []model.UsageWindow{
 				{
 					Kind:             "5h",
+					Group:            "gemini",
 					RemainingPercent: &p5h,
 					UsedPercent:      &u5h,
 					ResetDescription: r5h,
 				},
 				{
 					Kind:             "weekly",
+					Group:            "gemini",
 					RemainingPercent: &pWk,
 					UsedPercent:      &uWk,
 					ResetDescription: rWk,
@@ -133,6 +135,7 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 				}
 				windows = append(windows, model.UsageWindow{
 					Kind:             "claude_5h",
+					Group:            "claude_gpt",
 					RemainingPercent: &pC5h,
 					UsedPercent:      &uC5h,
 					ResetDescription: rC5h,
@@ -148,6 +151,7 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 				}
 				windows = append(windows, model.UsageWindow{
 					Kind:             "claude_weekly",
+					Group:            "claude_gpt",
 					RemainingPercent: &pCWk,
 					UsedPercent:      &uCWk,
 					ResetDescription: rCWk,

@@ -49,6 +49,7 @@ type SessionHost struct {
 	stopChan     chan struct{}
 	doneChan     chan struct{}
 	prefixRouter *SlashPrefixRouter
+	detector     *AttentionDetector
 	stopOnce     sync.Once
 }
 
@@ -64,7 +65,7 @@ func NewSessionHost(cfg Config) (*SessionHost, error) {
 
 	termBackend := terminal.NewBackend()
 
-	return &SessionHost{
+	sh := &SessionHost{
 		session:      cfg.Session,
 		cfg:          cfg,
 		cmd:          cmd,
@@ -75,7 +76,19 @@ func NewSessionHost(cfg Config) (*SessionHost, error) {
 		stopChan:     make(chan struct{}),
 		doneChan:     make(chan struct{}),
 		prefixRouter: NewSlashPrefixRouter(),
-	}, nil
+	}
+
+	sh.detector = NewAttentionDetector(cfg.Session.RuntimeID, cfg.Session.ProviderID, cfg.Session.ProfileID, cfg.Cwd, func(reason, context, dynamicTitle string, state registry.RuntimeState) {
+		sh.mu.Lock()
+		sh.session.State = state
+		sh.session.AttentionReason = reason
+		sh.session.AttentionContext = context
+		sh.session.DynamicTitle = dynamicTitle
+		sh.session.Title = dynamicTitle
+		sh.mu.Unlock()
+	})
+
+	return sh, nil
 }
 
 // Start launches the supervised process and begins listening for IPC control connections.
@@ -150,6 +163,9 @@ func (sh *SessionHost) streamReader(r io.Reader) {
 			chunk := buf[:n]
 			sh.ringBuffer.Write(chunk)
 			sh.broadcast(chunk)
+			if sh.detector != nil {
+				sh.detector.ProcessChunk(chunk)
+			}
 		}
 		if err != nil {
 			break

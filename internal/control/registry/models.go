@@ -55,6 +55,11 @@ type RuntimeSession struct {
 	MachineID         string            `json:"machine_id,omitempty"`
 	Location          string            `json:"location,omitempty"`
 	Transport         string            `json:"transport,omitempty"`
+	AttentionReason   string            `json:"attention_reason,omitempty"`
+	AttentionContext  string            `json:"attention_context,omitempty"`
+	ProjectName       string            `json:"project_name,omitempty"`
+	LastTaskSummary   string            `json:"last_task_summary,omitempty"`
+	DynamicTitle      string            `json:"dynamic_title,omitempty"`
 }
 
 // IsActive returns true if the runtime is in an operational lifecycle state.

@@ -119,31 +119,19 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 
 	// Set isolated environment
 	envOverrides := map[string]string{
-		"HOME":            home,
-		"XDG_CONFIG_HOME": filepath.Join(home, ".config"),
-		"XDG_CACHE_HOME":  filepath.Join(home, ".cache"),
-		"XDG_DATA_HOME":   filepath.Join(home, ".local", "share"),
-		"XDG_STATE_HOME":  filepath.Join(home, ".local", "state"),
-		"PATH":            internalBin + ":" + os.Getenv("PATH"),
-		"BROWSER":         filepath.Join(internalBin, "ai-browser"),
+		"HOME":                   home,
+		"XDG_CONFIG_HOME":        filepath.Join(home, ".config"),
+		"XDG_CACHE_HOME":         filepath.Join(home, ".cache"),
+		"XDG_DATA_HOME":          filepath.Join(home, ".local", "share"),
+		"XDG_STATE_HOME":         filepath.Join(home, ".local", "state"),
+		"PATH":                   internalBin + ":" + os.Getenv("PATH"),
+		"BROWSER":                filepath.Join(internalBin, "ai-browser"),
+		"PYTHON_KEYRING_BACKEND": "keyring.backends.null.Keyring",
 	}
 
-	env := runtime.EnvSet(os.Environ(), envOverrides, "DBUS_SESSION_BUS_ADDRESS")
+	env := runtime.EnvSet(os.Environ(), envOverrides, "DBUS_SESSION_BUS_ADDRESS", "GNOME_KEYRING_CONTROL", "GNOME_KEYRING_PID")
 
-	// Wrap execution in isolated D-Bus daemon if dbus-run-session is available
-	var runBin string
-	var runArgs []string
-
-	if dbusPath, err := runtime.LookPath("dbus-run-session"); err == nil {
-		runBin = dbusPath
-		runArgs = []string{"--", bin}
-		runArgs = append(runArgs, args...)
-	} else {
-		runBin = bin
-		runArgs = args
-	}
-
-	return runtime.RunInteractive(runBin, runArgs, env, cwd)
+	return runtime.RunInteractive(bin, args, env, cwd)
 }
 
 func (a *Adapter) Login(ctx context.Context, p model.Profile) error {
@@ -341,12 +329,14 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 			windows := []model.UsageWindow{
 				{
 					Kind:             "5h",
+					Group:            "gemini",
 					RemainingPercent: &p5h,
 					UsedPercent:      &u5h,
 					ResetDescription: leg.FiveHour.ResetsIn,
 				},
 				{
 					Kind:             "weekly",
+					Group:            "gemini",
 					RemainingPercent: &pWk,
 					UsedPercent:      &uWk,
 					ResetDescription: leg.Weekly.ResetsIn,
@@ -358,6 +348,7 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 				uC5h := 100.0 - pC5h
 				windows = append(windows, model.UsageWindow{
 					Kind:             "claude_5h",
+					Group:            "claude_gpt",
 					RemainingPercent: &pC5h,
 					UsedPercent:      &uC5h,
 					ResetDescription: leg.ClaudeFiveHour.ResetsIn,
@@ -369,6 +360,7 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 				uCWk := 100.0 - pCWk
 				windows = append(windows, model.UsageWindow{
 					Kind:             "claude_weekly",
+					Group:            "claude_gpt",
 					RemainingPercent: &pCWk,
 					UsedPercent:      &uCWk,
 					ResetDescription: leg.ClaudeWeekly.ResetsIn,

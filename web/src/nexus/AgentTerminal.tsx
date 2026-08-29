@@ -3,12 +3,14 @@ import { Eye, Keyboard, Unplug } from 'lucide-react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { agentTerminalWebSocketURL, normalizeTerminalRole, type TerminalRole } from './agentTerminalModel';
+import { pushNotifications } from '../notifications/PushNotificationManager';
 
 export const AgentTerminal: React.FC<{ agentId: string; onClose?: () => void }> = ({ agentId, onClose }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [role, setRole] = useState<TerminalRole>('VIEW_ONLY');
   const [connection, setConnection] = useState<'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('CONNECTING');
   const [message, setMessage] = useState('');
+  const [customTitle, setCustomTitle] = useState('');
 
   useEffect(() => {
     const container = containerRef.current;
@@ -29,6 +31,17 @@ export const AgentTerminal: React.FC<{ agentId: string; onClose?: () => void }> 
         const payload = JSON.parse(event.data);
         if (payload.type === 'output' && payload.data) term.write(payload.data);
         else if (payload.type === 'lease') { const next = normalizeTerminalRole(payload.role); roleRef.current = next; setRole(next); }
+        else if (payload.type === 'title' && payload.data) { setCustomTitle(payload.data); }
+        else if (payload.type === 'attention') {
+          if (payload.dynamic_title) setCustomTitle(payload.dynamic_title);
+          pushNotifications.sendPush({
+            runtimeId: payload.runtime_id || agentId,
+            projectName: payload.project_name,
+            reason: payload.attention_reason || 'QUESTION',
+            context: payload.context || payload.summary || 'Atenção necessária no terminal',
+            dynamicTitle: payload.dynamic_title,
+          });
+        }
         else if (payload.type === 'error') setMessage(String(payload.data ?? 'Terminal error'));
       } catch { term.write(event.data); }
     };
@@ -42,7 +55,17 @@ export const AgentTerminal: React.FC<{ agentId: string; onClose?: () => void }> 
   }, [agentId]);
 
   return <section className="nx-agent-terminal" aria-label={`Terminal for Agent ${agentId}`}>
-    <header className="nx-agent-terminal__header"><div className="nx-agent-terminal__identity"><code>{agentId}</code><span data-state={connection}>{connection.toLowerCase()}</span></div><div className="nx-agent-terminal__status"><span data-role={role}>{role === 'CONTROL' ? <Keyboard size={13} /> : <Eye size={13} />}{role}</span>{message && <span className="nx-terminal-message"><Unplug size={12} />{message}</span>}{onClose && <button type="button" onClick={onClose}>Detach</button>}</div></header>
+    <header className="nx-agent-terminal__header">
+      <div className="nx-agent-terminal__identity">
+        <code>{customTitle || agentId}</code>
+        <span data-state={connection}>{connection.toLowerCase()}</span>
+      </div>
+      <div className="nx-agent-terminal__status">
+        <span data-role={role}>{role === 'CONTROL' ? <Keyboard size={13} /> : <Eye size={13} />}{role}</span>
+        {message && <span className="nx-terminal-message"><Unplug size={12} />{message}</span>}
+        {onClose && <button type="button" onClick={onClose}>Detach</button>}
+      </div>
+    </header>
     <div ref={containerRef} className="nx-agent-terminal__xterm" />
   </section>;
 };

@@ -222,6 +222,24 @@ func (s *Store) CurrentGeneration(agentID string) (RuntimeGeneration, error) {
 	return gens[0], nil
 }
 
+// GenerationByRuntimeID returns the generation that owns the given runtime ID.
+func (s *Store) GenerationByRuntimeID(runtimeID string) (RuntimeGeneration, error) {
+	rows, err := s.db.Query(`SELECT id,agent_id,revision_id,runtime_id,provider,profile,provider_session,continuity,started_at,stopped_at,state
+		FROM runtime_generations WHERE runtime_id=? LIMIT 1`, runtimeID)
+	if err != nil {
+		return RuntimeGeneration{}, err
+	}
+	defer rows.Close()
+	gens, err := scanGenerations(rows)
+	if err != nil {
+		return RuntimeGeneration{}, err
+	}
+	if len(gens) == 0 {
+		return RuntimeGeneration{}, ErrNotFound
+	}
+	return gens[0], nil
+}
+
 // AddLineage records an account/context handoff edge for an agent.
 func (s *Store) AddLineage(l LineageEntry) error {
 	if l.ID == "" {

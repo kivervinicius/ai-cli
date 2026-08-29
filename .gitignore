@@ -45,3 +45,10 @@ tmp/
 web/node_modules/
 web/dist/
 
+# Local Yarn state; dependencies are managed by web/package-lock.json.
+.pnp.*
+.yarn/*
+!.yarn/patches/
+!.yarn/plugins/
+!.yarn/releases/
+!.yarn/versions/

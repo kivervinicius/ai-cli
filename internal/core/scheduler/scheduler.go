@@ -197,6 +197,19 @@ func (s *Selector) EvaluateAll(provider string, workspace string, candidates []m
 			continue
 		}
 
+		// Check quota availability via QuotaView.
+		// An agent with ANY exhausted window (0% remaining) is unavailable.
+		qv := quota.BuildQuotaView(snap, acc.Email, acc.Plan)
+		if !qv.IsAvailable() {
+			ev.Eligible = false
+			ev.RejectReason = fmt.Sprintf("unavailable: %s", qv.AvailabilityLabel())
+			if len(qv.AvailReasons.ExhaustedWindows) > 0 {
+				ev.RejectReason += fmt.Sprintf(" (exhausted: %s)", strings.Join(qv.AvailReasons.ExhaustedWindows, ", "))
+			}
+			evals = append(evals, ev)
+			continue
+		}
+
 		ev.Eligible = true
 
 		// 2. Score Calculation
@@ -204,45 +217,29 @@ func (s *Selector) EvaluateAll(provider string, workspace string, candidates []m
 		var breakdown []string
 		breakdown = append(breakdown, "authenticated")
 
-		// Capacity / Quota Score (Multi-window bottleneck & average)
-		var validPercentages []float64
-		var minWindowKind string
-		minRemaining := 100.0
-		sumRemaining := 0.0
-
-		for _, w := range snap.Windows {
-			if w.RemainingPercent != nil {
-				pct := *w.RemainingPercent
-				if pct < 0 {
-					pct = 0
-				}
-				if pct > 100 {
-					pct = 100
-				}
-				validPercentages = append(validPercentages, pct)
-				sumRemaining += pct
-				if pct <= minRemaining {
-					minRemaining = pct
-					minWindowKind = w.Kind
-				}
-			}
+		// UNKNOWN quota is not a hard block, but flag it for scoring penalty.
+		if qv.AvailReasons.UnknownQuota {
+			score -= 10.0
+			breakdown = append(breakdown, "unknown quota (-10.0)")
 		}
 
-		if len(validPercentages) > 0 {
-			avgRemaining := sumRemaining / float64(len(validPercentages))
-			// Bottleneck has 60% weight, average has 40% weight
-			effectiveCapacity := (minRemaining * 0.6) + (avgRemaining * 0.4)
-			capScore := effectiveCapacity * 1.0 // Up to +100 points for 100% capacity
+		// Capacity / Quota Score via QuotaView bottleneck
+		effectiveCapacity, bottleneckKind, avgRemaining := quota.BottleneckScore(&qv)
+		hasWindows := len(qv.AllWindows()) > 0
+
+		if hasWindows {
+			capScore := effectiveCapacity * 10.0 // Up to +1000 points for 100% capacity
 			score += capScore
 
-			if len(validPercentages) == 1 {
+			minPct, _ := qv.Bottleneck()
+			if len(qv.AllWindows()) == 1 {
 				breakdown = append(breakdown, fmt.Sprintf("%.0f%% capacity (+%.1f)", effectiveCapacity, capScore))
 			} else {
-				breakdown = append(breakdown, fmt.Sprintf("%.0f%% eff capacity (min: %.0f%% [%s], avg: %.0f%%) (+%.1f)", effectiveCapacity, minRemaining, minWindowKind, avgRemaining, capScore))
+				breakdown = append(breakdown, fmt.Sprintf("%.0f%% eff capacity (min: %.0f%% [%s], avg: %.0f%%) (+%.1f)", effectiveCapacity, minPct, bottleneckKind, avgRemaining, capScore))
 			}
 		} else {
-			score += 50.0 // Neutral capacity assumption for unprobed
-			breakdown = append(breakdown, "unknown capacity (+50.0)")
+			score += 500.0 // Neutral capacity assumption for unprobed
+			breakdown = append(breakdown, "unknown capacity (+500.0)")
 		}
 
 		// User Configured Priority
@@ -262,16 +259,16 @@ func (s *Selector) EvaluateAll(provider string, workspace string, candidates []m
 			breakdown = append(breakdown, "workspace bound (+50.0)")
 		}
 
-		// Default Profile Boost (Used as tie-breaker)
+		// Default Profile Boost (Used as minor tie-breaker)
 		if ev.IsDefault {
-			score += 5.0
-			breakdown = append(breakdown, "default profile (+5.0)")
+			score += 1.0
+			breakdown = append(breakdown, "default profile (+1.0)")
 		}
 
-		// Recency / Plan Type
+		// Recency / Plan Type (Used as minor tie-breaker)
 		if acc.Plan == "ChatGPT Pro" || acc.Plan == "Google AI Pro" {
-			score += 15.0
-			breakdown = append(breakdown, "pro tier (+15.0)")
+			score += 2.0
+			breakdown = append(breakdown, "pro tier (+2.0)")
 		}
 
 		ev.Score = score

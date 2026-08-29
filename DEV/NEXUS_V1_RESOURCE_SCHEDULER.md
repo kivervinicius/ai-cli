@@ -44,5 +44,33 @@ fallback order, auto account handoff).
 
 ## Status
 
-Designed; implementation is Gate 5 (not yet built). The existing intra-provider
-selector (`internal/core/scheduler`) remains the live capability until then.
+**Implemented.** Resource discovery, allocation, and explainable selection are live.
+
+### Backend (`internal/nexus/resource_discovery.go`)
+- `ListResources()` — discovers provider accounts via `profile.List()` + `driver.Detect()`, returns real health/quota status.
+- `AllocateResource()` — validates an exact provider/profile choice, persists it as the Agent's `AgentConfig` revision.
+- `ResolveStartParams()` — resolves provider/profile: explicit params > AgentConfig > `REQUIRED_RESOURCE_SELECTION` error.
+- `validateResourceAccount()` — rejects unauthenticated, rate-limited, cooldown, or unavailable resources.
+
+### API
+- `GET /api/v1/resources` — returns real discovered accounts.
+- `POST /api/v1/resources/select` — validates and persists selection to agent config.
+
+### Frontend
+- `ResourcePicker.tsx` — consumes `listResources()` + `selectResource()`, shows quota bars, health badges, availability status.
+- `AgentsSurface.tsx` — start button triggers `REQUIRED_RESOURCE_SELECTION` → opens `ResourcePicker` modal.
+
+### Flow
+```
+1. UI calls startAgent(agent.id) — no provider/profile
+2. Backend returns 409 REQUIRED_RESOURCE_SELECTION
+3. UI opens ResourcePicker → GET /api/v1/resources (real discovery)
+4. User selects → POST /api/v1/resources/select (persists to AgentConfig)
+5. UI calls startAgent(agent.id) again
+6. Backend reads AgentConfig → resolves provider/profile → launches
+```
+
+### Remaining (future gates)
+- Cross-provider scoring with continuity, cooldown, and rate-limit risk.
+- Project-level and global policy hierarchy (preferred/forbidden providers).
+- Account Handoff and Context Handoff recommendations.

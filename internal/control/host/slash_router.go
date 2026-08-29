@@ -7,6 +7,7 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
+	"github.com/kivervinicius/ai-cli/internal/core/quota"
 	"github.com/kivervinicius/ai-cli/internal/profile"
 )
 
@@ -112,8 +113,12 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 		return SlashResult{Intercepted: true, Response: resp}
 
 	case "status":
-		snap := profile.GetUsageSnapshot(session.ProviderID, session.ProfileID)
-		usageStr := formatUsageSummary(snap)
+		qv := profile.GetQuotaView(session.ProviderID, session.ProfileID, "", "")
+		usageStr := formatQuotaViewSummary(qv)
+		availLabel := qv.AvailabilityLabel()
+		if !qv.IsAvailable() {
+			availLabel = "⚠ " + availLabel
+		}
 
 		resp := fmt.Sprintf(`
 ┌─ NEXUS CONTROL STATUS ───────────────────────────────────────┐
@@ -125,20 +130,22 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 │  Control Level:    %-41s │
 │  Workspace:        %-41s │
 │  Usage / Quota:    %-41s │
+│  Disponibilidade:  %-41s │
 └──────────────────────────────────────────────────────────────┘
 `, session.RuntimeID, strings.ToUpper(session.ProviderID), session.ProfileID,
 			fallbackUnknown(session.ProviderSessionID), session.State, session.ControlLevel,
-			truncateStr(session.Workspace, 41), usageStr)
+			truncateStr(session.Workspace, 41), usageStr, availLabel)
 		return SlashResult{Intercepted: true, Response: resp}
 
 	case "accounts":
 		profs, _ := profile.List()
 		var lines []string
 		lines = append(lines, fmt.Sprintf("=== Accounts & Quotas for Provider: %s ===", strings.ToUpper(session.ProviderID)))
-		lines = append(lines, fmt.Sprintf("%-16s %-12s %-14s %-14s %s", "PROFILE", "STATUS", "CAPACITY", "FRESHNESS", "RESET"))
-		lines = append(lines, strings.Repeat("─", 70))
+		lines = append(lines, fmt.Sprintf("%-16s %-12s %-14s %-14s %-14s %s", "PROFILE", "STATUS", "CAPACITY", "AVAIL", "FRESHNESS", "RESET"))
+		lines = append(lines, strings.Repeat("─", 80))
 
 		found := 0
+		allUnavailable := true
 		for _, p := range profs {
 			if p.Provider == session.ProviderID {
 				found++
@@ -146,63 +153,77 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 				if p.Name == session.ProfileID {
 					activeMarker = "> "
 				}
-				info := profile.GetAccountInfo(p.Provider, p.Name)
-				snap := profile.GetUsageSnapshot(p.Provider, p.Name)
+			info := profile.GetAccountInfo(p.Provider, p.Name)
+			qv := profile.GetQuotaView(p.Provider, p.Name, "", "")
 
-				authStatus := "AUTH_OK"
-				if !info.Authenticated {
-					authStatus = "NO_AUTH"
-				}
+			authStatus := "AUTH_OK"
+			if !info.Authenticated {
+				authStatus = "NO_AUTH"
+			}
 
-				capStr := "UNKNOWN"
-				for _, w := range snap.Windows {
-					if w.RemainingPercent != nil {
-						capStr = fmt.Sprintf("%.0f%% left", *w.RemainingPercent)
+			capStr := "UNKNOWN"
+			bottleneck, _ := qv.Bottleneck()
+			if qv.Status == string(model.UsageLive) || qv.Status == string(model.UsageCached) {
+				capStr = fmt.Sprintf("%.0f%% left", bottleneck)
+			}
+			if qv.Status == string(model.UsageRateLimited) {
+				capStr = "429 LIMITED"
+			}
+
+			availLabel := qv.AvailabilityLabel()
+			if qv.IsAvailable() {
+				allUnavailable = false
+			}
+
+			freshStr := qv.Status
+			resetStr := "-"
+			for _, g := range qv.ModelGroups {
+				for _, w := range g.Windows {
+					if w.ResetDesc != "" {
+						resetStr = w.ResetDesc
 						break
 					}
 				}
-				if snap.Status == model.UsageRateLimited {
-					capStr = "429 LIMITED"
+				if resetStr != "-" {
+					break
 				}
+			}
 
-				freshStr := string(snap.Status)
-				resetStr := "-"
-				for _, w := range snap.Windows {
-					if w.ResetDescription != "" {
-						resetStr = w.ResetDescription
-						break
-					}
-				}
-
-				lines = append(lines, fmt.Sprintf("%s%-14s %-12s %-14s %-14s %s",
-					activeMarker, p.Name, authStatus, capStr, freshStr, resetStr,
+				lines = append(lines, fmt.Sprintf("%s%-14s %-12s %-14s %-14s %-14s %s",
+					activeMarker, p.Name, authStatus, capStr, availLabel, freshStr, resetStr,
 				))
 			}
 		}
 		if found == 0 {
 			lines = append(lines, "  (No profiles configured for this provider)")
 		}
+		if allUnavailable && found > 0 {
+			lines = append(lines, "")
+			lines = append(lines, fmt.Sprintf("⚠  ALERTA: Nenhuma conta disponível para %s!", strings.ToUpper(session.ProviderID)))
+			lines = append(lines, "   Aguarde o reset da quota ou use outro provider.")
+		}
 		return SlashResult{Intercepted: true, Response: strings.Join(lines, "\n") + "\n"}
 
 	case "usage":
-		snap := profile.GetUsageSnapshot(session.ProviderID, session.ProfileID)
+		qv := profile.GetQuotaView(session.ProviderID, session.ProfileID, "", "")
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("\n=== Quota Snapshot: %s:%s ===\n", strings.ToUpper(session.ProviderID), session.ProfileID))
-		sb.WriteString(fmt.Sprintf("Status:       %s\n", snap.Status))
-		sb.WriteString(fmt.Sprintf("Source:       %s\n", snap.Source))
-		if len(snap.Windows) > 0 {
-			for _, w := range snap.Windows {
-				remStr := "UNKNOWN"
-				if w.RemainingPercent != nil {
-					remStr = fmt.Sprintf("%.1f%%", *w.RemainingPercent)
+		sb.WriteString(fmt.Sprintf("Status:       %s\n", qv.Status))
+		sb.WriteString(fmt.Sprintf("Source:       %s\n", qv.Source))
+		if len(qv.ModelGroups) > 0 {
+			for _, group := range qv.ModelGroups {
+				if qv.HasMultipleGroups() && group.Name != "" {
+					sb.WriteString(fmt.Sprintf("\n  %s:\n", group.Name))
 				}
-				sb.WriteString(fmt.Sprintf("Window [%s]:  Remaining: %s | Reset: %s\n", w.Kind, remStr, w.ResetDescription))
+				for _, w := range group.Windows {
+					sb.WriteString(fmt.Sprintf("  Window [%s]:  Remaining: %.1f%% | Reset: %s\n", w.Kind, w.Remaining, w.ResetDesc))
+				}
 			}
 		} else {
 			sb.WriteString("Remaining:    UNKNOWN (No authentic quota metric exposed)\n")
 		}
-		if !snap.FetchedAt.IsZero() {
-			sb.WriteString(fmt.Sprintf("Last Check:   %s (%s ago)\n", snap.FetchedAt.Format(time.RFC3339), time.Since(snap.FetchedAt).Round(time.Second)))
+		if !qv.FetchedAt.IsZero() {
+			sb.WriteString(fmt.Sprintf("Last Check:   %s (%s ago)\n", qv.FetchedAt.Format(time.RFC3339), time.Since(qv.FetchedAt).Round(time.Second)))
 		}
 		return SlashResult{Intercepted: true, Response: sb.String() + "\n"}
 
@@ -294,4 +315,14 @@ func formatUsageSummary(snap model.UsageSnapshot) string {
 	default:
 		return "UNKNOWN"
 	}
+}
+
+// formatQuotaViewSummary returns a compact one-line summary from a QuotaView.
+func formatQuotaViewSummary(qv quota.QuotaView) string {
+	bottleneck, _ := qv.Bottleneck()
+	status := qv.Status
+	if status == "" {
+		status = "UNKNOWN"
+	}
+	return fmt.Sprintf("%.0f%% remaining (%s)", bottleneck, status)
 }

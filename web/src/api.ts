@@ -58,6 +58,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ title }),
     }),
+  respondRuntime: (id: string, input: string) =>
+    request<{ status: string; sent: string }>(`/api/v1/runtimes/${id}/respond`, {
+      method: 'POST',
+      body: JSON.stringify({ input }),
+    }),
   stopRuntime: (id: string) =>
     request<{ status: string }>(`/api/v1/runtimes/${id}/stop`, { method: 'POST' }),
   accountHandoff: (id: string, target: string) =>

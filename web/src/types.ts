@@ -27,6 +27,11 @@ export interface RuntimeSession {
   handoff_type?: string;
   lineage_id?: string;
   started_at: string;
+  attention_reason?: 'QUESTION' | 'APPROVAL' | 'TASK_COMPLETED' | 'WORKING' | 'IDLE' | 'ERROR';
+  attention_context?: string;
+  project_name?: string;
+  last_task_summary?: string;
+  dynamic_title?: string;
 }
 
 export interface CapabilityEvidence {
@@ -186,3 +191,55 @@ export interface ConfigImpact {
   proposed_config?: AgentConfig;
   warnings?: string[];
 }
+
+/* ---- OS Filesystem & Deep Integration ---- */
+
+export interface FSEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  is_git: boolean;
+  tech: string[];
+  mod_time: string;
+  size_bytes: number;
+  child_count?: number;
+  permissions: string;
+}
+
+export interface FSBookmark {
+  label: string;
+  path: string;
+  icon: string;
+}
+
+export interface FSBrowseResult {
+  current_path: string;
+  parent_path: string;
+  breadcrumbs: string[];
+  entries: FSEntry[];
+  bookmarks: FSBookmark[];
+  is_git: boolean;
+  git_branch?: string;
+  tech?: string[];
+}
+
+export interface FSScanResult {
+  name: string;
+  path: string;
+  branch: string;
+  tech: string[];
+  mod_time: string;
+  is_imported: boolean;
+}
+
+export interface FSInspectResult {
+  path: string;
+  exists: boolean;
+  is_dir: boolean;
+  is_git: boolean;
+  git_branch?: string;
+  git_remote?: string;
+  suggested_name: string;
+  tech: string[];
+}
+

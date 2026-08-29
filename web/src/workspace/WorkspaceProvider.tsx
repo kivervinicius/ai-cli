@@ -8,6 +8,7 @@ import {
   setSplitRatio,
   splitWithSurface,
   toggleMaximize,
+  updateSurface,
   type WorkspaceDirection,
   type WorkspaceModel,
   type WorkspaceSurface,
@@ -19,6 +20,7 @@ interface WorkspaceContextValue {
   open: (surface: WorkspaceSurface, targetStackId?: string) => void;
   activate: (surfaceId: string) => void;
   close: (surfaceId: string) => void;
+  updateSurface: (surfaceId: string, patch: Partial<WorkspaceSurface>) => void;
   split: (relativeSurfaceId: string, surface: WorkspaceSurface, direction: WorkspaceDirection) => void;
   move: (surfaceId: string, targetStackId: string) => void;
   resize: (splitId: string, ratio: number) => void;
@@ -31,6 +33,7 @@ type Action =
   | { type: 'open'; surface: WorkspaceSurface; stackId?: string }
   | { type: 'activate'; surfaceId: string }
   | { type: 'close'; surfaceId: string }
+  | { type: 'updateSurface'; surfaceId: string; patch: Partial<WorkspaceSurface> }
   | { type: 'split'; relativeSurfaceId: string; surface: WorkspaceSurface; direction: WorkspaceDirection }
   | { type: 'move'; surfaceId: string; targetStackId: string }
   | { type: 'resize'; splitId: string; ratio: number }
@@ -42,6 +45,7 @@ function reducer(model: WorkspaceModel, action: Action): WorkspaceModel {
     case 'open': return openSurface(model, action.surface, action.stackId);
     case 'activate': return setActiveSurface(model, action.surfaceId);
     case 'close': return closeSurface(model, action.surfaceId);
+    case 'updateSurface': return updateSurface(model, action.surfaceId, action.patch);
     case 'split': return splitWithSurface(model, action.relativeSurfaceId, action.surface, action.direction);
     case 'move': return moveSurface(model, action.surfaceId, action.targetStackId);
     case 'resize': return setSplitRatio(model, action.splitId, action.ratio);
@@ -80,6 +84,7 @@ export const WorkspaceProvider: React.FC<{
     open: (surface, stackId) => dispatch({ type: 'open', surface, stackId }),
     activate: (surfaceId) => dispatch({ type: 'activate', surfaceId }),
     close: (surfaceId) => dispatch({ type: 'close', surfaceId }),
+    updateSurface: (surfaceId, patch) => dispatch({ type: 'updateSurface', surfaceId, patch }),
     split: (relativeSurfaceId, surface, direction) => dispatch({ type: 'split', relativeSurfaceId, surface, direction }),
     move: (surfaceId, targetStackId) => dispatch({ type: 'move', surfaceId, targetStackId }),
     resize: (splitId, ratio) => dispatch({ type: 'resize', splitId, ratio }),

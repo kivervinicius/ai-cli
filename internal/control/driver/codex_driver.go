@@ -143,10 +143,11 @@ func (d *CodexDriver) BuildCommand(ctx context.Context, p model.Profile, extraAr
 	_ = security.ApplyIsolation(home, security.GetPolicy(cfgObj.IsolationPreset))
 
 	env := runtime.EnvSet(os.Environ(), map[string]string{
-		"HOME":        home,
-		"CODEX_HOME":  home,
-		"AI_PROFILE":  p.Name,
-		"AI_PROVIDER": "codex",
+		"HOME":             home,
+		"CODEX_HOME":       home,
+		"CODEX_CONFIG_DIR": home,
+		"AI_PROFILE":       p.Name,
+		"AI_PROVIDER":      "codex",
 	})
 
 	return bin, extraArgs, env, nil

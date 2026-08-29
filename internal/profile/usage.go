@@ -137,6 +137,37 @@ func GetQuotaDetails(providerName, name, plan, email string) QuotaDetails {
 	return q
 }
 
+// GetQuotaView returns the omnibus QuotaView for any consumer (TUI, Web, CLI, Scheduler).
+// This is the preferred entry point for quota display and scoring.
+func GetQuotaView(providerName, name, plan, email string) quota.QuotaView {
+	snap := GetUsageSnapshot(providerName, name)
+
+	// Apply default model names when the adapter didn't set one.
+	if snap.ModelName == "" {
+		snap.ModelName = defaultModelName(providerName)
+	}
+
+	return quota.BuildQuotaView(snap, email, plan)
+}
+
+// defaultModelName returns a fallback model name for providers that don't set one.
+func defaultModelName(provider string) string {
+	switch provider {
+	case "codex":
+		return "gpt-5.6-sol"
+	case "agy":
+		return "Gemini 2.5 Flash / Pro"
+	case "claude":
+		return "Claude 3.7 Sonnet"
+	case "opencode":
+		return "OpenCode Provider"
+	case "gemini":
+		return "Gemini Pro"
+	default:
+		return provider
+	}
+}
+
 // RenderBar generates a clean progress bar.
 func RenderBar(percent float64, width int) string {
 	p := percent

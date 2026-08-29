@@ -178,3 +178,20 @@ export function setSplitRatio(model: WorkspaceModel, splitId: string, ratio: num
 export function toggleMaximize(model: WorkspaceModel, surfaceId: string): WorkspaceModel {
   return { ...model, maximizedSurfaceId: model.maximizedSurfaceId === surfaceId ? undefined : surfaceId };
 }
+
+export function updateSurface(
+  model: WorkspaceModel,
+  surfaceId: string,
+  patch: Partial<WorkspaceSurface>,
+): WorkspaceModel {
+  const root = updateNode(model.root, (node) => {
+    if (node.kind !== 'stack') return node;
+    const tabIdx = node.tabs.findIndex((tab) => tab.id === surfaceId);
+    if (tabIdx === -1) return node;
+    const nextTabs = [...node.tabs];
+    nextTabs[tabIdx] = { ...nextTabs[tabIdx], ...patch };
+    return { ...node, tabs: nextTabs };
+  });
+  return { ...model, root };
+}
+

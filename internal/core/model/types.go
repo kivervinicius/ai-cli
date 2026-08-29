@@ -66,8 +66,11 @@ const (
 )
 
 // UsageWindow represents usage metrics for a specific time window (e.g. 5h, weekly).
+// Group clusters windows by model family when a provider exposes separate quotas
+// (e.g. AGY: "gemini" for Gemini models, "claude_gpt" for Claude/GPT models).
 type UsageWindow struct {
 	Kind             string     `json:"kind"`
+	Group            string     `json:"group,omitempty"`
 	UsedPercent      *float64   `json:"used_percent,omitempty"`
 	RemainingPercent *float64   `json:"remaining_percent,omitempty"`
 	ResetTime        *time.Time `json:"reset_time,omitempty"`

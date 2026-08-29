@@ -33,6 +33,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/localization"
 	"github.com/kivervinicius/ai-cli/internal/nexus"
 	"github.com/kivervinicius/ai-cli/internal/profile"
+	"github.com/kivervinicius/ai-cli/internal/release"
 	"github.com/kivervinicius/ai-cli/internal/tui"
 )
 
@@ -96,6 +97,8 @@ func Run(args []string) error {
 		return nil
 	case "version", "--version", "-v":
 		return versionCmd(args[1:])
+	case "release":
+		return release.Run(".")
 	case "web":
 		return controlWebCmd(args[1:])
 	case "start":
@@ -273,10 +276,59 @@ func executeProviderWithSmartSelection(provName, explicitProfile string, args []
 		return fmt.Errorf("no profiles configured for provider %s. Run: %s add %s <name>", provName, progName(), provName)
 	}
 
+	// Pre-check: warn if ALL accounts are unavailable before launching.
+	allUnavailable := true
+	for _, p := range candidates {
+		acc := accounts[p.Name]
+		snap, _ := qEng.GetCachedUsage(provName, p.Name)
+		qv := quota.BuildQuotaView(snap, acc.Email, acc.Plan)
+		if qv.IsAvailable() {
+			allUnavailable = false
+			break
+		}
+	}
+	if allUnavailable {
+		fmt.Fprintf(os.Stderr, "\n⚠  NENHUMA CONTA DISPONÍVEL para %s:\n\n", strings.ToUpper(provName))
+		for _, p := range candidates {
+			acc := accounts[p.Name]
+			snap, _ := qEng.GetCachedUsage(provName, p.Name)
+			qv := quota.BuildQuotaView(snap, acc.Email, acc.Plan)
+			reason := qv.AvailabilityLabel()
+			detail := ""
+			if len(qv.AvailReasons.ExhaustedWindows) > 0 {
+				detail = fmt.Sprintf(" (janelas esgotadas: %s)", strings.Join(qv.AvailReasons.ExhaustedWindows, ", "))
+			}
+			fmt.Fprintf(os.Stderr, "   ✗ %s: %s%s\n", p.Name, reason, detail)
+		}
+		fmt.Fprintf(os.Stderr, "\n   Aguarde o reset da quota ou use outro provider.\n\n")
+	}
+
 	cwd, _ := os.Getwd()
 	ctx := context.Background()
 
 	return exec.RunWithFallback(ctx, provName, cwd, explicitProfile, candidates, accounts, allowFallback, func(p model.Profile) (model.Failure, error) {
+		accInfo := accounts[p.Name]
+		accEmail := accInfo.Email
+		if accEmail == "" {
+			accEmail = p.Name
+		}
+		snap, _ := qEng.GetCachedUsage(provName, p.Name)
+		var capInfo string
+		if len(snap.Windows) > 0 {
+			minPct := 100.0
+			minKind := ""
+			for _, w := range snap.Windows {
+				if w.RemainingPercent != nil && *w.RemainingPercent <= minPct {
+					minPct = *w.RemainingPercent
+					minKind = w.Kind
+				}
+			}
+			if minKind != "" {
+				capInfo = fmt.Sprintf(" [Cap: %.0f%% (%s)]", minPct, minKind)
+			}
+		}
+		fmt.Fprintf(os.Stderr, "⚡ [%s] Usando perfil: %s:%s (%s)%s\n", progName(), provName, p.Name, accEmail, capInfo)
+
 		start := time.Now()
 		_ = telemetry.LogEvent(telemetry.Event{
 			Type:       telemetry.EventSessionStarted,
@@ -382,8 +434,9 @@ func usage() {
   %s update                       Update Nexus and Orquestrador Maestro to latest
   %s completion <bash|zsh|fish>   Generate shell completion scripts
   %s version [--json]             Display build and platform information
+  %s release                      Interactively bump, build, install and validate Nexus
 `,
-		p, p, p, p, p, p, p, p, p, p, p,
+		p, p, p, p, p, p, p, p, p, p, p, p,
 		p, p, p, p, p,
 		p, p, p, p, p, p, p, p, p,
 		p, p, p, p, p, p, p, p, p, p, p, p, p, p,
@@ -744,9 +797,11 @@ func usageCmd(args []string) error {
 		if len(email) > 22 {
 			email = email[:20] + ".."
 		}
-		qDetails := profile.GetQuotaDetails(p.Provider, p.Name, acc.Plan, acc.Email)
+		qv := profile.GetQuotaView(p.Provider, p.Name, acc.Plan, acc.Email)
+		bottleneck, _ := qv.Bottleneck()
+		bar := quota.RenderBarWithPercent(bottleneck, qv.Status, 10)
 		fmt.Printf("%-10s %-16s %-24s %-16s %-28s %s\n",
-			p.Provider, p.Name, email, acc.Plan, qDetails.FiveHour.ProgressBar, qDetails.Status)
+			p.Provider, p.Name, email, acc.Plan, bar, qv.Status)
 	}
 	return nil
 }
@@ -1241,7 +1296,7 @@ func completionCmd(args []string) error {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage inspect sessions workspaces bind unbind bindings explain doctor security history stats config update completion version codex agy claude opencode gemini"
+    opts="web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage inspect sessions workspaces bind unbind bindings explain doctor security history stats config update completion version release codex agy claude opencode gemini"
     COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
     return 0
 }
@@ -1282,8 +1337,8 @@ _nexus() {
 _nexus "$@"
 `)
 	case "fish":
-		fmt.Print(`complete -c nexus -f -a "web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage sessions workspaces bind unbind explain doctor security history stats update config version"
-complete -c ai -f -a "web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage sessions workspaces bind unbind explain doctor security history stats update config version"
+		fmt.Print(`complete -c nexus -f -a "web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage sessions workspaces bind unbind explain doctor security history stats update config version release"
+complete -c ai -f -a "web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage sessions workspaces bind unbind explain doctor security history stats update config version release"
 `)
 	case "powershell", "pwsh":
 		fmt.Print(`Register-ArgumentCompleter -Native -CommandName @('nexus', 'ai') -ScriptBlock {
@@ -1292,7 +1347,7 @@ complete -c ai -f -a "web start stop ps running attach handoff continue resume c
         'web', 'start', 'stop', 'ps', 'running', 'attach', 'handoff', 'continue', 'resume',
         'control', 'ui', 'providers', 'profiles', 'add', 'remove', 'login', 'logout', 'use',
         'status', 'usage', 'inspect', 'sessions', 'workspaces', 'bind', 'unbind', 'bindings',
-        'explain', 'doctor', 'security', 'history', 'stats', 'config', 'update', 'completion', 'version',
+        'explain', 'doctor', 'security', 'history', 'stats', 'config', 'update', 'completion', 'version', 'release',
         'codex', 'agy', 'claude', 'opencode', 'gemini'
     )
     $commands | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {

@@ -2,6 +2,7 @@ package nexus
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
@@ -142,4 +143,60 @@ func TestSafeApplyNoop(t *testing.T) {
 		t.Errorf("second identical apply should be no-op, got changed: %v", impact2.ChangedFields)
 	}
 	_ = impact1
+}
+
+func TestAllocateResourcePersistsEligibleAccount(t *testing.T) {
+	n := openTestNexus(t)
+	st, _ := n.OpenProject()
+	project, _ := st.CreateProject(store.Project{Name: "P", CanonicalPath: t.TempDir()})
+	agent, _ := st.CreateAgent(store.Agent{ProjectID: project.ID, Name: "Dev"})
+
+	allocation, err := n.allocateResourceFromAccounts(context.Background(), agent.ID, "codex", "pro", []ProviderAccount{{
+		ID: "codex:pro", Provider: "codex", Profile: "pro", Authenticated: true, Available: true, Health: "healthy",
+	}}, PolicyManual)
+	if err != nil {
+		t.Fatalf("allocate resource: %v", err)
+	}
+	if !allocation.Persisted || allocation.Decision.Selected.ID != "codex:pro" {
+		t.Fatalf("allocation = %+v, want persisted codex:pro", allocation)
+	}
+
+	agent, _ = st.GetAgent(agent.ID, "")
+	revision, err := st.GetRevision(agent.CurrentRevisionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := ParseAgentConfig(revision.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.Provider != "codex" || config.Profile != "pro" {
+		t.Fatalf("persisted config = %+v, want codex/pro", config)
+	}
+}
+
+func TestAllocateResourceRejectsUnavailableAccount(t *testing.T) {
+	n := openTestNexus(t)
+	st, _ := n.OpenProject()
+	project, _ := st.CreateProject(store.Project{Name: "P", CanonicalPath: t.TempDir()})
+	agent, _ := st.CreateAgent(store.Agent{ProjectID: project.ID, Name: "Dev"})
+
+	_, err := n.allocateResourceFromAccounts(context.Background(), agent.ID, "codex", "default", []ProviderAccount{{
+		ID: "codex:default", Provider: "codex", Profile: "default", Authenticated: true, Available: false, Health: "healthy",
+	}}, PolicyManual)
+	if err == nil || !strings.Contains(err.Error(), "unavailable") {
+		t.Fatalf("expected unavailable resource error, got %v", err)
+	}
+}
+
+func TestResolveStartParamsRejectsUnpersistedOverride(t *testing.T) {
+	n := openTestNexus(t)
+	st, _ := n.OpenProject()
+	project, _ := st.CreateProject(store.Project{Name: "P", CanonicalPath: t.TempDir()})
+	agent, _ := st.CreateAgent(store.Agent{ProjectID: project.ID, Name: "Dev"})
+
+	_, _, err := n.ResolveStartParams(agent.ID, "codex", "default")
+	if err == nil || !strings.Contains(err.Error(), "persisted resource") {
+		t.Fatalf("expected persisted-resource error, got %v", err)
+	}
 }

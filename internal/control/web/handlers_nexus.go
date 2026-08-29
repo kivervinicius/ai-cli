@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/kivervinicius/ai-cli/internal/buildinfo"
 	"github.com/kivervinicius/ai-cli/internal/nexus"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
@@ -297,7 +298,8 @@ func (h *NexusHandler) handleAgentDetail(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-// handleAgentStart POST /api/v1/agents/{id}/start {provider?, profile?}
+// handleAgentStart POST /api/v1/agents/{id}/start. Provider selection is
+// intentionally read only here: it must be persisted through Resources first.
 func (h *NexusHandler) handleAgentStart(w http.ResponseWriter, r *http.Request) {
 	id := agentIDFromPath(r.URL.Path)
 	if id == "" {
@@ -309,7 +311,14 @@ func (h *NexusHandler) handleAgentStart(w http.ResponseWriter, r *http.Request) 
 		Profile  string `json:"profile"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-	sess, err := h.nexus.StartAgent(context.Background(), id, body.Provider, body.Profile)
+
+	provider, profile, err := h.nexus.ResolveStartParams(id, body.Provider, body.Profile)
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+
+	sess, err := h.nexus.StartAgent(context.Background(), id, provider, profile)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -451,10 +460,16 @@ func (h *NexusHandler) handleResourcesList(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	// For now, return an empty list. Gate 5 full implementation requires
-	// driver discovery and profile enumeration.
+	accounts, err := h.nexus.ListResources()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if accounts == nil {
+		accounts = []nexus.ProviderAccount{}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"accounts": []nexus.ProviderAccount{},
+		"accounts": accounts,
 		"policy":   "BALANCED",
 	})
 }
@@ -467,19 +482,25 @@ func (h *NexusHandler) handleResourceSelect(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var body struct {
-		Provider  string `json:"provider"`
-		Policy    string `json:"policy"`
-		AgentID   string `json:"agent_id"`
+		Provider string `json:"provider"`
+		Profile  string `json:"profile"`
+		Policy   string `json:"policy"`
+		AgentID  string `json:"agent_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	// Use the scheduler with an empty account list for now.
-	// Full Gate 5 implementation will populate from driver discovery.
-	scheduler := nexus.NewResourceScheduler(nil, nexus.SchedulerPolicy(body.Policy))
-	decision := scheduler.Select(body.Provider, "", "", nil)
-	writeJSON(w, http.StatusOK, map[string]any{"decision": decision})
+	if strings.TrimSpace(body.AgentID) == "" || strings.TrimSpace(body.Provider) == "" || strings.TrimSpace(body.Profile) == "" {
+		writeError(w, http.StatusBadRequest, "agent_id, provider and profile are required")
+		return
+	}
+	allocation, err := h.nexus.AllocateResource(context.Background(), body.AgentID, body.Provider, body.Profile, nexus.SchedulerPolicy(body.Policy))
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, allocation)
 }
 
 // handleMaestroStatus GET /api/v1/maestro — returns Maestro integration status.
@@ -553,7 +574,9 @@ func (h *NexusHandler) handleSystemUpdates(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"nexus_version":          "0.4.1",
+		"nexus_version":          buildinfo.Version,
+		"nexus_commit":           buildinfo.Commit,
+		"nexus_build_date":       buildinfo.BuildDate,
 		"maestro_version":        maestroVer,
 		"maestro_latest_version": latestMaestroVer,
 		"maestro_available":      mStatus.Available,
@@ -567,19 +590,7 @@ func (h *NexusHandler) handleSystemUpdate(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	// Run system update
-	client := nexus.NewMaestroClient()
-	mStatus := client.Status()
-	maestroVer := "unknown"
-	if mStatus.Capabilities != nil {
-		maestroVer = mStatus.Capabilities.Version
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"nexus_updated":   true,
-		"nexus_version":   "0.4.1",
-		"maestro_updated": true,
-		"maestro_version": maestroVer,
-	})
+	writeError(w, http.StatusNotImplemented, "system update not yet implemented")
 }
 
 // handleMissionsList GET /api/v1/projects/{id}/missions — list missions for a project.

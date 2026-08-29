@@ -276,6 +276,46 @@ func (r *Registry) UpdateTitle(runtimeID, title string) error {
 			return
 		}
 		s.Title = title
+		s.DynamicTitle = title
+		s.UpdatedAt = time.Now()
+		fresh[runtimeID] = s
+	})
+	if err != nil {
+		return err
+	}
+	if notFound {
+		return fmt.Errorf("runtime %q not found", runtimeID)
+	}
+	return nil
+}
+
+// UpdateAttention updates the attention metadata and dynamic title of a runtime session.
+func (r *Registry) UpdateAttention(runtimeID string, state RuntimeState, reason, context, projectName, taskSummary, dynamicTitle string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var notFound bool
+	err := r.saveLocked(func(fresh map[string]RuntimeSession) {
+		s, ok := fresh[runtimeID]
+		if !ok {
+			notFound = true
+			return
+		}
+		if state != "" {
+			s.State = state
+		}
+		s.AttentionReason = reason
+		s.AttentionContext = context
+		if projectName != "" {
+			s.ProjectName = projectName
+		}
+		if taskSummary != "" {
+			s.LastTaskSummary = taskSummary
+		}
+		if dynamicTitle != "" {
+			s.DynamicTitle = dynamicTitle
+			s.Title = dynamicTitle
+		}
 		s.UpdatedAt = time.Now()
 		fresh[runtimeID] = s
 	})

@@ -1,6 +1,59 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
 ## Date: 2026-08-29
+- **Project Creation UI Unification (`AddProjectModal.tsx`)**:
+  - **Unified Component**: Extracted and created `AddProjectModal.tsx` as the single source of truth for adding/creating local projects across the entire Nexus web app.
+  - **OS Integration Everywhere**: Integrated `DirectoryBrowserModal` ("Procurar Pastas no SO…"), `ProjectScanModal` ("Escanear Projetos do Sistema…"), real-time live filesystem inspection (`/api/v1/fs/inspect`), Git branch detection badges, and tech stack badges directly into both the left lateral rail (`ProjectRail.tsx`) and the project manager workspace (`ProjectManagerSurface.tsx`).
+  - **Eliminated Legacy Manual Form**: Removed the outdated, unintegrated `<Dialog>` and manual text fields from `ProjectRail.tsx`, standardizing the user experience everywhere.
+- **Terminal Attention Detection, Push Notifications & Dynamic Titles**:
+  - **Real-Time Stream Attention Detector (`internal/control/host/attention.go` & `host.go`)**: Built a high-performance heuristic parser and regex classifier that analyzes PTY terminal output chunks in real time, detecting interactive questions (`[y/N]`, option prompts, plan reviews), task completion milestones, active working states, and OSC window title escapes.
+  - **Dynamic Contextual Titles & State Synchronization**: Automatically formats window and tab titles (e.g. `❓ [Project] Pergunta: <context>`, `✅ [Project] Concluído: <task>`, `⏳ [Project] <action>`), synchronizes them with the Registry, emits typed events, and pushes WebSocket frame updates (`"attention"`, `"title"`) to connected browser clients.
+  - **Browser Push Notifications with Real Context (`web/src/notifications/PushNotificationManager.ts`)**: Integrated Web Notifications API with permission management, dispatching native OS push notifications with project name, event reason, and exact question or completed task summary, focusing the workspace window on click.
+  - **Web Intermediation Banner (`web/src/components/AttentionIntermediationBanner.tsx`)**: Created a top alert banner with 1-click quick response buttons (`[Sim (y)]`, `[Não (n)]`), text response input, and terminal focusing, sending input directly to runtime stdin via `POST /api/v1/runtimes/:id/respond` or WebSocket.
+  - **Workspace Dynamic Titles (`web/src/workspace/WorkspaceProvider.tsx` & `NexusWorkspaceApp.tsx`)**: Added `updateSurface` action to dynamically update tab headers and document titles (`document.title`) with real-time status indicators (❓, ✅, ⏳, ⚡).
+- **Automated Version Bumping & Local Binary Installation (`Makefile`)**:
+  - Configured `make build` (and `make`) to automatically increment the patch version in `VERSION` on every build (e.g. `0.4.4` -> `0.4.5`).
+  - Embedded the updated version, git commit hash, and ISO UTC build timestamp into the binary metadata.
+  - Automatically installs the compiled binary to the active profile's `~/.local/bin/nexus` and host `/home/desenvolvedor/.local/bin/nexus` with the `ai` symlink alias (`ln -sf nexus ai`), ensuring that local invocations immediately run the latest build.
+- **Token Usage Scheduling & Codex Profile Isolation Fix**:
+  - **Dominant Capacity Scoring (`internal/core/scheduler/scheduler.go`)**: Rebalanced the account selector so token availability across windows (`min(5h, weekly) * 0.7 + avg * 0.3`) is the dominant factor (scaled 0-1000 points). Scaled tier (+2.0) and default (+1.0) bonuses to act strictly as tie-breakers so accounts with less token usage (higher remaining capacity) always win selection.
+  - **Codex Isolated Execution (`internal/core/provider/adapters/codex/codex.go`)**: Configured isolated `HOME`, `CODEX_HOME`, and `CODEX_CONFIG_DIR` environment variables in interactive execution and synced `auth.json` and `config.toml` between `$home` and `$home/.codex` so the Codex CLI always binds to the selected profile rather than the host home.
+  - **Transparent Terminal Indicator (`internal/app/app.go`)**: Added startup notification banner indicating selected provider, profile name, account email, and bottleneck capacity percentage before launch.
+  - **Verified**: 100% tests passing with `-race` across all Go packages. Confirmed automatic selection chooses `kivergmail` (Codex) and `kivervinicius-gmail` (AGY) due to 100% capacity.
+- **Deep OS Integration for Project Management & Filesystem**:
+  - **Visual OS Directory Browser (`DirectoryBrowserModal.tsx` & `/api/v1/fs/browse`)**: Built an interactive filesystem folder explorer with breadcrumb navigation, quick OS bookmarks (`Home ~`, `/projetos`, `Desktop`, `Documents`, `Root /`), tech framework detection badges (`Go`, `Node.js`, `Python`, `Rust`, `Docker`), and in-place directory creation (`/api/v1/fs/mkdir`).
+  - **System Git Repository Auto-Scanner (`ProjectScanModal.tsx` & `/api/v1/fs/scan`)**: 1-click discovery scanning host development directories (`~`, `/projetos`, `~/workspace`, `~/dev`, `~/src`, `~/Desktop`) for Git repositories with branch detection and 1-click import.
+  - **Real-Time Path Autocomplete & Live Inspection (`/api/v1/fs/inspect`)**: As paths are typed or picked, Nexus validates directory existence, branch name, and tech stack in real-time.
+  - **Native OS Quick Launchers (`/api/v1/projects/:id/open-os`)**: Integrated 1-click actions on project cards and tables:
+    - 📁 *Open in OS File Manager* (`xdg-open` / `open` / `explorer`)
+    - 💻 *Open in Native Terminal* (`x-terminal-emulator` / `$TERMINAL`)
+    - ⚡ *Open in VS Code / Cursor* (`code` / `cursor`)
+  - **Comprehensive i18n & Verification**: 100% catalog parity in `ptBR`, `en`, and `es`. All 44 frontend Vitest tests and all Go `-race` tests passing. Rebuilt and installed `nexus` binary.
+- **D-Bus Secret Service (`org.freedesktop.secrets`) Timeout Neutralization**:
+  - Removed spurious wrapping of `dbus-run-session` in `internal/core/provider/adapters/agy/agy.go` that created empty D-Bus session buses and caused 120-second activation hangs.
+  - Added headless keyring bypass environment variable `PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring` and sanitized `GNOME_KEYRING_CONTROL`, `GNOME_KEYRING_PID`, and `DBUS_SESSION_BUS_ADDRESS` in AGY adapter and driver execution environments (`internal/control/driver/agy_driver.go`).
+  - Validated 100% tests passing with `-race` across all Go packages and verified instantaneous execution in `nexus doctor`.
+- **OS-Grade Project & Virtual Desktop Manager (`nexus://projects`)**:
+  - **Mental Model Elevation**: Refactored project management into a true **Operating System Workspace & Virtual Desktop Manager** (similar to macOS Spaces/Mission Control and GNOME Workspaces) where each project anchors its own multi-window desktop, persistent agents, Git context, Maestro governance, and resource policies.
+  - **Full OS Desktops Hub Surface (`ProjectManagerSurface.tsx`)**: Created dedicated full-featured surface with:
+    - Top metrics cards (Total Desktops, Persistent Agents, Working Now, Maestro Mode).
+    - Grid View featuring visual desktop cards with color-coded avatar, canonical path with 1-click copy, Git branch, Maestro mode, and live agent status badges.
+    - Dense List View with sorting (Recently Active / MRU, Name A-Z, Most Agents) and search filter.
+    - Embedded Project Configuration & Settings modal for editing project name, default branch, Maestro mode (`ASSIST`, `ORCHESTRATE`, `OFF`), isolation strategy, and resource policy (`BALANCED`, `PERFORMANCE`, `COST`) with instant SQLite persistence.
+  - **Quick OS Switcher Overlay (`ProjectManagerModal.tsx`)**: Enhanced with arrow key keyboard navigation (<kbd>↑</kbd>, <kbd>↓</kbd>, <kbd>Enter</kbd>), search filtering, and direct link to open the full Desktops Hub.
+  - **Dock / Project Rail Integration (`ProjectRail.tsx`)**: Added "All Workspaces / Desktops Hub" shortcut (`LayoutGrid` icon) in the global navigation section.
+  - **Starter Project Templates (`ProjectHub.tsx`)**: Built first-run templates (*Fullstack SaaS*, *Microservice API with TDD*, *CLI Tool*) alongside custom repository folder import.
+  - **i18n & Test Parity**: Updated translation catalogs in `en`, `ptBR`, and `es`. 100% tests passing across Go (`go test -race ./...`) and Frontend (44 Vitest tests). Built and installed `nexus` binary.
+- **UX & Feature Refinement (Nexus Workspace OS & Maestro Integration)**:
+  - **Eliminated Tab & Navigation Duplication**: Removed redundant sub-navigation strip and bottom duplicate tab buttons. Kept clean surface tabs at the top of workspace stacks.
+  - **OS-Style Status Bar**: Refactored bottom bar into an OS Status Bar displaying Project name, Git branch, active working agents count, local connection status, and dual system versions (`Nexus v...` and `Maestro v...`).
+  - **Prominent Language Switcher**: Added 1-click `LanguagePicker` directly in the Topbar header (`[🇧🇷 PT | 🇬🇧 EN | 🇪🇸 ES]`).
+  - **OS-Style Project Manager Modal (`Ctrl+P`)**: Implemented project search, project switcher, overview shortcut, removal with confirmation, and local repository importer.
+  - **Interactive Maestro Control Badge**: Clickable Maestro badge in Topbar opening a control modal with integration status, versions, assistance mode selector (`ASSIST`, `ORCHESTRATE`, `OFF`), active skills list, and direct link to Maestro workspace.
+  - **Welcome Guide & Help Center (`?`)**: Added interactive Welcome Modal featuring product overview, 3-step quickstart, shortcuts & slash commands cheat sheet, installed version status, and interactive tour launcher.
+  - **Dual Version Visibility**: Dynamic version endpoint (`GET /api/v1/system/updates`) provides live version information for both Nexus and Orquestrador Maestro across Topbar, Status Bar, and Welcome Guide.
+  - **Full i18n Translation Parity**: Added comprehensive translations in Portuguese (BR), English, and Spanish for all new modals, labels, and features.
+  - Recompiled binary (`nexus`), rebuilt web bundle (`web/dist`), verified visual layout via headless Chrome screenshots, and passed 100% Go and Frontend test suites.
 - **Project Alignment, Modern Command Dispatch & Full Rebranding**:
   - Rebranded product to **IAPro Nexus** with canonical binary `nexus` (and `ai` symlink alias).
   - Renamed `cmd/ai/` -> `cmd/nexus/` with updated build targets in `Makefile` and `.goreleaser.yaml`.
@@ -503,3 +556,88 @@ Linux runtime fully verified. Windows/macOS build-verified only (conditional lim
 ### Verification
 - `go test ./...`: ALL PASS
 - `web vitest`: ALL 36 TESTS PASS
+
+---
+
+## 2026-08-29 — Resolution of 7 Pending Issues
+
+**Objective**: resolve all 7 pending issues with business rules in the backend only, ensuring TUI and Web share the same logic.
+
+### Changes Applied
+
+#### Issue #1: Resources facade → Real Discovery
+- Created `internal/nexus/resource_discovery.go` with `ListResources()`, `AllocateResource()`, `ResolveStartParams()`.
+- `handleResourcesList` now calls real discovery via `profile.List()` + `driver.Detect()`.
+- `handleResourceSelect` validates and persists selection to `AgentConfig`.
+
+#### Issue #2: Maestro synthetic state → Honest degradation
+- `queryCapabilities()` returns error when `capabilities --json` fails (removed hardcoded skills/gates/processes).
+- `GetAdvice()` returns `Mode: MaestroOff` with empty recommendation lists (removed hardcoded recommendations).
+
+#### Issue #3: Update simulated → 501 Not Implemented
+- `handleSystemUpdate` returns `501 Not Implemented` instead of fake success.
+
+#### Issue #4: Agent start without provider → Resource selection flow
+- `handleAgentStart` calls `ResolveStartParams()` before `StartAgent`.
+- Returns `409 REQUIRED_RESOURCE_SELECTION` when no provider configured.
+- UI opens `ResourcePicker` modal for selection.
+
+#### Issue #5: Config not reaching runtime → Full propagation
+- `LaunchOptions` extended with `Model`, `Environment`, `Isolation`, `Options`.
+- `StartAgent` reads full `AgentConfig` and passes all fields to launcher.
+- Environment variables injected into runtime process.
+
+#### Issue #6: Terminal continuity → AgentTerminalBroker integration
+- `HandleWebSocket` now accepts `agentID`, registers with broker.
+- `NotifyRuntimeChanged()` emits `runtime_changed` frames to browsers.
+- `WatchRuntimeChanged()` goroutine closes WebSocket on generation switch.
+- Added `ResolveAgentByRuntimeID()` for reverse lookup.
+
+#### Issue #7: Missions scaffold → Kept as-is
+- CRUD functional, no execution/orchestration. Documented as future work.
+
+### Files Modified
+- `internal/nexus/resource_discovery.go` (new)
+- `internal/nexus/maestro.go`
+- `internal/nexus/nexus.go`
+- `internal/nexus/scheduler.go`
+- `internal/nexus/store/agents.go`
+- `internal/control/launcher/launcher.go`
+- `internal/control/web/handlers_nexus.go`
+- `internal/control/web/handler_terminal.go`
+- `internal/control/web/broker.go`
+- `internal/control/web/server.go`
+- `web/src/features/agents/AgentsSurface.tsx`
+- `web/src/nexus/ResourcePicker.tsx`
+- `web/src/nexus/api.ts`
+
+### Verification
+- `go vet ./...`: PASS
+- `go test -race ./...`: ALL PASS
+- `npx tsc --noEmit`: PASS
+- `npx eslint`: PASS (0 errors)
+- `npx vitest run`: 44/44 tests PASS
+- `make build`: PASS (v0.4.6)
+
+### Documentation Updated
+- `DEV/NEXUS_V1_ARCHITECTURE.md` — added resource discovery + terminal broker sections
+- `DEV/NEXUS_V1_RESOURCE_SCHEDULER.md` — marked as implemented with flow docs
+- `DEV/NEXUS_V1_MAESTRO_INTEGRATION.md` — added honest degraded fallback note
+- `DEV/NEXUS_V1_AGENT_MODEL.md` — updated start flow with resource allocation + config propagation
+
+---
+
+## 2026-08-29 — Agent-bound Resource Allocation
+
+**Objective**: make provider/profile selection operational and durable before an Agent starts.
+
+### Changes Applied
+1. Resource discovery now distinguishes an installed provider binary from an authenticated profile.
+2. `POST /api/v1/resources/select` requires an Agent, provider, and profile; it validates the exact account and persists the choice as the Agent's configuration revision.
+3. Agent start accepts only the persisted resource, preventing an ephemeral provider/profile override.
+4. The Agents surface opens Resource selection when an Agent has no allocation, then starts it after a successful allocation.
+
+### Verification
+- `go test ./...`: ALL PASS
+- `web/node_modules/.bin/tsc --noEmit -p web/tsconfig.json`: PASS
+- `web/node_modules/.bin/vitest run`: 10 files / 44 tests PASS

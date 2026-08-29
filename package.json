@@ -1,0 +1,13 @@
+{
+  "name": "iapro-nexus",
+  "private": true,
+  "description": "Convenience scripts for the IAPro Nexus workspace",
+  "scripts": {
+    "web:build": "env -u NODE_OPTIONS npm --prefix web run build",
+    "web:test": "env -u NODE_OPTIONS npm --prefix web test",
+    "web:typecheck": "env -u NODE_OPTIONS npm --prefix web run typecheck",
+    "build": "make build",
+    "test": "make test",
+    "release": "make release-local"
+  }
+}

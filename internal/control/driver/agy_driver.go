@@ -140,10 +140,11 @@ func (d *AGYDriver) BuildCommand(ctx context.Context, p model.Profile, extraArgs
 	_ = security.ApplyIsolation(home, security.GetPolicy(cfgObj.IsolationPreset))
 
 	env := runtime.EnvSet(os.Environ(), map[string]string{
-		"HOME":        home,
-		"AI_PROFILE":  p.Name,
-		"AI_PROVIDER": "agy",
-	})
+		"HOME":                   home,
+		"AI_PROFILE":             p.Name,
+		"AI_PROVIDER":            "agy",
+		"PYTHON_KEYRING_BACKEND": "keyring.backends.null.Keyring",
+	}, "DBUS_SESSION_BUS_ADDRESS", "GNOME_KEYRING_CONTROL", "GNOME_KEYRING_PID")
 
 	return bin, extraArgs, env, nil
 }

@@ -4,22 +4,27 @@ import (
 	"fmt"
 	"sort"
 	"time"
+
+	"github.com/kivervinicius/ai-cli/internal/core/quota"
 )
 
 // ProviderAccount represents a provider account/profile that can run agents.
 type ProviderAccount struct {
-	ID              string    `json:"id"`
-	Provider        string    `json:"provider"`
-	Profile         string    `json:"profile"`
-	DisplayName     string    `json:"display_name"`
-	Authenticated   bool      `json:"authenticated"`
-	IsDefault       bool      `json:"is_default"`
-	QuotaRemaining  float64   `json:"quota_remaining"` // 0-1 normalized
-	QuotaTotal      float64   `json:"quota_total"`
-	RateLimited     bool      `json:"rate_limited"`
-	CooldownUntil   *time.Time `json:"cooldown_until,omitempty"`
-	Health          string    `json:"health"` // "healthy" | "degraded" | "unhealthy" | "unknown"
-	LastChecked     time.Time `json:"last_checked"`
+	ID              string           `json:"id"`
+	Provider        string           `json:"provider"`
+	Profile         string           `json:"profile"`
+	DisplayName     string           `json:"display_name"`
+	Authenticated   bool             `json:"authenticated"`
+	IsDefault       bool             `json:"is_default"`
+	Available       bool             `json:"available"`
+	AvailReasons    *quota.AvailReasons `json:"avail_reasons,omitempty"`
+	QuotaView       *quota.QuotaView `json:"quota_view,omitempty"`
+	QuotaRemaining  float64          `json:"quota_remaining"` // 0-1 normalized (bottleneck)
+	QuotaTotal      float64          `json:"quota_total"`
+	RateLimited     bool             `json:"rate_limited"`
+	CooldownUntil   *time.Time       `json:"cooldown_until,omitempty"`
+	Health          string           `json:"health"` // "healthy" | "degraded" | "unhealthy" | "unknown"
+	LastChecked     time.Time        `json:"last_checked"`
 }
 
 // UsageSnapshot captures the current resource usage state.

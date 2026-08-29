@@ -27,6 +27,8 @@ export const nexus = {
   createProject: (path: string, name?: string) =>
     request<Project>('/api/v1/projects', { method: 'POST', body: JSON.stringify({ path, name }) }),
   getProject: (id: string) => request<{ project: Project; layout: string }>(`/api/v1/projects/${id}`),
+  updateProject: (id: string, data: Partial<Project>) =>
+    request<Project>(`/api/v1/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteProject: (id: string) => request<{ status: string }>(`/api/v1/projects/${id}`, { method: 'DELETE' }),
   getLayout: (projectId: string) => request<{ layout: string }>(`/api/v1/projects/${projectId}/layout`),
   saveLayout: (projectId: string, layout: string) =>
@@ -43,10 +45,10 @@ export const nexus = {
     }),
   getAgent: (id: string) => request<AgentDetail>(`/api/v1/agents/${id}`),
   deleteAgent: (id: string) => request<{ status: string }>(`/api/v1/agents/${id}`, { method: 'DELETE' }),
-  startAgent: (id: string, provider?: string, profile?: string) =>
+  startAgent: (id: string) =>
     request<{ runtime: RuntimeSession }>(`/api/v1/agents/${id}/start`, {
       method: 'POST',
-      body: JSON.stringify({ provider, profile }),
+      body: '{}',
     }),
   stopAgent: (id: string) =>
     request<{ status: string }>(`/api/v1/agents/${id}/stop`, { method: 'POST', body: '{}' }),
@@ -70,10 +72,10 @@ export const nexus = {
   // Resource Scheduler (Gate 5)
   listResources: () =>
     request<{ accounts: any[]; policy: string }>('/api/v1/resources'),
-  selectResource: (provider: string, policy: string, agentId?: string) =>
-    request<{ decision: any }>('/api/v1/resources/select', {
+  selectResource: (agentId: string, provider: string, profile: string, policy = 'MANUAL') =>
+    request<{ decision: any; persisted: boolean }>('/api/v1/resources/select', {
       method: 'POST',
-      body: JSON.stringify({ provider, policy, agent_id: agentId }),
+      body: JSON.stringify({ provider, profile, policy, agent_id: agentId }),
     }),
 
   // Maestro Assist (Gate 6)
@@ -128,4 +130,31 @@ export const nexus = {
       maestro_version: string;
       error?: string;
     }>('/api/v1/system/update', { method: 'POST', body: '{}' }),
+
+  // OS Filesystem & Desktop Launchers
+  browseFS: (path?: string) =>
+    request<import('../types').FSBrowseResult>(
+      `/api/v1/fs/browse${path ? `?path=${encodeURIComponent(path)}` : ''}`
+    ),
+  scanFS: (root?: string) =>
+    request<import('../types').FSScanResult[]>(
+      `/api/v1/fs/scan${root ? `?root=${encodeURIComponent(root)}` : ''}`
+    ),
+  inspectFS: (path: string) =>
+    request<import('../types').FSInspectResult>(
+      `/api/v1/fs/inspect?path=${encodeURIComponent(path)}`
+    ),
+  mkdirFS: (path: string) =>
+    request<{ path: string; status: string }>('/api/v1/fs/mkdir', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
+  openProjectInOS: (projectId: string, action: 'filemanager' | 'terminal' | 'editor') =>
+    request<{ status: string; action: string; path: string }>(
+      `/api/v1/projects/${projectId}/open-os`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ action }),
+      }
+    ),
 };

@@ -94,7 +94,16 @@ compilar do fonte.
 git clone https://github.com/kivervinicius/ai-cli.git
 cd ai-cli
 make build          # gera ./bin/nexus
+make release-local  # escolhe a versão, compila frontend/Go e instala nexus + ai
 sudo make install   # opcional: instala em /usr/local/bin
+```
+
+Os mesmos comandos também podem ser executados pela camada de conveniência da raiz:
+
+```bash
+npm run release
+npm run build
+npm test
 ```
 
 ### Verificar

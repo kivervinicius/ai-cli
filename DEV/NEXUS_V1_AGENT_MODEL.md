@@ -36,22 +36,40 @@ session-ID copying. Intent is never shown as fact (§86).
 
 ## Start flow (implemented)
 
-`POST /api/v1/agents/:id/start` → `nexus.StartAgent`:
-1. load agent (project-scoped),
-2. add config revision (records provider/profile),
-3. `launcher.Launch` (persistent `__control-host`; ULID runtime),
-4. record `RuntimeGeneration` linking runtime + revision,
-5. agent → `WORKING`, `current_revision_id` set, continuity `LIVE_SAME_RUNTIME`.
+`POST /api/v1/agents/:id/start` → `nexus.ResolveStartParams` → `nexus.StartAgent`:
+
+### Resource allocation (prerequisite)
+1. UI calls `startAgent` without provider/profile.
+2. Backend returns `409 REQUIRED_RESOURCE_SELECTION` if no `AgentConfig` is persisted.
+3. UI opens `ResourcePicker` → `GET /api/v1/resources` (real discovery).
+4. User selects → `POST /api/v1/resources/select` → `AllocateResource` persists to `AgentConfig`.
+
+### Launch
+1. `ResolveStartParams(agentID, provider, profile)` — resolves: explicit > AgentConfig > error.
+2. Load agent (project-scoped).
+3. Read full `AgentConfig` from current revision (model, options, environment, isolation).
+4. Add config revision (records full AgentConfig JSON).
+5. `launcher.Launch` with full config propagation (provider, profile, workspace, model, environment, isolation, options).
+6. Record `RuntimeGeneration` linking runtime + revision.
+7. Agent → `WORKING`, `current_revision_id` set, continuity `LIVE_SAME_RUNTIME`.
+
+### Config propagation
+`LaunchOptions` now includes `Model`, `Environment`, `Isolation`, `Options` from `AgentConfig`.
+Environment variables are injected into the runtime process environment.
 
 Stop flow: current generation resolved → runtime stopped via protocol client →
 generation marked STOPPED → agent → `STOPPED`.
 
 ## Agent terminal (charter §30-31, §91)
 
-`GET /api/v1/agents/:id/terminal` resolves the current generation's `RuntimeID`
-and bridges to the existing authenticated WebSocket terminal hub (xterm →
-SessionHost → PTY/ConPTY). Frontend keys the terminal by AgentID so runtime
-changes never destroy the view.
+`GET /api/v1/agents/:id/terminal` resolves the current generation's `RuntimeID`,
+registers with `AgentTerminalBroker`, and bridges to the existing authenticated
+WebSocket terminal hub (xterm → SessionHost → PTY/ConPTY). Frontend keys the
+terminal by AgentID so runtime changes never destroy the view.
+
+The broker observes runtime generation changes via `WatchRuntimeChanged()` and
+emits `runtime_changed` frames to connected browsers, enabling seamless
+reconnection without terminal remount.
 
 ## API (charter §90)
 

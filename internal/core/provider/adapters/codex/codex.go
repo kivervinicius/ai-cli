@@ -63,8 +63,11 @@ func (a *Adapter) Prepare(ctx context.Context, p model.Profile) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(home, 0700); err != nil {
-		return err
+	dotCodex := filepath.Join(home, ".codex")
+	for _, d := range []string{home, dotCodex} {
+		if err := os.MkdirAll(d, 0700); err != nil {
+			return err
+		}
 	}
 
 	// Apply isolation preset policies
@@ -74,10 +77,19 @@ func (a *Adapter) Prepare(ctx context.Context, p model.Profile) error {
 		return err
 	}
 
-	// Configure file auth store inside isolated home
+	// Configure file auth store inside isolated home and .codex
 	configFile := filepath.Join(home, "config.toml")
-	if err := ensureConfigFile(configFile); err != nil {
-		return err
+	_ = ensureConfigFile(configFile)
+	dotConfigFile := filepath.Join(dotCodex, "config.toml")
+	_ = ensureConfigFile(dotConfigFile)
+
+	// Sync auth.json between home and home/.codex if one exists
+	authHome := filepath.Join(home, "auth.json")
+	authDot := filepath.Join(dotCodex, "auth.json")
+	if data, err := os.ReadFile(authHome); err == nil && len(data) > 0 {
+		_ = os.WriteFile(authDot, data, 0600)
+	} else if data, err := os.ReadFile(authDot); err == nil && len(data) > 0 {
+		_ = os.WriteFile(authHome, data, 0600)
 	}
 
 	// Link shared non-credential artifacts (sessions, rules, skills, sqlite indices)
@@ -86,6 +98,7 @@ func (a *Adapter) Prepare(ctx context.Context, p model.Profile) error {
 		hostCodex := filepath.Join(hostHome, ".codex")
 		if _, err := os.Stat(hostCodex); err == nil {
 			linkSharedCodexItems(home, hostCodex)
+			linkSharedCodexItems(dotCodex, hostCodex)
 		}
 	}
 
@@ -102,7 +115,16 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 	}
 	home, _ := config.ProfileHome(string(a.ID()), p.Name)
 	cwd, _ := os.Getwd()
-	env := runtime.EnvSet(os.Environ(), map[string]string{"CODEX_HOME": home})
+	envOverrides := map[string]string{
+		"HOME":             home,
+		"CODEX_HOME":       home,
+		"CODEX_CONFIG_DIR": home,
+		"XDG_CONFIG_HOME":  filepath.Join(home, ".config"),
+		"XDG_CACHE_HOME":   filepath.Join(home, ".cache"),
+		"XDG_DATA_HOME":    filepath.Join(home, ".local", "share"),
+		"XDG_STATE_HOME":   filepath.Join(home, ".local", "state"),
+	}
+	env := runtime.EnvSet(os.Environ(), envOverrides)
 	return runtime.RunInteractive(bin, args, env, cwd)
 }
 
@@ -116,8 +138,9 @@ func (a *Adapter) Logout(ctx context.Context, p model.Profile) error {
 	if err != nil {
 		return err
 	}
-	authPath := filepath.Join(home, "auth.json")
-	return os.Remove(authPath)
+	_ = os.Remove(filepath.Join(home, "auth.json"))
+	_ = os.Remove(filepath.Join(home, ".codex", "auth.json"))
+	return nil
 }
 
 func (a *Adapter) InspectAuth(ctx context.Context, p model.Profile) model.AccountInfo {
@@ -143,9 +166,18 @@ func (a *Adapter) InspectAuth(ctx context.Context, p model.Profile) model.Accoun
 		},
 	}
 
-	authPath := filepath.Join(home, "auth.json")
-	data, err := os.ReadFile(authPath)
-	if err != nil {
+	authCandidates := []string{
+		filepath.Join(home, "auth.json"),
+		filepath.Join(home, ".codex", "auth.json"),
+	}
+	var data []byte
+	for _, ac := range authCandidates {
+		if d, err := os.ReadFile(ac); err == nil && len(d) > 0 {
+			data = d
+			break
+		}
+	}
+	if len(data) == 0 {
 		return info
 	}
 

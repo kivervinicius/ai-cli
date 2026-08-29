@@ -47,3 +47,7 @@ SkillRecommendation · ProcessRecommendation · RiskAssessment · VerificationRe
 - Maestro CLI contract: **not yet implemented** (Maestro repo work, `feat/nexus-contracts-v1`).
 - Nexus side: `maestro_mode` column + default `ASSIST` already in the Project model;
   recommendation UI placeholder ready; bridge + doctor detection are Gate 6.
+- **Honest degraded fallback (implemented):** When Maestro binary is absent or
+  `capabilities --json` fails, `MaestroClient` returns `Available: false` with
+  explicit error. `GetAdvice` returns `Mode: MaestroOff` with empty recommendation
+  lists and explanation — no hardcoded skills, gates, or processes are fabricated.

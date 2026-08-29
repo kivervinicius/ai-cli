@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/kivervinicius/ai-cli/internal/control/events"
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 )
@@ -38,7 +39,7 @@ func NewTerminalHub(auth *AuthManager) *TerminalHub {
 	}
 }
 
-func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, runtimeID string) {
+func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, agentID string, runtimeID string) {
 	if h.auth != nil && h.auth.AuthenticateRequest(r) == nil {
 		http.Error(w, "authentication required", http.StatusUnauthorized)
 		return
@@ -63,6 +64,15 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 		defer wsMu.Unlock()
 		return ws.WriteJSON(v)
 	}
+
+	broker := DefaultBroker()
+	hasRuntime := runtimeID != ""
+	role := broker.Attach(agentID, ws, hasRuntime)
+	defer broker.Detach(agentID, ws)
+	_ = safeWriteJSON(TerminalMessage{
+		Type: "lease",
+		Role: role,
+	})
 
 	// Connect to runtime SessionHost via local IPC
 	client, err := protocol.NewClient(runtimeID)
@@ -91,6 +101,13 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 	rawConn := client.RawConn()
 	stopChan := make(chan struct{})
 
+	if ch := DefaultBroker().WatchRuntimeChanged(agentID); ch != nil {
+		go func() {
+			<-ch
+			_ = ws.Close()
+		}()
+	}
+
 	// Initial ring buffer history
 	var history string
 	if json.Unmarshal(resp.Data, &history) == nil && history != "" {
@@ -99,6 +116,59 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 			Data: history,
 		})
 	}
+
+	// Send initial dynamic title and attention if available
+	if sess, ok := reg.Get(runtimeID); ok {
+		if sess.DynamicTitle != "" {
+			_ = safeWriteJSON(TerminalMessage{
+				Type: "title",
+				Data: sess.DynamicTitle,
+			})
+		}
+		if sess.AttentionReason != "" && sess.AttentionContext != "" {
+			_ = safeWriteJSON(map[string]any{
+				"type":             "attention",
+				"runtime_id":       runtimeID,
+				"attention_reason": sess.AttentionReason,
+				"context":          sess.AttentionContext,
+				"project_name":     sess.ProjectName,
+				"dynamic_title":    sess.DynamicTitle,
+			})
+		}
+	}
+
+	// Subscribe to event bus for real-time attention and title frames
+	eventCh, unsub := events.DefaultBus().Subscribe(runtimeID)
+	defer unsub()
+	go func() {
+		for {
+			select {
+			case <-stopChan:
+				return
+			case ev, ok := <-eventCh:
+				if !ok {
+					return
+				}
+				if ev.Type == events.EventApprovalRequired || ev.Type == events.EventToolFinished {
+					_ = safeWriteJSON(map[string]any{
+						"type":             "attention",
+						"runtime_id":       ev.RuntimeID,
+						"attention_reason": ev.Data["attention_reason"],
+						"context":          ev.Data["context"],
+						"project_name":     ev.Data["project_name"],
+						"dynamic_title":    ev.Data["dynamic_title"],
+						"summary":          ev.Summary,
+					})
+				}
+				if dt, ok := ev.Data["dynamic_title"].(string); ok && dt != "" {
+					_ = safeWriteJSON(TerminalMessage{
+						Type: "title",
+						Data: dt,
+					})
+				}
+			}
+		}
+	}()
 
 	// Lease allocation
 	h.mu.Lock()
@@ -124,7 +194,7 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 		h.mu.Unlock()
 	}()
 
-	role := "VIEW_ONLY"
+	role = "VIEW_ONLY"
 	if hasLease {
 		role = "CONTROL"
 		// Out-of-band RPC acquire
