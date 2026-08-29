@@ -40,6 +40,7 @@ func (n *Nexus) ListResources() ([]ProviderAccount, error) {
 			health = "unknown"
 		}
 
+		capabilities := map[string]string{}
 		d, derr := driver.DefaultRegistry().Get(p.Provider)
 		if derr == nil {
 			det, detectErr := d.Detect(context.Background())
@@ -51,6 +52,7 @@ func (n *Nexus) ListResources() ([]ProviderAccount, error) {
 					health = "auth_required"
 				}
 			}
+			capabilities = effectiveCapabilityMap(d.EffectiveCaps(context.Background(), p))
 		} else {
 			health = "unavailable"
 		}
@@ -60,9 +62,15 @@ func (n *Nexus) ListResources() ([]ProviderAccount, error) {
 			isDefault = cfg.Defaults[p.Provider] == p.Name
 		}
 
-		// Get quota view with availability.
+		// Get quota view with availability. UNKNOWN/unsupported data is never
+		// converted into synthetic 100% capacity.
 		qv := profile.GetQuotaView(p.Provider, p.Name, acc.Plan, acc.Email)
-		bottleneck, _ := qv.Bottleneck()
+		quotaRemaining := 0.0
+		if quotaStatusKnown(qv.Status) {
+			if bottleneck, kind := qv.Bottleneck(); kind != "" {
+				quotaRemaining = bottleneck / 100.0
+			}
+		}
 
 		accounts = append(accounts, ProviderAccount{
 			ID:             id,
@@ -75,7 +83,8 @@ func (n *Nexus) ListResources() ([]ProviderAccount, error) {
 			Available:      qv.IsAvailable(),
 			AvailReasons:   &qv.AvailReasons,
 			QuotaView:      &qv,
-			QuotaRemaining: bottleneck / 100.0,
+			Capabilities:   capabilities,
+			QuotaRemaining: quotaRemaining,
 			QuotaTotal:     1.0,
 			RateLimited:    qv.Status == "RATE_LIMITED",
 			LastChecked:    time.Now(),
@@ -224,4 +233,31 @@ func (n *Nexus) ResolveStartParams(agentID, provider, profile string) (string, s
 	}
 
 	return "", "", fmt.Errorf("REQUIRED_RESOURCE_SELECTION: agent %s has no configured provider; select a resource first", agentID)
+}
+
+func quotaStatusKnown(status string) bool {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case "LIVE", "CACHED", "ESTIMATED":
+		return true
+	default:
+		return false
+	}
+}
+
+func effectiveCapabilityMap(caps driver.EffectiveCapabilities) map[string]string {
+	return map[string]string{
+		"process":           string(caps.Process.Status),
+		"terminal":          string(caps.Terminal.Status),
+		"attach":            string(caps.Attach.Status),
+		"structured_events": string(caps.StructuredEvents.Status),
+		"sessions":          string(caps.Sessions.Status),
+		"resume":            string(caps.Resume.Status),
+		"fork":              string(caps.Fork.Status),
+		"submit_prompt":     string(caps.SubmitPrompt.Status),
+		"cancel_turn":       string(caps.CancelTurn.Status),
+		"approvals":         string(caps.Approvals.Status),
+		"native_ui_attach":  string(caps.NativeUIAttach.Status),
+		"headless":          string(caps.Headless.Status),
+		"slash_control":     string(caps.SlashControl.Status),
+	}
 }

@@ -18,6 +18,7 @@ import type { WorkspaceSurface } from '../workspace/model';
 import { ProjectManagerSurface } from '../features/projects/ProjectManagerSurface';
 import { ProjectOverviewSurface } from '../features/overview/ProjectOverviewSurface';
 import { WorkSurface } from '../features/work/WorkSurface';
+import { DirectSessionLauncher, type DirectSessionRequest } from '../features/work/DirectSessionLauncher';
 import { AgentsSurface } from '../features/agents/AgentsSurface';
 import { AgentConfigurationSurface } from '../features/agents/AgentConfigurationSurface';
 import { SessionsSurface } from '../features/sessions/SessionsSurface';
@@ -68,10 +69,11 @@ export const WorkspaceSurfaceHost: React.FC<{
   const [showStart, setShowStart] = useState(false);
   const [handoff, setHandoff] = useState<RuntimeSession | null>(null);
   const [cont, setCont] = useState<RuntimeSession | null>(null);
+  const [directSession, setDirectSession] = useState<DirectSessionRequest | null>(null);
 
   const open = (kind: string) =>
     openSurface(projectSurface(project.id, kind as Parameters<typeof projectSurface>[1]));
-  const terminal = (target: Agent) => openSurface(agentTerminalSurface(target.id, target.name));
+  const terminal = (target: Agent, initialPrompt = '') => openSurface(agentTerminalSurface(target.id, target.name, initialPrompt));
   const config = (target: Agent) => openSurface(agentConfigSurface(target.id, target.name));
 
   if (surface.type === 'projects') {
@@ -101,13 +103,24 @@ export const WorkspaceSurfaceHost: React.FC<{
 
   if (surface.type === 'work')
     return (
-      <WorkSurface
-        project={project}
-        agents={agents}
-        onDirect={terminal}
-        onPlan={() => open('missions')}
-        onMaestro={() => open('maestro')}
-      />
+      <>
+        <WorkSurface
+          project={project}
+          agents={agents}
+          onDirect={terminal}
+          onStartSession={(mode, prompt) => setDirectSession({ mode, prompt })}
+          onPlan={() => open('missions')}
+          onMaestro={() => open('maestro')}
+        />
+        <DirectSessionLauncher
+          open={!!directSession}
+          project={project}
+          request={directSession}
+          onClose={() => setDirectSession(null)}
+          refreshAgents={refreshAgents}
+          onStarted={(created, prompt) => terminal(created, prompt)}
+        />
+      </>
     );
 
   if (surface.type === 'agents')
@@ -127,7 +140,7 @@ export const WorkspaceSurfaceHost: React.FC<{
   if (surface.type === 'terminal')
     return surface.data?.agentId ? (
       <div className="nx-agent-terminal-surface">
-        <AgentTerminal agentId={surface.data.agentId} />
+        <AgentTerminal agentId={surface.data.agentId} initialPrompt={surface.data.initialPrompt} />
       </div>
     ) : (
       <EmptyState title={t('surfaces.terminalUnavailable')} />

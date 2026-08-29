@@ -5,9 +5,9 @@ import type { Agent, Project } from '../../types';
 import { useTranslation } from 'react-i18next';
 import { PlanBuilderSurface } from './PlanBuilderSurface';
 
-export const WorkSurface: React.FC<{ project: Project; agents: Agent[]; onDirect: (agent: Agent) => void; onPlan: () => void; onMaestro: () => void }> = ({ project, agents, onDirect, onPlan, onMaestro }) => {
+export const WorkSurface: React.FC<{ project: Project; agents: Agent[]; onDirect: (agent: Agent) => void; onStartSession?: (mode: 'direct' | 'assisted', prompt: string) => void; onPlan: () => void; onMaestro: () => void }> = ({ project, agents, onDirect, onStartSession, onPlan, onMaestro }) => {
   const { t } = useTranslation();
-  const [mode, setMode] = useState('assisted');
+  const [mode, setMode] = useState('direct');
   const [prompt, setPrompt] = useState('');
   const preferred = useMemo(() => agents.find((agent) => agent.status === 'WORKING') ?? agents[0], [agents]);
 
@@ -72,8 +72,11 @@ export const WorkSurface: React.FC<{ project: Project; agents: Agent[]; onDirect
           <Button onClick={onMaestro}>
             <BrainCircuit size={14} /> {t('work.askMaestro')}
           </Button>
-          <Button tone="brand" disabled={!preferred || !prompt.trim()} onClick={() => preferred && onDirect(preferred)}>
-            <Play size={14} /> {mode === 'direct' ? t('work.openAgent') : t('work.prepareAgent')}
+          <Button tone="brand" disabled={!prompt.trim() || (!onStartSession && !preferred)} onClick={() => {
+            if (onStartSession && (mode === 'direct' || mode === 'assisted')) onStartSession(mode, prompt.trim());
+            else if (preferred) onDirect(preferred);
+          }}>
+            <Play size={14} /> {mode === 'direct' ? 'Start direct AI session' : 'Start assisted AI session'}
           </Button>
         </div>
       </Card>

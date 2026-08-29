@@ -126,6 +126,60 @@ func TestSafeApplyCreatesRevision(t *testing.T) {
 	}
 }
 
+func TestSafeApplyStoppedAgentPersistsConfigWithoutLaunching(t *testing.T) {
+	n := openTestNexus(t)
+	st, _ := n.OpenProject()
+	proj, _ := st.CreateProject(store.Project{Name: "P", CanonicalPath: t.TempDir()})
+	agent, _ := st.CreateAgent(store.Agent{ProjectID: proj.ID, Name: "Dev"})
+
+	proposed := AgentConfig{Provider: "fake", Profile: "default", Model: "test"}
+	impact, err := n.SafeApply(context.Background(), agent.ID, proposed)
+	if err != nil {
+		t.Fatalf("SafeApply: %v", err)
+	}
+	if impact.Mode != ImpactNewSession && impact.Mode != ImpactRestartRuntime {
+		t.Fatalf("impact mode = %q, want restart/new-session impact recorded for next start", impact.Mode)
+	}
+
+	agent, _ = st.GetAgent(agent.ID, "")
+	if agent.Status != store.AgentStopped {
+		t.Fatalf("stopped agent status = %q after config apply, want STOPPED", agent.Status)
+	}
+	if agent.CurrentRevisionID == "" {
+		t.Fatal("stopped agent should persist a current config revision")
+	}
+	if _, err := st.CurrentGeneration(agent.ID); err == nil {
+		t.Fatal("configuring a stopped agent must not launch a runtime generation")
+	}
+}
+
+func TestStartAgentReusesPersistedConfigRevision(t *testing.T) {
+	n := openTestNexus(t)
+	st, _ := n.OpenProject()
+	proj, _ := st.CreateProject(store.Project{Name: "P", CanonicalPath: t.TempDir()})
+	agent, _ := st.CreateAgent(store.Agent{ProjectID: proj.ID, Name: "Dev"})
+
+	proposed := AgentConfig{Provider: "fake", Profile: "default", Model: "test"}
+	if _, err := n.SafeApply(context.Background(), agent.ID, proposed); err != nil {
+		t.Fatalf("SafeApply: %v", err)
+	}
+	before, err := st.ListRevisions(agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := n.StartAgent(context.Background(), agent.ID, "fake", "default"); err != nil {
+		t.Fatalf("StartAgent: %v", err)
+	}
+	after, err := st.ListRevisions(agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("StartAgent created duplicate revision: before=%d after=%d", len(before), len(after))
+	}
+}
+
 func TestSafeApplyNoop(t *testing.T) {
 	n := openTestNexus(t)
 	st, _ := n.OpenProject()

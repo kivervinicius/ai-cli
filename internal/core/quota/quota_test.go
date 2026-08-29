@@ -113,3 +113,11 @@ func TestFetchBatchConcurrency(t *testing.T) {
 		}
 	}
 }
+
+func TestQuotaViewBottleneckUnknownWithoutWindowsIsZero(t *testing.T) {
+	qv := QuotaView{Status: "UNKNOWN"}
+	remaining, kind := qv.Bottleneck()
+	if remaining != 0 || kind != "" {
+		t.Fatalf("unknown quota without windows must not imply 100%% remaining, got %.1f %q", remaining, kind)
+	}
+}

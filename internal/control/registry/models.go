@@ -32,6 +32,7 @@ const (
 // Note: Secrets, OAuth tokens, and API keys are NEVER stored in this struct or persisted.
 type RuntimeSession struct {
 	RuntimeID         string            `json:"runtime_id"`
+	AgentID           string            `json:"agent_id,omitempty"`
 	Title             string            `json:"title,omitempty"`
 	ProviderID        string            `json:"provider_id"`
 	ProfileID         string            `json:"profile_id"`

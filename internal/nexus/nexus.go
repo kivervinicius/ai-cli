@@ -194,30 +194,51 @@ func (n *Nexus) StartAgent(ctx context.Context, agentID, provider, profile strin
 	}
 
 	var agentCfg AgentConfig
+	currentRevisionID := agent.CurrentRevisionID
 	if agent.CurrentRevisionID != "" {
 		if rev, rerr := st.GetRevision(agent.CurrentRevisionID); rerr == nil {
 			agentCfg, _ = ParseAgentConfig(rev.Config)
 		}
 	}
+	configuredProvider := agentCfg.Provider
+	configuredProfile := agentCfg.Profile
 	agentCfg.Provider = provider
 	agentCfg.Profile = profile
 	if agentCfg.Profile == "" {
 		agentCfg.Profile = "default"
 	}
 
-	rev, err := st.AddRevision(agentID, agentCfg.ConfigJSON())
-	if err != nil {
-		return nil, err
+	revisionID := currentRevisionID
+	if revisionID == "" || configuredProvider != agentCfg.Provider || configuredProfile != agentCfg.Profile {
+		rev, err := st.AddRevision(agentID, agentCfg.ConfigJSON())
+		if err != nil {
+			return nil, err
+		}
+		revisionID = rev.ID
 	}
 
+	var previousGen *store.RuntimeGeneration
+	if prior, priorErr := st.CurrentGeneration(agentID); priorErr == nil {
+		previousGen = &prior
+	}
+	continuityLaunch, err := continuityForNextGeneration(ctx, agentCfg, previousGen)
+	if err != nil {
+		return nil, fmt.Errorf("resolve start continuity: %w", err)
+	}
+	executionWorkspace, err := n.resolveExecutionWorkspace(ctx, proj, agent, agentCfg)
+	if err != nil {
+		return nil, fmt.Errorf("resolve execution workspace: %w", err)
+	}
 	sess, err := n.launcher.Launch(ctx, launcher.LaunchOptions{
-		ProviderID:  provider,
-		ProfileID:   agentCfg.Profile,
-		Workspace:   proj.CanonicalPath,
-		Model:       agentCfg.Model,
-		Environment: agentCfg.Environment,
-		Isolation:   agentCfg.Isolation,
-		Options:     agentCfg.Options,
+		ProviderID:        provider,
+		ProfileID:         agentCfg.Profile,
+		ProviderSessionID: continuityLaunch.ProviderSessionID,
+		Args:              continuityLaunch.Args,
+		Workspace:         executionWorkspace,
+		Model:             agentCfg.Model,
+		Environment:       agentCfg.Environment,
+		Isolation:         agentCfg.Isolation,
+		Options:           agentCfg.Options,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("start agent runtime: %w", err)
@@ -225,12 +246,12 @@ func (n *Nexus) StartAgent(ctx context.Context, agentID, provider, profile strin
 
 	gen := store.RuntimeGeneration{
 		AgentID:         agentID,
-		RevisionID:      rev.ID,
+		RevisionID:      revisionID,
 		RuntimeID:       sess.RuntimeID,
 		Provider:        provider,
 		Profile:         profile,
 		ProviderSession: sess.ProviderSessionID,
-		Continuity:      store.ContinuityLiveSameRuntime,
+		Continuity:      continuityLaunch.Status,
 		StartedAt:       time.Now().UTC(),
 		State:           "RUNNING",
 	}
@@ -242,14 +263,19 @@ func (n *Nexus) StartAgent(ctx context.Context, agentID, provider, profile strin
 	}
 
 	agent.Status = "WORKING"
-	agent.CurrentRevisionID = rev.ID
-	agent.ContinuityStatus = store.ContinuityLiveSameRuntime
+	agent.CurrentRevisionID = revisionID
+	agent.ContinuityStatus = continuityLaunch.Status
 	now := time.Now().UTC()
 	agent.LastStartedAt = &now
 	_ = st.UpdateAgent(agent)
 
 	// Notify terminal broker of new runtime (Gate 4).
-	n.notifyRuntimeChanged(agentID, "", sess.RuntimeID, provider, profile, store.ContinuityLiveSameRuntime)
+	oldRuntimeID := ""
+	if previousGen != nil {
+		oldRuntimeID = previousGen.RuntimeID
+	}
+	n.notifyRuntimeChanged(agentID, oldRuntimeID, sess.RuntimeID, provider, profile, continuityLaunch.Status)
+	n.notifyContinuity(agentID, continuityLaunch.Status)
 	n.notifyAgentState(agentID, "WORKING")
 
 	return sess, nil
@@ -314,7 +340,6 @@ func (n *Nexus) StopAgent(ctx context.Context, agentID string) error {
 				stopped := time.Now().UTC()
 				_ = st.StopGeneration(gen.ID, stopped)
 				agent.Status = store.AgentStopped
-				agent.ContinuityStatus = store.ContinuityLiveSameRuntime
 				_ = st.UpdateAgent(agent)
 				n.notifyAgentState(agentID, "STOPPED")
 				return nil
@@ -431,7 +456,7 @@ func (n *Nexus) RecoverAgent(ctx context.Context, agentID string) (*registry.Run
 	}
 
 	var args []string
-	continuity := store.ContinuityContextRecovered // NEW SESSION unless native resume is possible
+	continuity := store.ContinuityNewSession // NEW SESSION unless native resume is possible
 	if sessionID != "" {
 		if d, derr := driver.DefaultRegistry().Get(provider); derr == nil {
 			prof := model.Profile{Name: profile, Provider: provider}
@@ -444,12 +469,18 @@ func (n *Nexus) RecoverAgent(ctx context.Context, agentID string) (*registry.Run
 		}
 	}
 
+	executionWorkspace, werr := n.resolveExecutionWorkspace(ctx, proj, agent, agentCfg)
+	if werr != nil {
+		agent.Status = store.AgentRecoverable
+		_ = st.UpdateAgent(agent)
+		return nil, fmt.Errorf("resolve execution workspace: %w", werr)
+	}
 	sess, err := n.launcher.Launch(ctx, launcher.LaunchOptions{
 		ProviderID:        provider,
 		ProfileID:         profile,
 		ProviderSessionID: sessionID,
 		Args:              args,
-		Workspace:         proj.CanonicalPath,
+		Workspace:         executionWorkspace,
 		Model:             agentCfg.Model,
 		Environment:       agentCfg.Environment,
 		Isolation:         agentCfg.Isolation,

@@ -16,7 +16,7 @@ func TestResourceRecommendation_Balanced(t *testing.T) {
 			DisplayName:    "OpenAI Codex (Default)",
 			Authenticated:  true,
 			Available:      true,
-			QuotaView:      &quota.QuotaView{},
+			QuotaView:      &quota.QuotaView{Status: "LIVE"},
 			QuotaRemaining: 0.85,
 			Health:         "healthy",
 		},
@@ -27,7 +27,7 @@ func TestResourceRecommendation_Balanced(t *testing.T) {
 			DisplayName:    "Anthropic Claude",
 			Authenticated:  true,
 			Available:      true,
-			QuotaView:      &quota.QuotaView{},
+			QuotaView:      &quota.QuotaView{Status: "LIVE"},
 			QuotaRemaining: 0.40,
 			Health:         "healthy",
 		},
@@ -77,7 +77,7 @@ func TestResourceRecommendation_PreserveQuota(t *testing.T) {
 			DisplayName:    "Codex Low Quota",
 			Authenticated:  true,
 			Available:      true,
-			QuotaView:      &quota.QuotaView{},
+			QuotaView:      &quota.QuotaView{Status: "LIVE"},
 			QuotaRemaining: 0.15, // < 30%
 			Health:         "healthy",
 		},
@@ -88,7 +88,7 @@ func TestResourceRecommendation_PreserveQuota(t *testing.T) {
 			DisplayName:    "Claude High Quota",
 			Authenticated:  true,
 			Available:      true,
-			QuotaView:      &quota.QuotaView{},
+			QuotaView:      &quota.QuotaView{Status: "LIVE"},
 			QuotaRemaining: 0.90, // > 70%
 			Health:         "healthy",
 		},
@@ -126,5 +126,85 @@ func TestResourceRecommendation_CooldownRejection(t *testing.T) {
 	}
 	if res.Candidates[0].Eligible {
 		t.Errorf("account in cooldown must be marked ineligible")
+	}
+}
+
+func TestResourceRecommendation_UnknownQuotaDoesNotOutrankKnownLiveQuota(t *testing.T) {
+	accounts := []ProviderAccount{
+		{
+			ID:             "unknown",
+			Provider:       "codex",
+			Profile:        "unknown",
+			DisplayName:    "Unknown quota",
+			Authenticated:  true,
+			Available:      true,
+			QuotaView:      &quota.QuotaView{Status: "UNKNOWN"},
+			QuotaRemaining: 0,
+			Health:         "healthy",
+		},
+		{
+			ID:             "known",
+			Provider:       "claude",
+			Profile:        "known",
+			DisplayName:    "Known quota",
+			Authenticated:  true,
+			Available:      true,
+			QuotaView:      &quota.QuotaView{Status: "LIVE"},
+			QuotaRemaining: 0.50,
+			Health:         "healthy",
+		},
+	}
+
+	res := RecommendResources(accounts, TaskRequirements{TaskKind: "coding"}, PolicyBalanced)
+	if res.Recommended == nil || res.Recommended.Account.ID != "known" {
+		t.Fatalf("known LIVE quota must outrank UNKNOWN quota, got %#v", res.Recommended)
+	}
+	for _, candidate := range res.Candidates {
+		if candidate.Account.ID == "unknown" && candidate.Confidence != "UNKNOWN" {
+			t.Fatalf("unknown quota confidence = %q, want UNKNOWN", candidate.Confidence)
+		}
+	}
+}
+
+func TestResourceRecommendation_RequiredCapabilitiesAreHardGate(t *testing.T) {
+	accounts := []ProviderAccount{
+		{
+			ID:             "no-resume",
+			Provider:       "agy",
+			Profile:        "default",
+			DisplayName:    "AGY",
+			Authenticated:  true,
+			Available:      true,
+			QuotaView:      &quota.QuotaView{Status: "LIVE"},
+			QuotaRemaining: 0.95,
+			Health:         "healthy",
+			Capabilities: map[string]string{
+				"resume": "UNSUPPORTED",
+			},
+		},
+		{
+			ID:             "has-resume",
+			Provider:       "codex",
+			Profile:        "default",
+			DisplayName:    "Codex",
+			Authenticated:  true,
+			Available:      true,
+			QuotaView:      &quota.QuotaView{Status: "LIVE"},
+			QuotaRemaining: 0.40,
+			Health:         "healthy",
+			Capabilities: map[string]string{
+				"resume": "SUPPORTED",
+			},
+		},
+	}
+
+	res := RecommendResources(accounts, TaskRequirements{RequiredCapabilities: []string{"resume"}}, PolicyBalanced)
+	if res.Recommended == nil || res.Recommended.Account.ID != "has-resume" {
+		t.Fatalf("required capability must reject unsupported candidate, got %#v", res.Recommended)
+	}
+	for _, candidate := range res.Candidates {
+		if candidate.Account.ID == "no-resume" && candidate.Eligible {
+			t.Fatal("candidate without required capability must be ineligible")
+		}
 	}
 }

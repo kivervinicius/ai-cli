@@ -19,6 +19,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/quota"
 	"github.com/kivervinicius/ai-cli/internal/core/security"
+	"github.com/kivervinicius/ai-cli/internal/nexus"
 	"github.com/kivervinicius/ai-cli/internal/profile"
 )
 
@@ -135,7 +136,11 @@ func (h *APIHandler) handleRuntimes(w http.ResponseWriter, r *http.Request) {
 		all := h.reg.List()
 		sanitized := make([]registry.RuntimeSession, len(all))
 		for i, s := range all {
-			sanitized[i] = sanitizeSession(s)
+			clean := sanitizeSession(s)
+			if agentID, err := nexus.Default().ResolveAgentByRuntimeID(s.RuntimeID); err == nil {
+				clean.AgentID = agentID
+			}
+			sanitized[i] = clean
 		}
 		writeJSON(w, http.StatusOK, sanitized)
 		return

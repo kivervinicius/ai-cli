@@ -364,17 +364,16 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		resp, _ = protocol.NewResponse("terminated")
 
 	case protocol.CmdLeaseAcquire:
-		// The writer lease belongs to an attached streaming client, never to an
-		// out-of-band RPC connection. Prefer an attached client so early browser
-		// keystrokes are not dropped after acquire.
-		sh.activeWriter = nil
-		for c := range sh.clients {
-			sh.activeWriter = c
+		// Lease acquisition is authoritative only when it is requested on an
+		// attached streaming connection. This makes the connection that receives
+		// terminal input the exact same connection that owns the SessionHost
+		// writer lease; an out-of-band RPC socket must never arbitrarily select a
+		// different browser/CLI client from the clients map.
+		if _, attached := sh.clients[conn]; !attached {
+			resp = protocol.NewErrorResponse("lease acquisition requires attached streaming client")
 			break
 		}
-		if sh.activeWriter == nil {
-			sh.activeWriter = conn
-		}
+		sh.activeWriter = conn
 		resp, _ = protocol.NewResponse("lease_acquired")
 
 	case protocol.CmdLeaseRelease:

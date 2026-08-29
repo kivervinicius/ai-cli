@@ -19,6 +19,7 @@ type ProviderAccount struct {
 	Available      bool                `json:"available"`
 	AvailReasons   *quota.AvailReasons `json:"avail_reasons,omitempty"`
 	QuotaView      *quota.QuotaView    `json:"quota_view,omitempty"`
+	Capabilities   map[string]string   `json:"capabilities,omitempty"`
 	QuotaRemaining float64             `json:"quota_remaining"` // 0-1 normalized (bottleneck)
 	QuotaTotal     float64             `json:"quota_total"`
 	RateLimited    bool                `json:"rate_limited"`
@@ -153,6 +154,9 @@ func (s *ResourceScheduler) filterEligible() []ProviderAccount {
 	now := time.Now()
 	for _, acc := range s.accounts {
 		if !acc.Authenticated {
+			continue
+		}
+		if !acc.Available {
 			continue
 		}
 		if acc.RateLimited {

@@ -57,13 +57,21 @@ type Window struct {
 func (qv *QuotaView) Bottleneck() (float64, string) {
 	minPct := 100.0
 	var bottleneckKind string
+	found := false
 	for _, g := range qv.ModelGroups {
 		for _, w := range g.Windows {
+			if w.Kind == "unknown" {
+				continue
+			}
+			found = true
 			if w.Remaining < minPct {
 				minPct = w.Remaining
 				bottleneckKind = w.Kind
 			}
 		}
+	}
+	if !found {
+		return 0, ""
 	}
 	return minPct, bottleneckKind
 }

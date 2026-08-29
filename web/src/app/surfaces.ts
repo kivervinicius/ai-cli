@@ -51,13 +51,13 @@ export function projectSurface(projectId: string, kind: ProjectSurfaceKind): Wor
   };
 }
 
-export function agentTerminalSurface(agentId: string, agentName: string): WorkspaceSurface {
+export function agentTerminalSurface(agentId: string, agentName: string, initialPrompt = ''): WorkspaceSurface {
   return {
     id: `agent:${agentId}:terminal`,
     type: 'terminal',
     title: agentName,
     subtitle: 'Persistent Agent terminal',
-    data: { agentId },
+    data: initialPrompt ? { agentId, initialPrompt } : { agentId },
     closable: true,
   };
 }

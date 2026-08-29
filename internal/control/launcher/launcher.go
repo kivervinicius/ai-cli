@@ -74,7 +74,11 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 		Name:     opts.ProfileID,
 	}
 
-	bin, extraArgs, env, err := d.BuildCommand(ctx, prof, opts.Args)
+	configuredArgs, err := driver.ApplyLaunchConfiguration(opts.ProviderID, opts.Model, opts.Options, opts.Args)
+	if err != nil {
+		return nil, fmt.Errorf("invalid launch configuration for %s:%s: %w", opts.ProviderID, opts.ProfileID, err)
+	}
+	bin, extraArgs, env, err := d.BuildCommand(ctx, prof, configuredArgs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build command for %s:%s: %w", opts.ProviderID, opts.ProfileID, err)
 	}

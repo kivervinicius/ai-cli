@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/kivervinicius/ai-cli/internal/control/driver"
 	"github.com/kivervinicius/ai-cli/internal/control/launcher"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
@@ -203,6 +204,28 @@ func (n *Nexus) SafeApply(ctx context.Context, agentID string, proposed AgentCon
 		proposed.Profile = "default"
 	}
 
+	// Resolve runtime state before deciding whether a restart impact should be
+	// executed immediately. Configuration is durable state; applying it to a
+	// STOPPED agent must never have the surprising side effect of starting a
+	// provider process. The impact still describes what the next live apply
+	// would require, but the candidate revision is simply persisted for the
+	// next explicit StartAgent call.
+	oldGen, gerr := st.CurrentGeneration(agentID)
+	wasAlive := gerr == nil && oldGen.RuntimeID != "" && n.runtimeAlive(oldGen.RuntimeID)
+	if !wasAlive && agent.Status == store.AgentStopped {
+		rev, err := st.AddRevision(agentID, proposed.ConfigJSON())
+		if err != nil {
+			return nil, fmt.Errorf("create config revision: %w", err)
+		}
+		agent.CurrentRevisionID = rev.ID
+		agent.Status = store.AgentStopped
+		if err := st.UpdateAgent(agent); err != nil {
+			return nil, fmt.Errorf("update stopped agent revision: %w", err)
+		}
+		impact.Warnings = append(impact.Warnings, "configuration persisted; agent remains stopped until explicitly started")
+		return &impact, nil
+	}
+
 	// Case 1: Live change (e.g. MaestroMode, Allocation Policy) — no restart needed.
 	if !impact.RequiresRestart && !impact.RequiresNewSess {
 		rev, err := st.AddRevision(agentID, proposed.ConfigJSON())
@@ -216,10 +239,26 @@ func (n *Nexus) SafeApply(ctx context.Context, agentID string, proposed AgentCon
 		return &impact, nil
 	}
 
-	// Case 2: Restart required — execute ReconfigureTransaction (A5).
-	oldGen, gerr := st.CurrentGeneration(agentID)
-	wasAlive := gerr == nil && n.runtimeAlive(oldGen.RuntimeID)
+	// Validate launch-only fields and workspace before stopping the current runtime.
+	// This prevents a known-invalid candidate from taking a healthy Agent offline.
+	if _, err := driver.ApplyLaunchConfiguration(proposed.Provider, proposed.Model, proposed.Options, nil); err != nil {
+		return nil, fmt.Errorf("validate candidate launch configuration: %w", err)
+	}
+	executionWorkspace, err := n.resolveExecutionWorkspace(ctx, proj, agent, proposed)
+	if err != nil {
+		return nil, fmt.Errorf("resolve candidate execution workspace: %w", err)
+	}
+	var previousGen *store.RuntimeGeneration
+	if gerr == nil {
+		copyGen := oldGen
+		previousGen = &copyGen
+	}
+	continuityLaunch, err := continuityForNextGeneration(ctx, proposed, previousGen)
+	if err != nil {
+		return nil, fmt.Errorf("validate candidate continuity: %w", err)
+	}
 
+	// Case 2: Restart required — execute ReconfigureTransaction (A5).
 	// Step 1: Freeze writer & set RECONFIGURING state.
 	agent.Status = store.AgentReconfig
 	_ = st.UpdateAgent(agent)
@@ -244,22 +283,36 @@ func (n *Nexus) SafeApply(ctx context.Context, agentID string, proposed AgentCon
 		return nil, fmt.Errorf("create config revision: %w", err)
 	}
 
-	// Step 4: Launch generation N+1 with proposed config directly.
+	// Step 4: Launch generation N+1 with the validated candidate.
 	sess, err := n.launcher.Launch(ctx, launcher.LaunchOptions{
-		ProviderID:  proposed.Provider,
-		ProfileID:   proposed.Profile,
-		Workspace:   proj.CanonicalPath,
-		Model:       proposed.Model,
-		Environment: proposed.Environment,
-		Isolation:   proposed.Isolation,
-		Options:     proposed.Options,
+		ProviderID:        proposed.Provider,
+		ProfileID:         proposed.Profile,
+		ProviderSessionID: continuityLaunch.ProviderSessionID,
+		Args:              continuityLaunch.Args,
+		Workspace:         executionWorkspace,
+		Model:             proposed.Model,
+		Environment:       proposed.Environment,
+		Isolation:         proposed.Isolation,
+		Options:           proposed.Options,
 	})
 	if err != nil {
-		// Launch failed: rollback current revision pointer to oldRevID and mark RECOVERABLE
+		// Candidate launch failed. Restore the last known-good configuration when
+		// the previous runtime had been live; only degrade to RECOVERABLE if the
+		// rollback itself cannot be launched.
+		rollbackErr := error(nil)
+		if wasAlive {
+			rollbackErr = n.restorePreviousRuntime(ctx, st, proj, agent, current, oldRevID, oldGen)
+		}
+		if rollbackErr == nil && wasAlive {
+			return nil, fmt.Errorf("candidate config launch failed; previous runtime restored: %w", err)
+		}
 		agent.CurrentRevisionID = oldRevID
 		agent.Status = store.AgentRecoverable
 		_ = st.UpdateAgent(agent)
 		n.notifyAgentState(agentID, "RECOVERABLE")
+		if rollbackErr != nil {
+			return nil, fmt.Errorf("candidate config launch failed: %v; rollback failed: %w", err, rollbackErr)
+		}
 		return nil, fmt.Errorf("launch runtime generation for config apply: %w", err)
 	}
 
@@ -271,7 +324,7 @@ func (n *Nexus) SafeApply(ctx context.Context, agentID string, proposed AgentCon
 		Provider:        proposed.Provider,
 		Profile:         proposed.Profile,
 		ProviderSession: sess.ProviderSessionID,
-		Continuity:      store.ContinuityLiveSameRuntime,
+		Continuity:      continuityLaunch.Status,
 		StartedAt:       time.Now().UTC(),
 		State:           "RUNNING",
 	}
@@ -286,7 +339,7 @@ func (n *Nexus) SafeApply(ctx context.Context, agentID string, proposed AgentCon
 	// Step 6: Atomically switch Agent current revision and status to WORKING.
 	agent.Status = store.AgentWorking
 	agent.CurrentRevisionID = rev.ID
-	agent.ContinuityStatus = store.ContinuityLiveSameRuntime
+	agent.ContinuityStatus = continuityLaunch.Status
 	now := time.Now().UTC()
 	agent.LastStartedAt = &now
 	_ = st.UpdateAgent(agent)
@@ -309,9 +362,70 @@ func (n *Nexus) SafeApply(ctx context.Context, agentID string, proposed AgentCon
 	if wasAlive {
 		oldRuntimeID = oldGen.RuntimeID
 	}
-	n.notifyRuntimeChanged(agentID, oldRuntimeID, sess.RuntimeID, proposed.Provider, proposed.Profile, store.ContinuityLiveSameRuntime)
+	n.notifyRuntimeChanged(agentID, oldRuntimeID, sess.RuntimeID, proposed.Provider, proposed.Profile, continuityLaunch.Status)
 	n.notifyAgentState(agentID, "WORKING")
-	n.notifyContinuity(agentID, store.ContinuityLiveSameRuntime)
+	n.notifyContinuity(agentID, continuityLaunch.Status)
 
 	return &impact, nil
+}
+
+// restorePreviousRuntime is the compensating half of SafeApply. It attempts to
+// relaunch the old immutable config/revision after a candidate launch fails.
+func (n *Nexus) restorePreviousRuntime(ctx context.Context, st *store.Store, project store.Project, agent store.Agent, previousCfg AgentConfig, previousRevisionID string, previousGen store.RuntimeGeneration) error {
+	if previousCfg.Provider == "" {
+		previousCfg.Provider = previousGen.Provider
+	}
+	if previousCfg.Profile == "" {
+		previousCfg.Profile = previousGen.Profile
+	}
+	workspace, err := n.resolveExecutionWorkspace(ctx, project, agent, previousCfg)
+	if err != nil {
+		return err
+	}
+	continuity, err := continuityForNextGeneration(ctx, previousCfg, &previousGen)
+	if err != nil {
+		return err
+	}
+	sess, err := n.launcher.Launch(ctx, launcher.LaunchOptions{
+		ProviderID:        previousCfg.Provider,
+		ProfileID:         previousCfg.Profile,
+		ProviderSessionID: continuity.ProviderSessionID,
+		Args:              continuity.Args,
+		Workspace:         workspace,
+		Model:             previousCfg.Model,
+		Environment:       previousCfg.Environment,
+		Isolation:         previousCfg.Isolation,
+		Options:           previousCfg.Options,
+	})
+	if err != nil {
+		return err
+	}
+	gen := store.RuntimeGeneration{
+		AgentID:         agent.ID,
+		RevisionID:      previousRevisionID,
+		RuntimeID:       sess.RuntimeID,
+		Provider:        previousCfg.Provider,
+		Profile:         previousCfg.Profile,
+		ProviderSession: sess.ProviderSessionID,
+		Continuity:      continuity.Status,
+		StartedAt:       time.Now().UTC(),
+		State:           "RUNNING",
+	}
+	if _, err := st.AddGeneration(gen); err != nil {
+		n.stopRuntime(sess.RuntimeID)
+		return err
+	}
+	agent.CurrentRevisionID = previousRevisionID
+	agent.Status = store.AgentWorking
+	agent.ContinuityStatus = continuity.Status
+	now := time.Now().UTC()
+	agent.LastStartedAt = &now
+	if err := st.UpdateAgent(agent); err != nil {
+		n.stopRuntime(sess.RuntimeID)
+		return err
+	}
+	n.notifyRuntimeChanged(agent.ID, previousGen.RuntimeID, sess.RuntimeID, previousCfg.Provider, previousCfg.Profile, continuity.Status)
+	n.notifyAgentState(agent.ID, store.AgentWorking)
+	n.notifyContinuity(agent.ID, continuity.Status)
+	return nil
 }

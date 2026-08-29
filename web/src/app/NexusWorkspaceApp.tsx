@@ -17,6 +17,7 @@ import { MaestroControlModal } from './modals/MaestroControlModal';
 import { NexusShell } from './NexusShell';
 import { WorkspaceSurfaceHost } from './WorkspaceSurfaceHost';
 import { agentConfigSurface, agentTerminalSurface, projectSurface } from './surfaces';
+import { agentForRuntime, terminalSurfaceIDForRuntime } from './runtimeAgentMapping';
 import { resolveProjectSelection } from './projectSelection';
 import { useNexusData } from './useNexusData';
 import type { Agent, Project } from '../types';
@@ -232,25 +233,19 @@ const WorkspaceCoordinator: React.FC<{
   );
 
   const handleFocusRuntime = (runtimeId: string) => {
-    const matchingAgent = data.agents.find((a) => a.id === runtimeId || a.project_id === project.id);
-    if (matchingAgent) {
-      terminal(matchingAgent);
-    } else {
-      openKind('legacy-runtimes');
-    }
+    const runtime = data.runtimes.find((item) => item.runtime_id === runtimeId);
+    const matchingAgent = runtime ? agentForRuntime(runtime, data.agents) : undefined;
+    if (matchingAgent) terminal(matchingAgent);
+    else openKind('legacy-runtimes');
   };
 
   // Sync dynamic titles & attention icons to workspace surfaces and browser document.title
   useEffect(() => {
     data.runtimes.forEach((r) => {
       if (r.dynamic_title) {
-        const matchingAgent = data.agents.find((a) => a.id === r.runtime_id || a.project_id === project.id);
-        if (matchingAgent) {
-          const surfaceId = `agent-terminal-${matchingAgent.id}`;
-          workspace.updateSurface(surfaceId, {
-            title: r.dynamic_title,
-          });
-        }
+        const matchingAgent = agentForRuntime(r, data.agents);
+        const surfaceId = terminalSurfaceIDForRuntime(r);
+        if (matchingAgent && surfaceId) workspace.updateSurface(surfaceId, { title: r.dynamic_title });
       }
     });
 

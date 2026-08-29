@@ -11,6 +11,7 @@ export interface Workspace {
 
 export interface RuntimeSession {
   runtime_id: string;
+  agent_id?: string;
   title?: string;
   provider_id?: string;
   profile_id?: string;

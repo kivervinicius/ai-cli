@@ -98,6 +98,14 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 	rawConn := client.RawConn()
 	stopChan := make(chan struct{})
 
+	// Keep the SessionHost writer authority aligned with the Agent-level
+	// broker. The command is deliberately sent over this connection *after*
+	// Attach so SessionHost can bind the lease to the exact streaming client,
+	// not to an unrelated RPC connection.
+	if role == "CONTROL" {
+		_ = sendAttachedCommand(rawConn, protocol.CmdLeaseAcquire, nil)
+	}
+
 	if ch := DefaultBroker().WatchRuntimeChanged(agentID); ch != nil {
 		go func() {
 			<-ch
@@ -228,12 +236,7 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 					Type: "lease",
 					Role: "CONTROL",
 				})
-				go func() {
-					if c, err := protocol.NewClient(runtimeID); err == nil {
-						_, _ = c.Send(protocol.CmdLeaseAcquire, nil)
-						_ = c.Close()
-					}
-				}()
+				_ = sendAttachedCommand(rawConn, protocol.CmdLeaseAcquire, nil)
 			}
 
 		case "lease_release":
@@ -242,12 +245,20 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 				Type: "lease",
 				Role: "VIEW_ONLY",
 			})
-			go func() {
-				if c, err := protocol.NewClient(runtimeID); err == nil {
-					_, _ = c.Send(protocol.CmdLeaseRelease, nil)
-					_ = c.Close()
-				}
-			}()
+			_ = sendAttachedCommand(rawConn, protocol.CmdLeaseRelease, nil)
 		}
 	}
+}
+
+func sendAttachedCommand(conn interface{ Write([]byte) (int, error) }, command protocol.CommandType, payload any) error {
+	req, err := protocol.NewRequest(command, payload)
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	_, err = conn.Write(append(data, '\n'))
+	return err
 }

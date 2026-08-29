@@ -134,14 +134,22 @@ func evaluateCandidate(acc ProviderAccount, req TaskRequirements, policy Schedul
 		return c
 	}
 
-	// Determine Quota confidence
-	if acc.QuotaView != nil {
-		c.Confidence = "LIVE"
-	} else if acc.QuotaRemaining > 0 {
-		c.Confidence = "CACHED"
-	} else {
-		c.Confidence = "UNKNOWN"
+	// Hard Gate 3: every required capability must be explicitly SUPPORTED.
+	// PARTIAL/UNKNOWN/NOT_TESTED are not enough for a hard requirement.
+	for _, required := range req.RequiredCapabilities {
+		key := normalizeCapabilityName(required)
+		status := strings.ToUpper(strings.TrimSpace(acc.Capabilities[key]))
+		if status != "SUPPORTED" {
+			c.Eligible = false
+			c.RejectionReason = fmt.Sprintf("Capacidade obrigatória %s não suportada (%s)", key, capabilityStatusLabel(status))
+			c.Cons = append(c.Cons, c.RejectionReason)
+			return c
+		}
 	}
+
+	// Determine quota confidence from the actual usage status. A non-nil
+	// QuotaView is not evidence that the data is LIVE.
+	c.Confidence = quotaConfidence(acc)
 
 	var score float64 = 50.0 // Baseline
 
@@ -153,7 +161,10 @@ func evaluateCandidate(acc ProviderAccount, req TaskRequirements, policy Schedul
 		c.Pros = append(c.Pros, fmt.Sprintf("Quota em tempo real (%.0f%% restante)", acc.QuotaRemaining*100))
 	case "CACHED":
 		quotaScore = acc.QuotaRemaining * 20.0
-		c.Pros = append(c.Pros, fmt.Sprintf("Quota em cache (%.0f%% estimada)", acc.QuotaRemaining*100))
+		c.Pros = append(c.Pros, fmt.Sprintf("Quota em cache (%.0f%% restante)", acc.QuotaRemaining*100))
+	case "ESTIMATED":
+		quotaScore = acc.QuotaRemaining * 15.0
+		c.Pros = append(c.Pros, fmt.Sprintf("Quota estimada (%.0f%% restante)", acc.QuotaRemaining*100))
 	case "UNKNOWN":
 		// Unknown quota is NOT treated as best (§Phase B: Unknown quota must not be treated as magically best)
 		quotaScore = 10.0
@@ -246,4 +257,34 @@ func evaluateCandidate(acc ProviderAccount, req TaskRequirements, policy Schedul
 
 	c.TotalScore = math.Round(score*10) / 10
 	return c
+}
+
+func quotaConfidence(acc ProviderAccount) string {
+	if acc.QuotaView != nil {
+		switch strings.ToUpper(strings.TrimSpace(acc.QuotaView.Status)) {
+		case "LIVE":
+			return "LIVE"
+		case "CACHED":
+			return "CACHED"
+		case "ESTIMATED":
+			return "ESTIMATED"
+		default:
+			return "UNKNOWN"
+		}
+	}
+	if acc.QuotaRemaining > 0 {
+		return "CACHED"
+	}
+	return "UNKNOWN"
+}
+
+func normalizeCapabilityName(value string) string {
+	return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(value)), "-", "_")
+}
+
+func capabilityStatusLabel(status string) string {
+	if status == "" {
+		return "UNKNOWN"
+	}
+	return status
 }

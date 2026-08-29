@@ -1,0 +1,61 @@
+package nexus
+
+import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+
+	"github.com/kivervinicius/ai-cli/internal/nexus/store"
+)
+
+func TestResolveExecutionWorkspaceProject(t *testing.T) {
+	n := &Nexus{}
+	dir := t.TempDir()
+	project := store.Project{ID: "p", CanonicalPath: dir, DefaultIsolation: "project"}
+	agent := store.Agent{ID: "a", ProjectID: "p"}
+	got, err := n.resolveExecutionWorkspace(context.Background(), project, agent, AgentConfig{})
+	if err != nil || got != dir {
+		t.Fatalf("workspace=%q err=%v want %q", got, err, dir)
+	}
+}
+
+func TestResolveExecutionWorkspaceWorktree(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git unavailable")
+	}
+	repo := t.TempDir()
+	run := func(args ...string) {
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=Test", "GIT_AUTHOR_EMAIL=test@example.com", "GIT_COMMITTER_NAME=Test", "GIT_COMMITTER_EMAIL=test@example.com")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	run("init")
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "README.md")
+	run("commit", "-m", "init")
+
+	t.Setenv("NEXUS_DATA_DIR", t.TempDir())
+	n := &Nexus{}
+	project := store.Project{ID: "p", CanonicalPath: repo, DefaultIsolation: "worktree"}
+	agent := store.Agent{ID: "agent-1", ProjectID: "p"}
+	got, err := n.resolveExecutionWorkspace(context.Background(), project, agent, AgentConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == repo {
+		t.Fatal("worktree isolation reused canonical project path")
+	}
+	if _, err := os.Stat(filepath.Join(got, "README.md")); err != nil {
+		t.Fatalf("worktree missing checkout: %v", err)
+	}
+	got2, err := n.resolveExecutionWorkspace(context.Background(), project, agent, AgentConfig{})
+	if err != nil || got2 != got {
+		t.Fatalf("worktree reuse=%q err=%v want %q", got2, err, got)
+	}
+}

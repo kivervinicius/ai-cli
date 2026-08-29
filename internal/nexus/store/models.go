@@ -12,6 +12,7 @@ const (
 	ContinuityNativeResumeVerified   = "NATIVE_RESUME_VERIFIED"
 	ContinuityNativeResumeUnverified = "NATIVE_RESUME_UNVERIFIED"
 	ContinuityContextRecovered       = "CONTEXT_RECOVERED_NEW_SESSION"
+	ContinuityNewSession             = "NEW_SESSION"
 	ContinuityFailed                 = "CONTINUITY_FAILED"
 )
 
