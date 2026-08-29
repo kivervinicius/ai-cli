@@ -122,3 +122,17 @@ func TestFSMkdir(t *testing.T) {
 		t.Fatalf("expected folder to exist on disk: %v", err)
 	}
 }
+
+func TestGetGitRemoteRedactsCredentials(t *testing.T) {
+	dir := t.TempDir()
+	gitDir := filepath.Join(dir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gitDir, "config"), []byte("[remote \"origin\"]\n\turl = https://secret-token@github.com/acme/private.git\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := getGitRemote(dir); got != "https://github.com/acme/private.git" {
+		t.Fatalf("remote = %q, credentials must be redacted", got)
+	}
+}

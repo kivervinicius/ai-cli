@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FolderGit2, GitBranch, Network, Wifi, BrainCircuit, ShieldCheck } from 'lucide-react';
-import { Badge } from '../design-system';
+import { FolderGit2, GitBranch, Wifi, BrainCircuit, AlertTriangle } from 'lucide-react';
 import { nexus } from '../nexus/api';
+import { BranchSwitcherModal } from '../features/projects/BranchSwitcherModal';
 import type { Agent, Project } from '../types';
 
 export const WorkspaceTaskbar: React.FC<{
@@ -10,6 +10,8 @@ export const WorkspaceTaskbar: React.FC<{
   agents?: Agent[];
 }> = ({ project, agents = [] }) => {
   const { t } = useTranslation();
+  const [branchModalOpen, setBranchModalOpen] = useState(false);
+  const [currentBranch, setCurrentBranch] = useState<string>('');
   const [sysInfo, setSysInfo] = useState<{
     nexus_version: string;
     maestro_version: string;
@@ -19,6 +21,12 @@ export const WorkspaceTaskbar: React.FC<{
   useEffect(() => {
     nexus.getSystemUpdates().then(setSysInfo).catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (project?.default_branch) {
+      setCurrentBranch(project.default_branch);
+    }
+  }, [project?.default_branch]);
 
   const working = agents.filter((a) => a.status === 'WORKING').length;
   const attention = agents.filter((a) =>
@@ -35,17 +43,34 @@ export const WorkspaceTaskbar: React.FC<{
               <FolderGit2 size={12} />
               <span>{project.name}</span>
             </span>
-            <span className="nx-statusbar-item nx-statusbar-branch">
+            <button
+              type="button"
+              className="nx-statusbar-item nx-statusbar-branch nx-statusbar-btn"
+              onClick={() => setBranchModalOpen(true)}
+              title={t('git.switchBranchTooltip', 'Clique para alternar ou criar branches Git')}
+            >
               <GitBranch size={11} />
-              <span>{project.default_branch || 'main'}</span>
-            </span>
+              <span>{currentBranch || project.default_branch || 'main'}</span>
+            </button>
+
+            <BranchSwitcherModal
+              open={branchModalOpen}
+              onClose={() => setBranchModalOpen(false)}
+              project={project}
+              onBranchChanged={(b) => setCurrentBranch(b)}
+            />
           </>
         )}
       </div>
 
       {/* Center: Agents status */}
       <div className="nx-statusbar-center">
-        {working > 0 ? (
+        {attention > 0 ? (
+          <span className="nx-statusbar-item" style={{ color: 'var(--nx-warning, #f59e0b)' }}>
+            <AlertTriangle size={12} />
+            <span>{t('statusBar.attention', { count: attention, defaultValue: `${attention} precisam de atenção` })}</span>
+          </span>
+        ) : working > 0 ? (
           <span className="nx-statusbar-item nx-statusbar-working">
             <span className="nx-status-dot nx-status-dot--working" />
             <span>{t('statusBar.working', { count: working })}</span>

@@ -153,6 +153,7 @@ func (d *OpenCodeDriver) BuildCommand(ctx context.Context, p model.Profile, extr
 		"OPENCODE_HOME": home,
 		"AI_PROFILE":    p.Name,
 		"AI_PROVIDER":   "opencode",
+		"PATH":          runtime.EnhancedPATH(filepath.Dir(bin)),
 	})
 
 	return bin, extraArgs, env, nil

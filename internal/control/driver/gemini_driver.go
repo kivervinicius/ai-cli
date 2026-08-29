@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
@@ -145,6 +146,7 @@ func (d *GeminiDriver) BuildCommand(ctx context.Context, p model.Profile, extraA
 		"GEMINI_CLI_HOME": home,
 		"AI_PROFILE":      p.Name,
 		"AI_PROVIDER":     "gemini",
+		"PATH":            runtime.EnhancedPATH(filepath.Dir(bin)),
 	})
 
 	return bin, extraArgs, env, nil

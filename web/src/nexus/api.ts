@@ -157,4 +157,54 @@ export const nexus = {
         body: JSON.stringify({ action }),
       }
     ),
+  getProjectBranches: (projectId: string) =>
+    request<import('../types').GitBranchesResult>(`/api/v1/projects/${projectId}/git/branches`),
+  checkoutProjectBranch: (projectId: string, branch: string, create = false) =>
+    request<import('../types').GitCheckoutResult>(`/api/v1/projects/${projectId}/git/checkout`, {
+      method: 'POST',
+      body: JSON.stringify({ branch, create }),
+    }),
+
+  // WorkPlans & Autonomous Mission Runner (Phase D, E, F, H)
+  getPlans: (projectId: string) =>
+    request<import('../types').WorkPlan[]>(`/api/v1/projects/${projectId}/plans`),
+  createPlan: (projectId: string, data: { title?: string; description?: string; goal?: string; auto_plan?: boolean; phases?: any[]; facts?: any }) =>
+    request<import('../types').WorkPlan>(`/api/v1/projects/${projectId}/plans`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getPlan: (planId: string) =>
+    request<{ plan: import('../types').WorkPlan; revisions: import('../types').PlanRevision[] }>(`/api/v1/plans/${planId}`),
+  updatePlan: (planId: string, plan: import('../types').WorkPlan, change_summary?: string) =>
+    request<{ plan: import('../types').WorkPlan; revision: import('../types').PlanRevision }>(`/api/v1/plans/${planId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ plan, change_summary }),
+    }),
+  deletePlan: (planId: string) =>
+    request<{ deleted: boolean }>(`/api/v1/plans/${planId}`, { method: 'DELETE' }),
+  compilePackagePrompt: (planId: string, packageId: string, phaseId?: string) =>
+    request<any>(`/api/v1/plans/${planId}/compile`, {
+      method: 'POST',
+      body: JSON.stringify({ package_id: packageId, phase_id: phaseId }),
+    }),
+  runPlan: (planId: string, agentId?: string, maxRetries?: number) =>
+    request<import('../types').MissionRun>(`/api/v1/plans/${planId}/run`, {
+      method: 'POST',
+      body: JSON.stringify({ agent_id: agentId, max_retries: maxRetries }),
+    }),
+  getRuns: () =>
+    request<import('../types').MissionRun[]>('/api/v1/runs'),
+  getRun: (runId: string) =>
+    request<import('../types').MissionRun>(`/api/v1/runs/${runId}`),
+  stepRun: (runId: string) =>
+    request<{ run: import('../types').MissionRun; completed: boolean }>(`/api/v1/runs/${runId}`, {
+      method: 'POST',
+    }),
+  recommendResources: (requirements: any, policy?: string) =>
+    request<import('../types').RecommendationResult>('/api/v1/resources/recommend', {
+      method: 'POST',
+      body: JSON.stringify({ requirements, policy }),
+    }),
 };
+
+export const nexusApi = nexus;

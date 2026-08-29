@@ -76,6 +76,21 @@ export interface ProfileInfo {
   is_default: boolean;
 }
 
+export interface ProviderAccount {
+  id: string;
+  provider: string;
+  profile: string;
+  display_name: string;
+  authenticated: boolean;
+  is_default: boolean;
+  available: boolean;
+  quota_remaining: number;
+  quota_total: number;
+  rate_limited: boolean;
+  health: string;
+  last_checked: string;
+}
+
 export interface EventRecord {
   id: string;
   runtime_id: string;
@@ -243,3 +258,128 @@ export interface FSInspectResult {
   tech: string[];
 }
 
+export interface GitBranchesResult {
+  project_id: string;
+  canonical_path: string;
+  current_branch: string;
+  default_branch: string;
+  branches: string[];
+  remote_branches: string[];
+  is_clean: boolean;
+  modified_count: number;
+}
+
+export interface GitCheckoutResult {
+  success: boolean;
+  current_branch: string;
+  output?: string;
+  error?: string;
+}
+
+export interface WorkPackage {
+  id: string;
+  title: string;
+  goal: string;
+  priority: 'CRITICAL' | 'HIGH' | 'NORMAL' | 'LOW';
+  status: 'PENDING' | 'READY' | 'ALLOCATING' | 'COMPILING' | 'EXECUTING' | 'TESTING' | 'REVIEWING' | 'VERIFIED' | 'FAILED' | 'BLOCKED';
+  dependencies: string[];
+  parallel_group?: string;
+  role: string;
+  task_requirements?: string;
+  agent_allocation?: string;
+  maestro_gates?: string[];
+  acceptance_criteria: string[];
+  shared_artifacts?: string[];
+  compiled_prompt?: string;
+}
+
+export interface PlanPhase {
+  id: string;
+  title: string;
+  description?: string;
+  order: number;
+  packages: WorkPackage[];
+}
+
+export interface WorkPlan {
+  id: string;
+  project_id: string;
+  mission_id?: string;
+  title: string;
+  description: string;
+  status: 'DRAFT' | 'READY' | 'EXECUTING' | 'COMPLETED' | 'BLOCKED';
+  current_revision: number;
+  phases: PlanPhase[];
+  structured_facts?: Record<string, string>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlanRevision {
+  id: string;
+  plan_id: string;
+  revision: number;
+  snapshot_json: string;
+  change_summary: string;
+  created_at: string;
+}
+
+export interface AutonomyContract {
+  max_retries: number;
+  max_total_iterations: number;
+  auto_remediate: boolean;
+  require_verification: boolean;
+  disallow_destructive_git: boolean;
+  verification_commands?: string[];
+  escalate_on_failure: boolean;
+}
+
+export interface PackageRun {
+  id: string;
+  package_id: string;
+  title: string;
+  state: string;
+  attempt: number;
+  assigned_agent: string;
+  error_message?: string;
+  started_at: string;
+  finished_at?: string;
+}
+
+export interface MissionRun {
+  id: string;
+  plan_id: string;
+  project_id: string;
+  state: string;
+  contract: AutonomyContract;
+  current_pkg_index: number;
+  package_runs: PackageRun[];
+  started_at: string;
+  updated_at: string;
+  completed_at?: string;
+}
+
+export interface ResourceCandidate {
+  account: ProviderAccount;
+  rank: number;
+  total_score: number;
+  confidence: 'LIVE' | 'CACHED' | 'ESTIMATED' | 'UNKNOWN';
+  score_breakdown: Record<string, number>;
+  pros: string[];
+  cons: string[];
+  eligible: boolean;
+  rejection_reason?: string;
+}
+
+export interface RecommendationResult {
+  requirements: {
+    task_kind: string;
+    role: string;
+    current_provider?: string;
+    prefer_provider?: string;
+  };
+  policy: string;
+  recommended?: ResourceCandidate;
+  candidates: ResourceCandidate[];
+  explanation: string;
+}

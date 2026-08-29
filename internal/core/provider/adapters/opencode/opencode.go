@@ -97,6 +97,7 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 		"XDG_DATA_HOME":       filepath.Join(home, ".local", "share"),
 		"XDG_CACHE_HOME":      filepath.Join(home, ".cache"),
 		"OPENCODE_CONFIG_DIR": filepath.Join(home, ".config", "opencode"),
+		"PATH":                runtime.EnhancedPATH(filepath.Dir(bin)),
 	}
 	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
 		envMap["SSH_AUTH_SOCK"] = sock

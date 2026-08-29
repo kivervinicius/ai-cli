@@ -31,7 +31,7 @@ func (m *mockLauncher) Launch(_ context.Context, opts launcher.LaunchOptions) (*
 	sess := registry.RuntimeSession{
 		RuntimeID:         opts.RuntimeID,
 		ProviderID:        opts.ProviderID,
-		ProfileID:        opts.ProfileID,
+		ProfileID:         opts.ProfileID,
 		ProviderSessionID: opts.ProviderSessionID,
 		Workspace:         opts.Workspace,
 		State:             registry.StateRunning,

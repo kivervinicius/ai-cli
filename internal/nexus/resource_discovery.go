@@ -102,6 +102,16 @@ func (n *Nexus) AllocateResource(ctx context.Context, agentID, provider, profile
 	return n.allocateResourceFromAccounts(ctx, agentID, provider, profileName, accounts, policy)
 }
 
+// ValidateResource verifies that an exact provider/profile is currently
+// discoverable and eligible, without changing Agent configuration.
+func (n *Nexus) ValidateResource(provider, profileName string) (ProviderAccount, error) {
+	accounts, err := n.ListResources()
+	if err != nil {
+		return ProviderAccount{}, err
+	}
+	return validateResourceFromAccounts(provider, profileName, accounts)
+}
+
 func (n *Nexus) allocateResourceFromAccounts(ctx context.Context, agentID, provider, profileName string, accounts []ProviderAccount, policy SchedulerPolicy) (*ResourceAllocation, error) {
 	provider = strings.TrimSpace(provider)
 	profileName = strings.TrimSpace(profileName)
@@ -112,17 +122,8 @@ func (n *Nexus) allocateResourceFromAccounts(ctx context.Context, agentID, provi
 		policy = PolicyBalanced
 	}
 
-	var selected *ProviderAccount
-	for i := range accounts {
-		if accounts[i].Provider == provider && accounts[i].Profile == profileName {
-			selected = &accounts[i]
-			break
-		}
-	}
-	if selected == nil {
-		return nil, fmt.Errorf("resource %s:%s was not found", provider, profileName)
-	}
-	if err := validateResourceAccount(*selected); err != nil {
+	selected, err := validateResourceFromAccounts(provider, profileName, accounts)
+	if err != nil {
 		return nil, err
 	}
 
@@ -149,7 +150,7 @@ func (n *Nexus) allocateResourceFromAccounts(ctx context.Context, agentID, provi
 	}
 	return &ResourceAllocation{
 		Decision: SchedulerDecision{
-			Selected:    *selected,
+			Selected:    selected,
 			Policy:      policy,
 			Reason:      "manually selected eligible resource",
 			Score:       1,
@@ -158,6 +159,23 @@ func (n *Nexus) allocateResourceFromAccounts(ctx context.Context, agentID, provi
 		Impact:    impact,
 		Persisted: true,
 	}, nil
+}
+
+func validateResourceFromAccounts(provider, profileName string, accounts []ProviderAccount) (ProviderAccount, error) {
+	provider = strings.TrimSpace(provider)
+	profileName = strings.TrimSpace(profileName)
+	if provider == "" || profileName == "" {
+		return ProviderAccount{}, fmt.Errorf("provider and profile are required")
+	}
+	for _, account := range accounts {
+		if account.Provider == provider && account.Profile == profileName {
+			if err := validateResourceAccount(account); err != nil {
+				return ProviderAccount{}, err
+			}
+			return account, nil
+		}
+	}
+	return ProviderAccount{}, fmt.Errorf("resource %s:%s was not found", provider, profileName)
 }
 
 func validateResourceAccount(account ProviderAccount) error {

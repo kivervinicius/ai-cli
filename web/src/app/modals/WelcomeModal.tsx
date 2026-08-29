@@ -7,8 +7,6 @@ import {
   FolderGit2,
   TerminalSquare,
   Command,
-  HelpCircle,
-  RefreshCw,
   CheckCircle2,
   AlertCircle,
   ArrowRight,

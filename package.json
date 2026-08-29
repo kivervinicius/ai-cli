@@ -6,6 +6,7 @@
     "web:build": "env -u NODE_OPTIONS npm --prefix web run build",
     "web:test": "env -u NODE_OPTIONS npm --prefix web test",
     "web:typecheck": "env -u NODE_OPTIONS npm --prefix web run typecheck",
+    "web:dev": "nexus web  --port 3000 --remote",
     "build": "make build",
     "test": "make test",
     "release": "make release-local"

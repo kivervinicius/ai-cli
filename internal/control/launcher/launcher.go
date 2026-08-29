@@ -26,10 +26,10 @@ type LaunchOptions struct {
 	Args              []string
 	Standalone        bool // If true, runs host in-process instead of spawning detached daemon
 	Timeout           time.Duration
-	Model       string            `json:"model,omitempty"`
-	Environment map[string]string `json:"environment,omitempty"`
-	Isolation   string            `json:"isolation,omitempty"`
-	Options     map[string]any    `json:"options,omitempty"`
+	Model             string            `json:"model,omitempty"`
+	Environment       map[string]string `json:"environment,omitempty"`
+	Isolation         string            `json:"isolation,omitempty"`
+	Options           map[string]any    `json:"options,omitempty"`
 }
 
 // Launcher unifies supervised SessionHost spawning and handshake verification across all commands.

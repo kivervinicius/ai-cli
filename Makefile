@@ -23,7 +23,14 @@ build:
 	chmod +x $(LOCAL_BIN)/$(BINARY).tmp; \
 	mv -f $(LOCAL_BIN)/$(BINARY).tmp $(LOCAL_BIN)/$(BINARY); \
 	ln -sf $(LOCAL_BIN)/$(BINARY) $(LOCAL_BIN)/ai; \
-	echo "✓ Built and installed $(BINARY) v$$VERSION to $(LOCAL_BIN)/$(BINARY) (alias: ai)"
+	if [ -d "$(HOST_LOCAL_BIN)" ] && [ "$(HOST_LOCAL_BIN)" != "$(LOCAL_BIN)" ]; then \
+		rm -f $(HOST_LOCAL_BIN)/$(BINARY).tmp; \
+		cp -f $(BINARY) $(HOST_LOCAL_BIN)/$(BINARY).tmp 2>/dev/null && \
+		chmod +x $(HOST_LOCAL_BIN)/$(BINARY).tmp 2>/dev/null && \
+		mv -f $(HOST_LOCAL_BIN)/$(BINARY).tmp $(HOST_LOCAL_BIN)/$(BINARY) 2>/dev/null && \
+		ln -sf $(HOST_LOCAL_BIN)/$(BINARY) $(HOST_LOCAL_BIN)/ai 2>/dev/null || true; \
+	fi; \
+	echo "✓ Built and installed $(BINARY) v$$VERSION to $(LOCAL_BIN)/$(BINARY) and $(HOST_LOCAL_BIN)/$(BINARY) (alias: ai)"
 
 release-local:
 	go run ./cmd/nexus release

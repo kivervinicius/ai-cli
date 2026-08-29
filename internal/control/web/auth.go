@@ -16,12 +16,16 @@ import (
 const (
 	sessionCookieName = "ai_control_session"
 	csrfHeaderName    = "X-CSRF-Token"
+	sessionTTL        = 24 * time.Hour
+	sessionIdleTTL    = 4 * time.Hour
 )
 
 type Session struct {
-	ID        string
-	CSRFToken string
-	CreatedAt time.Time
+	ID           string
+	CSRFToken    string
+	CreatedAt    time.Time
+	ExpiresAt    time.Time
+	LastActiveAt time.Time
 }
 
 type AuthManager struct {
@@ -113,10 +117,13 @@ func (a *AuthManager) CreateSession() (*Session, error) {
 	}
 	csrfToken := hex.EncodeToString(csrfBytes)
 
+	now := time.Now()
 	sess := &Session{
-		ID:        sessID,
-		CSRFToken: csrfToken,
-		CreatedAt: time.Now(),
+		ID:           sessID,
+		CSRFToken:    csrfToken,
+		CreatedAt:    now,
+		ExpiresAt:    now.Add(sessionTTL),
+		LastActiveAt: now,
 	}
 
 	a.mu.Lock()
@@ -131,9 +138,61 @@ func (a *AuthManager) AuthenticateRequest(r *http.Request) *Session {
 		return nil
 	}
 
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.sessions[cookie.Value]
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	sess, ok := a.sessions[cookie.Value]
+	if !ok {
+		return nil
+	}
+
+	now := time.Now()
+	// Check absolute expiry and idle TTL (A8 security requirement)
+	if now.After(sess.ExpiresAt) || now.Sub(sess.LastActiveAt) > sessionIdleTTL {
+		delete(a.sessions, cookie.Value)
+		return nil
+	}
+
+	sess.LastActiveAt = now
+	return sess
+}
+
+// RevokeSession destroys an existing authenticated session (logout).
+func (a *AuthManager) RevokeSession(sessionID string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.sessions, sessionID)
+}
+
+// RotateSession atomically creates a new session ID/CSRF token and deletes the old one.
+func (a *AuthManager) RotateSession(oldSessionID string) (*Session, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	delete(a.sessions, oldSessionID)
+
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return nil, err
+	}
+	sessID := hex.EncodeToString(bytes)
+
+	csrfBytes := make([]byte, 16)
+	if _, err := rand.Read(csrfBytes); err != nil {
+		return nil, err
+	}
+	csrfToken := hex.EncodeToString(csrfBytes)
+
+	now := time.Now()
+	sess := &Session{
+		ID:           sessID,
+		CSRFToken:    csrfToken,
+		CreatedAt:    now,
+		ExpiresAt:    now.Add(sessionTTL),
+		LastActiveAt: now,
+	}
+	a.sessions[sessID] = sess
+	return sess, nil
 }
 
 func (a *AuthManager) ExchangeBootstrapToken(token string) (*Session, bool) {
@@ -156,10 +215,13 @@ func (a *AuthManager) ExchangeBootstrapToken(token string) (*Session, bool) {
 	_, _ = rand.Read(csrfBytes)
 	csrfToken := hex.EncodeToString(csrfBytes)
 
+	now := time.Now()
 	sess := &Session{
-		ID:        sessID,
-		CSRFToken: csrfToken,
-		CreatedAt: time.Now(),
+		ID:           sessID,
+		CSRFToken:    csrfToken,
+		CreatedAt:    now,
+		ExpiresAt:    now.Add(sessionTTL),
+		LastActiveAt: now,
 	}
 	a.sessions[sessID] = sess
 	return sess, true

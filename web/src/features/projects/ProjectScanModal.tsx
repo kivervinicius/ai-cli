@@ -8,9 +8,6 @@ import {
   Plus,
   Loader2,
   RefreshCw,
-  Layers,
-  ArrowRight,
-  ShieldCheck,
 } from 'lucide-react';
 import { Dialog, Button, Input, Badge, Card } from '../../design-system';
 import { nexus } from '../../nexus/api';

@@ -16,6 +16,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
+	"github.com/kivervinicius/ai-cli/internal/nexus/runner"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
 
@@ -54,11 +55,20 @@ type Nexus struct {
 	mu       sync.RWMutex
 	st       *store.Store
 	launcher Launcher
+	runner   *runner.MissionRunner
 
 	// Runtime change observers (set by the web layer to avoid circular imports).
 	onRuntimeChanged func(agentID, oldRuntimeID, newRuntimeID, provider, profile, continuity string)
 	onAgentState     func(agentID, state string)
 	onContinuity     func(agentID, continuity string)
+}
+
+// Runner returns the autonomous mission runner instance.
+func (n *Nexus) Runner() *runner.MissionRunner {
+	if n.runner == nil {
+		n.runner = runner.NewMissionRunner()
+	}
+	return n.runner
 }
 
 // SetRuntimeObservers registers callbacks for runtime lifecycle events.
@@ -396,18 +406,28 @@ func (n *Nexus) RecoverAgent(ctx context.Context, agentID string) (*registry.Run
 	_ = st.UpdateAgent(agent)
 	n.notifyAgentState(agentID, "RECOVERING")
 
+	// Resolve project canonical workspace (§14, §29). Never fallback to server CWD.
+	proj, perr := st.GetProject(agent.ProjectID)
+	if perr != nil {
+		return nil, fmt.Errorf("resolve agent project: %w", perr)
+	}
+
 	// Reuse the current config revision — do NOT create a new revision
 	// unless the config actually changed (P1 correct ConfigRevision semantics).
 	rev, rerr := st.GetRevision(agent.CurrentRevisionID)
+	var agentCfg AgentConfig
 	if rerr != nil || rev.ID == "" {
 		// Fallback: create a revision only if none exists.
-		rev, err = st.AddRevision(agentID, store.MustJSON(map[string]string{
-			"provider": provider,
-			"profile":  profile,
-		}))
+		agentCfg = AgentConfig{
+			Provider: provider,
+			Profile:  profile,
+		}
+		rev, err = st.AddRevision(agentID, agentCfg.ConfigJSON())
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		agentCfg, _ = ParseAgentConfig(rev.Config)
 	}
 
 	var args []string
@@ -429,6 +449,11 @@ func (n *Nexus) RecoverAgent(ctx context.Context, agentID string) (*registry.Run
 		ProfileID:         profile,
 		ProviderSessionID: sessionID,
 		Args:              args,
+		Workspace:         proj.CanonicalPath,
+		Model:             agentCfg.Model,
+		Environment:       agentCfg.Environment,
+		Isolation:         agentCfg.Isolation,
+		Options:           agentCfg.Options,
 	})
 	if err != nil {
 		agent.Status = store.AgentRecoverable

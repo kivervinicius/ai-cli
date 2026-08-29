@@ -30,6 +30,17 @@ func TestValidateBindPrivateRequiresRemote(t *testing.T) {
 	}
 }
 
+func TestValidateBindUnspecifiedAlwaysRefused(t *testing.T) {
+	for _, host := range []string{"0.0.0.0", "::"} {
+		if err := ValidateBind(host, false); err == nil {
+			t.Errorf("unspecified wildcard host %q must be refused without --remote", host)
+		}
+		if err := ValidateBind(host, true); err == nil {
+			t.Errorf("unspecified wildcard host %q must be refused even with --remote", host)
+		}
+	}
+}
+
 func TestValidateBindPublicAlwaysRefused(t *testing.T) {
 	for _, host := range []string{"8.8.8.8", "1.1.1.1", "200.150.10.5", "2606:4700::1111"} {
 		if err := ValidateBind(host, false); err == nil {
@@ -44,5 +55,16 @@ func TestValidateBindPublicAlwaysRefused(t *testing.T) {
 func TestValidateBindHostnameRefused(t *testing.T) {
 	if err := ValidateBind("example.com", true); err == nil {
 		t.Error("hostname must be refused")
+	}
+}
+
+func TestHostFilesystemIsDisabledForRemoteBinds(t *testing.T) {
+	if !hostFilesystemEnabled("127.0.0.1") {
+		t.Fatal("loopback bind should allow host filesystem operations")
+	}
+	for _, host := range []string{"10.0.0.5", "192.168.1.10", "fc00::1"} {
+		if hostFilesystemEnabled(host) {
+			t.Errorf("remote bind %q must not expose host filesystem operations", host)
+		}
 	}
 }

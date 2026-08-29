@@ -60,7 +60,13 @@ func (r Runner) ReadVersion() (string, error) {
 	return v, nil
 }
 
+type ProgressCallback func(step int, total int, title string, status string)
+
 func (r Runner) Execute(ctx context.Context, old, next string) (Result, error) {
+	return r.ExecuteWithProgress(ctx, old, next, nil)
+}
+
+func (r Runner) ExecuteWithProgress(ctx context.Context, old, next string, onProgress ProgressCallback) (Result, error) {
 	if err := Validate(old); err != nil {
 		return Result{}, fmt.Errorf("current version: %w", err)
 	}
@@ -79,10 +85,31 @@ func (r Runner) Execute(ctx context.Context, old, next string) (Result, error) {
 	}()
 
 	result := Result{Version: next, Frontend: "pending", GoBuild: "pending"}
-	if out, err := r.Run(ctx, "npm", "--prefix", filepath.Join(r.Root, "web"), "run", "build"); err != nil {
-		return result, fmt.Errorf("frontend build failed: %w\n%s", err, strings.TrimSpace(string(out)))
+
+	// Step 1: Frontend build (prefer bun if available for instant build)
+	if onProgress != nil {
+		onProgress(1, 4, "Compilando frontend web (Bun/Node)", "running")
+	}
+	webDir := filepath.Join(r.Root, "web")
+	var webBuildErr error
+	var webOut []byte
+	if _, err := exec.LookPath("bun"); err == nil {
+		webOut, webBuildErr = r.Run(ctx, "bun", "--cwd", webDir, "run", "build")
+	} else {
+		webOut, webBuildErr = r.Run(ctx, "npm", "--prefix", webDir, "run", "build")
+	}
+	if webBuildErr != nil {
+		return result, fmt.Errorf("frontend build failed: %w\n%s", webBuildErr, strings.TrimSpace(string(webOut)))
 	}
 	result.Frontend = "ok"
+	if onProgress != nil {
+		onProgress(1, 4, "Compilando frontend web (Bun/Node)", "done")
+	}
+
+	// Step 2: Go binary compilation with metadata LDFLAGS
+	if onProgress != nil {
+		onProgress(2, 4, fmt.Sprintf("Compilando binário Go v%s com LDFLAGS", next), "running")
+	}
 	commit := "unknown"
 	if out, err := r.Run(ctx, "git", "-C", r.Root, "rev-parse", "--short", "HEAD"); err == nil {
 		commit = strings.TrimSpace(string(out))
@@ -93,6 +120,14 @@ func (r Runner) Execute(ctx context.Context, old, next string) (Result, error) {
 		return result, fmt.Errorf("go build failed: %w\n%s", err, strings.TrimSpace(string(out)))
 	}
 	result.GoBuild = "ok"
+	if onProgress != nil {
+		onProgress(2, 4, fmt.Sprintf("Compilando binário Go v%s com LDFLAGS", next), "done")
+	}
+
+	// Step 3: Atomic install to local bin directory and alias
+	if onProgress != nil {
+		onProgress(3, 4, fmt.Sprintf("Instalando em %s (nexus + ai)", r.LocalBin), "running")
+	}
 	if err := os.MkdirAll(r.LocalBin, 0755); err != nil {
 		return result, fmt.Errorf("create local bin: %w", err)
 	}
@@ -106,6 +141,14 @@ func (r Runner) Execute(ctx context.Context, old, next string) (Result, error) {
 		return result, fmt.Errorf("install ai alias: %w", err)
 	}
 	result.BinaryPath = dest
+	if onProgress != nil {
+		onProgress(3, 4, fmt.Sprintf("Instalando em %s (nexus + ai)", r.LocalBin), "done")
+	}
+
+	// Step 4: Validation of installed binary
+	if onProgress != nil {
+		onProgress(4, 4, "Validando versão do binário instalado", "running")
+	}
 	out, err := r.Run(ctx, dest, "version", "--json")
 	if err != nil {
 		return result, fmt.Errorf("installed binary validation failed: %w\n%s", err, strings.TrimSpace(string(out)))
@@ -117,6 +160,10 @@ func (r Runner) Execute(ctx context.Context, old, next string) (Result, error) {
 		return result, fmt.Errorf("installed binary reported version %q, want %q", info.Version, next)
 	}
 	result.Validation = "ok"
+	if onProgress != nil {
+		onProgress(4, 4, "Validando versão do binário instalado", "done")
+	}
+
 	restore = false
 	return result, nil
 }

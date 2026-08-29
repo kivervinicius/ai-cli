@@ -59,6 +59,69 @@ func LookPath(name string) (string, error) {
 	return "", exec.ErrNotFound
 }
 
+// EnhancedPATH builds a robust, prioritized and deduplicated PATH string
+// including the provider binary directory, active developer toolchains (Node/NVM, Bun, Cargo, PNPM),
+// user directories, and standard system paths.
+func EnhancedPATH(extraDirs ...string) string {
+	home, _ := os.UserHomeDir()
+	var candidates []string
+	candidates = append(candidates, extraDirs...)
+
+	if home != "" {
+		candidates = append(candidates,
+			filepath.Join(home, ".local", "bin"),
+			filepath.Join(home, ".bun", "bin"),
+			filepath.Join(home, ".cargo", "bin"),
+			filepath.Join(home, ".local", "share", "pnpm"),
+		)
+
+		// Include all installed NVM node versions (most recent first)
+		nvmPattern := filepath.Join(home, ".nvm", "versions", "node", "*", "bin")
+		if matches, err := filepath.Glob(nvmPattern); err == nil && len(matches) > 0 {
+			for i := len(matches) - 1; i >= 0; i-- {
+				candidates = append(candidates, matches[i])
+			}
+		}
+
+		// Also check fnm and asdf shims
+		candidates = append(candidates,
+			filepath.Join(home, ".fnm", "current", "bin"),
+			filepath.Join(home, ".asdf", "shims"),
+		)
+	}
+
+	candidates = append(candidates,
+		"/usr/local/bin",
+		"/usr/bin",
+		"/bin",
+		"/usr/local/sbin",
+		"/usr/sbin",
+		"/sbin",
+	)
+
+	// Append existing PATH
+	existing := os.Getenv("PATH")
+	if existing != "" {
+		candidates = append(candidates, strings.Split(existing, string(os.PathListSeparator))...)
+	}
+
+	// Deduplicate and verify directory exists on disk
+	seen := make(map[string]bool)
+	var finalDirs []string
+	for _, dir := range candidates {
+		dir = strings.TrimSpace(dir)
+		if dir == "" || seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
+			finalDirs = append(finalDirs, dir)
+		}
+	}
+
+	return strings.Join(finalDirs, string(os.PathListSeparator))
+}
+
 // EnvSet applies environment overrides and removes unset keys from the base environment slice.
 func EnvSet(base []string, overrides map[string]string, unset ...string) []string {
 	unsetMap := make(map[string]bool)

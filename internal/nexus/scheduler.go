@@ -10,26 +10,26 @@ import (
 
 // ProviderAccount represents a provider account/profile that can run agents.
 type ProviderAccount struct {
-	ID              string           `json:"id"`
-	Provider        string           `json:"provider"`
-	Profile         string           `json:"profile"`
-	DisplayName     string           `json:"display_name"`
-	Authenticated   bool             `json:"authenticated"`
-	IsDefault       bool             `json:"is_default"`
-	Available       bool             `json:"available"`
-	AvailReasons    *quota.AvailReasons `json:"avail_reasons,omitempty"`
-	QuotaView       *quota.QuotaView `json:"quota_view,omitempty"`
-	QuotaRemaining  float64          `json:"quota_remaining"` // 0-1 normalized (bottleneck)
-	QuotaTotal      float64          `json:"quota_total"`
-	RateLimited     bool             `json:"rate_limited"`
-	CooldownUntil   *time.Time       `json:"cooldown_until,omitempty"`
-	Health          string           `json:"health"` // "healthy" | "degraded" | "unhealthy" | "unknown"
-	LastChecked     time.Time        `json:"last_checked"`
+	ID             string              `json:"id"`
+	Provider       string              `json:"provider"`
+	Profile        string              `json:"profile"`
+	DisplayName    string              `json:"display_name"`
+	Authenticated  bool                `json:"authenticated"`
+	IsDefault      bool                `json:"is_default"`
+	Available      bool                `json:"available"`
+	AvailReasons   *quota.AvailReasons `json:"avail_reasons,omitempty"`
+	QuotaView      *quota.QuotaView    `json:"quota_view,omitempty"`
+	QuotaRemaining float64             `json:"quota_remaining"` // 0-1 normalized (bottleneck)
+	QuotaTotal     float64             `json:"quota_total"`
+	RateLimited    bool                `json:"rate_limited"`
+	CooldownUntil  *time.Time          `json:"cooldown_until,omitempty"`
+	Health         string              `json:"health"` // "healthy" | "degraded" | "unhealthy" | "unknown"
+	LastChecked    time.Time           `json:"last_checked"`
 }
 
 // UsageSnapshot captures the current resource usage state.
 type UsageSnapshot struct {
-	Freshness   string  `json:"freshness"` // "LIVE" | "CACHED" | "ESTIMATED" | "UNKNOWN"
+	Freshness   string  `json:"freshness"`  // "LIVE" | "CACHED" | "ESTIMATED" | "UNKNOWN"
 	Confidence  float64 `json:"confidence"` // 0-1
 	Remaining   float64 `json:"remaining"`
 	Total       float64 `json:"total"`
@@ -41,20 +41,20 @@ type UsageSnapshot struct {
 type SchedulerPolicy string
 
 const (
-	PolicyBalanced      SchedulerPolicy = "BALANCED"
-	PolicyPreserveQuota SchedulerPolicy = "PRESERVE_QUOTA"
+	PolicyBalanced       SchedulerPolicy = "BALANCED"
+	PolicyPreserveQuota  SchedulerPolicy = "PRESERVE_QUOTA"
 	PolicyPreferProvider SchedulerPolicy = "PREFER_PROVIDER"
-	PolicyManual        SchedulerPolicy = "MANUAL"
+	PolicyManual         SchedulerPolicy = "MANUAL"
 )
 
 // SchedulerDecision describes why a provider was selected.
 type SchedulerDecision struct {
-	Selected     ProviderAccount `json:"selected"`
-	Policy       SchedulerPolicy `json:"policy"`
-	Reason       string          `json:"reason"`
-	Score        float64         `json:"score"`
-	Rejected     []Rejection     `json:"rejected,omitempty"`
-	ExplainPath  []string        `json:"explain_path"`
+	Selected    ProviderAccount `json:"selected"`
+	Policy      SchedulerPolicy `json:"policy"`
+	Reason      string          `json:"reason"`
+	Score       float64         `json:"score"`
+	Rejected    []Rejection     `json:"rejected,omitempty"`
+	ExplainPath []string        `json:"explain_path"`
 }
 
 // Rejection records a provider that was considered but rejected.

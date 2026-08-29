@@ -17,8 +17,8 @@ import (
 // generation changes, emitting runtime_changed / agent_state /
 // continuity_state frames to all observers.
 type AgentTerminalBroker struct {
-	mu       sync.RWMutex
-	agents   map[string]*agentTerminalState // agentID → state
+	mu     sync.RWMutex
+	agents map[string]*agentTerminalState // agentID → state
 }
 
 type agentTerminalState struct {
@@ -27,7 +27,7 @@ type agentTerminalState struct {
 	connections    map[*websocket.Conn]TerminalObserver
 	writerConn     *websocket.Conn // single CONTROL writer
 	lease          string          // "CONTROL" | "VIEW_ONLY"
-	runtimeChanged chan struct{}    // closed + recreated on generation switch
+	runtimeChanged chan struct{}   // closed + recreated on generation switch
 }
 
 // TerminalObserver represents one browser tab connected to an agent's terminal.
@@ -161,6 +161,31 @@ func (b *AgentTerminalBroker) ReleaseControl(agentID string, conn *websocket.Con
 		_ = obs.conn.WriteMessage(websocket.TextMessage, leaseMsg)
 		break
 	}
+}
+
+// IsWriter returns true if the given WebSocket connection currently holds the
+// authoritative CONTROL lease for the agent (§45, A6 single writer authority).
+func (b *AgentTerminalBroker) IsWriter(agentID string, conn *websocket.Conn) bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	state, ok := b.agents[agentID]
+	if !ok {
+		return false
+	}
+	return state.writerConn == conn
+}
+
+// Writer returns the current authoritative writer connection for the agent.
+func (b *AgentTerminalBroker) Writer(agentID string) *websocket.Conn {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	state, ok := b.agents[agentID]
+	if !ok {
+		return nil
+	}
+	return state.writerConn
 }
 
 // WatchRuntimeChanged returns a channel that is closed when the runtime

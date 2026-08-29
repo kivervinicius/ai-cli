@@ -9,13 +9,11 @@ import {
   HardDrive,
   CornerLeftUp,
   Search,
-  Plus,
   Check,
   GitBranch,
   Loader2,
   ChevronRight,
   FolderPlus,
-  Sparkles,
 } from 'lucide-react';
 import { Dialog, Button, Input, IconButton, Badge } from '../../design-system';
 import { nexus } from '../../nexus/api';

@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/user"
@@ -139,11 +140,20 @@ func getGitRemote(dir string) string {
 				break
 			}
 			if strings.HasPrefix(trimmed, "url = ") {
-				return strings.TrimPrefix(trimmed, "url = ")
+				return redactGitRemote(strings.TrimPrefix(trimmed, "url = "))
 			}
 		}
 	}
 	return ""
+}
+
+func redactGitRemote(remote string) string {
+	parsed, err := url.Parse(remote)
+	if err != nil || parsed.User == nil {
+		return remote
+	}
+	parsed.User = nil
+	return parsed.String()
 }
 
 // getOSBookmarks returns convenient OS bookmark paths.
@@ -188,6 +198,10 @@ func getOSBookmarks() []FSBookmark {
 
 // handleFSBrowse GET /api/v1/fs/browse?path=...
 func (h *NexusHandler) handleFSBrowse(w http.ResponseWriter, r *http.Request) {
+	if !h.hostFilesystemEnabled {
+		writeError(w, http.StatusForbidden, "host filesystem operations are available only on loopback")
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -324,6 +338,10 @@ func (h *NexusHandler) handleFSBrowse(w http.ResponseWriter, r *http.Request) {
 
 // handleFSInspect GET /api/v1/fs/inspect?path=...
 func (h *NexusHandler) handleFSInspect(w http.ResponseWriter, r *http.Request) {
+	if !h.hostFilesystemEnabled {
+		writeError(w, http.StatusForbidden, "host filesystem operations are available only on loopback")
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -385,6 +403,10 @@ func (h *NexusHandler) handleFSInspect(w http.ResponseWriter, r *http.Request) {
 
 // handleFSScan GET /api/v1/fs/scan?root=...
 func (h *NexusHandler) handleFSScan(w http.ResponseWriter, r *http.Request) {
+	if !h.hostFilesystemEnabled {
+		writeError(w, http.StatusForbidden, "host filesystem operations are available only on loopback")
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -496,6 +518,10 @@ func (h *NexusHandler) handleFSScan(w http.ResponseWriter, r *http.Request) {
 
 // handleFSMkdir POST /api/v1/fs/mkdir
 func (h *NexusHandler) handleFSMkdir(w http.ResponseWriter, r *http.Request) {
+	if !h.hostFilesystemEnabled {
+		writeError(w, http.StatusForbidden, "host filesystem operations are available only on loopback")
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -532,6 +558,10 @@ func (h *NexusHandler) handleFSMkdir(w http.ResponseWriter, r *http.Request) {
 
 // handleProjectOpenOS POST /api/v1/projects/{id}/open-os
 func (h *NexusHandler) handleProjectOpenOS(w http.ResponseWriter, r *http.Request) {
+	if !h.hostFilesystemEnabled {
+		writeError(w, http.StatusForbidden, "host filesystem operations are available only on loopback")
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return

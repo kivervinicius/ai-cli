@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
@@ -144,6 +145,7 @@ func (d *AGYDriver) BuildCommand(ctx context.Context, p model.Profile, extraArgs
 		"AI_PROFILE":             p.Name,
 		"AI_PROVIDER":            "agy",
 		"PYTHON_KEYRING_BACKEND": "keyring.backends.null.Keyring",
+		"PATH":                   runtime.EnhancedPATH(filepath.Dir(bin)),
 	}, "DBUS_SESSION_BUS_ADDRESS", "GNOME_KEYRING_CONTROL", "GNOME_KEYRING_PID")
 
 	return bin, extraArgs, env, nil

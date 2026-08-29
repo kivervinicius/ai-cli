@@ -89,14 +89,15 @@ func PerformSystemUpdate() UpdateResult {
 		_ = os.Symlink(maestroBin, filepath.Join(targetDir, "orquestrador"))
 	}
 
-	// 3. Update Nexus binary
-	fmt.Println("\n[2/2] Verifying and updating IAPro Nexus binary...")
+	// 3. Nexus binary updates need the release workflow. Do not report a
+	// successful update when this command has not rebuilt and replaced it.
+	fmt.Println("\n[2/2] Checking IAPro Nexus binary update status...")
 	mClient := nexus.NewMaestroClient()
 	status := mClient.Status()
 	if status.Capabilities != nil {
 		res.MaestroVersion = status.Capabilities.Version
 	}
-
-	res.NexusUpdated = true
+	res.NexusUpdated = false
+	res.Error = "Nexus binary update was not performed; use the release workflow to build and install a new binary"
 	return res
 }

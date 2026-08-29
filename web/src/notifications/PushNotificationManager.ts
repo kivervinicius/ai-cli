@@ -67,7 +67,9 @@ class PushNotificationService {
       notif.onclick = () => {
         try {
           window.focus();
-        } catch {}
+        } catch {
+          // Browsers may block focus changes triggered by notifications.
+        }
         notif.close();
         if (payload.onClick) {
           payload.onClick();

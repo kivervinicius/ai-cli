@@ -9,7 +9,6 @@ import {
   Plus,
   Settings,
   X,
-  Layers,
 } from 'lucide-react';
 import { Button, IconButton } from '../../design-system';
 import { AddProjectModal } from './AddProjectModal';
