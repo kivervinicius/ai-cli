@@ -103,3 +103,83 @@ export const EmptyState: React.FC<{ title: string; hint?: string; children?: Rea
     {children && <div className="mt-2">{children}</div>}
   </div>
 );
+
+/* Drawer — slide-out panel from the right (Gate 3 Configuration Drawer). */
+export const Drawer: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+  wide?: boolean;
+}> = ({ open, onClose, title, children, wide }) => {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className={`relative bg-slate-900 border-l border-slate-800 shadow-2xl h-full overflow-y-auto ${
+          wide ? 'w-[560px]' : 'w-[440px]'
+        }`}
+      >
+        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3 border-b border-slate-800 bg-slate-900/95 backdrop-blur-sm">
+          <h2 className="text-sm font-semibold text-slate-100">{title}</h2>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 text-lg leading-none px-1">
+            ×
+          </button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  );
+};
+
+/* Select — styled dropdown matching Input aesthetic. */
+export const Select: React.FC<{
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+}> = ({ value, onChange, options, placeholder }) => (
+  <select
+    value={value}
+    onChange={(e) => onChange(e.target.value)}
+    className="w-full rounded-[var(--nx-radius-sm)] border border-slate-700/70 bg-slate-950/70 px-3 py-1.5 text-sm text-slate-100 outline-none focus:border-indigo-500 appearance-none"
+  >
+    {placeholder && (
+      <option value="" disabled>
+        {placeholder}
+      </option>
+    )}
+    {options.map((o) => (
+      <option key={o.value} value={o.value}>
+        {o.label}
+      </option>
+    ))}
+  </select>
+);
+
+/* Switch — toggle boolean settings. */
+export const Switch: React.FC<{
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label?: string;
+}> = ({ checked, onChange, label }) => (
+  <label className="flex items-center gap-2 cursor-pointer">
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${
+        checked ? 'bg-indigo-600' : 'bg-slate-700'
+      }`}
+    >
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform mt-0.5 ${
+          checked ? 'translate-x-4 ml-0.5' : 'translate-x-0.5'
+        }`}
+      />
+    </button>
+    {label && <span className="text-sm text-slate-300">{label}</span>}
+  </label>
+);

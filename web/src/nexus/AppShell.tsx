@@ -14,6 +14,7 @@ export const NEXUS_NAV: NavItem[] = [
   { id: 'agents', label: 'Agents', section: 'nexus', hint: 'Persistent agents across runtimes' },
   { id: 'resources', label: 'Resources', section: 'nexus', hint: 'Providers, accounts, quotas' },
   { id: 'maestro', label: 'Maestro', section: 'nexus', hint: 'Process, skills and verification recommendations' },
+  { id: 'missions', label: 'Missions', section: 'nexus', hint: 'Mission planning and task tracking (Beta)' },
   { id: 'sessions', label: 'Sessions', section: 'nexus', hint: 'Sessions and continuity' },
   { id: 'settings', label: 'Settings', section: 'nexus', hint: 'Nexus settings' },
 ];
@@ -30,9 +31,36 @@ export const AppShell: React.FC<{
   onCommandPalette: () => void;
   children: React.ReactNode;
 }> = ({ current, onNavigate, onCommandPalette, children }) => {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Close sidebar on escape key
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && sidebarOpen) setSidebarOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sidebarOpen]);
+
   return (
     <div className="flex h-screen w-screen bg-[var(--nx-bg)] text-[var(--nx-text)] overflow-hidden">
-      <aside className="w-56 border-r border-slate-800/70 bg-slate-950/60 flex flex-col shrink-0">
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-56 border-r border-slate-800/70 bg-slate-950/60 flex flex-col shrink-0 transform transition-transform duration-200 lg:relative lg:translate-x-0 ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+        role="navigation"
+        aria-label="Main navigation"
+      >
         <div className="px-4 py-4">
           <div className="text-sm font-semibold tracking-tight">
             <span className="iapro-gradient-text">IAPro Nexus</span>
@@ -45,13 +73,17 @@ export const AppShell: React.FC<{
           {NEXUS_NAV.map((item) => (
             <button
               key={item.id}
-              onClick={() => onNavigate(item.id)}
+              onClick={() => {
+                onNavigate(item.id);
+                setSidebarOpen(false);
+              }}
               className={`w-full text-left px-2 py-1.5 rounded-[var(--nx-radius-sm)] text-sm transition ${
                 current === item.id
                   ? 'bg-indigo-950/50 text-indigo-200 border border-indigo-800/50'
                   : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/50'
               }`}
               title={item.hint}
+              aria-current={current === item.id ? 'page' : undefined}
             >
               {item.label}
             </button>
@@ -60,12 +92,16 @@ export const AppShell: React.FC<{
           {LEGACY_NAV.map((item) => (
             <button
               key={item.id}
-              onClick={() => onNavigate(item.id)}
+              onClick={() => {
+                onNavigate(item.id);
+                setSidebarOpen(false);
+              }}
               className={`w-full text-left px-2 py-1.5 rounded-[var(--nx-radius-sm)] text-sm transition ${
                 current === item.id
                   ? 'bg-slate-800 text-slate-100 border border-slate-700'
                   : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/40'
               }`}
+              aria-current={current === item.id ? 'page' : undefined}
             >
               {item.label}
             </button>
@@ -75,12 +111,24 @@ export const AppShell: React.FC<{
 
       <main className="flex-1 flex flex-col min-w-0">
         <header className="h-12 border-b border-slate-800/70 px-4 flex items-center justify-between text-xs shrink-0">
-          <span className="font-mono text-slate-500">
-            {current} · <span className="text-slate-300">{window.location.hostname}</span>
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="lg:hidden p-1.5 rounded hover:bg-slate-800 text-slate-400"
+              aria-label="Toggle navigation menu"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <span className="font-mono text-slate-500">
+              {current} · <span className="text-slate-300">{window.location.hostname}</span>
+            </span>
+          </div>
           <button
             onClick={onCommandPalette}
             className="flex items-center gap-2 px-2.5 py-1 rounded-md border border-slate-800 bg-slate-900/60 text-slate-400 hover:text-slate-200"
+            aria-label="Open command palette"
           >
             <span>Search &amp; commands</span>
             <kbd className="text-[10px] border border-slate-700 rounded px-1">Ctrl K</kbd>

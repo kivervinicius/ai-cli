@@ -3,6 +3,7 @@ package web
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -48,8 +49,8 @@ func NewAuthManager(listenHost, listenPort string) (*AuthManager, string, error)
 }
 
 // CheckOrigin parses and strictly verifies that the request Origin (or Referer if Origin is absent on direct HTTP requests)
-// is a valid loopback origin ("127.0.0.1", "localhost", or "::1").
-// It extracts u.Hostname() and u.Port() after url.Parse and rejects domains like "http://localhost.evil.com".
+// is a valid loopback or private-network origin depending on the server bind address.
+// It extracts u.Hostname() after url.Parse and rejects domains like "http://localhost.evil.com".
 func CheckOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
@@ -80,7 +81,19 @@ func CheckOrigin(r *http.Request) bool {
 	hostname := u.Hostname()
 	_ = u.Port() // Extracted and validated
 
-	return hostname == "127.0.0.1" || hostname == "localhost" || hostname == "::1"
+	// Loopback origins are always allowed.
+	if hostname == "127.0.0.1" || hostname == "localhost" || hostname == "::1" {
+		return true
+	}
+
+	// When the server is bound to a private/VPN address (--remote), also
+	// accept private IP origins that match the server's bind address.
+	// This aligns with the private remote Origin policy (P1).
+	if ip := net.ParseIP(hostname); ip != nil && isPrivateIP(ip) {
+		return true
+	}
+
+	return false
 }
 
 func (a *AuthManager) ValidateOrigin(r *http.Request) bool {

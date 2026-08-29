@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { nexus } from './api';
 import { AgentTerminal } from './AgentTerminal';
+import { AgentConfigurationDrawer } from './AgentConfigurationDrawer';
 import { Project, Agent } from '../types';
 import { Button, Badge, Card, Input, EmptyState, Spinner } from '../ui/primitives';
 
@@ -37,6 +38,7 @@ export const ProjectsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [terminalAgent, setTerminalAgent] = useState<string | null>(null);
+  const [configureAgent, setConfigureAgent] = useState<Agent | null>(null);
   const [startingAgent, setStartingAgent] = useState<string | null>(null);
 
   const loadProjects = async () => {
@@ -60,12 +62,26 @@ export const ProjectsPage: React.FC = () => {
   useEffect(() => {
     if (!selected) {
       setAgents([]);
+      setTerminalAgent(null);
       return;
     }
     nexus
       .listAgents(selected.id)
       .then(setAgents)
       .catch(() => setAgents([]));
+
+    // Restore project layout (Gate 4): which agent terminal was open.
+    nexus
+      .getLayout(selected.id)
+      .then((data) => {
+        try {
+          const layout = JSON.parse(data.layout || '{}');
+          if (layout.openAgents && layout.openAgents.length > 0) {
+            setTerminalAgent(layout.openAgents[0]);
+          }
+        } catch {}
+      })
+      .catch(() => {});
   }, [selected]);
 
   const addProject = async () => {
@@ -99,6 +115,11 @@ export const ProjectsPage: React.FC = () => {
       const list = await nexus.listAgents(agent.project_id);
       setAgents(list);
       setTerminalAgent(agent.id);
+      // Persist layout (Gate 4).
+      if (selected) {
+        const layout = JSON.stringify({ openAgents: [agent.id] });
+        nexus.saveLayout(selected.id, layout).catch(() => {});
+      }
     } catch (e: any) {
       setError(e.message || 'failed to start agent');
     } finally {
@@ -244,6 +265,9 @@ export const ProjectsPage: React.FC = () => {
                         {startingAgent === a.id ? 'Starting…' : 'Start'}
                       </Button>
                     )}
+                    <Button size="sm" onClick={() => setConfigureAgent(a)} title="Configure agent">
+                      Config
+                    </Button>
                     <Button size="sm" onClick={() => setTerminalAgent(a.id)} disabled={a.status !== 'WORKING' && a.status !== 'STARTING' && a.status !== 'RECOVERING'}>
                       Terminal
                     </Button>
@@ -260,6 +284,21 @@ export const ProjectsPage: React.FC = () => {
           </>
         )}
       </div>
+
+      {/* Configuration Drawer (Gate 3) */}
+      {configureAgent && (
+        <AgentConfigurationDrawer
+          agent={configureAgent}
+          open={!!configureAgent}
+          onClose={() => setConfigureAgent(null)}
+          onApplied={async () => {
+            if (selected) {
+              const list = await nexus.listAgents(selected.id);
+              setAgents(list);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

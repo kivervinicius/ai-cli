@@ -1,13 +1,58 @@
 package nexus
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/kivervinicius/ai-cli/internal/control/launcher"
+	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
+
+// mockLauncher satisfies the Launcher interface for unit tests without spawning
+// real processes. It registers runtimes in the DefaultRegistry so runtimeAlive()
+// returns true for mocked sessions, and tracks Stop calls.
+type mockLauncher struct{}
+
+func newMockLauncher() *mockLauncher {
+	// Reset the singleton so each test gets an isolated registry.
+	registry.ResetDefaultRegistryForTest()
+	return &mockLauncher{}
+}
+
+func (m *mockLauncher) Launch(_ context.Context, opts launcher.LaunchOptions) (*registry.RuntimeSession, error) {
+	if opts.ProviderID == "" {
+		return nil, fmt.Errorf("provider is required")
+	}
+	sess := registry.RuntimeSession{
+		RuntimeID:         opts.RuntimeID,
+		ProviderID:        opts.ProviderID,
+		ProfileID:        opts.ProfileID,
+		ProviderSessionID: opts.ProviderSessionID,
+		Workspace:         opts.Workspace,
+		State:             registry.StateRunning,
+		PID:               os.Getpid(), // use real PID so IsProcessAlive works
+		StartedAt:         time.Now(),
+		Transport:         "mock",
+	}
+	if sess.RuntimeID == "" {
+		sess.RuntimeID = fmt.Sprintf("mock-%s", opts.ProviderID)
+	}
+	if err := registry.DefaultRegistry().Register(sess); err != nil {
+		return nil, fmt.Errorf("mock register: %w", err)
+	}
+	return &sess, nil
+}
+
+func (m *mockLauncher) Stop(runtimeID string) error {
+	_ = registry.DefaultRegistry().UpdateState(runtimeID, registry.StateStopped)
+	registry.DefaultRegistry().Delete(runtimeID)
+	return nil
+}
 
 func openTestNexus(t *testing.T) *Nexus {
 	t.Helper()
@@ -18,7 +63,7 @@ func openTestNexus(t *testing.T) *Nexus {
 		t.Fatalf("open store: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	return &Nexus{st: st}
+	return &Nexus{st: st, launcher: newMockLauncher()}
 }
 
 func TestEffectiveAgentState(t *testing.T) {
