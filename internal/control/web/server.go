@@ -39,7 +39,10 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	if opts.Host == "" {
 		opts.Host = "127.0.0.1"
 	}
-	if opts.Port <= 0 || opts.Port > 65535 {
+	// Port 0 is the standard net.Listen request for an ephemeral test/in-process
+	// port. The CLI supplies DefaultPort explicitly; only invalid negative ports
+	// fall back to the product default here.
+	if opts.Port < 0 || opts.Port > 65535 {
 		opts.Port = DefaultPort
 	}
 

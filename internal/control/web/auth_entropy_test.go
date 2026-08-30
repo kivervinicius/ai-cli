@@ -1,7 +1,6 @@
 package web
 
 import (
-	"crypto/rand"
 	"errors"
 	"io"
 	"testing"
@@ -17,13 +16,11 @@ func TestExchangeBootstrapTokenDoesNotConsumeTokenWhenEntropyFails(t *testing.T)
 		t.Fatal(err)
 	}
 
-	original := rand.Reader
-	rand.Reader = failingEntropyReader{}
+	auth.entropy = failingEntropyReader{}
 	if sess, ok := auth.ExchangeBootstrapToken(token); ok || sess != nil {
 		t.Fatal("bootstrap exchange must fail closed when session entropy cannot be generated")
 	}
-	rand.Reader = original
-	t.Cleanup(func() { rand.Reader = original })
+	auth.entropy = nil
 
 	if sess, ok := auth.ExchangeBootstrapToken(token); !ok || sess == nil {
 		t.Fatal("bootstrap token must remain usable after a transient entropy failure")
@@ -42,13 +39,11 @@ func TestRotateSessionPreservesOldSessionWhenEntropyFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	original := rand.Reader
-	rand.Reader = failingEntropyReader{}
+	auth.entropy = failingEntropyReader{}
 	if rotated, err := auth.RotateSession(old.ID); err == nil || rotated != nil {
 		t.Fatal("rotation must fail when session entropy cannot be generated")
 	}
-	rand.Reader = original
-	t.Cleanup(func() { rand.Reader = original })
+	auth.entropy = nil
 
 	auth.mu.RLock()
 	_, stillPresent := auth.sessions[old.ID]

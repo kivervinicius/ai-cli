@@ -51,5 +51,7 @@ func platformShellCommand(ctx context.Context, command string) *exec.Cmd {
 	if runtime.GOOS == "windows" {
 		return exec.CommandContext(ctx, "cmd.exe", "/d", "/s", "/c", command)
 	}
-	return exec.CommandContext(ctx, "/bin/sh", "-lc", command)
+	// Avoid provider login files changing HOME/ENV and making gates depend
+	// on whichever provider ran before the verification command.
+	return exec.CommandContext(ctx, "/bin/sh", "-c", command)
 }
