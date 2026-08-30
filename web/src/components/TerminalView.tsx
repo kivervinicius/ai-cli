@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { RuntimeSession } from '../types';
 import { TerminalPane } from './TerminalPane';
 import { Columns2, Square, Grid2X2 } from 'lucide-react';
+import { normalizeOpenRuntimeIds, visibleTerminalRuntimes, type TerminalSplitMode } from './terminalViewModel';
 
 interface TerminalViewProps {
   runtimes: RuntimeSession[];
@@ -18,19 +19,20 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   onUpdateTitle,
 }) => {
   const { t } = useTranslation();
-  const [splitMode, setSplitMode] = useState<'single' | 'split-h' | 'grid'>('single');
+  const [splitMode, setSplitMode] = useState<TerminalSplitMode>('single');
   const [openIds, setOpenIds] = useState<string[]>(() => {
     if (activeRuntimeId) return [activeRuntimeId];
     if (runtimes.length > 0) return [runtimes[0].runtime_id];
     return [];
   });
 
-  // Ensure activeRuntimeId is tracked in openIds
+  // Reconcile views with live sessions and focus the selected session once.
   React.useEffect(() => {
-    if (activeRuntimeId && !openIds.includes(activeRuntimeId)) {
-      setOpenIds((prev) => [...prev, activeRuntimeId]);
-    }
-  }, [activeRuntimeId]);
+    setOpenIds((prev) => {
+      const next = normalizeOpenRuntimeIds(prev, runtimes, activeRuntimeId);
+      return next.length === prev.length && next.every((id, index) => id === prev[index]) ? prev : next;
+    });
+  }, [activeRuntimeId, runtimes]);
 
   if (runtimes.length === 0) {
     return (
@@ -51,18 +53,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     });
   };
 
-  // Determine which runtimes to render based on split mode
-  const currentId = activeRuntimeId || (openIds.length > 0 ? openIds[0] : runtimes[0].runtime_id);
-  const activeSession = runtimes.find((r) => r.runtime_id === currentId);
-
-  let renderSessions: RuntimeSession[] = [];
-  if (splitMode === 'single') {
-    if (activeSession) renderSessions = [activeSession];
-  } else if (splitMode === 'split-h') {
-    renderSessions = (runtimes || []).slice(0, 2);
-  } else if (splitMode === 'grid') {
-    renderSessions = (runtimes || []).slice(0, 4);
-  }
+  const currentId = activeRuntimeId || openIds[0] || runtimes[0].runtime_id;
+  const renderSessions = visibleTerminalRuntimes(runtimes, openIds, currentId, splitMode);
 
   return (
     <div className="flex flex-col h-full space-y-2">
