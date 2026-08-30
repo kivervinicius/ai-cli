@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Columns2, ExternalLink, GripVertical, Maximize2, Minimize2, Rows2, X } from 'lucide-react';
 import { IconButton } from '../design-system';
-import { findStackContaining, listStacks, type WorkspaceNode, type WorkspaceSplit, type WorkspaceStack, type WorkspaceSurface } from './model';
+import { findStackContaining, isSurfaceMatch, listStacks, type WorkspaceNode, type WorkspaceSplit, type WorkspaceStack, type WorkspaceSurface } from './model';
 import { useWorkspace } from './WorkspaceProvider';
 import { useTranslation } from 'react-i18next';
 
@@ -76,7 +76,10 @@ const WorkspaceStackView: React.FC<{ stack: WorkspaceStack; renderSurface: (surf
   const { t } = useTranslation();
   const { activate, close, move, splitEmpty, maximize, model } = useWorkspace();
   const [draggedSurface, setDraggedSurface] = useState<string | null>(null);
-  const active = useMemo(() => stack.tabs.find((tab) => tab.id === stack.activeId) ?? stack.tabs[0], [stack]);
+  const active = useMemo(
+    () => stack.tabs.find((tab) => isSurfaceMatch(tab, stack.activeId)) ?? stack.tabs[0],
+    [stack.tabs, stack.activeId]
+  );
   const canClose = active?.closable !== false;
   const legacyTitleKeys: Record<string, string> = { overview: 'nav.overview', work: 'nav.work', missions: 'nav.missions', agents: 'nav.agents', maestro: 'nav.maestro', sessions: 'nav.sessions', settings: 'nav.settings', resources: 'nav.resources', 'legacy-runtimes': 'nav.runtimes', 'legacy-providers': 'nav.providers', 'legacy-events': 'nav.events' };
   const displayTitle = (surface: WorkspaceSurface) => {
@@ -90,7 +93,41 @@ const WorkspaceStackView: React.FC<{ stack: WorkspaceStack; renderSurface: (surf
   }}>
     <header className="nx-workspace-stack__tabs">
       <div className="nx-workspace-tabs" role="tablist" aria-label={t('shell.openSurfaces')}>
-        {stack.tabs.map((surface) => <button draggable key={surface.id} type="button" role="tab" aria-selected={stack.activeId === surface.id} data-active={stack.activeId === surface.id ? 'true' : 'false'} className="nx-workspace-tab" onDragStart={(event) => { setDraggedSurface(surface.id); event.dataTransfer.setData('application/x-nexus-surface', surface.id); event.dataTransfer.effectAllowed = 'move'; }} onClick={() => activate(surface.id)}><span>{displayTitle(surface)}</span>{surface.closable !== false && <span className="nx-workspace-tab__close" role="button" aria-label={t("workspace.closeNamed", { name: displayTitle(surface) })} onClick={(event) => { event.stopPropagation(); close(surface.id); }}><X size={11} /></span>}</button>)}
+        {stack.tabs.map((surface) => {
+          const isActive = isSurfaceMatch(surface, stack.activeId);
+          return (
+            <button
+              draggable
+              key={surface.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              data-active={isActive ? 'true' : 'false'}
+              className="nx-workspace-tab"
+              onDragStart={(event) => {
+                setDraggedSurface(surface.id);
+                event.dataTransfer.setData('application/x-nexus-surface', surface.id);
+                event.dataTransfer.effectAllowed = 'move';
+              }}
+              onClick={() => activate(surface.id)}
+            >
+              <span>{displayTitle(surface)}</span>
+              {surface.closable !== false && (
+                <span
+                  className="nx-workspace-tab__close"
+                  role="button"
+                  aria-label={t("workspace.closeNamed", { name: displayTitle(surface) })}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    close(surface.id);
+                  }}
+                >
+                  <X size={11} />
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
       {active && <div className="nx-workspace-stack__actions">
         <IconButton label={t('workspace.splitRight')} onClick={() => splitEmpty(active.id, 'horizontal')}><Columns2 size={13} /></IconButton>
@@ -101,7 +138,28 @@ const WorkspaceStackView: React.FC<{ stack: WorkspaceStack; renderSurface: (surf
       </div>}
     </header>
     <div className="nx-workspace-stack__body">
-      {stack.tabs.map((surface) => <div key={surface.id} role="tabpanel" aria-hidden={stack.activeId !== surface.id} data-active={stack.activeId === surface.id ? 'true' : 'false'} className="nx-workspace-panel">{renderSurface(surface)}</div>)}
+      {stack.tabs.map((surface) => {
+        const isActive = isSurfaceMatch(surface, stack.activeId);
+        return (
+          <div
+            key={surface.id}
+            role="tabpanel"
+            aria-hidden={!isActive}
+            data-active={isActive ? 'true' : 'false'}
+            className="nx-workspace-panel"
+            style={{
+              display: isActive ? 'flex' : 'none',
+              flexDirection: 'column',
+              width: '100%',
+              height: '100%',
+              position: 'absolute',
+              inset: 0,
+            }}
+          >
+            {renderSurface(surface)}
+          </div>
+        );
+      })}
     </div>
   </section>;
 };

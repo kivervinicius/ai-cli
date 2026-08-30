@@ -73,8 +73,13 @@ export function clampRatio(ratio: number): number {
   return Math.min(0.8, Math.max(0.2, Number.isFinite(ratio) ? ratio : 0.5));
 }
 
+export function isSurfaceMatch(surface: WorkspaceSurface, targetId: string): boolean {
+  if (!targetId) return false;
+  return surface.id === targetId || surface.viewId === targetId || surface.legacyId === targetId || surface.logicalKey === targetId;
+}
+
 export function findStackContaining(node: WorkspaceNode, surfaceId: string): WorkspaceStack | null {
-  if (node.kind === 'stack') return node.tabs.some((tab) => tab.id === surfaceId) ? node : null;
+  if (node.kind === 'stack') return node.tabs.some((tab) => isSurfaceMatch(tab, surfaceId)) ? node : null;
   return findStackContaining(node.first, surfaceId) ?? findStackContaining(node.second, surfaceId);
 }
 
@@ -106,8 +111,10 @@ function replaceStack(node: WorkspaceNode, stackId: string, next: WorkspaceNode)
 
 export function setActiveSurface(model: WorkspaceModel, surfaceId: string): WorkspaceModel {
   const root = updateNode(model.root, (node) => {
-    if (node.kind !== 'stack' || !node.tabs.some((tab) => tab.id === surfaceId)) return node;
-    return { ...node, activeId: surfaceId };
+    if (node.kind !== 'stack') return node;
+    const match = node.tabs.find((tab) => isSurfaceMatch(tab, surfaceId));
+    if (!match) return node;
+    return { ...node, activeId: match.id };
   });
   const stack = findStackContaining(root, surfaceId);
   return { ...model, root, focusedStackId: stack?.id ?? model.focusedStackId };
@@ -115,26 +122,32 @@ export function setActiveSurface(model: WorkspaceModel, surfaceId: string): Work
 
 export function openSurface(model: WorkspaceModel, surface: WorkspaceSurface, targetStackId?: string): WorkspaceModel {
   const normalized = normalizeSurface(surface);
-  const existing = listSurfaces(model.root).find((candidate) => surfaceLogicalKey(candidate) === surfaceLogicalKey(normalized));
-  if (existing) return setActiveSurface(model, surfaceViewId(existing));
+  const existing = listSurfaces(model.root).find((candidate) =>
+    isSurfaceMatch(candidate, normalized.id) ||
+    Boolean(normalized.logicalKey && surfaceLogicalKey(candidate) === surfaceLogicalKey(normalized))
+  );
+  if (existing) return setActiveSurface(model, existing.id);
   const stacks = listStacks(model.root);
   const target = (targetStackId && findStackById(model.root, targetStackId)) || findStackById(model.root, model.focusedStackId) || stacks[0];
   if (!target) return createWorkspace(normalized);
   const nextStack: WorkspaceStack = {
     ...target,
     tabs: [...target.tabs, normalized],
-    activeId: surfaceViewId(normalized),
+    activeId: normalized.id,
   };
   return { ...model, root: replaceStack(model.root, target.id, nextStack), focusedStackId: target.id };
 }
 
 function removeSurface(node: WorkspaceNode, surfaceId: string): { node: WorkspaceNode | null; removed?: WorkspaceSurface } {
   if (node.kind === 'stack') {
-    const removed = node.tabs.find((tab) => tab.id === surfaceId);
-    if (!removed || removed.closable === false) return { node };
-    const tabs = node.tabs.filter((tab) => tab.id !== surfaceId);
+    const removedIndex = node.tabs.findIndex((tab) => isSurfaceMatch(tab, surfaceId));
+    if (removedIndex === -1) return { node };
+    const removed = node.tabs[removedIndex];
+    if (removed.closable === false) return { node };
+    const tabs = node.tabs.filter((_, idx) => idx !== removedIndex);
     if (tabs.length === 0) return { node: null, removed };
-    const activeId = node.activeId === surfaceId ? tabs[Math.max(0, node.tabs.findIndex((tab) => tab.id === surfaceId) - 1)]?.id ?? tabs[0].id : node.activeId;
+    const wasActive = isSurfaceMatch(removed, node.activeId);
+    const activeId = wasActive ? (tabs[Math.max(0, removedIndex - 1)]?.id ?? tabs[0].id) : node.activeId;
     return { node: { ...node, tabs, activeId }, removed };
   }
   const first = removeSurface(node.first, surfaceId);

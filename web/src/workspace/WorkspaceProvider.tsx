@@ -85,7 +85,7 @@ export const WorkspaceProvider: React.FC<{
     const local = window.localStorage.getItem(workspaceStorageKey(projectId));
     dispatch({ type: 'replace', model: deserializeWorkspace(initialLayout || local, fallback) });
     setHydrated(true);
-  }, [projectId, initialLayout, fallback]);
+  }, [projectId]);
 
   useEffect(() => {
     if (!hydrated) return;

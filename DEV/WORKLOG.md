@@ -1,6 +1,14 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
-## Date: 2026-08-30 (Comprehensive UI/UX Bugfixes, Duplicate Tabs Deduplication, and Formatting)
+## Date: 2026-08-30 (Tab Panel Display Render Fix & Hydration Race Prevention)
+- **Tab Panel Visibility & Display (`WorkspaceRenderer.tsx` & `workspace-os.css`)**: Replaced `visibility: hidden` with strict `display: none` (inactive) and `display: flex; flex-direction: column` (active) on `.nx-workspace-panel`. Added inline style verification so newly opened tabs (e.g. *Work / Iniciar Trabalho*) immediately show their full body content without layer collisions.
+- **Hydration Race Condition Fix (`WorkspaceProvider.tsx`)**: Removed `initialLayout` and `fallback` from the hydration `useEffect` dependency array, preventing late asynchronous API calls (`getProject`) from overwriting user-initiated tab openings with stale layouts.
+- **Verification**: `tsc` (0 errors), Vitest (26 files / 94 tests PASS), and web bundle rebuilt (`dist/bundle.js`).
+
+- **Tab Activation & Visibility Fix (`model.ts` & `WorkspaceRenderer.tsx`)**: Introduced `isSurfaceMatch` to handle comparisons across `id`, `viewId`, `legacyId`, and `logicalKey`. Resolved tab activation mismatch where panels remained `visibility: hidden` due to strict ID comparisons after migration.
+- **Per-Stack Tab Normalization (`state.ts`)**: Scoped deduplication Set per-stack in `normalizeWorkspace` so split layouts preserve independent tabs while cleaning up duplicates within the same stack.
+- **Verification**: `tsc` (0 errors), Vitest (26 files / 94 tests PASS), and web bundle built (`dist/bundle.js`).
+
 - **JSON Policy Cleansing (`formatResourcePolicy`)**: Resolved `{}` literal outputs rendered across Overview, Project Manager (Grid & List), and Resource Intelligence cards when SQLite stored empty JSON policies. Formatted to localized labels ("Balanceada", "Desempenho", "Econômica").
 - **Human-Readable Continuity & Isolation Labels**: Added `translateContinuityStatus` and `translateIsolation` in `i18n` with support for `en`, `pt-BR`, and `es`, eliminating raw technical enum leaks such as `LIVE_SAME_RUNTIME` and raw `developer` workspace labels.
 - **Tab Deduplication & Logical Key Alignment (`WorkspaceProvider.tsx` & `state.ts`)**: Standardized `defaultSurface(projectId)` to use `project:${projectId}:overview` logical keys and added automatic normalization deduplication to prevent duplicate "Visão Geral" tabs.

@@ -1,4 +1,4 @@
-import { normalizeSurface, type WorkspaceModel, type WorkspaceNode } from './model';
+import { isSurfaceMatch, normalizeSurface, type WorkspaceModel, type WorkspaceNode } from './model';
 
 function validNode(node: unknown): node is WorkspaceNode {
   if (!node || typeof node !== 'object') return false;
@@ -31,25 +31,28 @@ export function deserializeWorkspace(raw: string | null | undefined, fallback: W
 }
 
 function normalizeWorkspace(model: WorkspaceModel): WorkspaceModel {
-  const seen = new Set<string>();
   const normalizeNode = (node: WorkspaceNode): WorkspaceNode => {
     if (node.kind === 'stack') {
+      const seen = new Set<string>();
       const tabs = node.tabs.map(normalizeSurface).filter((tab) => {
         const key = tab.logicalKey || tab.id;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
       });
-      const activeId = tabs.some((tab) => (tab.viewId || tab.id) === node.activeId)
-        ? node.activeId
-        : (tabs[0]?.viewId || tabs[0]?.id || '');
+      const matchingTab = tabs.find((tab) => isSurfaceMatch(tab, node.activeId));
+      const activeId = matchingTab ? matchingTab.id : (tabs[0]?.id || '');
       return { ...node, tabs, activeId };
     }
     return { ...node, first: normalizeNode(node.first), second: normalizeNode(node.second) };
   };
   const root = normalizeNode(model.root);
   const stacks = listStacksForState(root);
-  return { ...model, root, focusedStackId: stacks.some((stack) => stack.id === model.focusedStackId) ? model.focusedStackId : stacks[0]?.id || '' };
+  return {
+    ...model,
+    root,
+    focusedStackId: stacks.some((stack) => stack.id === model.focusedStackId) ? model.focusedStackId : (stacks[0]?.id || ''),
+  };
 }
 
 function migrateV1(root: WorkspaceNode, maximizedSurfaceId?: string): WorkspaceModel {
