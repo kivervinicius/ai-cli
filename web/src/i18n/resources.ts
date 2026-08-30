@@ -288,6 +288,24 @@ export const en = {
     starting: 'Starting...',
     emptyWorkspaceError: 'Workspace path cannot be empty',
   },
+  policy: {
+    balanced: 'Balanced',
+    performance: 'Performance',
+    cost: 'Cost Saver',
+  },
+  continuity: {
+    LIVE_SAME_RUNTIME: 'Active Session',
+    NATIVE_RESUME_VERIFIED: 'Native Resume Verified',
+    REATTACHED_SAME_RUNTIME: 'Reattached Runtime',
+    CONTEXT_RECOVERED_NEW_SESSION: 'Context Recovered',
+    PENDING: 'Pending',
+  },
+  isolation: {
+    project: 'Project Workspace',
+    worktree: 'Git Worktree',
+    none: 'Shared Environment',
+    developer: 'Dev Workspace',
+  },
 } as const;
 
 type TranslationShape<T> = { [K in keyof T]: T[K] extends string ? string : TranslationShape<T[K]> };
@@ -582,6 +600,24 @@ export const ptBR: TranslationShape<typeof en> = {
     starting: 'Iniciando...',
     emptyWorkspaceError: 'O caminho do workspace não pode estar vazio',
   },
+  policy: {
+    balanced: 'Balanceada',
+    performance: 'Desempenho',
+    cost: 'Econômica',
+  },
+  continuity: {
+    LIVE_SAME_RUNTIME: 'Sessão Ativa',
+    NATIVE_RESUME_VERIFIED: 'Retomada Verificada',
+    REATTACHED_SAME_RUNTIME: 'Sessão Reconectada',
+    CONTEXT_RECOVERED_NEW_SESSION: 'Contexto Recuperado',
+    PENDING: 'Pendente',
+  },
+  isolation: {
+    project: 'Espaço do Projeto',
+    worktree: 'Worktree Git',
+    none: 'Ambiente Compartilhado',
+    developer: 'Espaço de Desenvolvimento',
+  },
 };
 
 export const es: TranslationShape<typeof en> = {
@@ -874,4 +910,23 @@ export const es: TranslationShape<typeof en> = {
     starting: 'Iniciando...',
     emptyWorkspaceError: 'La ruta del workspace no puede estar vacía',
   },
+  policy: {
+    balanced: 'Equilibrada',
+    performance: 'Rendimiento',
+    cost: 'Económica',
+  },
+  continuity: {
+    LIVE_SAME_RUNTIME: 'Sesión Activa',
+    NATIVE_RESUME_VERIFIED: 'Reanudación Verificada',
+    REATTACHED_SAME_RUNTIME: 'Sesión Reconectada',
+    CONTEXT_RECOVERED_NEW_SESSION: 'Contexto Recuperado',
+    PENDING: 'Pendiente',
+  },
+  isolation: {
+    project: 'Espacio del Proyecto',
+    worktree: 'Git Worktree',
+    none: 'Ambiente Compartido',
+    developer: 'Espacio de Desarrollo',
+  },
 };
+

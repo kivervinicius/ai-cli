@@ -60,7 +60,16 @@ function reducer(model: WorkspaceModel, action: Action): WorkspaceModel {
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
-const defaultSurface = (): WorkspaceSurface => ({ id: 'project-overview', type: 'overview', title: 'Overview', titleKey: 'nav.overview', closable: false });
+const defaultSurface = (projectId: string): WorkspaceSurface => ({
+  id: `project:${projectId}:overview`,
+  viewId: `view:project:${projectId}:overview`,
+  logicalKey: `project:${projectId}:overview`,
+  type: 'overview',
+  title: 'Overview',
+  titleKey: 'nav.overview',
+  closable: false,
+  data: { projectId },
+});
 
 export const WorkspaceProvider: React.FC<{
   projectId: string;
@@ -68,7 +77,7 @@ export const WorkspaceProvider: React.FC<{
   saveLayout?: (layout: string) => Promise<unknown>;
   children: React.ReactNode;
 }> = ({ projectId, initialLayout, saveLayout, children }) => {
-  const fallback = useMemo(() => createWorkspace(defaultSurface()), []);
+  const fallback = useMemo(() => createWorkspace(defaultSurface(projectId)), [projectId]);
   const [model, dispatch] = useReducer(reducer, fallback);
   const [hydrated, setHydrated] = React.useState(false);
 

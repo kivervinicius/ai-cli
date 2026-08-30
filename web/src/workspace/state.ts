@@ -31,9 +31,22 @@ export function deserializeWorkspace(raw: string | null | undefined, fallback: W
 }
 
 function normalizeWorkspace(model: WorkspaceModel): WorkspaceModel {
-  const normalizeNode = (node: WorkspaceNode): WorkspaceNode => node.kind === 'stack'
-    ? { ...node, tabs: node.tabs.map(normalizeSurface), activeId: node.tabs.some((tab) => (tab.viewId || tab.id) === node.activeId) ? node.activeId : (node.tabs[0]?.viewId || node.tabs[0]?.id || '') }
-    : { ...node, first: normalizeNode(node.first), second: normalizeNode(node.second) };
+  const seen = new Set<string>();
+  const normalizeNode = (node: WorkspaceNode): WorkspaceNode => {
+    if (node.kind === 'stack') {
+      const tabs = node.tabs.map(normalizeSurface).filter((tab) => {
+        const key = tab.logicalKey || tab.id;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      const activeId = tabs.some((tab) => (tab.viewId || tab.id) === node.activeId)
+        ? node.activeId
+        : (tabs[0]?.viewId || tabs[0]?.id || '');
+      return { ...node, tabs, activeId };
+    }
+    return { ...node, first: normalizeNode(node.first), second: normalizeNode(node.second) };
+  };
   const root = normalizeNode(model.root);
   const stacks = listStacksForState(root);
   return { ...model, root, focusedStackId: stacks.some((stack) => stack.id === model.focusedStackId) ? model.focusedStackId : stacks[0]?.id || '' };

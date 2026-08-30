@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Button, Card, Dialog, EmptyState, IconButton, Input, Badge, Segmented, Select, InlineAlert, Spinner } from '../../design-system';
 import { nexus } from '../../nexus/api';
+import { formatResourcePolicy, translateIsolation } from '../../i18n';
 import type { Agent, Project } from '../../types';
 import { AddProjectModal } from './AddProjectModal';
 import { DirectoryBrowserModal } from './DirectoryBrowserModal';
@@ -336,7 +337,7 @@ export const ProjectManagerSurface: React.FC<{
                       {t('projectManager.activeDesktop')}
                     </Badge>
                   ) : (
-                    <Badge tone="default">{proj.default_isolation || 'project'}</Badge>
+                    <Badge tone="default">{translateIsolation(proj.default_isolation)}</Badge>
                   )}
                 </div>
 
@@ -359,7 +360,7 @@ export const ProjectManagerSurface: React.FC<{
                   </span>
                   <span className="nx-tag-pill">
                     <Zap size={11} />
-                    {proj.resource_policy || 'BALANCED'}
+                    {formatResourcePolicy(proj.resource_policy)}
                   </span>
                 </div>
 
@@ -467,7 +468,7 @@ export const ProjectManagerSurface: React.FC<{
                       </Badge>
                     </td>
                     <td>
-                      <span className="nx-tag-pill">{proj.resource_policy || 'BALANCED'}</span>
+                      <span className="nx-tag-pill">{formatResourcePolicy(proj.resource_policy)}</span>
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>
                       <div className="nx-table-os-actions">

@@ -1,9 +1,13 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
-## Date: 2026-08-30 (Workspace Host Layout Bugfix & Logo Asset Integration)
-- **Workspace Layout Bugfix (`attention-layout.css`)**: Removed invalid 4-row `grid-template-rows` override (`var(--nx-topbar) auto minmax(0, 1fr) var(--nx-taskbar)`) that collapsed `.nx-workspace-host` to tab header height and pushed the taskbar up when `AttentionIntermediationBanner` was null. Preserved the standard 3-row OS grid (`var(--nx-topbar) minmax(0, 1fr) var(--nx-taskbar)`).
-- **Repository Logo Integration**: Replaced placeholder "N" text marks with the real repository logo asset (`logo.png`) in `ProjectRail.tsx`, `ProjectHub.tsx`, and `NexusDemoApp.tsx` with `.nx-brand-mark-img` styling.
-- **Verification**: `tsc` (0 errors), `eslint` (0 warnings), Vitest (26 files / 94 tests PASS), and web bundle rebuilt (`dist/bundle.js`).
+## Date: 2026-08-30 (Comprehensive UI/UX Bugfixes, Duplicate Tabs Deduplication, and Formatting)
+- **JSON Policy Cleansing (`formatResourcePolicy`)**: Resolved `{}` literal outputs rendered across Overview, Project Manager (Grid & List), and Resource Intelligence cards when SQLite stored empty JSON policies. Formatted to localized labels ("Balanceada", "Desempenho", "Econômica").
+- **Human-Readable Continuity & Isolation Labels**: Added `translateContinuityStatus` and `translateIsolation` in `i18n` with support for `en`, `pt-BR`, and `es`, eliminating raw technical enum leaks such as `LIVE_SAME_RUNTIME` and raw `developer` workspace labels.
+- **Tab Deduplication & Logical Key Alignment (`WorkspaceProvider.tsx` & `state.ts`)**: Standardized `defaultSurface(projectId)` to use `project:${projectId}:overview` logical keys and added automatic normalization deduplication to prevent duplicate "Visão Geral" tabs.
+- **Topbar Version Pill Wrap Fix**: Fixed `.nx-topbar-version-pill` breaking across two lines by adding `white-space: nowrap; flex-shrink: 0;`.
+- **Branding & Logo Polish**: Enhanced `.nx-brand-mark-img` with refined app-icon presentation (border radius, subtle lighting, border, padding, and hover elevation).
+- **Resource Intelligence / Quota UI Polish**: Re-architected `.nx-resource-account` cards with hover elevation, model group dividers, and clear progress quotas with percentages.
+- **Verification**: `tsc` (0 errors), `eslint` (0 warnings), Vitest (26 test files / 94 tests PASS), and web bundle successfully built.
 
 - **Design Tokens Enhancement (`workspace-os.css`)**: Added `--nx-shadow-sm`, `--nx-shadow-md`, `--nx-shadow-lg`, `--nx-shadow-glow`, `--nx-transition-fast`, `--nx-transition-normal`, and `--nx-transition-slow` design tokens for both Dark and Light themes.
 - **Header & Navigation Refinement**: Upgraded `.nx-topbar` with backdrop blur, increased element spacing (16px gap), improved command trigger hover, and smooth animated brand mark on hover.

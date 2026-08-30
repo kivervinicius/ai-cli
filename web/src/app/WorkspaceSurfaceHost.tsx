@@ -24,6 +24,7 @@ import { AgentConfigurationSurface } from '../features/agents/AgentConfiguration
 import { SessionsSurface } from '../features/sessions/SessionsSurface';
 import { SettingsSurface } from '../features/settings/SettingsSurface';
 import { useTranslation } from 'react-i18next';
+import { formatResourcePolicy } from '../i18n';
 import { agentConfigSurface, agentTerminalSurface, projectSurface } from './surfaces';
 
 export const WorkspaceSurfaceHost: React.FC<{
@@ -165,7 +166,7 @@ export const WorkspaceSurfaceHost: React.FC<{
               <Gauge size={18} />
               <div>
                 <strong>{t('surfaces.allocation')}</strong>
-                <small>{project.resource_policy || 'BALANCED'}</small>
+                <small>{formatResourcePolicy(project.resource_policy)}</small>
               </div>
             </div>
             <p className="nx-muted-copy">{t('surfaces.allocationBody')}</p>
