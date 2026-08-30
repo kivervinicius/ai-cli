@@ -75,6 +75,19 @@ type AttentionDetector struct {
 	onAttention  func(reason, context, dynamicTitle string, state registry.RuntimeState)
 }
 
+// AcknowledgeInput starts a fresh detection window after the user answers a
+// prompt. Without this reset, the old prompt remains in the sliding buffer
+// and can be reported again when the provider emits unrelated output.
+func (d *AttentionDetector) AcknowledgeInput() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.buffer.Reset()
+	d.lastState = registry.StateRunning
+	d.lastReason = ""
+	d.lastTitle = ""
+	d.lastUpdateAt = time.Time{}
+}
+
 // NewAttentionDetector creates an attention detector for a session.
 func NewAttentionDetector(runtimeID, providerID, profileID, workspace string, onAttention func(reason, context, dynamicTitle string, state registry.RuntimeState)) *AttentionDetector {
 	projName := filepath.Base(workspace)

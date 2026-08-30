@@ -1,5 +1,14 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## Date: 2026-08-30 (UI/UX System-Wide Polish & Design System Alignment)
+- **Design Tokens Enhancement (`workspace-os.css`)**: Added `--nx-shadow-sm`, `--nx-shadow-md`, `--nx-shadow-lg`, `--nx-shadow-glow`, `--nx-transition-fast`, `--nx-transition-normal`, and `--nx-transition-slow` design tokens for both Dark and Light themes.
+- **Header & Navigation Refinement**: Upgraded `.nx-topbar` with backdrop blur, increased element spacing (16px gap), improved command trigger hover, and smooth animated brand mark on hover.
+- **Metric & Overview Cards Elevation**: Added subtle card elevation, hover translation (`translateY(-1px)` / `translateY(-2px)`), glow styling on icons, typography hierarchy enhancements on numbers (22px bold), and rounded agent mini list items with smooth transition states.
+- **Action Buttons & Form Controls**: Added brand gradient backgrounds to primary buttons with glow box-shadow, tactile active states, improved default/secondary button visibility, and smoother focus transitions on inputs.
+- **Workspace Tabs & Windowing**: Refined workspace stack headers with 10px radius, smoother tab bottom indicators, visible hover close buttons, and enhanced splitter indicators with accent glow.
+- **OS Statusbar Zone Dividers**: Added subtle zone dividers and backdrop blur to `.nx-workspace-statusbar` with interactive branch button borders.
+- **Verification**: `tsc` (0 errors), `eslint` (0 warnings), unit tests (26 test files / 94 tests PASS), and web production bundle rebuilt (`dist/bundle.js` 830.1kb).
+
 ## Date: 2026-08-30 (Directory Browser & PlanBuilder Null-Safety Bugfixes)
 - **DirectoryBrowserModal & FS Browse**: Fixed empty modal issue by adding graceful fallback to CWD/Home in `handlers_fs.go` and `DirectoryBrowserModal.tsx`, robust bookmark/breadcrumb defaults, and explicit error card with retry button.
 - **PlanBuilderSurface & ProjectManagerSurface Null-Safety**: Fixed unhandled `null.slice` and `.toLowerCase()` on `revisions`, `schedules`, `recentRuns`, and `project` search/sort fields.
@@ -732,3 +741,15 @@ Linux runtime fully verified. Windows/macOS build-verified only (conditional lim
 - Revalidated frontend: 22 files / 76 tests, TypeScript, ESLint and build PASS in sandbox.
 - Deep review verdict: `CONDITIONAL_GO` candidate. Production `GO` remains gated by Go 1.25 full vet/test/race, real SQLite/WebSocket dependencies, physical Windows/macOS runtime and a real authenticated-provider smoke.
 - See `DEV/NEXUS_MAXIMUM_DELIVERY_*.md` for evidence and release conditions.
+# 2026-08-30 — Final production pass
+
+- Change: captured source baseline; fixed stdout capture deadlock in the app test harness; implemented WorkspaceModel v2 with focused stack, semantic `logicalKey`/`viewId`, v1 migration, project-scoped v2 storage and hydration-gated persistence; changed UI split to create an empty pane; added strict terminal frame parsing and regressions.
+- Why: source still declared Workspace v1 and control output capture could block on a full pipe; terminal JSON fallback could leak control frames or drop legitimate provider JSON.
+- Verification: focused Go tests, full `go vet`, `go test -count=1 ./...`, `go test -race ./...`, build, Windows/macOS focused cross-compiles, frozen Bun install, frontend typecheck/lint/94 tests/build, focused security race tests, `git diff --check`; all passed. `diff -qr web/dist internal/control/web/dist` is the embedded sync check.
+- Next: run native Windows/macOS CI and real-provider/browser/automation E2E; install or execute release/security tools; review and authorize commit/push if desired.
+
+## 2026-08-30 — Proxy-nginx attention prompt fix
+
+- Reproduced from the authenticated frontend screenshot: the global attention banner was inserted as a layout row above the Workspace and the AGY response action used a short-lived RPC connection that the host rejected because the browser lease belonged to another connection.
+- Fixed external runtime responses, reset stale attention-detector prompt history after accepted input, cleared the published attention state, and changed the banner to a non-layout-blocking floating surface.
+- Verification: focused host/web tests PASS; host `-race` PASS; frontend typecheck/lint/94 tests/build PASS; embedded bundle rebuilt; `git diff --check` PASS. No commit or push performed.

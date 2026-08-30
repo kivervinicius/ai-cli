@@ -3,6 +3,7 @@ import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { Shield, ShieldAlert, XSquare, Pencil, Check } from 'lucide-react';
 import { pushNotifications } from '../notifications/PushNotificationManager';
+import { frameString, parseTerminalFrame } from '../nexus/terminalProtocol';
 
 interface TerminalPaneProps {
   runtimeId: string;
@@ -99,33 +100,36 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     };
 
     ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'output' && msg.data) {
-          term.write(msg.data);
-        } else if (msg.type === 'lease') {
-          setRole(msg.role === 'CONTROL' ? 'CONTROL' : 'VIEW_ONLY');
-        } else if (msg.type === 'title' && msg.data) {
-          setCustomTitle(msg.data);
-          if (onUpdateTitle) onUpdateTitle(runtimeId, msg.data);
-        } else if (msg.type === 'attention') {
-          if (msg.dynamic_title) {
-            setCustomTitle(msg.dynamic_title);
-            if (onUpdateTitle) onUpdateTitle(runtimeId, msg.dynamic_title);
+      const frame = parseTerminalFrame(event.data);
+      if (frame.kind === 'output') {
+        term.write(frame.data);
+      } else if (frame.kind === 'protocol-error') {
+        console.error(`Terminal protocol error: ${frame.message}`);
+        setErrorMsg('Terminal protocol error');
+      } else {
+        const msg = frame.payload;
+        if (frame.type === 'lease') {
+          setRole(frameString(msg, 'role') === 'CONTROL' ? 'CONTROL' : 'VIEW_ONLY');
+        } else if (frame.type === 'title' && frameString(msg, 'data')) {
+          const data = frameString(msg, 'data')!;
+          setCustomTitle(data);
+          if (onUpdateTitle) onUpdateTitle(runtimeId, data);
+        } else if (frame.type === 'attention') {
+          const dynamicTitle = frameString(msg, 'dynamic_title');
+          if (dynamicTitle) {
+            setCustomTitle(dynamicTitle);
+            if (onUpdateTitle) onUpdateTitle(runtimeId, dynamicTitle);
           }
           pushNotifications.sendPush({
             runtimeId,
-            projectName: msg.project_name,
-            reason: msg.attention_reason || 'QUESTION',
-            context: msg.context || msg.summary || 'Atenção necessária no terminal',
-            dynamicTitle: msg.dynamic_title,
+            projectName: frameString(msg, 'project_name'),
+            reason: frameString(msg, 'attention_reason') || 'QUESTION',
+            context: frameString(msg, 'context') || frameString(msg, 'summary') || 'Atenção necessária no terminal',
+            dynamicTitle,
           });
-        } else if (msg.type === 'error') {
-          setErrorMsg(msg.data);
+        } else if (frame.type === 'error') {
+          setErrorMsg(frameString(msg, 'data') || 'Terminal error');
         }
-      } catch {
-        // Raw bytes fallback
-        term.write(event.data);
       }
     };
 

@@ -13,6 +13,7 @@ import {
 } from './agentTerminalModel';
 import { nexus } from './api';
 import { pushNotifications } from '../notifications/PushNotificationManager';
+import { frameString, parseTerminalFrame } from './terminalProtocol';
 
 export const AgentTerminal: React.FC<{
   agentId: string;
@@ -133,13 +134,17 @@ export const AgentTerminal: React.FC<{
       };
 
       ws.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data);
-          if (payload.type === 'output' && payload.data) {
-            term.write(payload.data);
-          } else if (payload.type === 'lease') {
+        const frame = parseTerminalFrame(event.data);
+        if (frame.kind === 'output') {
+          term.write(frame.data);
+        } else if (frame.kind === 'protocol-error') {
+          console.error(`Terminal protocol error: ${frame.message}`);
+          setMessage('Terminal protocol error');
+        } else {
+          const payload = frame.payload;
+          if (frame.type === 'lease') {
             const previous = roleRef.current;
-            const next = normalizeTerminalRole(payload.role);
+            const next = normalizeTerminalRole(frameString(payload, 'role'));
             roleRef.current = next;
             setRole(next);
             const leaseCommand = terminalLeaseCommand(previous, next);
@@ -147,28 +152,27 @@ export const AgentTerminal: React.FC<{
               ws.send(JSON.stringify({ type: leaseCommand }));
             }
             maybeSendKickoff();
-          } else if (payload.type === 'runtime_changed') {
+          } else if (frame.type === 'runtime_changed') {
             setMessage('Runtime generation changed — rebinding terminal…');
             // The server currently closes the generation-bound socket after this
             // event. Closing proactively also keeps this client compatible with a
             // future server that leaves the old transport open for a grace period.
             ws.close(1012, 'runtime generation changed');
-          } else if (payload.type === 'title' && payload.data) {
-            setCustomTitle(payload.data);
-          } else if (payload.type === 'attention') {
-            if (payload.dynamic_title) setCustomTitle(payload.dynamic_title);
+          } else if (frame.type === 'title' && frameString(payload, 'data')) {
+            setCustomTitle(frameString(payload, 'data')!);
+          } else if (frame.type === 'attention') {
+            const dynamicTitle = frameString(payload, 'dynamic_title');
+            if (dynamicTitle) setCustomTitle(dynamicTitle);
             pushNotifications.sendPush({
-              runtimeId: payload.runtime_id || agentId,
-              projectName: payload.project_name,
-              reason: payload.attention_reason || 'QUESTION',
-              context: payload.context || payload.summary || 'Atenção necessária no terminal',
-              dynamicTitle: payload.dynamic_title,
+              runtimeId: frameString(payload, 'runtime_id') || agentId,
+              projectName: frameString(payload, 'project_name'),
+              reason: frameString(payload, 'attention_reason') || 'QUESTION',
+              context: frameString(payload, 'context') || frameString(payload, 'summary') || 'Atenção necessária no terminal',
+              dynamicTitle,
             });
-          } else if (payload.type === 'error') {
+          } else if (frame.type === 'error') {
             setMessage(String(payload.data ?? 'Terminal error'));
           }
-        } catch {
-          term.write(event.data);
         }
       };
 

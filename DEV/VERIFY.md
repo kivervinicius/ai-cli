@@ -1,12 +1,20 @@
 # Verification status — 2026-08-30
 
+## Finalization pass
+
+- Source baseline is recorded in `DEV/finalization/SOURCE_BASELINE.md`.
+- Workspace v2 and strict terminal protocol changes are present in the working tree; focused regressions pass.
+- The working tree is intentionally uncommitted. Remote feature branch remains at `a1f3a573602a7c43404acf5eb1d4ac0cbc380110`.
+
 ## Local gates
 
 - Go 1.25.0: `gofmt`, `go vet ./...`, `go test -count=1 ./...`, `go test -count=1 -race ./...`, and `go build ./cmd/nexus` PASS.
-- Frontend: frozen Bun install, typecheck, lint, 22 Vitest files / 76 tests, and build PASS.
+- Frontend: frozen Bun install, typecheck, lint, 26 Vitest files / 94 tests, and build PASS.
 - Embedded frontend: `web/dist` and `internal/control/web/dist` byte-for-byte synchronized.
 - Cross-compilation: host/terminal Windows amd64 and host macOS amd64 test binaries compile.
 - SessionHost throughput regression: `go test -race -run TestQA_LargeThroughputStreaming -count=20 ./internal/control/host` PASS.
+- Large stdout capture regression: `go test -run TestCaptureStdoutDrainsLargeOutputWithoutDeadlock ./internal/app` PASS.
+- Terminal protocol regressions: 3 tests PASS; provider JSON remains output and malformed control frames do not leak.
 
 ## Runtime evidence
 
@@ -14,6 +22,17 @@
 - Chromium was installed locally and the token-safe browser smoke completed with exit 0.
 - Context handoff, Safe Apply, real Mission, remediation, restart durability, and Take Control remain NOT_TESTED.
 
+## Not proven in this environment
+
+- Native Windows/macOS runtime, same-SHA GitHub CI, GoReleaser snapshot, real AGY trust persistence, real AGY E2E, full Mission/restart/take-control E2E.
+- Available security tools (`govulncheck`, `gitleaks`, `actionlint`) and `goreleaser` are not installed.
+
 ## Delivery status
 
-The source changes are intentionally uncommitted in this workspace. The governing execution policy forbids automatic commit/push/PR creation, so GitHub CI cannot be rerun for the new source and the branch is not declared production-ready. See `DEV/validation/FINAL_HANDOFF.md` and the external `/tmp/IAPro-Nexus-FINAL_REPORT.md`.
+The source changes are intentionally uncommitted in this workspace. The governing execution policy forbids automatic commit/push/PR creation, so GitHub CI cannot be rerun for the new source and the branch is not declared production-ready. See `/tmp/IAPro-Nexus-FINAL-PRODUCTION-100.md`.
+
+## Proxy-nginx attention regression — 2026-08-30
+
+- Root cause: `/respond` sent input over an RPC connection rejected by the terminal lease check; the detector also retained the answered prompt in its sliding buffer; the banner occupied a grid row.
+- Fix verified by focused Go host/web tests, host `-race`, frontend typecheck/lint/tests/build, embedded bundle rebuild, and `git diff --check`.
+- The live server was rebuilt with `v0.5.0-beta.5` and the current source bundle. Browser interaction still requires the authenticated bootstrap session.

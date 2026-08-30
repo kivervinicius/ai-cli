@@ -19,6 +19,15 @@ describe('workspace persistence', () => {
   });
 
   it('scopes local layout keys by project', () => {
-    expect(workspaceStorageKey('prj_1')).toBe('iapro:nexus:workspace:prj_1:v1');
+    expect(workspaceStorageKey('prj_1')).toBe('iapro:nexus:workspace:prj_1:v2');
+  });
+
+  it('migrates v1 layouts while preserving useful surfaces and assigning focus', () => {
+    const fallback = createWorkspace({ id: 'fallback', type: 'home', title: 'Fallback' });
+    const v1 = { version: 1, root: fallback.root, maximizedSurfaceId: undefined };
+    const migrated = deserializeWorkspace(JSON.stringify(v1), fallback);
+    expect(migrated.version).toBe(2);
+    expect(migrated.focusedStackId).toBeTruthy();
+    expect(migrated.root).toEqual(fallback.root);
   });
 });

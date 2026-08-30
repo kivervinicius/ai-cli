@@ -72,6 +72,25 @@ func TestAttentionDetectorTaskCompleted(t *testing.T) {
 	}
 }
 
+func TestAttentionDetectorInputAcknowledgementDropsStalePrompt(t *testing.T) {
+	var gotReason string
+	detector := NewAttentionDetector("rt-ack", "agy", "default", "/workspace/proxy-nginx", func(reason, context, dynamicTitle string, state registry.RuntimeState) {
+		gotReason = reason
+	})
+
+	detector.ProcessChunk([]byte("\r\nDo you want to proceed? [y/n]\r\n"))
+	if gotReason != "QUESTION" {
+		t.Fatalf("expected initial question, got %q", gotReason)
+	}
+
+	detector.AcknowledgeInput()
+	gotReason = ""
+	detector.ProcessChunk([]byte("\r\nContinuing with the requested work.\r\n"))
+	if gotReason != "" {
+		t.Fatalf("stale prompt was reclassified after acknowledgement: %q", gotReason)
+	}
+}
+
 func containsAny(s string, substrs ...string) bool {
 	for _, sub := range substrs {
 		if !contains(s, sub) {

@@ -8,6 +8,7 @@ import {
   openSurface,
   setActiveSurface,
   splitWithSurface,
+  updateSurface,
   type WorkspaceSurface,
 } from './model';
 
@@ -21,6 +22,29 @@ describe('workspace model', () => {
     const stack = findStackContaining(ws.root, 'terminal:a');
     expect(stack?.tabs.map((tab) => tab.id)).toEqual(['home', 'terminal:a']);
     expect(stack?.activeId).toBe('terminal:a');
+  });
+
+  it('deduplicates by logical key while allowing separate visual views', () => {
+    let ws = createWorkspace({ ...surface('session-view-1'), logicalKey: 'session:1' });
+    ws = openSurface(ws, { ...surface('session-view-2'), logicalKey: 'session:1' });
+    expect(ws.root.kind).toBe('stack');
+    if (ws.root.kind !== 'stack') return;
+    expect(ws.root.tabs).toHaveLength(1);
+    expect(ws.root.activeId).toBe('session-view-1');
+  });
+
+  it('accepts legacy runtime event identifiers for v2 views', () => {
+    const ws = createWorkspace({ id: 'agent:a:terminal', viewId: 'view:agent:a:terminal', logicalKey: 'session:a', type: 'terminal', title: 'A' });
+    const updated = updateSurface(ws, 'agent:a:terminal', { title: 'Updated' });
+    expect(updated.root.kind === 'stack' && updated.root.tabs[0].title).toBe('Updated');
+  });
+
+  it('opens new empty focused pane for a split', async () => {
+    const { splitEmpty, listStacks } = await import('./model');
+    const ws = splitEmpty(createWorkspace(surface('home')), 'home', 'horizontal');
+    expect(listStacks(ws.root)).toHaveLength(2);
+    expect(ws.focusedStackId).toBe(listStacks(ws.root)[1].id);
+    expect(listStacks(ws.root)[1].tabs).toHaveLength(0);
   });
 
   it('splits an existing stack with a new surface', () => {

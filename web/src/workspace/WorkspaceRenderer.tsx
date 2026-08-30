@@ -74,7 +74,7 @@ const WorkspaceSplitView: React.FC<{ split: WorkspaceSplit; renderSurface: (surf
 
 const WorkspaceStackView: React.FC<{ stack: WorkspaceStack; renderSurface: (surface: WorkspaceSurface) => React.ReactNode; popoutSurface?: (surface: WorkspaceSurface) => void }> = ({ stack, renderSurface, popoutSurface }) => {
   const { t } = useTranslation();
-  const { activate, close, move, split, maximize, model } = useWorkspace();
+  const { activate, close, move, splitEmpty, maximize, model } = useWorkspace();
   const [draggedSurface, setDraggedSurface] = useState<string | null>(null);
   const active = useMemo(() => stack.tabs.find((tab) => tab.id === stack.activeId) ?? stack.tabs[0], [stack]);
   const canClose = active?.closable !== false;
@@ -93,8 +93,8 @@ const WorkspaceStackView: React.FC<{ stack: WorkspaceStack; renderSurface: (surf
         {stack.tabs.map((surface) => <button draggable key={surface.id} type="button" role="tab" aria-selected={stack.activeId === surface.id} data-active={stack.activeId === surface.id ? 'true' : 'false'} className="nx-workspace-tab" onDragStart={(event) => { setDraggedSurface(surface.id); event.dataTransfer.setData('application/x-nexus-surface', surface.id); event.dataTransfer.effectAllowed = 'move'; }} onClick={() => activate(surface.id)}><span>{displayTitle(surface)}</span>{surface.closable !== false && <span className="nx-workspace-tab__close" role="button" aria-label={t("workspace.closeNamed", { name: displayTitle(surface) })} onClick={(event) => { event.stopPropagation(); close(surface.id); }}><X size={11} /></span>}</button>)}
       </div>
       {active && <div className="nx-workspace-stack__actions">
-        <IconButton label={t('workspace.splitRight')} onClick={() => split(active.id, { ...active, id: `${active.id}:clone:${Date.now()}`, title: `${active.title} copy`, titleKey: 'workspace.copy', titleParams: { name: displayTitle(active) } }, 'horizontal')}><Columns2 size={13} /></IconButton>
-        <IconButton label={t('workspace.splitDown')} onClick={() => split(active.id, { ...active, id: `${active.id}:clone:${Date.now()}`, title: `${active.title} copy`, titleKey: 'workspace.copy', titleParams: { name: displayTitle(active) } }, 'vertical')}><Rows2 size={13} /></IconButton>
+        <IconButton label={t('workspace.splitRight')} onClick={() => splitEmpty(active.id, 'horizontal')}><Columns2 size={13} /></IconButton>
+        <IconButton label={t('workspace.splitDown')} onClick={() => splitEmpty(active.id, 'vertical')}><Rows2 size={13} /></IconButton>
         {popoutSurface && <IconButton label={t('workspace.popout')} onClick={() => popoutSurface(active)}><ExternalLink size={13} /></IconButton>}
         <IconButton label={t(model.maximizedSurfaceId === active.id ? 'workspace.restore' : 'workspace.maximize')} onClick={() => maximize(active.id)}>{model.maximizedSurfaceId === active.id ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</IconButton>
         {canClose && <IconButton label={t('workspace.close')} onClick={() => close(active.id)}><X size={13} /></IconButton>}

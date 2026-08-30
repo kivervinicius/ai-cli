@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/profile"
 )
@@ -48,16 +49,41 @@ func captureStdout(f func() error) (string, error) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
+	// Drain concurrently. A pipe has a bounded kernel buffer; waiting until f
+	// returns can deadlock commands that legitimately emit a large report.
+	var buf bytes.Buffer
+	drainDone := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(&buf, r)
+		close(drainDone)
+	}()
 	err := f()
 
 	_ = w.Close()
 	os.Stdout = old
-
-	var buf bytes.Buffer
-	_, _ = io.Copy(&buf, r)
+	<-drainDone
 	_ = r.Close()
 
 	return buf.String(), err
+}
+
+func TestCaptureStdoutDrainsLargeOutputWithoutDeadlock(t *testing.T) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		out, err := captureStdout(func() error {
+			_, err := os.Stdout.Write(bytes.Repeat([]byte("NEXUS_CAPTURE_OK\n"), 128*1024))
+			return err
+		})
+		if err != nil || !strings.Contains(out, "NEXUS_CAPTURE_OK") {
+			t.Errorf("large stdout capture failed: len=%d err=%v", len(out), err)
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("captureStdout blocked on a full pipe")
+	}
 }
 
 func setupTestEnvironment(t *testing.T) (binDir, testOut string) {

@@ -312,7 +312,11 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		if req.Payload != nil {
 			var p protocol.InputPayload
 			if json.Unmarshal(req.Payload, &p) == nil && p.Data != "" {
-				sh.processAttachedInput(conn, []byte(p.Data))
+				// API responses arrive over a short-lived RPC connection, not the
+				// browser connection holding the terminal lease. Route them as
+				// authenticated external input instead of rejecting them as a
+				// non-owner connection.
+				sh.processExternalInput([]byte(p.Data))
 			}
 		}
 		resp, _ := protocol.NewResponse("input_received")
@@ -426,8 +430,11 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 
 func (sh *SessionHost) processAttachedInput(conn net.Conn, data []byte) {
 	sh.mu.Lock()
-	writes, commands := sh.processAttachedInputLocked(conn, data)
+	writes, commands, accepted := sh.processAttachedInputLocked(conn, data, false)
 	sh.mu.Unlock()
+	if accepted {
+		sh.acknowledgeInput()
+	}
 
 	// Terminal I/O is deliberately outside SessionHost.mu. A provider can
 	// apply backpressure here while the detector concurrently calls back into
@@ -442,14 +449,32 @@ func (sh *SessionHost) processAttachedInput(conn net.Conn, data []byte) {
 	sh.mu.Unlock()
 }
 
-func (sh *SessionHost) processAttachedInputLocked(conn net.Conn, data []byte) ([][]byte, []string) {
+func (sh *SessionHost) processExternalInput(data []byte) {
+	sh.mu.Lock()
+	writes, commands, accepted := sh.processAttachedInputLocked(nil, data, true)
+	sh.mu.Unlock()
+	if accepted {
+		sh.acknowledgeInput()
+	}
+
+	for _, output := range writes {
+		_, _ = sh.termBackend.Write(output)
+	}
+	sh.mu.Lock()
+	for _, command := range commands {
+		sh.handleControlCommandLocked(command)
+	}
+	sh.mu.Unlock()
+}
+
+func (sh *SessionHost) processAttachedInputLocked(conn net.Conn, data []byte, external bool) ([][]byte, []string, bool) {
 	var writes [][]byte
 	var commands []string
 	// Only active writer (or first attached client) can send input to child process
-	if sh.activeWriter != nil && sh.activeWriter != conn {
-		return nil, nil
+	if !external && sh.activeWriter != nil && sh.activeWriter != conn {
+		return nil, nil, false
 	}
-	if sh.activeWriter == nil {
+	if !external && sh.activeWriter == nil {
 		sh.activeWriter = conn
 	}
 
@@ -457,7 +482,7 @@ func (sh *SessionHost) processAttachedInputLocked(conn net.Conn, data []byte) ([
 	if bytes.Equal(data, []byte("\x1b[I")) || bytes.Equal(data, []byte("\x1b[O")) ||
 		bytes.Equal(data, []byte("[I")) || bytes.Equal(data, []byte("[O")) ||
 		bytes.Equal(data, []byte("\x1b[1;1R")) || bytes.Equal(data, []byte("[1;1R")) {
-		return nil, nil
+		return nil, nil, false
 	}
 
 	for _, b := range data {
@@ -469,7 +494,25 @@ func (sh *SessionHost) processAttachedInputLocked(conn net.Conn, data []byte) ([
 			commands = append(commands, out.ControlCmd)
 		}
 	}
-	return writes, commands
+	return writes, commands, true
+}
+
+func (sh *SessionHost) acknowledgeInput() {
+	// The detector callback takes SessionHost.mu, so reset it before taking the
+	// host lock to avoid a detector-callback/input deadlock.
+	sh.detector.AcknowledgeInput()
+	sh.mu.Lock()
+	sh.session.State = registry.StateRunning
+	sh.session.AttentionReason = ""
+	sh.session.AttentionContext = ""
+	runtimeID := sh.session.RuntimeID
+	sh.mu.Unlock()
+	select {
+	case <-sh.stopChan:
+		return
+	default:
+	}
+	_ = registry.DefaultRegistry().UpdateAttention(runtimeID, registry.StateRunning, "", "", "", "", "")
 }
 
 func (sh *SessionHost) handleControlCommandLocked(cmd string) {

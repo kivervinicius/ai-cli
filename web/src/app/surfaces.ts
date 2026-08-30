@@ -43,6 +43,8 @@ export function projectSurface(projectId: string, kind: ProjectSurfaceKind): Wor
   const titleKey = kind === 'projects' ? 'projectManager.desktopsTitle' : `nav.${key}`;
   return {
     id: `project:${projectId}:${kind}`,
+    viewId: `view:project:${projectId}:${kind}`,
+    logicalKey: `project:${projectId}:${kind}`,
     type: kind,
     title: labels[kind],
     titleKey,
@@ -54,6 +56,8 @@ export function projectSurface(projectId: string, kind: ProjectSurfaceKind): Wor
 export function agentTerminalSurface(agentId: string, agentName: string, initialPrompt = ''): WorkspaceSurface {
   return {
     id: `agent:${agentId}:terminal`,
+    viewId: `view:agent:${agentId}:terminal`,
+    logicalKey: `session:${agentId}`,
     type: 'terminal',
     title: agentName,
     subtitle: 'Persistent Agent terminal',
@@ -65,6 +69,8 @@ export function agentTerminalSurface(agentId: string, agentName: string, initial
 export function agentConfigSurface(agentId: string, agentName: string): WorkspaceSurface {
   return {
     id: `agent:${agentId}:config`,
+    viewId: `view:agent:${agentId}:config`,
+    logicalKey: `agent:${agentId}:config`,
     type: 'agent-config',
     title: `${agentName} · Configure`,
     titleKey: 'workspace.configureAgent',

@@ -32,6 +32,14 @@ Structural editing, DAG validation, locks, acceptance criteria, AI suggestion Ap
 
 Frontend/backend route contracts were rechecked and corrected. Hermetic tests cover product contracts; `scripts/nexus-e2e-local.go` is the real-provider local smoke gate.
 
+### Attention regression follow-up
+
+The proxy-nginx AGY question was reproduced in the frontend. Runtime responses now route through an explicit external-input path, answered prompts reset detector history and persisted attention metadata, and the attention UI no longer consumes a Workspace grid row. Focused Go/frontend validation is green; native platform, same-SHA CI, and real AGY trust/E2E evidence remain open.
+
 ## Next promotion action
 
 Run `DEV/NEXUS_MAXIMUM_DELIVERY_LOCAL_VALIDATION_PROMPT.md` on Linux, macOS and Windows / CI with Go 1.25 and at least one real authenticated provider. Attach the resulting reports. Only promote to production `GO` if all mandatory gates pass.
+
+## 2026-08-30 continuation
+
+The finalization pass fixed the objectively reproduced stdout pipe deadlock in the test capture harness, moved the web workspace model to v2 with migration/focused-stack/hydration protections, and isolated terminal control frames from provider output. Local Linux/frontend/race/cross-build evidence is green. Native platform, same-SHA CI, release snapshot, real provider and automation gates remain open; current recommendation is `NO_GO` until those are executed and reviewed.
