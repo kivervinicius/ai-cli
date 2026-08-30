@@ -79,26 +79,26 @@ export const PlanBuilderSurface: React.FC<{
   }, [loadPlans]);
 
   useEffect(() => {
-    nexusApi.getSchedules(project.id).then(setSchedules).catch((error) => console.error('Failed to load mission schedules:', error));
+    nexusApi.getSchedules(project.id).then((res) => setSchedules(Array.isArray(res) ? res : [])).catch((error) => console.error('Failed to load mission schedules:', error));
   }, [project.id]);
 
   useEffect(() => {
     nexusApi.listResources()
-      .then((result) => setResources((result.accounts || []).filter((account: any) => account.authenticated && account.available)))
+      .then((result) => setResources(((result && result.accounts) || []).filter((account: any) => account.authenticated && account.available)))
       .catch((error) => console.error('Failed to load provider/profile locks:', error));
   }, [project.id]);
 
   useEffect(() => {
     nexusApi.getRuns()
-      .then((runs) => setRecentRuns((runs || []).filter((run) => run.project_id === project.id)))
+      .then((runs) => setRecentRuns((Array.isArray(runs) ? runs : []).filter((run) => run.project_id === project.id)))
       .catch((error) => console.error('Failed to load Mission dependencies:', error));
   }, [project.id, activeRun?.id, activeRun?.state]);
 
   useEffect(() => {
     if (!selectedPlan) { setRevisions([]); return; }
     nexusApi.getPlan(selectedPlan.id).then((detail) => {
-      setRevisions(detail.revisions || []);
-      if (detail.plan.current_revision !== selectedPlan.current_revision) setSelectedPlan(detail.plan);
+      setRevisions((detail && Array.isArray(detail.revisions)) ? detail.revisions : []);
+      if (detail && detail.plan && detail.plan.current_revision !== selectedPlan.current_revision) setSelectedPlan(detail.plan);
     }).catch((error) => console.error('Failed to load plan revisions:', error));
   }, [selectedPlan?.id, selectedPlan?.current_revision]);
 
@@ -732,7 +732,7 @@ export const PlanBuilderSurface: React.FC<{
           <Card style={{ padding: '16px' }}>
             <div style={{ fontWeight: 600, marginBottom: 10 }}><History size={14} /> Revision History</div>
             <div style={{ display: 'grid', gap: 6 }}>
-              {revisions.slice(0, 6).map((revision) => (
+              {(revisions || []).slice(0, 6).map((revision) => (
                 <div key={revision.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 6, alignItems: 'center', fontSize: 11 }}>
                   <span>Rev {revision.revision} · {revision.change_summary}</span>
                   <Button size="sm" disabled={revision.revision === selectedPlan?.current_revision} onClick={() => void handleCompareRevision(revision.revision)}>Diff</Button>
@@ -770,14 +770,14 @@ export const PlanBuilderSurface: React.FC<{
                   style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'inherit', minWidth: 0 }}
                 >
                   <option value="">After another Mission…</option>
-                  {recentRuns.filter((run) => run.id !== activeRun?.id).map((run) => (
-                    <option key={run.id} value={run.id}>{run.id.slice(0, 12)} · {run.state}</option>
+                  {(recentRuns || []).filter((run) => run && run.id !== activeRun?.id).map((run) => (
+                    <option key={run.id} value={run.id}>{(run.id || '').slice(0, 12)} · {run.state}</option>
                   ))}
-                  {activeRun ? <option value={activeRun.id}>{activeRun.id.slice(0, 12)} · current {activeRun.state}</option> : null}
+                  {activeRun ? <option value={activeRun.id}>{(activeRun.id || '').slice(0, 12)} · current {activeRun.state}</option> : null}
                 </select>
                 <Button disabled={!selectedPlan || !afterRunId} onClick={handleAfterRun}>Run after Mission</Button>
               </div>
-              {schedules.slice(0, 3).map((item) => (
+              {(schedules || []).slice(0, 3).map((item) => (
                 <div key={item.id} style={{ fontSize: 11, color: 'var(--color-text-muted)', display: 'flex', justifyContent: 'space-between' }}>
                   <span>{item.mode}{item.scheduled_for ? ` · ${new Date(item.scheduled_for).toLocaleString()}` : ''}</span>
                   <Badge tone={item.status === 'FAILED' ? 'danger' : item.status === 'COMPLETED' ? 'success' : 'default'}>{item.status}</Badge>

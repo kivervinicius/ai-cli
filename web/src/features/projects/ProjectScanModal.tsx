@@ -59,9 +59,9 @@ export const ProjectScanModal: React.FC<{
 
   const filtered = results.filter(
     (r) =>
-      r.name.toLowerCase().includes(query.toLowerCase()) ||
-      r.path.toLowerCase().includes(query.toLowerCase()) ||
-      r.branch.toLowerCase().includes(query.toLowerCase())
+      (r.name || '').toLowerCase().includes(query.toLowerCase()) ||
+      (r.path || '').toLowerCase().includes(query.toLowerCase()) ||
+      (r.branch || '').toLowerCase().includes(query.toLowerCase())
   );
 
   return (
@@ -103,7 +103,7 @@ export const ProjectScanModal: React.FC<{
               <Card key={item.path} className="nx-scan-item-card">
                 <div className="nx-scan-item-main">
                   <div className="nx-scan-avatar">
-                    {item.name.slice(0, 2).toUpperCase()}
+                    {(item.name || '').slice(0, 2).toUpperCase()}
                   </div>
                   <div className="nx-scan-info">
                     <div className="nx-scan-title-row">

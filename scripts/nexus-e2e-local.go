@@ -14,13 +14,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -34,16 +38,63 @@ type apiClient struct {
 }
 
 func main() {
+	start := flag.Bool("start", false, "start a local Nexus process on --port and clean it up")
+	port := flag.Int("port", 3000, "Nexus HTTP port when --start is used")
+	keep := flag.Bool("keep", false, "keep generated project/data artifacts (diagnostics only)")
+	browser := flag.Bool("browser", false, "run the token-safe Chromium smoke after startup")
+	safeApply := flag.Bool("safe-apply", false, "verify a real restart-style Safe Apply and terminal reconnect")
+	flag.Parse()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	if err := run(ctx); err != nil {
+	cleanup := func() {}
+	if *start {
+		var err error
+		cleanup, err = startLocalNexus(ctx, *port, *keep, *browser)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "NEXUS_E2E_FAIL:", err)
+			os.Exit(1)
+		}
+	}
+	if err := run(ctx, *safeApply); err != nil {
+		cleanup()
+		if errors.Is(err, errNotAuthenticated) {
+			fmt.Fprintln(os.Stderr, "NEXUS_E2E_NOT_AUTHENTICATED:", err)
+			os.Exit(2)
+		}
 		fmt.Fprintln(os.Stderr, "NEXUS_E2E_FAIL:", err)
 		os.Exit(1)
 	}
+	cleanup()
 	fmt.Println("NEXUS_E2E_PASS: Direct Work reached a real provider runtime and produced terminal output")
 }
 
-func run(ctx context.Context) error {
+var errNotAuthenticated = errors.New("provider authentication is unavailable")
+
+const providerAnswerMarker = "NEXUS_E2E_OK"
+
+var ansiEscape = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]`)
+var secretAssignment = regexp.MustCompile(`(?i)(OPENAI_API_KEY|ANTHROPIC_API_KEY|GOOGLE_API_KEY|TOKEN|PASSWORD)=\S+`)
+var profileCopyExcludedDirs = map[string]bool{
+	".cache": true, ".local": true, ".omega": true, "go": true, "node_modules": true,
+	"log": true, "logs": true, "shell_snapshots": true, "thread-writer-locks": true,
+}
+
+func providerMarkerSeen(transcript string) bool {
+	for _, line := range strings.Split(sanitizeTranscript(transcript), "\n") {
+		if strings.TrimSpace(line) == providerAnswerMarker {
+			return true
+		}
+	}
+	return false
+}
+
+func sanitizeTranscript(transcript string) string {
+	clean := ansiEscape.ReplaceAllString(transcript, "")
+	return secretAssignment.ReplaceAllString(clean, "$1=[REDACTED]")
+}
+
+func run(ctx context.Context, safeApply bool) error {
 	bootstrap := strings.TrimSpace(os.Getenv("NEXUS_BOOTSTRAP_URL"))
 	if bootstrap == "" {
 		return fmt.Errorf("NEXUS_BOOTSTRAP_URL is required; use the one-time URL printed by the running Nexus")
@@ -138,7 +189,7 @@ func run(ctx context.Context) error {
 		break
 	}
 	if provider == "" {
-		return fmt.Errorf("no eligible authenticated provider/profile matches provider=%q profile=%q", wantProvider, wantProfile)
+		return fmt.Errorf("%w: no eligible authenticated provider/profile matches provider=%q profile=%q", errNotAuthenticated, wantProvider, wantProfile)
 	}
 
 	var agent struct {
@@ -236,16 +287,17 @@ func run(ctx context.Context) error {
 			return fmt.Errorf("wait for provider output after prompt: %w", err)
 		}
 		if msg["type"] == "output" {
-			if s, ok := msg["data"].(string); ok && strings.TrimSpace(s) != "" {
+			if s, ok := msg["data"].(string); ok && s != "" {
 				providerOutput.WriteString(s)
-				if strings.TrimSpace(providerOutput.String()) != "" {
+				if providerMarkerSeen(providerOutput.String()) {
 					break
 				}
 			}
 		}
 	}
-	if strings.TrimSpace(providerOutput.String()) == "" {
-		return fmt.Errorf("provider produced no terminal output after prompt")
+	transcript := sanitizeTranscript(providerOutput.String())
+	if !providerMarkerSeen(transcript) {
+		return fmt.Errorf("provider answer marker %q was not received; sanitized transcript: %q", providerAnswerMarker, transcriptExcerpt(transcript))
 	}
 
 	var detail struct {
@@ -267,7 +319,336 @@ func run(ctx context.Context) error {
 	if !found {
 		return fmt.Errorf("runtime generation was not durably linked back to the Agent")
 	}
+
+	// A reconnect must be agent-scoped. Verify that the same agent still points
+	// at the same generation after the terminal exchange; this is the HTTP-side
+	// invariant consumed by the browser's reconnect logic.
+	var afterReconnect struct {
+		Agent struct {
+			ID string `json:"id"`
+		} `json:"agent"`
+		Generations []struct {
+			RuntimeID string `json:"runtime_id"`
+			AgentID   string `json:"agent_id"`
+		} `json:"generations"`
+	}
+	if err := api.do(ctx, http.MethodGet, "/api/v1/agents/"+url.PathEscape(agent.ID), nil, &afterReconnect); err != nil {
+		return fmt.Errorf("agent refresh after websocket exchange: %w", err)
+	}
+	if afterReconnect.Agent.ID != agent.ID || len(afterReconnect.Generations) == 0 {
+		return fmt.Errorf("agent identity was not preserved after reconnect")
+	}
+	if safeApply {
+		if err := verifySafeApply(ctx, api, u, jar, base, agent.ID, started.Runtime.RuntimeID); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// verifySafeApply changes only a harmless runtime environment marker. That is
+// deliberately a restart-required config change: it proves a fresh runtime
+// generation and reconnect without changing provider/profile or credentials.
+func verifySafeApply(ctx context.Context, api *apiClient, bootstrap *url.URL, jar http.CookieJar, base, agentID, previousRuntimeID string) error {
+	var current struct {
+		Config map[string]any `json:"config"`
+	}
+	if err := api.do(ctx, http.MethodGet, "/api/v1/agents/"+url.PathEscape(agentID)+"/config", nil, &current); err != nil {
+		return fmt.Errorf("read config for Safe Apply: %w", err)
+	}
+	if current.Config == nil {
+		return fmt.Errorf("Safe Apply current config is empty")
+	}
+	environment, _ := current.Config["environment"].(map[string]any)
+	if environment == nil {
+		environment = map[string]any{}
+	}
+	environment["NEXUS_E2E_SAFE_APPLY"] = "1"
+	current.Config["environment"] = environment
+
+	var preview struct {
+		Impact struct {
+			Mode            string `json:"mode"`
+			RequiresRestart bool   `json:"requires_restart"`
+		} `json:"impact"`
+	}
+	if err := api.do(ctx, http.MethodPost, "/api/v1/agents/"+url.PathEscape(agentID)+"/config/impact", current.Config, &preview); err != nil {
+		return fmt.Errorf("preview Safe Apply: %w", err)
+	}
+	if preview.Impact.Mode != "RESTART_RUNTIME" || !preview.Impact.RequiresRestart {
+		return fmt.Errorf("Safe Apply preview did not require restart: mode=%q restart=%t", preview.Impact.Mode, preview.Impact.RequiresRestart)
+	}
+	if err := api.do(ctx, http.MethodPost, "/api/v1/agents/"+url.PathEscape(agentID)+"/config/apply", current.Config, nil); err != nil {
+		return fmt.Errorf("apply Safe Apply: %w", err)
+	}
+
+	var detail struct {
+		Agent struct {
+			ID string `json:"id"`
+		} `json:"agent"`
+		Generations []struct {
+			RuntimeID string `json:"runtime_id"`
+			AgentID   string `json:"agent_id"`
+		} `json:"generations"`
+	}
+	if err := api.do(ctx, http.MethodGet, "/api/v1/agents/"+url.PathEscape(agentID), nil, &detail); err != nil {
+		return fmt.Errorf("read Safe Apply generation: %w", err)
+	}
+	if detail.Agent.ID != agentID || len(detail.Generations) < 2 || detail.Generations[0].RuntimeID == "" || detail.Generations[0].RuntimeID == previousRuntimeID || detail.Generations[0].AgentID != agentID {
+		return fmt.Errorf("Safe Apply did not create a new runtime generation for the same Agent")
+	}
+
+	wsScheme := "ws"
+	if bootstrap.Scheme == "https" {
+		wsScheme = "wss"
+	}
+	wsURL := wsScheme + "://" + bootstrap.Host + "/api/v1/agents/" + url.PathEscape(agentID) + "/terminal"
+	header := http.Header{}
+	header.Set("Origin", base)
+	baseURL, _ := url.Parse(base)
+	if cookies := jar.Cookies(baseURL); len(cookies) > 0 {
+		parts := make([]string, 0, len(cookies))
+		for _, c := range cookies {
+			parts = append(parts, c.Name+"="+c.Value)
+		}
+		header.Set("Cookie", strings.Join(parts, "; "))
+	}
+	ws, _, err := (&websocket.Dialer{HandshakeTimeout: 10 * time.Second}).DialContext(ctx, wsURL, header)
+	if err != nil {
+		return fmt.Errorf("Safe Apply terminal reconnect: %w", err)
+	}
+	defer ws.Close()
+	deadline := time.Now().Add(45 * time.Second)
+	for {
+		_ = ws.SetReadDeadline(deadline)
+		var msg map[string]any
+		if err := ws.ReadJSON(&msg); err != nil {
+			return fmt.Errorf("wait for Safe Apply CONTROL: %w", err)
+		}
+		if msg["type"] == "lease" && msg["role"] == "CONTROL" {
+			break
+		}
+	}
+	if err := ws.WriteJSON(map[string]any{"type": "input", "data": "Reply with exactly NEXUS_E2E_OK and nothing else.\n"}); err != nil {
+		return fmt.Errorf("send Safe Apply marker prompt: %w", err)
+	}
+	var transcript strings.Builder
+	for time.Now().Before(deadline) {
+		_ = ws.SetReadDeadline(deadline)
+		var msg map[string]any
+		if err := ws.ReadJSON(&msg); err != nil {
+			return fmt.Errorf("wait for Safe Apply provider output: %w", err)
+		}
+		if msg["type"] == "output" {
+			if text, ok := msg["data"].(string); ok {
+				transcript.WriteString(text)
+				if providerMarkerSeen(transcript.String()) {
+					return nil
+				}
+			}
+		}
+	}
+	return fmt.Errorf("Safe Apply provider marker %q was not received; sanitized transcript: %q", providerAnswerMarker, transcriptExcerpt(sanitizeTranscript(transcript.String())))
+}
+
+func transcriptExcerpt(transcript string) string {
+	const max = 1000
+	if len(transcript) > max {
+		return transcript[:max] + "…"
+	}
+	return transcript
+}
+
+func startLocalNexus(ctx context.Context, port int, keep bool, browser bool) (func(), error) {
+	if port < 1 || port > 65535 {
+		return nil, fmt.Errorf("invalid port %d", port)
+	}
+	root, err := os.MkdirTemp("", "nexus-e2e-")
+	if err != nil {
+		return nil, err
+	}
+	project := filepath.Join(root, "project")
+	if err := os.MkdirAll(project, 0700); err != nil {
+		return nil, err
+	}
+	for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "e2e@example.invalid"}, {"config", "user.name", "Nexus E2E"}} {
+		cmd := exec.CommandContext(ctx, "git", append([]string{"-C", project}, args...)...)
+		if out, e := cmd.CombinedOutput(); e != nil {
+			return nil, fmt.Errorf("temporary git project: %w (%s)", e, strings.TrimSpace(string(out)))
+		}
+	}
+
+	bin := strings.TrimSpace(os.Getenv("NEXUS_E2E_NEXUS_BIN"))
+	if bin == "" {
+		bin = "./nexus"
+	}
+	cmd := exec.CommandContext(ctx, bin, "web", "--listen", "127.0.0.1", "--port", fmt.Sprint(port), "--no-open")
+	dataDir := filepath.Join(root, "data")
+	if os.Getenv("NEXUS_E2E_IMPORT_PROFILES") == "1" {
+		source := strings.TrimSpace(os.Getenv("NEXUS_E2E_PROFILE_SOURCE"))
+		if source == "" {
+			source = filepath.Join(os.Getenv("HOME"), ".local", "share", "ai-manager")
+		}
+		if err := copyProfileTree(filepath.Join(source, "profiles"), filepath.Join(dataDir, "profiles")); err != nil {
+			if !keep {
+				_ = os.RemoveAll(root)
+			}
+			return nil, fmt.Errorf("copy authenticated profiles to isolated data: %w", err)
+		}
+	}
+	cmd.Env = append(os.Environ(), "NEXUS_DATA_DIR="+dataDir, "AI_MANAGER_DATA_DIR="+dataDir, "NEXUS_E2E_PROJECT_PATH="+project)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	cmd.Stderr = redactWriter{dst: os.Stderr}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start Nexus: %w (build ./nexus first or set NEXUS_E2E_NEXUS_BIN)", err)
+	}
+
+	ready := make(chan string, 1)
+	go func() {
+		buf := make([]byte, 4096)
+		var all strings.Builder
+		for {
+			n, e := stdout.Read(buf)
+			if n > 0 {
+				chunk := string(buf[:n])
+				all.WriteString(chunk)
+				if u := findBootstrap(all.String()); u != "" {
+					ready <- u
+					return
+				}
+			}
+			if e != nil {
+				return
+			}
+		}
+	}()
+	select {
+	case bootstrap := <-ready:
+		os.Setenv("NEXUS_BOOTSTRAP_URL", bootstrap)
+		if browser {
+			artifactDir := filepath.Join(root, "artifacts")
+			smoke := exec.CommandContext(ctx, "./scripts/nexus-browser-smoke.sh")
+			smoke.Env = append(os.Environ(), "NEXUS_BOOTSTRAP_URL="+bootstrap, "NEXUS_E2E_ARTIFACT_DIR="+artifactDir)
+			smoke.Stdout = os.Stdout
+			smoke.Stderr = redactWriter{dst: os.Stderr}
+			if err := smoke.Run(); err != nil {
+				if strings.Contains(err.Error(), "exit status 2") {
+					fmt.Fprintln(os.Stderr, "NEXUS_BROWSER_SMOKE_NOT_RUN: browser executable unavailable")
+				} else {
+					_ = cmd.Process.Kill()
+					_ = cmd.Wait()
+					if !keep {
+						_ = os.RemoveAll(root)
+					}
+					return nil, fmt.Errorf("browser smoke: %w", err)
+				}
+			}
+		}
+		return func() {
+			_ = cmd.Process.Signal(os.Interrupt)
+			_ = cmd.Wait()
+			if !keep {
+				_ = os.RemoveAll(root)
+			}
+		}, nil
+	case <-time.After(15 * time.Second):
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		if !keep {
+			_ = os.RemoveAll(root)
+		}
+		return nil, fmt.Errorf("timed out waiting for Nexus bootstrap URL")
+	case <-ctx.Done():
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		if !keep {
+			_ = os.RemoveAll(root)
+		}
+		return nil, ctx.Err()
+	}
+}
+
+func copyProfileTree(source, destination string) error {
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		from := filepath.Join(source, entry.Name())
+		to := filepath.Join(destination, entry.Name())
+		entryInfo, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		// Do not follow links into the live host home or provider caches.
+		if entryInfo.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+		info, err := os.Stat(from)
+		if err != nil {
+			if os.IsNotExist(err) {
+				// Ignore dangling provider-cache symlinks.
+				continue
+			}
+			return err
+		}
+		if info.IsDir() {
+			if profileCopyExcludedDirs[entry.Name()] {
+				continue
+			}
+			if err := os.MkdirAll(to, 0700); err != nil {
+				return err
+			}
+			if err := copyProfileTree(from, to); err != nil {
+				return err
+			}
+			continue
+		}
+		// Provider homes may contain live IPC sockets and other transient
+		// non-regular entries. Never copy those into the isolated E2E data.
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		data, err := os.ReadFile(from)
+		if err != nil {
+			return err
+		}
+		mode := info.Mode().Perm()
+		if err := os.MkdirAll(filepath.Dir(to), 0700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(to, data, mode); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func findBootstrap(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "Bootstrap:") {
+			continue
+		}
+		u := strings.TrimSpace(strings.TrimPrefix(line, "Bootstrap:"))
+		if parsed, err := url.Parse(u); err == nil && parsed.Scheme == "http" && parsed.Host != "" && parsed.Query().Get("token") != "" {
+			return u
+		}
+	}
+	return ""
+}
+
+type redactWriter struct{ dst io.Writer }
+
+func (w redactWriter) Write(p []byte) (int, error) {
+	s := string(p)
+	if i := strings.Index(s, "token="); i >= 0 {
+		s = s[:i] + "token=[REDACTED]"
+	}
+	return w.dst.Write([]byte(s))
 }
 
 func (a *apiClient) do(ctx context.Context, method, path string, body any, out any) error {

@@ -29,6 +29,7 @@ export const DirectoryBrowserModal: React.FC<{
   const [currentPath, setCurrentPath] = useState(initialPath || '');
   const [data, setData] = useState<FSBrowseResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
@@ -37,6 +38,7 @@ export const DirectoryBrowserModal: React.FC<{
 
   const loadDirectory = async (path?: string) => {
     setLoading(true);
+    setError('');
     try {
       const res = await nexus.browseFS(path);
       setData(res);
@@ -45,6 +47,21 @@ export const DirectoryBrowserModal: React.FC<{
       setNewFolderOpen(false);
     } catch (err) {
       console.error('Failed to browse directory', err);
+      // If a specific path was requested and failed, try default browse fallback (CWD/home)
+      if (path) {
+        try {
+          const fallback = await nexus.browseFS();
+          setData(fallback);
+          setCurrentPath(fallback.current_path);
+          setQuery('');
+          setNewFolderOpen(false);
+          return;
+        } catch (e2) {
+          setError(e2 instanceof Error ? e2.message : String(e2));
+        }
+      } else {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setLoading(false);
     }
@@ -105,6 +122,18 @@ export const DirectoryBrowserModal: React.FC<{
     }
   };
 
+  const bookmarks = (data?.bookmarks && data.bookmarks.length > 0)
+    ? data.bookmarks
+    : [
+        { label: 'Home', path: '~', icon: 'home' },
+        { label: 'Projetos', path: '/projetos', icon: 'folder' },
+        { label: 'Root', path: '/', icon: 'root' },
+      ];
+
+  const breadcrumbs = (data?.breadcrumbs && data.breadcrumbs.length > 0)
+    ? data.breadcrumbs
+    : (currentPath ? currentPath.split('/').filter(Boolean).reduce((acc: string[], curr: string) => [...acc, `${acc[acc.length - 1] || ''}/${curr}`], ['/']) : ['/']);
+
   return (
     <Dialog
       open={open}
@@ -125,9 +154,9 @@ export const DirectoryBrowserModal: React.FC<{
           )}
 
           <div className="nx-dir-breadcrumbs-list">
-            {data?.breadcrumbs.map((crumb, idx) => {
+            {breadcrumbs.map((crumb, idx) => {
               const label = crumb === '/' ? '/' : crumb.split('/').filter(Boolean).pop();
-              const isLast = idx === data.breadcrumbs.length - 1;
+              const isLast = idx === breadcrumbs.length - 1;
               return (
                 <React.Fragment key={crumb}>
                   {idx > 0 && <ChevronRight size={12} className="nx-crumb-sep" />}
@@ -188,7 +217,7 @@ export const DirectoryBrowserModal: React.FC<{
           <div className="nx-dir-picker__sidebar">
             <span className="nx-dir-sidebar-heading">{t('projectManager.bookmarks')}</span>
             <div className="nx-dir-bookmarks-list">
-              {data?.bookmarks.map((b) => (
+              {bookmarks.map((b) => (
                 <button
                   type="button"
                   key={b.path}
@@ -217,6 +246,14 @@ export const DirectoryBrowserModal: React.FC<{
               <div className="nx-dir-loading">
                 <Loader2 size={24} className="nx-spin" />
                 <span>{t('common.loading')}</span>
+              </div>
+            ) : error ? (
+              <div className="nx-dir-empty nx-dir-error">
+                <p style={{ color: 'var(--nx-danger, #ef4444)', marginBottom: '12px' }}>{error}</p>
+                <Button size="sm" tone="brand" onClick={() => loadDirectory(currentPath || undefined)}>
+                  <CornerLeftUp size={13} />
+                  <span>{t('common.retry') || 'Tentar novamente'}</span>
+                </Button>
               </div>
             ) : (
               <div className="nx-dir-entries-grid">
@@ -265,7 +302,7 @@ export const DirectoryBrowserModal: React.FC<{
         <div className="nx-dir-picker__footer">
           <div className="nx-dir-selected-info">
             <span className="nx-dir-selected-label">Pasta Atual:</span>
-            <code>{currentPath}</code>
+            <code>{currentPath || data?.current_path || '/'}</code>
             {data?.is_git && (
               <Badge tone="brand">
                 <GitBranch size={11} /> {data.git_branch || 'git'}

@@ -59,7 +59,7 @@ func ensureAgentWorktree(ctx context.Context, project store.Project, agent store
 		if out, err := exec.CommandContext(ctx, "git", "-C", path, "rev-parse", "--show-toplevel").CombinedOutput(); err == nil {
 			resolved := strings.TrimSpace(string(out))
 			if resolved != "" {
-				return filepath.Clean(resolved), nil
+				return store.CanonicalPath(resolved)
 			}
 		}
 		return "", fmt.Errorf("existing worktree path is not a valid git worktree: %s", path)
@@ -84,5 +84,5 @@ func ensureAgentWorktree(ctx context.Context, project store.Project, agent store
 	if out, err := exec.CommandContext(ctx, "git", args...).CombinedOutput(); err != nil {
 		return "", fmt.Errorf("create agent worktree: %w: %s", err, strings.TrimSpace(string(out)))
 	}
-	return filepath.Clean(path), nil
+	return store.CanonicalPath(path)
 }

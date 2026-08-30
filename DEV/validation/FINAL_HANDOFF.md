@@ -1,3 +1,5 @@
 # Final Handoff
 
-Candidate branch: `feat/nexus-production-validation`, based on `5942efc8732173a801004d60efa7111d2eb1a326`. Verdict: `CONDITIONAL_GO` due solely to unavailable external evidence listed in the reports. Original checkout and its untracked `internal/nexus/runner/lease.go` were preserved. No main merge, public release, production deploy, or destructive remote action occurred.
+Branch: `feat/nexus-maximum-delivery`. Verdict: `BLOCKED` for production delivery because governed automatic commit/push/PR is unavailable and the required remote CI/fresh-clone gates cannot be established. The local `package.json` change removing `--remote` was preserved.
+
+Added autonomous local E2E startup, browser smoke, regression tests, cross-platform SessionHost/ConPTY fixes, and validation reports. All local Go/frontend quality gates passed. No main merge, production deploy, automatic commit, push, or destructive remote action occurred.

@@ -10,7 +10,19 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
+	"github.com/kivervinicius/ai-cli/internal/testutil/fakeagent"
 )
+
+func TestFakeAgentProcess(t *testing.T) {
+	if os.Getenv("NEXUS_FAKE_AGENT") != "1" {
+		return
+	}
+	fakeagent.Run(os.Stdin, os.Stdout)
+}
+
+func testAgentBinary() string { return os.Args[0] }
+func testAgentArgs() []string { return []string{"-test.run=^TestFakeAgentProcess$"} }
+func testAgentEnv() []string  { return append(os.Environ(), "NEXUS_FAKE_AGENT=1") }
 
 func TestMain(m *testing.M) {
 	testDir, err := os.MkdirTemp("", "ai-control-host-test-*")
@@ -100,9 +112,9 @@ func TestSessionHostLifecycle(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  "cat",
-		Args:    []string{},
-		Env:     os.Environ(),
+		Binary:  testAgentBinary(),
+		Args:    testAgentArgs(),
+		Env:     testAgentEnv(),
 		Cwd:     os.TempDir(),
 	})
 	if err != nil {
@@ -153,9 +165,9 @@ func TestSessionHost_CmdInputNoDeadlock(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  "cat",
-		Args:    []string{},
-		Env:     os.Environ(),
+		Binary:  testAgentBinary(),
+		Args:    testAgentArgs(),
+		Env:     testAgentEnv(),
 		Cwd:     os.TempDir(),
 	})
 	if err != nil {
@@ -205,9 +217,9 @@ func TestSessionHost_SlowObserverDoesNotBlockWriter(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  "cat",
-		Args:    []string{},
-		Env:     os.Environ(),
+		Binary:  testAgentBinary(),
+		Args:    testAgentArgs(),
+		Env:     testAgentEnv(),
 		Cwd:     os.TempDir(),
 	})
 	if err != nil {
@@ -279,9 +291,9 @@ func TestSessionHost_ListenerFailureTerminatesChild(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  "cat",
-		Args:    []string{},
-		Env:     os.Environ(),
+		Binary:  testAgentBinary(),
+		Args:    testAgentArgs(),
+		Env:     testAgentEnv(),
 		Cwd:     os.TempDir(),
 	})
 	if err != nil {
@@ -322,9 +334,9 @@ func TestSessionHost_ExplicitLeaseAcquireRelease(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  "cat",
-		Args:    []string{},
-		Env:     os.Environ(),
+		Binary:  testAgentBinary(),
+		Args:    testAgentArgs(),
+		Env:     testAgentEnv(),
 		Cwd:     os.TempDir(),
 	})
 	if err != nil {
@@ -388,9 +400,9 @@ func TestSessionHost_RejectsIncompatibleProtocolVersion(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  "cat",
-		Args:    []string{},
-		Env:     os.Environ(),
+		Binary:  testAgentBinary(),
+		Args:    testAgentArgs(),
+		Env:     testAgentEnv(),
 		Cwd:     os.TempDir(),
 	})
 	if err != nil {

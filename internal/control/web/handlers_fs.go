@@ -289,6 +289,25 @@ func (h *NexusHandler) handleFSBrowse(w http.ResponseWriter, r *http.Request) {
 
 	info, err := os.Stat(absPath)
 	if err != nil {
+		// If requested path does not exist, fallback to CWD or Home directory
+		if wd, wdErr := os.Getwd(); wdErr == nil {
+			if wdInfo, sErr := os.Stat(wd); sErr == nil && wdInfo.IsDir() {
+				absPath = wd
+				info = wdInfo
+				err = nil
+			}
+		}
+		if err != nil {
+			if home, hErr := os.UserHomeDir(); hErr == nil {
+				if homeInfo, sErr := os.Stat(home); sErr == nil && homeInfo.IsDir() {
+					absPath = home
+					info = homeInfo
+					err = nil
+				}
+			}
+		}
+	}
+	if err != nil {
 		writeError(w, http.StatusNotFound, "path not found: "+err.Error())
 		return
 	}

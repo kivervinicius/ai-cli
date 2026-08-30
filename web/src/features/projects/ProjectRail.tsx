@@ -97,7 +97,7 @@ export const ProjectRail: React.FC<{
               title={project.canonical_path}
             >
               <span className="nx-project-avatar">
-                {project.name.slice(0, 2).toUpperCase()}
+                {(project.name || '').slice(0, 2).toUpperCase()}
               </span>
               <span>
                 <strong>{project.name}</strong>

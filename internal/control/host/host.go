@@ -48,6 +48,7 @@ type SessionHost struct {
 	activeWriter net.Conn
 	stopChan     chan struct{}
 	doneChan     chan struct{}
+	streamDone   chan struct{}
 	prefixRouter *SlashPrefixRouter
 	detector     *AttentionDetector
 	stopOnce     sync.Once
@@ -75,6 +76,7 @@ func NewSessionHost(cfg Config) (*SessionHost, error) {
 		clients:      make(map[net.Conn]bool),
 		stopChan:     make(chan struct{}),
 		doneChan:     make(chan struct{}),
+		streamDone:   make(chan struct{}),
 		prefixRouter: NewSlashPrefixRouter(),
 	}
 
@@ -113,7 +115,10 @@ func (sh *SessionHost) Start() error {
 	}
 
 	// Start reading stdout from terminal backend
-	go sh.streamReader(sh.termBackend)
+	go func() {
+		defer close(sh.streamDone)
+		sh.streamReader(sh.termBackend)
+	}()
 
 	// Update session details
 	sh.session.PID = sh.termBackend.PID()
@@ -287,6 +292,28 @@ func (sh *SessionHost) streamAttachedInput(conn net.Conn, reader *bufio.Reader) 
 }
 
 func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
+	// Input is the hot path and may block on the terminal transport. Handle it
+	// before taking SessionHost.mu so detector callbacks cannot deadlock behind
+	// a blocked PTY/ConPTY write.
+	if req.Command == protocol.CmdInput {
+		if req.Version != 0 && req.Version != protocol.ProtocolVersion {
+			resp := protocol.NewErrorResponse("ERROR_PROTOCOL_VERSION")
+			data, _ := json.Marshal(resp)
+			_, _ = conn.Write(append(data, '\n'))
+			return
+		}
+		if req.Payload != nil {
+			var p protocol.InputPayload
+			if json.Unmarshal(req.Payload, &p) == nil && p.Data != "" {
+				sh.processAttachedInput(conn, []byte(p.Data))
+			}
+		}
+		resp, _ := protocol.NewResponse("input_received")
+		data, _ := json.Marshal(resp)
+		_, _ = conn.Write(append(data, '\n'))
+		return
+	}
+
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 
@@ -347,12 +374,7 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		resp, _ = protocol.NewResponse("resized")
 
 	case protocol.CmdInput:
-		if req.Payload != nil {
-			var p protocol.InputPayload
-			if json.Unmarshal(req.Payload, &p) == nil && p.Data != "" {
-				sh.processAttachedInputLocked(conn, []byte(p.Data))
-			}
-		}
+		// Handled before the state lock above.
 		resp, _ = protocol.NewResponse("input_received")
 
 	case protocol.CmdStop:
@@ -397,14 +419,28 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 
 func (sh *SessionHost) processAttachedInput(conn net.Conn, data []byte) {
 	sh.mu.Lock()
-	defer sh.mu.Unlock()
-	sh.processAttachedInputLocked(conn, data)
+	writes, commands := sh.processAttachedInputLocked(conn, data)
+	sh.mu.Unlock()
+
+	// Terminal I/O is deliberately outside SessionHost.mu. A provider can
+	// apply backpressure here while the detector concurrently calls back into
+	// SessionHost state.
+	for _, output := range writes {
+		_, _ = sh.termBackend.Write(output)
+	}
+	sh.mu.Lock()
+	for _, command := range commands {
+		sh.handleControlCommandLocked(command)
+	}
+	sh.mu.Unlock()
 }
 
-func (sh *SessionHost) processAttachedInputLocked(conn net.Conn, data []byte) {
+func (sh *SessionHost) processAttachedInputLocked(conn net.Conn, data []byte) ([][]byte, []string) {
+	var writes [][]byte
+	var commands []string
 	// Only active writer (or first attached client) can send input to child process
 	if sh.activeWriter != nil && sh.activeWriter != conn {
-		return
+		return nil, nil
 	}
 	if sh.activeWriter == nil {
 		sh.activeWriter = conn
@@ -414,18 +450,19 @@ func (sh *SessionHost) processAttachedInputLocked(conn net.Conn, data []byte) {
 	if bytes.Equal(data, []byte("\x1b[I")) || bytes.Equal(data, []byte("\x1b[O")) ||
 		bytes.Equal(data, []byte("[I")) || bytes.Equal(data, []byte("[O")) ||
 		bytes.Equal(data, []byte("\x1b[1;1R")) || bytes.Equal(data, []byte("[1;1R")) {
-		return
+		return nil, nil
 	}
 
 	for _, b := range data {
 		out := sh.prefixRouter.ProcessByte(b)
 		if len(out.ForwardBytes) > 0 {
-			_, _ = sh.termBackend.Write(out.ForwardBytes)
+			writes = append(writes, append([]byte(nil), out.ForwardBytes...))
 		}
 		if out.Action == ActionControlCommand && out.ControlCmd != "" {
-			sh.handleControlCommandLocked(out.ControlCmd)
+			commands = append(commands, out.ControlCmd)
 		}
 	}
+	return writes, commands
 }
 
 func (sh *SessionHost) handleControlCommandLocked(cmd string) {
@@ -490,8 +527,6 @@ func (sh *SessionHost) waitProcess() {
 	err := sh.termBackend.Wait()
 
 	sh.mu.Lock()
-	defer sh.mu.Unlock()
-
 	_ = sh.termBackend.Close()
 
 	// Tear down IPC surfaces so attached clients disconnect cleanly instead of
@@ -505,6 +540,15 @@ func (sh *SessionHost) waitProcess() {
 	}
 	sh.clients = make(map[net.Conn]bool)
 	sh.activeWriter = nil
+	sh.mu.Unlock()
+
+	// Closing the terminal transport unblocks streamReader. Wait for it before
+	// publishing the terminal state, so no detector callback can outlive Wait
+	// and race with registry/test cleanup.
+	<-sh.streamDone
+
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
 
 	state := registry.StateStopped
 	if err != nil {

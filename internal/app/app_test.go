@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -152,8 +153,19 @@ func TestControlPlaneCLICommands(t *testing.T) {
 	out, err = captureStdout(func() error {
 		return Run([]string{"providers", "--json"})
 	})
-	if err != nil || !strings.Contains(out, `"installed": true`) {
+	var providers map[string]struct {
+		Name      string `json:"name"`
+		Installed bool   `json:"installed"`
+		Profiles  int    `json:"profiles"`
+	}
+	if err != nil || json.Unmarshal([]byte(out), &providers) != nil || len(providers) == 0 {
 		t.Fatalf("providers --json failed: %s, %v", out, err)
+	}
+	for _, id := range []string{"codex", "claude"} {
+		provider, ok := providers[id]
+		if !ok || provider.Name == "" {
+			t.Fatalf("providers --json omitted expected provider schema entries: %s", out)
+		}
 	}
 
 	// 7. Inspect

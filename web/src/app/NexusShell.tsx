@@ -88,7 +88,7 @@ export const NexusShell: React.FC<{
               title="Open Project Manager (Ctrl+P)"
             >
               <span className="nx-project-avatar nx-project-avatar--top">
-                {project.name.slice(0, 2).toUpperCase()}
+                {(project.name || '').slice(0, 2).toUpperCase()}
               </span>
               <span className="nx-project-info">
                 <strong>{project.name}</strong>

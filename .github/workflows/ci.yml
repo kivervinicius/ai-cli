@@ -47,6 +47,9 @@ jobs:
         working-directory: ./web
         run: bun run build
 
+      - name: Verify embedded bundle is synchronized
+        run: git diff --exit-code -- internal/control/web/dist
+
   test-linux:
     name: Linux E2E (Go ${{ matrix.go }})
     strategy:

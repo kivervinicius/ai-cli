@@ -1,56 +1,19 @@
-# Verification: Nexus V1 (post-pending-issues)
+# Verification status — 2026-08-30
 
-## Status: ALL 7 PENDING ISSUES RESOLVED
+## Local gates
 
-### Build & Test
-- `go build ./...` — clean
-- `go test -race ./...` — ALL PASS
-- `go vet ./...` — clean
-- `npx tsc --noEmit` — clean
-- `npx vitest run` — 44/44 tests PASS
-- `make build` — PASS (v0.4.6)
+- Go 1.25.0: `gofmt`, `go vet ./...`, `go test -count=1 ./...`, `go test -count=1 -race ./...`, and `go build ./cmd/nexus` PASS.
+- Frontend: frozen Bun install, typecheck, lint, 22 Vitest files / 76 tests, and build PASS.
+- Embedded frontend: `web/dist` and `internal/control/web/dist` byte-for-byte synchronized.
+- Cross-compilation: host/terminal Windows amd64 and host macOS amd64 test binaries compile.
+- SessionHost throughput regression: `go test -race -run TestQA_LargeThroughputStreaming -count=20 ./internal/control/host` PASS.
 
-### Pending Issues Resolution
-| # | Issue | Status | Key Changes |
-|---|-------|--------|-------------|
-| 1 | Resources facade | ✅ | `ListResources()` real discovery, `AllocateResource()` persistence, `ResourcePicker` UI |
-| 2 | Maestro synthetic state | ✅ | Honest degraded fallback, no hardcoded capabilities/recommendations |
-| 3 | Update simulated | ✅ | Returns `501 Not Implemented` |
-| 4 | Agent start without provider | ✅ | `ResolveStartParams()` + `REQUIRED_RESOURCE_SELECTION` flow |
-| 5 | Config not reaching runtime | ✅ | `LaunchOptions` extended, full `AgentConfig` propagation |
-| 6 | Terminal continuity | ✅ | `AgentTerminalBroker` integration, `runtime_changed` frames |
-| 7 | Missions scaffold | ✅ | Kept as-is, documented as future work |
+## Runtime evidence
 
-### Business Rules Location
-All business logic lives in `internal/nexus/` (service layer). Web and TUI consume the same API endpoints. No resource selection, health checking, config propagation, or Maestro degradation logic exists in the frontend.
+- Isolated local Codex Direct Work E2E on port 3000 PASSed with exact-line `NEXUS_E2E_OK` and cleanup.
+- Chromium was installed locally and the token-safe browser smoke completed with exit 0.
+- Context handoff, Safe Apply, real Mission, remediation, restart durability, and Take Control remain NOT_TESTED.
 
-### Files Modified (this session)
-- `internal/nexus/resource_discovery.go` (new)
-- `internal/nexus/maestro.go`
-- `internal/nexus/nexus.go`
-- `internal/nexus/scheduler.go`
-- `internal/nexus/store/agents.go`
-- `internal/control/launcher/launcher.go`
-- `internal/control/web/handlers_nexus.go`
-- `internal/control/web/handler_terminal.go`
-- `internal/control/web/broker.go`
-- `internal/control/web/server.go`
-- `web/src/features/agents/AgentsSurface.tsx`
-- `web/src/nexus/ResourcePicker.tsx`
-- `web/src/nexus/api.ts`
+## Delivery status
 
-### Documentation Updated
-- `DEV/NEXUS_V1_ARCHITECTURE.md` — resource discovery + terminal broker
-- `DEV/NEXUS_V1_RESOURCE_SCHEDULER.md` — marked implemented with flow
-- `DEV/NEXUS_V1_MAESTRO_INTEGRATION.md` — honest degraded fallback
-- `DEV/NEXUS_V1_AGENT_MODEL.md` — updated start flow + config propagation
-- `DEV/WORKLOG.md` — session entry with all changes
-
-### Not Yet Started
-- Cross-provider scoring with continuity, cooldown, and rate-limit risk
-- Project-level and global policy hierarchy
-- Account Handoff and Context Handoff recommendations
-- Full Maestro CLI contract (`feat/nexus-contracts-v1`)
-- Mission execution/orchestration (scaffold only)
-- Full E2E verification with live providers
-- Performance benchmarks
+The source changes are intentionally uncommitted in this workspace. The governing execution policy forbids automatic commit/push/PR creation, so GitHub CI cannot be rerun for the new source and the branch is not declared production-ready. See `DEV/validation/FINAL_HANDOFF.md` and the external `/tmp/IAPro-Nexus-FINAL_REPORT.md`.

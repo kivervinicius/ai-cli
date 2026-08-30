@@ -90,12 +90,12 @@ export const ProjectManagerSurface: React.FC<{
   const filtered = useMemo(() => {
     let list = projects.filter(
       (p) =>
-        p.name.toLowerCase().includes(query.toLowerCase()) ||
-        p.canonical_path.toLowerCase().includes(query.toLowerCase()) ||
+        (p.name || '').toLowerCase().includes(query.toLowerCase()) ||
+        (p.canonical_path || '').toLowerCase().includes(query.toLowerCase()) ||
         (p.default_branch || '').toLowerCase().includes(query.toLowerCase())
     );
     if (sortBy === 'name') {
-      list = [...list].sort((a, b) => a.name.localeCompare(b.name));
+      list = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     }
     return list;
   }, [projects, query, sortBy]);
@@ -319,7 +319,7 @@ export const ProjectManagerSurface: React.FC<{
                 <div className="nx-desktop-card__header">
                   <div className="nx-desktop-card__brand">
                     <span className="nx-desktop-avatar">
-                      {proj.name.slice(0, 2).toUpperCase()}
+                      {(proj.name || '').slice(0, 2).toUpperCase()}
                     </span>
                     <div className="nx-desktop-title-stack">
                       <strong>{proj.name}</strong>
@@ -448,7 +448,7 @@ export const ProjectManagerSurface: React.FC<{
                     <td>
                       <div className="nx-table-proj-cell">
                         <span className="nx-desktop-avatar nx-desktop-avatar--sm">
-                          {proj.name.slice(0, 2).toUpperCase()}
+                          {(proj.name || '').slice(0, 2).toUpperCase()}
                         </span>
                         <div>
                           <strong>{proj.name}</strong>

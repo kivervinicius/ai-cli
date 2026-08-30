@@ -1,5 +1,28 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## Date: 2026-08-30 (Directory Browser & PlanBuilder Null-Safety Bugfixes)
+- **DirectoryBrowserModal & FS Browse**: Fixed empty modal issue by adding graceful fallback to CWD/Home in `handlers_fs.go` and `DirectoryBrowserModal.tsx`, robust bookmark/breadcrumb defaults, and explicit error card with retry button.
+- **PlanBuilderSurface & ProjectManagerSurface Null-Safety**: Fixed unhandled `null.slice` and `.toLowerCase()` on `revisions`, `schedules`, `recentRuns`, and `project` search/sort fields.
+- **Concurrent Provider Detection**: Parallelized driver detection in `handlers_api.go` (`handleProviders`) with `sync.WaitGroup` to eliminate sequential multi-second blocking on global data refreshes.
+- **Verification**: `tsc` (0 errors), `eslint` (0 warnings), unit tests (76/76 PASS), end-to-end Playwright modal and workspace traversal tests PASS with 0 console errors.
+
+## Date: 2026-08-30 (cross-platform validation)
+- Reproduced and corrected the Windows-dependent provider JSON assertion: it now validates JSON schema and provider presence without requiring installed CLIs.
+- Replaced host test reliance on Unix `cat` with the cross-platform `fakeagent` test binary.
+- Moved SessionHost terminal writes outside the state mutex and synchronized stream-reader shutdown to prevent detector callback deadlocks/races.
+- Added ConPTY process-exit monitoring so output reads unblock when the child exits.
+- Verified Go/frontend full gates, 20x host throughput race regression, and Windows/macOS cross-compilation.
+- Installed Chromium outside the repository and reran the token-safe browser smoke; production Mission/remote CI gates remain blocked/not tested.
+
+## Date: 2026-08-30
+- Added autonomous local E2E startup to `scripts/nexus-e2e-local.go`: temporary Git/data isolation, token-safe bootstrap capture, explicit `NOT_AUTHENTICATED` classification, cleanup, and Agent identity verification after refresh/reconnect.
+- Added `scripts/nexus-browser-smoke.sh`, regression tests, and updated `DEV/validation` reports.
+- Verification: Go tests/race/vet/build and frontend frozen install/typecheck/lint/test/build all PASS. Compiled real Codex E2E passed with exact-line `NEXUS_E2E_OK`; browser remains skipped because managed Chromium is unavailable.
+
+## Date: 2026-08-30 (bugfix)
+- **Fix: `Cannot read properties of null (reading 'slice')`** — backend can return `null` for `name` on `Project` and `Agent` objects despite TypeScript type declaring `string`. All avatar-initial expressions (`name.slice(0,2).toUpperCase()`) guarded with `(name || '').slice(0,2).toUpperCase()` across 6 files: `NexusShell.tsx`, `ProjectRail.tsx`, `ProjectManagerSurface.tsx` (card + list), `ProjectScanModal.tsx`, `ProjectOverviewSurface.tsx`, `AgentsSurface.tsx`.
+- Verification: tsc 0 errors, ESLint 0 warnings, Vitest 76/76, bundle rebuilt (808.6kb).
+
 ## Date: 2026-08-29
 - **Git Branch Switching & Management in Project Settings and Taskbar (`BranchSwitcherModal.tsx`, `WorkspaceTaskbar.tsx`, `ProjectManagerSurface.tsx`)**:
   - **Git REST Endpoints (`internal/control/web/handlers_nexus.go`)**: Implemented `GET /api/v1/projects/:id/git/branches` and `POST /api/v1/projects/:id/git/checkout` returning local/remote branch lists, working tree status (`is_clean`, uncommitted modifications count), and executing branch checkouts/creation safely while persisting changes to SQLite.

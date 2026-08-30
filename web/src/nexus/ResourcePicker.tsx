@@ -152,7 +152,7 @@ export const ResourcePicker: React.FC<Props> = ({ agentId, preferProvider, onSel
                         {multiGroups && group.name && (
                           <span className="nx-resource-account__group-name">{group.name}</span>
                         )}
-                        {group.windows.map((w) => (
+                        {(group.windows || []).map((w) => (
                           <QuotaBar key={w.kind} w={w} />
                         ))}
                       </span>
