@@ -1,9 +1,25 @@
 import type { WorkPackage, WorkPlan } from '../../types';
 
-function clonePlan(plan: WorkPlan): WorkPlan {
+/** Normalize nullable collections from older/API-generated plan payloads. */
+export function normalizeWorkPlan(plan: WorkPlan): WorkPlan {
   return {
     ...plan,
-    phases: plan.phases.map((phase) => ({
+    phases: (plan.phases || []).map((phase) => ({
+      ...phase,
+      packages: (phase.packages || []).map((pkg) => ({
+        ...pkg,
+        dependencies: pkg.dependencies || [],
+        acceptance_criteria: pkg.acceptance_criteria || [],
+      })),
+    })),
+  };
+}
+
+function clonePlan(plan: WorkPlan): WorkPlan {
+  const normalized = normalizeWorkPlan(plan);
+  return {
+    ...normalized,
+    phases: normalized.phases.map((phase) => ({
       ...phase,
       packages: phase.packages.map((pkg) => ({
         ...pkg,

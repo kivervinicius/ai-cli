@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkPlan } from '../../types';
-import { mergePackages, planSuggestionDiff, setProviderLock, splitPackage } from './planBuilderModel';
+import { mergePackages, normalizeWorkPlan, planSuggestionDiff, setProviderLock, splitPackage } from './planBuilderModel';
 
 const plan = (): WorkPlan => ({
   id: 'plan-1', project_id: 'p', title: 'Plan', description: '', status: 'DRAFT', current_revision: 1,
@@ -11,6 +11,13 @@ const plan = (): WorkPlan => ({
 });
 
 describe('WorkPlan structural editing', () => {
+  it('normalizes nullable phase/package collections from API payloads', () => {
+    const malformed = { ...plan(), phases: [{ ...plan().phases[0], packages: null as unknown as WorkPlan['phases'][number]['packages'] }] };
+    const normalized = normalizeWorkPlan(malformed);
+    expect(normalized.phases).toHaveLength(1);
+    expect(normalized.phases[0].packages).toEqual([]);
+  });
+
   it('splits a package without allowing downstream work to bypass the second half', () => {
     const next = splitPackage(plan(), 'phase-1', 'a', 'a2');
     const packages = next.phases[0].packages;

@@ -25,7 +25,7 @@ import type { Agent, AutonomyContract, ClarificationCheckpoint, MissionRun, Miss
 import { clarificationFromError, seedProjectPathAnswers, unresolvedBlocking } from './clarificationModel';
 import { defaultMissionAutonomyContract } from './missionAutonomyModel';
 import { MissionAutonomyCard } from './MissionAutonomyCard';
-import { getProviderLock, mergePackages, planSuggestionDiff, setProviderLock, splitPackage } from './planBuilderModel';
+import { getProviderLock, mergePackages, normalizeWorkPlan, planSuggestionDiff, setProviderLock, splitPackage } from './planBuilderModel';
 
 export const PlanBuilderSurface: React.FC<{
   project: Project;
@@ -61,12 +61,13 @@ export const PlanBuilderSurface: React.FC<{
     try {
       setLoading(true);
       const list = await nexusApi.getPlans(project.id);
-      setPlans(list || []);
-      if (list && list.length > 0 && !selectedPlan) {
-        setSelectedPlan(list[0]);
+      const normalizedPlans = (list || []).map(normalizeWorkPlan);
+      setPlans(normalizedPlans);
+      if (normalizedPlans.length > 0 && !selectedPlan) {
+        setSelectedPlan(normalizedPlans[0]);
         // Expand first phase by default
-        if (list[0].phases && list[0].phases.length > 0) {
-          setExpandedPhases({ [list[0].phases[0].id]: true });
+        if (normalizedPlans[0].phases.length > 0) {
+          setExpandedPhases({ [normalizedPlans[0].phases[0].id]: true });
         }
       }
     } catch (e) {
@@ -142,7 +143,8 @@ export const PlanBuilderSurface: React.FC<{
         goal: autoGoal,
         auto_plan: true,
       });
-      setPendingAIPlan({ plan, diff: planSuggestionDiff(selectedPlan, plan) });
+      const normalizedPlan = normalizeWorkPlan(plan);
+      setPendingAIPlan({ plan: normalizedPlan, diff: planSuggestionDiff(selectedPlan, normalizedPlan) });
     } catch (e) {
       const checkpoint = clarificationFromError(e);
       if (checkpoint) {
@@ -181,8 +183,9 @@ export const PlanBuilderSurface: React.FC<{
 
   const persistPlan = async (nextPlan: WorkPlan, summary: string) => {
     const res = await nexusApi.updatePlan(nextPlan.id, nextPlan, summary);
-    setSelectedPlan(res.plan);
-    setPlans((prev) => prev.map((p) => (p.id === res.plan.id ? res.plan : p)));
+    const normalizedPlan = normalizeWorkPlan(res.plan);
+    setSelectedPlan(normalizedPlan);
+    setPlans((prev) => prev.map((p) => (p.id === normalizedPlan.id ? normalizedPlan : p)));
     setRevisions((prev) => [res.revision, ...prev]);
     return res.plan;
   };
@@ -237,8 +240,10 @@ export const PlanBuilderSurface: React.FC<{
     if (!selectedPlan || revision === selectedPlan.current_revision) return;
     try {
       const result = await nexusApi.restorePlanRevision(selectedPlan.id, revision);
-      setSelectedPlan(result.plan);
-      setPlans((prev) => prev.map((plan) => plan.id === result.plan.id ? result.plan : plan));
+      setSelectedPlan(normalizeWorkPlan(result.plan));
+      const normalizedPlan = normalizeWorkPlan(result.plan);
+      setSelectedPlan(normalizedPlan);
+      setPlans((prev) => prev.map((plan) => plan.id === normalizedPlan.id ? normalizedPlan : plan));
       setRevisions((prev) => [result.revision, ...prev]);
       setRevisionDiff(null);
     } catch (error) { console.error('Failed to restore plan revision:', error); }
@@ -277,8 +282,9 @@ export const PlanBuilderSurface: React.FC<{
     };
     try {
       const res = await nexusApi.updatePlan(selectedPlan.id, updatedPlan, 'Fase adicionada');
-      setSelectedPlan(res.plan);
-      setPlans((prev) => prev.map((p) => (p.id === res.plan.id ? res.plan : p)));
+      const normalizedPlan = normalizeWorkPlan(res.plan);
+      setSelectedPlan(normalizedPlan);
+      setPlans((prev) => prev.map((p) => (p.id === normalizedPlan.id ? normalizedPlan : p)));
       setExpandedPhases((prev) => ({ ...prev, [newPhase.id]: true }));
     } catch (e) {
       console.error('Failed to add phase:', e);
@@ -306,8 +312,9 @@ export const PlanBuilderSurface: React.FC<{
     };
     try {
       const res = await nexusApi.updatePlan(selectedPlan.id, updatedPlan, 'Pacote adicionado');
-      setSelectedPlan(res.plan);
-      setPlans((prev) => prev.map((p) => (p.id === res.plan.id ? res.plan : p)));
+      const normalizedPlan = normalizeWorkPlan(res.plan);
+      setSelectedPlan(normalizedPlan);
+      setPlans((prev) => prev.map((p) => (p.id === normalizedPlan.id ? normalizedPlan : p)));
     } catch (e) {
       console.error('Failed to add package:', e);
     }
