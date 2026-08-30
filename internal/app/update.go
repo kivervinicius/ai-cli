@@ -1,16 +1,32 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/buildinfo"
 	"github.com/kivervinicius/ai-cli/internal/nexus"
 )
+
+const updateCommandTimeout = 30 * time.Second
+
+func runUpdateCommand(binary string, args ...string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), updateCommandTimeout)
+	defer cancel()
+	if err := exec.CommandContext(ctx, binary, args...).Run(); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("timed out after %s", updateCommandTimeout)
+		}
+		return err
+	}
+	return nil
+}
 
 // UpdateResult summarizes the outcome of updating Nexus and Maestro.
 type UpdateResult struct {
@@ -22,9 +38,6 @@ type UpdateResult struct {
 }
 
 func updateCmd(args []string) error {
-	fmt.Println("=== IAPro Nexus & Orquestrador Maestro Updater ===")
-	fmt.Println("Checking and applying updates...")
-
 	result := PerformSystemUpdate()
 
 	if len(args) > 0 && args[0] == "--json" {
@@ -33,6 +46,7 @@ func updateCmd(args []string) error {
 		return nil
 	}
 
+	fmt.Println("=== IAPro Nexus & Orquestrador Maestro Updater ===")
 	if result.Error != "" {
 		fmt.Printf("\n⚠️  Update completed with warning/error: %s\n", result.Error)
 	} else {
@@ -51,24 +65,20 @@ func PerformSystemUpdate() UpdateResult {
 	}
 
 	// 1. Update Orquestrador Maestro
-	fmt.Println("\n[1/2] Updating Orquestrador Maestro...")
 	if npmPath, err := exec.LookPath("npm"); err == nil {
-		cmd := exec.Command(npmPath, "install", "-g", "@iapro/orquestrador-maestro-cli@latest")
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			fmt.Printf("  ⚠️ Failed to update @iapro/orquestrador-maestro-cli via npm: %v\n", err)
+		if err := runUpdateCommand(npmPath, "install", "-g", "@iapro/orquestrador-maestro-cli@latest"); err != nil {
+			res.Error = fmt.Sprintf("failed to update @iapro/orquestrador-maestro-cli: %v", err)
 		} else {
 			res.MaestroUpdated = true
-			fmt.Println("  ✓ Updated @iapro/orquestrador-maestro-cli to latest release.")
 		}
+	} else {
+		res.Error = "npm was not found; Maestro was not updated"
 	}
 
-	// Run maestro update to sync skills
+	// npm is the package authority for the Maestro CLI. Do not invoke its
+	// interactive/update subcommand from a browser request: it may spawn an
+	// installer process that outlives the HTTP request.
 	if maestroBin, err := exec.LookPath("orquestrador-maestro"); err == nil {
-		cmdSync := exec.Command(maestroBin, "update", "--non-interactive")
-		_ = cmdSync.Run()
-
 		// Get new version
 		cmdVer := exec.Command(maestroBin, "version")
 		if out, err := cmdVer.Output(); err == nil {
@@ -91,13 +101,17 @@ func PerformSystemUpdate() UpdateResult {
 
 	// 3. Nexus binary updates need the release workflow. Do not report a
 	// successful update when this command has not rebuilt and replaced it.
-	fmt.Println("\n[2/2] Checking IAPro Nexus binary update status...")
 	mClient := nexus.NewMaestroClient()
 	status := mClient.Status()
 	if status.Capabilities != nil {
 		res.MaestroVersion = status.Capabilities.Version
 	}
 	res.NexusUpdated = false
-	res.Error = "Nexus binary update was not performed; use the release workflow to build and install a new binary"
+	const nexusNotice = "Nexus binary update was not performed; use the release workflow to build and install a new binary"
+	if res.Error == "" {
+		res.Error = nexusNotice
+	} else {
+		res.Error += "; " + nexusNotice
+	}
 	return res
 }

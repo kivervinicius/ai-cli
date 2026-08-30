@@ -20,3 +20,9 @@ export function normalizeInitialPrompt(prompt?: string): string {
   const value = (prompt || '').trim();
   return value ? `${value}\n` : '';
 }
+
+// A Persistent Agent may exist without a running provider process. Opening a
+// terminal in that state produces a WebSocket reconnect loop, not a terminal.
+export function canOpenAgentTerminal(status: unknown): boolean {
+  return status === 'WORKING';
+}

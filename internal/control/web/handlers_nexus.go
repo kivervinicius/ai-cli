@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -654,7 +655,32 @@ func (h *NexusHandler) handleSystemUpdate(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	writeError(w, http.StatusNotImplemented, "system update not yet implemented")
+	// Reuse the executable that is serving this request. The updater has a
+	// deliberately narrow contract: it may update Maestro, but it never claims
+	// to have replaced the running Nexus binary.
+	binary, err := os.Executable()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "cannot locate local Nexus executable")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, binary, "update", "--json")
+	out, err := cmd.Output()
+	if err != nil {
+		if ctx.Err() != nil {
+			writeError(w, http.StatusGatewayTimeout, "local updater timed out")
+			return
+		}
+		writeError(w, http.StatusBadGateway, "local updater failed")
+		return
+	}
+	var result map[string]any
+	if err := json.Unmarshal(out, &result); err != nil {
+		writeError(w, http.StatusBadGateway, "local updater returned an invalid result")
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 // handleMissionsList GET /api/v1/projects/{id}/missions — list missions for a project.

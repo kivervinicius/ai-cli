@@ -59,10 +59,9 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
     setUpdateSuccess(false);
     try {
       const res = await nexus.performSystemUpdate();
-      if (res.nexus_updated || res.maestro_updated) {
-        setUpdateSuccess(true);
-        void checkUpdates();
-      }
+      setUpdateSuccess(Boolean(res.nexus_updated || res.maestro_updated));
+      if (res.error) setUpdateError(res.error);
+      void checkUpdates();
     } catch (error) {
       setUpdateError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -283,12 +282,9 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
               </div>
             </div>
           )}
-          {updateError && <InlineAlert tone="danger" title="Update status unavailable">{updateError}</InlineAlert>}
-          {updateSuccess && (
-            <InlineAlert tone="success" title={t('settings.updated')}>
-              {t('settings.upToDate')}
-            </InlineAlert>
-          )}
+          {updateError && <InlineAlert tone="warning" title="Update completed with limitations">{updateError}</InlineAlert>}
+          {updateSuccess && <InlineAlert tone="success" title={t('settings.updated')}>{t('settings.upToDate')}</InlineAlert>}
+          <p className="nx-muted-copy">This updates Maestro locally. Nexus binary replacement remains a release/installer operation and is reported explicitly.</p>
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <Button tone="brand" onClick={handleUpdate} disabled={updating}>
               <RefreshCw size={14} className={updating ? 'nx-spin' : ''} />

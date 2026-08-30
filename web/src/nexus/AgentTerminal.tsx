@@ -4,12 +4,14 @@ import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import {
   agentTerminalWebSocketURL,
+  canOpenAgentTerminal,
   normalizeInitialPrompt,
   normalizeTerminalRole,
   terminalLeaseCommand,
   terminalReconnectDelay,
   type TerminalRole,
 } from './agentTerminalModel';
+import { nexus } from './api';
 import { pushNotifications } from '../notifications/PushNotificationManager';
 
 export const AgentTerminal: React.FC<{
@@ -78,11 +80,23 @@ export const AgentTerminal: React.FC<{
       setMessage(`Reconnecting Agent terminal in ${delay}ms…`);
       reconnectTimer = window.setTimeout(() => {
         reconnectTimer = undefined;
-        connect();
+        void connect();
       }, delay);
     };
 
-    const connect = () => {
+    const connect = async () => {
+      if (disposed) return;
+      try {
+        const detail = await nexus.getAgent(agentId);
+        if (!canOpenAgentTerminal(detail.agent.status)) {
+          setConnection('DISCONNECTED');
+          setMessage('Agent runtime is not running — start or recover the Agent before opening Terminal.');
+          return;
+        }
+      } catch {
+        // Let the WebSocket transport surface a transient API/server failure and
+        // retain its normal reconnect behavior.
+      }
       if (disposed) return;
       const ws = new WebSocket(agentTerminalWebSocketURL(window.location.protocol, window.location.host, agentId));
       wsRef.current = ws;
@@ -166,7 +180,7 @@ export const AgentTerminal: React.FC<{
     };
     document.addEventListener('visibilitychange', visibility);
 
-    connect();
+    void connect();
 
     return () => {
       disposed = true;

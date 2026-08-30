@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agentTerminalWebSocketURL, normalizeInitialPrompt, normalizeTerminalRole, terminalLeaseCommand, terminalReconnectDelay } from './agentTerminalModel';
+import { agentTerminalWebSocketURL, canOpenAgentTerminal, normalizeInitialPrompt, normalizeTerminalRole, terminalLeaseCommand, terminalReconnectDelay } from './agentTerminalModel';
 
 describe('Agent terminal model', () => {
   it('builds agent-scoped websocket URLs', () => expect(agentTerminalWebSocketURL('https:', 'nexus.local', 'agt_1')).toBe('wss://nexus.local/api/v1/agents/agt_1/terminal'));
@@ -18,5 +18,10 @@ describe('Agent terminal model', () => {
   it('normalizes a direct-session kickoff prompt exactly once-ready for terminal input', () => {
     expect(normalizeInitialPrompt('  fix the failing tests  ')).toBe('fix the failing tests\n');
     expect(normalizeInitialPrompt('   ')).toBe('');
+  });
+  it('requires a live Agent runtime before opening a terminal', () => {
+    expect(canOpenAgentTerminal('STOPPED')).toBe(false);
+    expect(canOpenAgentTerminal('RECOVERABLE')).toBe(false);
+    expect(canOpenAgentTerminal('WORKING')).toBe(true);
   });
 });

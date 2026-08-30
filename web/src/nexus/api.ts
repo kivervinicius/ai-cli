@@ -144,7 +144,6 @@ export const nexus = {
       maestro_version: string;
       error?: string;
     }>('/api/v1/system/update', { method: 'POST', body: '{}' }),
-
   // OS Filesystem & Desktop Launchers
   browseFS: (path?: string) =>
     request<import('../types').FSBrowseResult>(
