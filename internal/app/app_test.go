@@ -6,11 +6,42 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/kivervinicius/ai-cli/internal/profile"
 )
+
+func TestMain(m *testing.M) {
+	if os.Getenv("AI_FAKE_PROVIDER") == "1" {
+		provider := strings.TrimSuffix(filepath.Base(os.Args[0]), filepath.Ext(os.Args[0]))
+		if out := os.Getenv("AI_TEST_OUT"); out != "" {
+			var b strings.Builder
+			b.WriteString("provider=")
+			b.WriteString(provider)
+			b.WriteByte('\n')
+			if provider == "codex" {
+				b.WriteString("home=")
+				b.WriteString(os.Getenv("CODEX_HOME"))
+			} else {
+				b.WriteString("home=")
+				b.WriteString(os.Getenv("HOME"))
+			}
+			b.WriteByte('\n')
+			b.WriteString("cwd=")
+			cwd, _ := os.Getwd()
+			b.WriteString(cwd)
+			for _, arg := range os.Args[1:] {
+				b.WriteString("\narg=")
+				b.WriteString(arg)
+			}
+			_ = os.WriteFile(out, []byte(b.String()+"\n"), 0644)
+		}
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
 
 func captureStdout(f func() error) (string, error) {
 	old := os.Stdout
@@ -43,6 +74,16 @@ func setupTestEnvironment(t *testing.T) (binDir, testOut string) {
 	t.Setenv("AI_TEST_OUT", testOut)
 
 	writeExe := func(name, body string) {
+		if runtime.GOOS == "windows" {
+			data, err := os.ReadFile(os.Args[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(binDir, name+".exe"), data, 0755); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
 		p := filepath.Join(binDir, name)
 		if err := os.WriteFile(p, []byte("#!/bin/sh\n"+body+"\n"), 0755); err != nil {
 			t.Fatal(err)
@@ -99,7 +140,10 @@ exec "$@"`)
 	writeExe("gnome-keyring-daemon", `cat >/dev/null
 exit 0`)
 
-	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+	t.Setenv("PATH", binDir+string(filepath.ListSeparator)+os.Getenv("PATH"))
+	if runtime.GOOS == "windows" {
+		t.Setenv("AI_FAKE_PROVIDER", "1")
+	}
 	return binDir, testOut
 }
 
