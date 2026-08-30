@@ -1,10 +1,4 @@
-/* The shell contains header, attention banner, workspace and taskbar. Keep
-   those four regions explicit so an alert cannot create an implicit grid row
-   and collapse the workspace. */
-.nx-os-main {
-  grid-template-rows: var(--nx-topbar) auto minmax(0, 1fr) var(--nx-taskbar);
-}
-
+/* The attention banner is an overlay/toast and does not shift the main 3-row OS grid. */
 .nx-attention-banner {
   min-width: 0;
   max-width: 100%;
@@ -28,10 +22,6 @@
 }
 
 @media (max-width: 720px) {
-  .nx-os-main {
-    grid-template-rows: var(--nx-topbar) auto minmax(0, 1fr) var(--nx-taskbar);
-  }
-
   .nx-attention-banner__content {
     align-items: flex-start;
     flex-wrap: wrap;
@@ -52,3 +42,4 @@
     width: calc(100vw - 16px);
   }
 }
+
