@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowRight,
   Bot,
@@ -21,7 +22,7 @@ import {
 import { Badge, Button, Card, InlineAlert, Input } from '../../design-system';
 import { nexusApi } from '../../nexus/api';
 import type { Agent, AutonomyContract, ClarificationCheckpoint, MissionRun, MissionSchedule, PlanPhase, PlanRevision, PlanRevisionDiff, Project, WorkPackage, WorkPlan } from '../../types';
-import { clarificationFromError, unresolvedBlocking } from './clarificationModel';
+import { clarificationFromError, seedProjectPathAnswers, unresolvedBlocking } from './clarificationModel';
 import { defaultMissionAutonomyContract } from './missionAutonomyModel';
 import { MissionAutonomyCard } from './MissionAutonomyCard';
 import { getProviderLock, mergePackages, planSuggestionDiff, setProviderLock, splitPackage } from './planBuilderModel';
@@ -32,6 +33,7 @@ export const PlanBuilderSurface: React.FC<{
   onOpenAgent?: (agent: Agent) => void;
   onClose?: () => void;
 }> = ({ project, agents, onOpenAgent }) => {
+  const { t } = useTranslation();
   const [plans, setPlans] = useState<WorkPlan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<WorkPlan | null>(null);
   const [_loading, setLoading] = useState(false);
@@ -145,7 +147,7 @@ export const PlanBuilderSurface: React.FC<{
       const checkpoint = clarificationFromError(e);
       if (checkpoint) {
         setClarification(checkpoint);
-        setClarificationAnswers(Object.fromEntries(checkpoint.unknowns.filter((item) => item.answer).map((item) => [item.key, item.answer || ''])));
+        setClarificationAnswers(seedProjectPathAnswers(checkpoint, project.canonical_path));
       } else {
         setPlanError(e instanceof Error ? e.message : String(e));
       }
@@ -165,6 +167,10 @@ export const PlanBuilderSurface: React.FC<{
       const checkpoint = clarificationFromError(e);
       if (checkpoint) {
         setClarification(checkpoint);
+        setClarificationAnswers((previous) => ({
+          ...seedProjectPathAnswers(checkpoint, project.canonical_path),
+          ...previous,
+        }));
       } else {
         setPlanError(e instanceof Error ? e.message : String(e));
       }
@@ -204,7 +210,7 @@ export const PlanBuilderSurface: React.FC<{
           .map((pkg) => ({ ...pkg, dependencies: (pkg.dependencies || []).filter((dep) => dep !== packageId) })),
       })),
     };
-    try { await persistPlan(next, 'Pacote removido e dependências normalizadas'); } catch (error) { console.error(error); }
+    try { await persistPlan(next, t('planBuilder.packageDeleted')); } catch (error) { console.error(error); }
   };
 
   const handleDropPackage = async (targetPhaseId: string, targetPackageId: string) => {
@@ -512,10 +518,15 @@ export const PlanBuilderSurface: React.FC<{
       {clarification && (
         <Card style={{ margin: '16px 0 24px', padding: '16px' }}>
           <div style={{ marginBottom: 12 }}>
-            <strong>Clarification required before autonomous planning</strong>
+            <strong>Confirmação necessária antes de gerar o plano</strong>
             <p style={{ margin: '6px 0 0', color: 'var(--color-text-muted)' }}>
-              Nexus stopped instead of guessing. These answers become durable facts in the WorkPlan.
+              O Nexus pausa quando falta um fato importante. Revise as respostas abaixo; elas serão registradas no WorkPlan.
             </p>
+            {project.canonical_path && unresolvedBlocking(clarification).some((item) => clarificationAnswers[item.key] === project.canonical_path) && (
+              <p className="nx-plan-builder__clarification-hint">
+                Caminho do repositório preenchido a partir do Projeto atual. Você pode revisá-lo antes de continuar.
+              </p>
+            )}
           </div>
           <div style={{ display: 'grid', gap: 14 }}>
             {unresolvedBlocking(clarification).map((item) => (
@@ -523,18 +534,18 @@ export const PlanBuilderSurface: React.FC<{
                 <span><strong>{item.question}</strong></span>
                 {item.rationale && <small style={{ color: 'var(--color-text-muted)' }}>{item.rationale}</small>}
                 {item.suggested_options && item.suggested_options.length > 0 ? (
-                  <select
+                  <select className="nx-select"
                     value={clarificationAnswers[item.key] || ''}
                     onChange={(event) => setClarificationAnswers((prev) => ({ ...prev, [item.key]: event.target.value }))}
                   >
-                    <option value="">Choose…</option>
+                    <option value="">Selecione uma opção…</option>
                     {item.suggested_options.map((option) => <option key={option} value={option}>{option}</option>)}
                   </select>
                 ) : (
                   <Input
                     value={clarificationAnswers[item.key] || ''}
                     onChange={(value) => setClarificationAnswers((prev) => ({ ...prev, [item.key]: value }))}
-                    placeholder="Answer required"
+                    placeholder="Informe uma resposta"
                   />
                 )}
               </label>
@@ -546,20 +557,20 @@ export const PlanBuilderSurface: React.FC<{
               disabled={generating || unresolvedBlocking(clarification).some((item) => !(clarificationAnswers[item.key] || '').trim())}
               onClick={() => void handleResolveClarification()}
             >
-              <ArrowRight size={14} /> Continue planning
+              <ArrowRight size={14} /> Continuar planejamento
             </Button>
           </div>
         </Card>
       )}
 
       {/* Main Two-Column Layout: Plan Hierarchy & Inspector/Runner */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: '24px' }}>
+      <div className="nx-plan-builder__columns">
         {/* Left Column: Plan Hierarchy */}
         <div>
           {/* Plan Selector & Actions */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <select
+              <select className="nx-select nx-plan-selector"
                 value={selectedPlan?.id || ''}
                 onChange={(e) => {
                   const p = plans.find((x) => x.id === e.target.value);
@@ -672,18 +683,18 @@ export const PlanBuilderSurface: React.FC<{
 
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginTop: 10, fontSize: 11 }}>
                           <label style={{ display: 'grid', gap: 4 }}>Priority
-                            <select value={pkg.priority} onChange={(event) => void patchPackage(phase.id, pkg.id, { priority: event.target.value as WorkPackage['priority'] }, 'Prioridade alterada')}>
+                            <select className="nx-select" value={pkg.priority} onChange={(event) => void patchPackage(phase.id, pkg.id, { priority: event.target.value as WorkPackage['priority'] }, 'Prioridade alterada')}>
                               {['CRITICAL','HIGH','NORMAL','LOW'].map((value) => <option key={value} value={value}>{value}</option>)}
                             </select>
                           </label>
                           <label style={{ display: 'grid', gap: 4 }}>Agent allocation
-                            <select value={pkg.agent_allocation || ''} onChange={(event) => void patchPackage(phase.id, pkg.id, { agent_allocation: event.target.value }, 'Agent allocation alterado')}>
+                            <select className="nx-select" value={pkg.agent_allocation || ''} onChange={(event) => void patchPackage(phase.id, pkg.id, { agent_allocation: event.target.value }, 'Agent allocation alterado')}>
                               <option value="">Auto scheduler</option>
                               {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
                             </select>
                           </label>
                           <label style={{ display: 'grid', gap: 4 }}>Provider/profile lock
-                            <select
+                            <select className="nx-select"
                               value={(() => { const lock = getProviderLock(pkg.task_requirements); return lock.provider ? `${lock.provider}::${lock.profile}` : ''; })()}
                               onChange={(event) => void handleProviderLock(phase.id, pkg, event.target.value)}
                             >
@@ -695,7 +706,7 @@ export const PlanBuilderSurface: React.FC<{
                             <input value={pkg.parallel_group || ''} onChange={(event) => void patchPackage(phase.id, pkg.id, { parallel_group: event.target.value }, 'Parallel group alterado')} />
                           </label>
                           <label style={{ display: 'grid', gap: 4 }}>Dependencies
-                            <select multiple value={pkg.dependencies || []} onChange={(event) => void patchPackage(phase.id, pkg.id, { dependencies: Array.from(event.target.selectedOptions).map((option) => option.value) }, 'Dependências alteradas')}>
+                            <select className="nx-select" multiple value={pkg.dependencies || []} onChange={(event) => void patchPackage(phase.id, pkg.id, { dependencies: Array.from(event.target.selectedOptions).map((option) => option.value) }, 'Dependências alteradas')}>
                               {allPackages.filter((candidate) => candidate.id !== pkg.id).map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.title}</option>)}
                             </select>
                           </label>
@@ -722,7 +733,7 @@ export const PlanBuilderSurface: React.FC<{
           {(!selectedPlan || selectedPlan.phases.length === 0) && (
             <Card style={{ padding: '32px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
               <Route size={32} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
-              <p>Nenhum plano ativo. Use o Decompositor AI acima ou crie um plano manualmente.</p>
+              <p>{t('planBuilder.emptyPlan')}</p>
             </Card>
           )}
         </div>
@@ -730,18 +741,24 @@ export const PlanBuilderSurface: React.FC<{
         {/* Right Column: Prompt Compiler Preview & Live Mission Runner */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <Card style={{ padding: '16px' }}>
-            <div style={{ fontWeight: 600, marginBottom: 10 }}><History size={14} /> Revision History</div>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}><History size={14} /> {t('planBuilder.revisionHistory')}</div>
             <div style={{ display: 'grid', gap: 6 }}>
               {(revisions || []).slice(0, 6).map((revision) => (
                 <div key={revision.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 6, alignItems: 'center', fontSize: 11 }}>
                   <span>Rev {revision.revision} · {revision.change_summary}</span>
-                  <Button size="sm" disabled={revision.revision === selectedPlan?.current_revision} onClick={() => void handleCompareRevision(revision.revision)}>Diff</Button>
-                  <Button size="sm" disabled={revision.revision === selectedPlan?.current_revision} onClick={() => void handleRestoreRevision(revision.revision)}>Restore</Button>
+                  <Button size="sm" disabled={revision.revision === selectedPlan?.current_revision} onClick={() => void handleCompareRevision(revision.revision)}>{t('planBuilder.diff')}</Button>
+                  <Button size="sm" disabled={revision.revision === selectedPlan?.current_revision} onClick={() => void handleRestoreRevision(revision.revision)}>{t('planBuilder.restore')}</Button>
                 </div>
               ))}
               {revisionDiff && (
                 <div style={{ padding: 8, border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 11 }}>
-                  Rev {revisionDiff.from_revision} → {revisionDiff.to_revision}: +{revisionDiff.added_packages.length} / -{revisionDiff.removed_packages.length} / ~{revisionDiff.changed_packages.length} packages
+                  {t('planBuilder.diffSummary', {
+                    from: revisionDiff.from_revision,
+                    to: revisionDiff.to_revision,
+                    added: revisionDiff.added_packages.length,
+                    removed: revisionDiff.removed_packages.length,
+                    changed: revisionDiff.changed_packages.length,
+                  })}
                 </div>
               )}
             </div>
@@ -750,7 +767,7 @@ export const PlanBuilderSurface: React.FC<{
           <MissionAutonomyCard value={autonomyContract} onChange={setAutonomyContract} />
 
           <Card style={{ padding: '16px' }}>
-            <div style={{ fontWeight: 600, marginBottom: 10 }}>Mission Scheduling</div>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}>{t('planBuilder.scheduling')}</div>
             <div style={{ display: 'grid', gap: 8 }}>
               <input
                 type="datetime-local"
@@ -759,23 +776,23 @@ export const PlanBuilderSurface: React.FC<{
                 style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'inherit' }}
               />
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <Button disabled={!selectedPlan || !scheduleAt} onClick={handleScheduleAt}>Schedule date/time</Button>
-                <Button disabled={!selectedPlan} onClick={handleWhenResources}>When resources free</Button>
+                <Button disabled={!selectedPlan || !scheduleAt} onClick={handleScheduleAt}>{t('planBuilder.scheduleDateTime')}</Button>
+                <Button disabled={!selectedPlan} onClick={handleWhenResources}>{t('planBuilder.whenResourcesFree')}</Button>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
-                <select
+                <select className="nx-select"
                   value={afterRunId}
                   onChange={(event) => setAfterRunId(event.target.value)}
                   aria-label="Mission dependency"
                   style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'inherit', minWidth: 0 }}
                 >
-                  <option value="">After another Mission…</option>
+                  <option value="">{t('planBuilder.afterMission')}</option>
                   {(recentRuns || []).filter((run) => run && run.id !== activeRun?.id).map((run) => (
                     <option key={run.id} value={run.id}>{(run.id || '').slice(0, 12)} · {run.state}</option>
                   ))}
-                  {activeRun ? <option value={activeRun.id}>{(activeRun.id || '').slice(0, 12)} · current {activeRun.state}</option> : null}
+                  {activeRun ? <option value={activeRun.id}>{(activeRun.id || '').slice(0, 12)} · {t('planBuilder.currentRun', { state: activeRun.state })}</option> : null}
                 </select>
-                <Button disabled={!selectedPlan || !afterRunId} onClick={handleAfterRun}>Run after Mission</Button>
+                <Button disabled={!selectedPlan || !afterRunId} onClick={handleAfterRun}>{t('planBuilder.runAfterMission')}</Button>
               </div>
               {(schedules || []).slice(0, 3).map((item) => (
                 <div key={item.id} style={{ fontSize: 11, color: 'var(--color-text-muted)', display: 'flex', justifyContent: 'space-between' }}>

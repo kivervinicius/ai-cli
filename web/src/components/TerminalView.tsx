@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RuntimeSession } from '../types';
 import { TerminalPane } from './TerminalPane';
 import { Columns2, Square, Grid2X2 } from 'lucide-react';
@@ -16,6 +17,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   onSelectRuntime,
   onUpdateTitle,
 }) => {
+  const { t } = useTranslation();
   const [splitMode, setSplitMode] = useState<'single' | 'split-h' | 'grid'>('single');
   const [openIds, setOpenIds] = useState<string[]>(() => {
     if (activeRuntimeId) return [activeRuntimeId];
@@ -33,8 +35,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   if (runtimes.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-slate-500 font-mono text-xs">
-        <p>No active supervised runtimes.</p>
-        <p className="mt-1 text-[11px] text-slate-600">Start an agent runtime from Dashboard to open terminal.</p>
+        <p>{t('terminalView.empty')}</p>
+        <p className="mt-1 text-[11px] text-slate-600">{t('terminalView.emptyHint')}</p>
       </div>
     );
   }
@@ -57,9 +59,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   if (splitMode === 'single') {
     if (activeSession) renderSessions = [activeSession];
   } else if (splitMode === 'split-h') {
-    renderSessions = runtimes.slice(0, 2);
+    renderSessions = (runtimes || []).slice(0, 2);
   } else if (splitMode === 'grid') {
-    renderSessions = runtimes.slice(0, 4);
+    renderSessions = (runtimes || []).slice(0, 4);
   }
 
   return (
@@ -87,13 +89,13 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
                 }`}
               >
                 {isWaiting ? (
-                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" title="Aguardando resposta"></span>
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" title={t('terminalView.stateWaiting')}></span>
                 ) : isApproval ? (
-                  <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse" title="Aprovação necessária"></span>
+                  <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse" title={t('terminalView.stateApproval')}></span>
                 ) : isDone ? (
-                  <span className="w-2 h-2 rounded-full bg-emerald-400" title="Tarefa concluída"></span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" title={t('terminalView.stateDone')}></span>
                 ) : (
-                  <span className="w-2 h-2 rounded-full bg-sky-400" title="Em execução"></span>
+                  <span className="w-2 h-2 rounded-full bg-sky-400" title={t('terminalView.stateRunning')}></span>
                 )}
                 <span className="font-sans font-medium">{title}</span>
                 <span className="text-slate-500 text-[10px]">[{r.runtime_id}]</span>

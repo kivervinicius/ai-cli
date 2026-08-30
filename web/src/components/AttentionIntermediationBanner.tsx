@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertCircle, CheckCircle2, HelpCircle, Send, Terminal, X } from 'lucide-react';
 import { api } from '../api';
 import type { RuntimeSession } from '../types';
@@ -7,6 +8,7 @@ export const AttentionIntermediationBanner: React.FC<{
   runtimes: RuntimeSession[];
   onFocusRuntime: (runtimeId: string) => void;
 }> = ({ runtimes, onFocusRuntime }) => {
+  const { t } = useTranslation();
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
@@ -20,9 +22,9 @@ export const AttentionIntermediationBanner: React.FC<{
   if (attentionRuntimes.length === 0) return null;
 
   const current = attentionRuntimes[0];
-  const projName = current.project_name || 'Projeto';
+  const projName = current.project_name || t('missions.project');
   const reason = current.attention_reason || (current.state === 'APPROVAL' ? 'APPROVAL' : 'QUESTION');
-  const contextText = current.attention_context || current.dynamic_title || 'Interação necessária no terminal';
+  const contextText = current.attention_context || current.dynamic_title || t('attentionBanner.defaultContext');
 
   const handleSend = async (text: string) => {
     if (!text.trim() || sending) return;
@@ -43,6 +45,19 @@ export const AttentionIntermediationBanner: React.FC<{
     setDismissedIds((prev) => [...prev, current.runtime_id]);
   };
 
+  const getReasonLabel = () => {
+    switch (reason) {
+      case 'QUESTION':
+        return t('attentionBanner.question');
+      case 'APPROVAL':
+        return t('attentionBanner.approval');
+      case 'TASK_COMPLETED':
+        return t('attentionBanner.taskCompleted');
+      default:
+        return t('attentionBanner.attentionNeeded');
+    }
+  };
+
   return (
     <div className="nx-attention-banner" role="alert">
       <div className="nx-attention-banner__content">
@@ -57,7 +72,7 @@ export const AttentionIntermediationBanner: React.FC<{
           <div className="nx-attention-banner__meta">
             <span className="nx-badge nx-badge--brand">{projName}</span>
             <span className="nx-attention-banner__label">
-              {reason === 'QUESTION' ? 'Pergunta do Agente' : reason === 'APPROVAL' ? 'Aprovação Requerida' : reason === 'TASK_COMPLETED' ? 'Tarefa Concluída' : 'Atenção Necessária'}
+              {getReasonLabel()}
             </span>
             <span className="nx-attention-banner__id">[{current.runtime_id}]</span>
           </div>
@@ -77,7 +92,7 @@ export const AttentionIntermediationBanner: React.FC<{
                   onClick={() => handleSend('y')}
                   disabled={sending}
                 >
-                  Sim (y)
+                  {t('attentionBanner.yes')}
                 </button>
                 <button
                   type="button"
@@ -85,7 +100,7 @@ export const AttentionIntermediationBanner: React.FC<{
                   onClick={() => handleSend('n')}
                   disabled={sending}
                 >
-                  Não (n)
+                  {t('attentionBanner.no')}
                 </button>
               </div>
 
@@ -99,7 +114,7 @@ export const AttentionIntermediationBanner: React.FC<{
                 <input
                   type="text"
                   className="nx-input nx-input--sm"
-                  placeholder="Digite a resposta..."
+                  placeholder={t('attentionBanner.inputPlaceholder')}
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   disabled={sending}
@@ -117,14 +132,14 @@ export const AttentionIntermediationBanner: React.FC<{
             onClick={() => onFocusRuntime(current.runtime_id)}
           >
             <Terminal size={12} />
-            <span>Focar Terminal</span>
+            <span>{t('attentionBanner.focusTerminal')}</span>
           </button>
 
           <button
             type="button"
             className="nx-icon-btn nx-icon-btn--sm"
             onClick={handleDismiss}
-            title="Dispensar aviso"
+            title={t('attentionBanner.dismiss')}
           >
             <X size={14} />
           </button>

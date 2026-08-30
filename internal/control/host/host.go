@@ -82,6 +82,13 @@ func NewSessionHost(cfg Config) (*SessionHost, error) {
 
 	sh.detector = NewAttentionDetector(cfg.Session.RuntimeID, cfg.Session.ProviderID, cfg.Session.ProfileID, cfg.Cwd, func(reason, context, dynamicTitle string, state registry.RuntimeState) {
 		sh.mu.Lock()
+		// A terminal reader can finish concurrently with startup. Once listener
+		// creation has failed, attention callbacks must not resurrect the runtime
+		// as RUNNING after Start has marked it FAILED.
+		if sh.session.State == registry.StateFailed {
+			sh.mu.Unlock()
+			return
+		}
 		sh.session.State = state
 		sh.session.AttentionReason = reason
 		sh.session.AttentionContext = context

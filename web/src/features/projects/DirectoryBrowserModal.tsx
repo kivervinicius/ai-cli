@@ -252,7 +252,7 @@ export const DirectoryBrowserModal: React.FC<{
                 <p style={{ color: 'var(--nx-danger, #ef4444)', marginBottom: '12px' }}>{error}</p>
                 <Button size="sm" tone="brand" onClick={() => loadDirectory(currentPath || undefined)}>
                   <CornerLeftUp size={13} />
-                  <span>{t('common.retry') || 'Tentar novamente'}</span>
+                  <span>{t('directoryBrowser.retry')}</span>
                 </Button>
               </div>
             ) : (
@@ -301,7 +301,7 @@ export const DirectoryBrowserModal: React.FC<{
         {/* Footer with Selected Folder info & confirmation button */}
         <div className="nx-dir-picker__footer">
           <div className="nx-dir-selected-info">
-            <span className="nx-dir-selected-label">Pasta Atual:</span>
+            <span className="nx-dir-selected-label">{t('directoryBrowser.currentPath')}</span>
             <code>{currentPath || data?.current_path || '/'}</code>
             {data?.is_git && (
               <Badge tone="brand">

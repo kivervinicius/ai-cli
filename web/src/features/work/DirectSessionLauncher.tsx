@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Bot, Play, ShieldAlert, TerminalSquare } from 'lucide-react';
 import { Badge, Button, Dialog, EmptyState, Input, InlineAlert, Spinner } from '../../design-system';
 import { nexus } from '../../nexus/api';
@@ -32,6 +33,7 @@ export const DirectSessionLauncher: React.FC<{
   onStarted: (agent: Agent, prompt: string) => void | Promise<void>;
   refreshAgents: () => Promise<void>;
 }> = ({ open, project, request, onClose, onStarted, refreshAgents }) => {
+  const { t } = useTranslation();
   const [resources, setResources] = useState<DirectResource[]>([]);
   const [selectedID, setSelectedID] = useState('');
   const [name, setName] = useState('');
@@ -88,24 +90,24 @@ export const DirectSessionLauncher: React.FC<{
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={request?.mode === 'assisted' ? 'Start assisted AI session' : 'Start direct AI session'} wide>
+    <Dialog open={open} onClose={onClose} title={request?.mode === 'assisted' ? t('directSession.startAssisted') : t('directSession.startDirect')} wide>
       <div className="nx-form-stack">
-        <InlineAlert tone={request?.mode === 'assisted' ? 'info' : 'success'} title={request?.mode === 'assisted' ? 'Assisted work remains optional' : 'No Mission required'}>
+        <InlineAlert tone={request?.mode === 'assisted' ? 'info' : 'success'} title={request?.mode === 'assisted' ? t('directSession.assistedOptional') : t('directSession.noMissionRequired')}>
           {request?.mode === 'assisted'
-            ? 'The selected provider session remains directly controllable. This launcher does not silently rewrite the prompt; use AI Planning when you want Intelligence to analyze and structure the work.'
-            : 'This creates a Persistent Agent and starts the selected coding CLI directly inside this Project.'}
+            ? t('directSession.assistedBody')
+            : t('directSession.directBody')}
         </InlineAlert>
 
-        <Input value={name} onChange={setName} placeholder="Agent/session name" aria-label="Agent/session name" />
+        <Input value={name} onChange={setName} placeholder={t('directSession.namePlaceholder')} aria-label={t('directSession.namePlaceholder')} />
 
-        {loading ? <Spinner label="Loading provider accounts…" /> : resources.length === 0 ? (
+        {loading ? <Spinner label={t('directSession.loadingAccounts')} /> : resources.length === 0 ? (
           <EmptyState
             icon={<Bot size={22} />}
-            title="No usable AI provider account"
-            hint="Install and authenticate Codex, Claude, Gemini, AGY, OpenCode or another supported provider before starting a direct session."
+            title={t('directSession.noAccount')}
+            hint={t('directSession.noAccountHint')}
           />
         ) : (
-          <div className="nx-direct-resource-list" role="radiogroup" aria-label="Choose AI provider and profile">
+          <div className="nx-direct-resource-list" role="radiogroup" aria-label={t('directSession.chooseProvider')}>
             {resources.map((resource) => {
               const checked = resource.id === selectedID;
               const quotaKnown = !resource.avail_reasons?.unknown_quota && resource.quota_view?.status !== 'UNKNOWN';
@@ -127,7 +129,7 @@ export const DirectSessionLauncher: React.FC<{
                       <Badge>{resource.profile}</Badge>
                       {resource.health && <Badge tone={resource.health === 'healthy' ? 'success' : resource.health === 'degraded' ? 'warning' : 'default'}>{resource.health}</Badge>}
                     </span>
-                    <small>{quotaKnown && Number.isFinite(resource.quota_remaining) ? `${Math.round((resource.quota_remaining ?? 0) * ((resource.quota_remaining ?? 0) <= 1 ? 100 : 1))}% available` : 'Quota UNKNOWN — never assumed as best'}</small>
+                    <small>{quotaKnown && Number.isFinite(resource.quota_remaining) ? t('directSession.availablePercent', { percent: Math.round((resource.quota_remaining ?? 0) * ((resource.quota_remaining ?? 0) <= 1 ? 100 : 1)) }) : t('directSession.quotaUnknown')}</small>
                   </span>
                 </button>
               );
@@ -137,15 +139,15 @@ export const DirectSessionLauncher: React.FC<{
 
         {request?.prompt && (
           <div className="nx-direct-prompt-preview">
-            <strong>Initial prompt</strong>
+            <strong>{t('directSession.initialPrompt')}</strong>
             <pre>{request.prompt}</pre>
           </div>
         )}
-        {error && <InlineAlert tone="danger" title="Could not start session">{error}</InlineAlert>}
+        {error && <InlineAlert tone="danger" title={t('directSession.errorTitle')}>{error}</InlineAlert>}
         <div className="nx-dialog-actions">
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
           <Button tone="brand" disabled={!selected || starting || !name.trim()} onClick={() => void start()}>
-            <Play size={14} /> {starting ? 'Starting…' : 'Start AI session'}
+            <Play size={14} /> {starting ? t('directSession.startingBtn') : t('directSession.startBtn')}
           </Button>
         </div>
       </div>

@@ -7,8 +7,8 @@ const autonomySource = readFileSync(new URL('./MissionAutonomyCard.tsx', import.
 
 describe('Mission scheduling wiring', () => {
   it('allows AFTER_RUN scheduling while the dependency Mission is still running', () => {
-    expect(source).toContain('>Run after Mission</Button>');
-    expect(source).toContain('After another Mission…');
+    expect(source).toContain('onClick={handleAfterRun}');
+    expect(source).toContain("t('planBuilder.afterMission')");
     expect(source).not.toContain("disabled={activeRun.state !== 'COMPLETED_VERIFIED'}");
   });
 });

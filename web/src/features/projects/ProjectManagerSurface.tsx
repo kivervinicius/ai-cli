@@ -133,12 +133,12 @@ export const ProjectManagerSurface: React.FC<{
       const res = await nexus.checkoutProjectBranch(configProject.id, targetBranch.trim());
       if (res.success) {
         setCfgBranch(res.current_branch);
-        setCfgBranchAlert({ tone: 'success', message: `✓ Alternado com sucesso para branch ${res.current_branch}` });
+        setCfgBranchAlert({ tone: 'success', message: `✓ ${t('git.checkoutSuccess', { branch: res.current_branch })}` });
         const updated = { ...configProject, default_branch: res.current_branch };
         onProjectUpdated(updated);
       }
     } catch (err: any) {
-      setCfgBranchAlert({ tone: 'danger', message: err?.message || 'Falha ao trocar de branch' });
+      setCfgBranchAlert({ tone: 'danger', message: err?.message || t('git.checkoutFailed') });
     } finally {
       setCfgBranchSwitching(false);
     }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { NexusAPIError } from '../../nexus/api';
-import { clarificationFromError, unresolvedBlocking } from './clarificationModel';
+import { clarificationFromError, seedProjectPathAnswers, unresolvedBlocking } from './clarificationModel';
 
 const checkpoint = {
   id: 'clr-1',
@@ -25,5 +25,21 @@ describe('clarification model', () => {
   it('returns only unresolved blocking items', () => {
     expect(unresolvedBlocking(checkpoint)).toHaveLength(1);
     expect(unresolvedBlocking(checkpoint)[0].key).toBe('platform');
+  });
+
+  it('seeds only path-shaped blocking questions from the project path', () => {
+    const pathCheckpoint = {
+      ...checkpoint,
+      unknowns: [
+        { key: 'repository_path', level: 'BLOCKING' as const, question: 'What is the absolute path to the repository?', rationale: '', is_resolved: false },
+        { key: 'architecture', level: 'BLOCKING' as const, question: 'Which architecture?', rationale: '', is_resolved: false },
+      ],
+    };
+    expect(seedProjectPathAnswers(pathCheckpoint, '/tmp/project')).toEqual({ repository_path: '/tmp/project' });
+  });
+
+  it('preserves an answer already supplied by the provider', () => {
+    const answered = { ...checkpoint, unknowns: [{ ...checkpoint.unknowns[0], key: 'workspace_path', answer: '/already/selected', is_resolved: false }] };
+    expect(seedProjectPathAnswers(answered, '/tmp/project')).toEqual({ workspace_path: '/already/selected' });
   });
 });

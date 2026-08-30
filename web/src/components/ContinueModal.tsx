@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RuntimeSession, ProviderInfo, ProfileInfo } from '../types';
 import { api } from '../api';
 import { X, FastForward, AlertTriangle } from 'lucide-react';
@@ -18,13 +19,14 @@ export const ContinueModal: React.FC<ContinueModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const { t } = useTranslation();
   const runtimeProvider = runtime.provider_id || runtime.provider;
-  const otherProviders = providers.filter((p) => p.id !== runtimeProvider && p.installed);
+  const otherProviders = (providers || []).filter((p) => p.id !== runtimeProvider && p.installed);
   const [selectedProvider, setSelectedProvider] = useState<string>(
     otherProviders.length > 0 ? otherProviders[0].id : ''
   );
 
-  const availableProfiles = profiles.filter((p) => p.provider === selectedProvider);
+  const availableProfiles = (profiles || []).filter((p) => p.provider === selectedProvider);
   const [selectedProfile, setSelectedProfile] = useState<string>(
     availableProfiles.length > 0 ? availableProfiles[0].name : 'default'
   );
@@ -34,7 +36,7 @@ export const ContinueModal: React.FC<ContinueModalProps> = ({
 
   const handleProviderChange = (prov: string) => {
     setSelectedProvider(prov);
-    const profs = profiles.filter((p) => p.provider === prov);
+    const profs = (profiles || []).filter((p) => p.provider === prov);
     setSelectedProfile(profs.length > 0 ? profs[0].name : 'default');
   };
 
@@ -60,10 +62,10 @@ export const ContinueModal: React.FC<ContinueModalProps> = ({
           <div className="flex items-center space-x-2">
             <FastForward className="w-5 h-5 text-emerald-400" />
             <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider font-mono">
-              Continue with Another AI
+              {t('continueModal.title')}
             </h3>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+          <button onClick={onClose} className="text-slate-400 hover:text-white" aria-label={t('common.closeDialog')}>
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -71,21 +73,21 @@ export const ContinueModal: React.FC<ContinueModalProps> = ({
         <div className="p-3 bg-indigo-950/40 border border-indigo-800/60 rounded flex items-start space-x-2.5 text-xs text-indigo-300 font-mono">
           <AlertTriangle className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
           <div>
-            <strong>A NEW SESSION WILL BE CREATED.</strong>
+            <strong>{t('continueModal.newSessionAlert')}</strong>
             <p className="mt-1 text-[11px] text-indigo-300/80">
-              Captures current git status, diff stats, and modified files with sensitive secrets redacted, and boots a clean agent thread in the target CLI.
+              {t('continueModal.newSessionDesc')}
             </p>
           </div>
         </div>
 
         {otherProviders.length === 0 ? (
           <div className="p-4 bg-amber-950/40 border border-amber-800/60 rounded text-amber-300 text-xs font-mono">
-            No other installed coding CLIs detected. Install Claude, Codex, Gemini, or OpenCode to continue across providers.
+            {t('continueModal.noOtherProviders')}
           </div>
         ) : (
           <div className="space-y-3">
             <div>
-              <label className="text-xs font-mono text-slate-400">Destination Provider:</label>
+              <label className="text-xs font-mono text-slate-400">{t('continueModal.destProvider')}</label>
               <select
                 value={selectedProvider}
                 onChange={(e) => handleProviderChange(e.target.value)}
@@ -100,7 +102,7 @@ export const ContinueModal: React.FC<ContinueModalProps> = ({
             </div>
 
             <div>
-              <label className="text-xs font-mono text-slate-400">Profile / Account:</label>
+              <label className="text-xs font-mono text-slate-400">{t('continueModal.profileAccount')}</label>
               <select
                 value={selectedProfile}
                 onChange={(e) => setSelectedProfile(e.target.value)}
@@ -131,14 +133,14 @@ export const ContinueModal: React.FC<ContinueModalProps> = ({
             onClick={onClose}
             className="px-3 py-1.5 rounded text-xs font-medium text-slate-400 hover:text-white"
           >
-            Cancel
+            {t('common.cancel', 'Cancel')}
           </button>
           <button
             disabled={loading || otherProviders.length === 0}
             onClick={handleContinue}
             className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded text-xs font-semibold shadow-md shadow-emerald-900/30 transition"
           >
-            {loading ? 'Continuing...' : 'Launch Target Session'}
+            {loading ? t('continueModal.continuing') : t('continueModal.launchTarget')}
           </button>
         </div>
       </div>

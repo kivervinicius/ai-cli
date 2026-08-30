@@ -140,7 +140,13 @@ export const ResourcePicker: React.FC<Props> = ({ agentId, preferProvider, onSel
                   <Badge>{account.profile}</Badge>
                   <Badge tone={healthTone(account.health)}>{translateStatus(account.health)}</Badge>
                   <Badge tone={account.available ? 'success' : 'danger'}>
-                    {account.available ? 'DISPONIVEL' : account.avail_reasons?.rate_limited ? 'RATE LIMITED' : account.avail_reasons?.exhausted_windows ? 'QUOTA ESGOTADA' : 'INDISPONIVEL'}
+                    {account.available
+                      ? translateStatus('AVAILABLE')
+                      : account.avail_reasons?.rate_limited
+                      ? translateStatus('RATE_LIMITED')
+                      : account.avail_reasons?.exhausted_windows
+                      ? translateStatus('QUOTA_EXHAUSTED')
+                      : translateStatus('UNAVAILABLE')}
                   </Badge>
                   {account.is_default && <Badge>{t('common.default')}</Badge>}
                   {selected && <Badge><Check size={12} /> {t('common.selected')}</Badge>}
