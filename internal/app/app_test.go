@@ -15,22 +15,22 @@ import (
 
 func TestMain(m *testing.M) {
 	if os.Getenv("AI_FAKE_PROVIDER") == "1" {
-		provider := strings.TrimSuffix(filepath.Base(os.Args[0]), filepath.Ext(os.Args[0]))
+		provider := os.Getenv("AI_FAKE_PROVIDER_NAME")
+		if provider == "" {
+			provider = strings.TrimSuffix(filepath.Base(os.Args[0]), filepath.Ext(os.Args[0]))
+		}
 		if out := os.Getenv("AI_TEST_OUT"); out != "" {
 			var b strings.Builder
 			b.WriteString("provider=")
 			b.WriteString(provider)
-			b.WriteByte('\n')
+			b.WriteString("\nhome=")
 			if provider == "codex" {
-				b.WriteString("home=")
 				b.WriteString(os.Getenv("CODEX_HOME"))
 			} else {
-				b.WriteString("home=")
 				b.WriteString(os.Getenv("HOME"))
 			}
-			b.WriteByte('\n')
-			b.WriteString("cwd=")
 			cwd, _ := os.Getwd()
+			b.WriteString("\ncwd=")
 			b.WriteString(cwd)
 			for _, arg := range os.Args[1:] {
 				b.WriteString("\narg=")
@@ -79,7 +79,15 @@ func setupTestEnvironment(t *testing.T) (binDir, testOut string) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(binDir, name+".exe"), data, 0755); err != nil {
+			if err := os.WriteFile(filepath.Join(binDir, "fake-provider.exe"), data, 0755); err != nil {
+				t.Fatal(err)
+			}
+			batch := "@echo off\r\n" +
+				"set AI_FAKE_PROVIDER=1\r\n" +
+				"set AI_FAKE_PROVIDER_NAME=" + name + "\r\n" +
+				"\"%~dp0fake-provider.exe\" -test.run=^TestFakeProviderProcess$ %*\r\n" +
+				"exit /b 0\r\n"
+			if err := os.WriteFile(filepath.Join(binDir, name+".cmd"), []byte(batch), 0644); err != nil {
 				t.Fatal(err)
 			}
 			return
@@ -141,9 +149,6 @@ exec "$@"`)
 exit 0`)
 
 	t.Setenv("PATH", binDir+string(filepath.ListSeparator)+os.Getenv("PATH"))
-	if runtime.GOOS == "windows" {
-		t.Setenv("AI_FAKE_PROVIDER", "1")
-	}
 	return binDir, testOut
 }
 
