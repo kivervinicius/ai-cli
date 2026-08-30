@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os/exec"
 	"strings"
@@ -1201,6 +1202,10 @@ func (h *NexusHandler) handlePlanDetail(w http.ResponseWriter, r *http.Request) 
 		body.Plan.ID = planID
 		updated, rev, err := h.nexus.UpdateWorkPlan(r.Context(), body.Plan, body.ChangeSummary)
 		if err != nil {
+			if errors.Is(err, store.ErrPlanRevisionConflict) {
+				writeError(w, http.StatusConflict, err.Error())
+				return
+			}
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -1263,32 +1268,43 @@ func (h *NexusHandler) handlePlanRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		AgentID               string   `json:"agent_id"`
-		MaxRetry              int      `json:"max_retries"`
-		MaxTotalIterations    int      `json:"max_total_iterations"`
-		PackageTimeoutSeconds int      `json:"package_timeout_seconds"`
-		VerificationCommands  []string `json:"verification_commands"`
-		Autonomous            *bool    `json:"autonomous"`
+		AgentID               string                        `json:"agent_id"`
+		ApprovedRevision      int                           `json:"approved_revision"`
+		Contract              *runner.AutonomyContractPatch `json:"contract"`
+		MaxRetry              int                           `json:"max_retries"`
+		MaxTotalIterations    int                           `json:"max_total_iterations"`
+		PackageTimeoutSeconds int                           `json:"package_timeout_seconds"`
+		VerificationCommands  []string                      `json:"verification_commands"`
+		Autonomous            *bool                         `json:"autonomous"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
-	contract := runner.DefaultAutonomyContract()
-	if body.MaxRetry > 0 {
-		contract.MaxRetries = body.MaxRetry
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
 	}
-	if body.MaxTotalIterations > 0 {
-		contract.MaxTotalIterations = body.MaxTotalIterations
+	patch := body.Contract
+	// Backward compatibility for older clients that sent a small flat contract.
+	if patch == nil && (body.MaxRetry > 0 || body.MaxTotalIterations > 0 || body.PackageTimeoutSeconds > 0 || len(body.VerificationCommands) > 0) {
+		patch = &runner.AutonomyContractPatch{}
+		if body.MaxRetry > 0 {
+			patch.MaxRetries = &body.MaxRetry
+		}
+		if body.MaxTotalIterations > 0 {
+			patch.MaxTotalIterations = &body.MaxTotalIterations
+		}
+		if body.PackageTimeoutSeconds > 0 {
+			patch.PackageTimeoutSeconds = &body.PackageTimeoutSeconds
+		}
+		if len(body.VerificationCommands) > 0 {
+			commands := append([]string(nil), body.VerificationCommands...)
+			patch.VerificationCommands = &commands
+		}
 	}
-	if body.PackageTimeoutSeconds > 0 {
-		contract.PackageTimeoutSeconds = body.PackageTimeoutSeconds
-	}
-	if len(body.VerificationCommands) > 0 {
-		contract.VerificationCommands = body.VerificationCommands
-	}
+	contract := runner.ApplyAutonomyContractPatch(patch)
 	autonomous := true
 	if body.Autonomous != nil {
 		autonomous = *body.Autonomous
 	}
-	run, err := h.nexus.StartMissionRun(r.Context(), planID, body.AgentID, contract, autonomous)
+	run, err := h.nexus.StartMissionRunApproved(r.Context(), planID, body.ApprovedRevision, body.AgentID, contract, autonomous)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1475,13 +1491,14 @@ func (h *NexusHandler) handleMissionSchedules(w http.ResponseWriter, r *http.Req
 		writeJSON(w, http.StatusOK, items)
 	case http.MethodPost:
 		var body struct {
-			PlanID       string                  `json:"plan_id"`
-			Mode         string                  `json:"mode"`
-			ScheduledFor string                  `json:"scheduled_for"`
-			AfterRunID   string                  `json:"after_run_id"`
-			AgentID      string                  `json:"agent_id"`
-			CancelID     string                  `json:"cancel_id"`
-			Contract     runner.AutonomyContract `json:"contract"`
+			PlanID           string                        `json:"plan_id"`
+			ApprovedRevision int                           `json:"approved_revision"`
+			Mode             string                        `json:"mode"`
+			ScheduledFor     string                        `json:"scheduled_for"`
+			AfterRunID       string                        `json:"after_run_id"`
+			AgentID          string                        `json:"agent_id"`
+			CancelID         string                        `json:"cancel_id"`
+			Contract         *runner.AutonomyContractPatch `json:"contract"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid body")
@@ -1495,10 +1512,7 @@ func (h *NexusHandler) handleMissionSchedules(w http.ResponseWriter, r *http.Req
 			writeJSON(w, http.StatusOK, map[string]bool{"canceled": true})
 			return
 		}
-		contract := body.Contract
-		if contract.MaxRetries == 0 {
-			contract = runner.DefaultAutonomyContract()
-		}
+		contract := runner.ApplyAutonomyContractPatch(body.Contract)
 		var when *time.Time
 		if strings.TrimSpace(body.ScheduledFor) != "" {
 			parsed, err := time.Parse(time.RFC3339, body.ScheduledFor)
@@ -1508,7 +1522,7 @@ func (h *NexusHandler) handleMissionSchedules(w http.ResponseWriter, r *http.Req
 			}
 			when = &parsed
 		}
-		item, err := h.nexus.ScheduleMission(r.Context(), body.PlanID, body.Mode, when, body.AfterRunID, body.AgentID, contract)
+		item, err := h.nexus.ScheduleMission(r.Context(), body.PlanID, body.ApprovedRevision, body.Mode, when, body.AfterRunID, body.AgentID, contract)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return

@@ -6,6 +6,7 @@ import {
   agentTerminalWebSocketURL,
   normalizeInitialPrompt,
   normalizeTerminalRole,
+  terminalLeaseCommand,
   terminalReconnectDelay,
   type TerminalRole,
 } from './agentTerminalModel';
@@ -102,9 +103,14 @@ export const AgentTerminal: React.FC<{
           if (payload.type === 'output' && payload.data) {
             term.write(payload.data);
           } else if (payload.type === 'lease') {
+            const previous = roleRef.current;
             const next = normalizeTerminalRole(payload.role);
             roleRef.current = next;
             setRole(next);
+            const leaseCommand = terminalLeaseCommand(previous, next);
+            if (leaseCommand && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: leaseCommand }));
+            }
             maybeSendKickoff();
           } else if (payload.type === 'runtime_changed') {
             setMessage('Runtime generation changed — rebinding terminal…');

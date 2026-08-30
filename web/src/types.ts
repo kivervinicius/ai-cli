@@ -283,7 +283,7 @@ export interface WorkPackage {
   title: string;
   goal: string;
   priority: 'CRITICAL' | 'HIGH' | 'NORMAL' | 'LOW';
-  status: 'PENDING' | 'READY' | 'ALLOCATING' | 'COMPILING' | 'EXECUTING' | 'TESTING' | 'REVIEWING' | 'VERIFIED' | 'FAILED' | 'BLOCKED';
+  status: 'PENDING' | 'READY' | 'ALLOCATING' | 'COMPILING' | 'COMPILING_PROMPT' | 'EXECUTING' | 'TESTING' | 'REVIEWING' | 'VERIFYING' | 'REMEDIATING' | 'VERIFIED' | 'FAILED' | 'BLOCKED';
   dependencies: string[];
   parallel_group?: string;
   role: string;
@@ -383,6 +383,7 @@ export interface PlanRevisionDiff {
 export interface AutonomyContract {
   max_retries: number;
   max_total_iterations: number;
+  max_no_progress: number;
   package_timeout_seconds: number;
   auto_remediate: boolean;
   require_verification: boolean;
@@ -393,6 +394,9 @@ export interface AutonomyContract {
   allow_tool_auto_approval: boolean;
   allow_git_push: boolean;
   allow_deploy: boolean;
+  allow_external_network: boolean;
+  allow_secret_access: boolean;
+  allow_paid_services: boolean;
 }
 
 export interface VerificationResult {
@@ -434,6 +438,19 @@ export interface PackageRun {
   finished_at?: string;
 }
 
+export interface ManualIntervention {
+  id: string;
+  package_id: string;
+  agent_id: string;
+  workspace: string;
+  reason: string;
+  before_fingerprint: string;
+  after_fingerprint?: string;
+  changed_paths?: string[];
+  started_at: string;
+  completed_at?: string;
+}
+
 export interface MissionRun {
   id: string;
   plan_id: string;
@@ -446,6 +463,7 @@ export interface MissionRun {
   current_pkg_index: number;
   total_iterations: number;
   package_runs: PackageRun[];
+  manual_interventions?: ManualIntervention[];
   paused_reason?: string;
   started_at: string;
   updated_at: string;
@@ -459,7 +477,7 @@ export interface MissionSchedule {
   mode: 'AT' | 'AFTER_RUN' | 'WHEN_RESOURCES';
   scheduled_for?: string;
   after_run_id?: string;
-  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'CANCELED' | 'FAILED';
+  status: 'PENDING' | 'CLAIMED' | 'RUNNING' | 'COMPLETED' | 'CANCELED' | 'FAILED';
   run_id?: string;
   created_at: string;
   updated_at: string;

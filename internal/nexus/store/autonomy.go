@@ -131,8 +131,8 @@ func (s *Store) AcquireMissionLease(id, owner string, ttl time.Duration) (*Missi
 	expires := now.Add(ttl)
 	token := "lease_" + ids.NewRuntimeID()
 	res, err := s.db.Exec(`UPDATE mission_runs SET lease_owner=?,lease_token=?,lease_expires_at=?,heartbeat_at=?,updated_at=?
-		WHERE id=? AND (lease_owner='' OR lease_owner=? OR lease_expires_at IS NULL OR lease_expires_at<=?)`,
-		owner, token, expires.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), id, owner, now.Format(time.RFC3339Nano))
+		WHERE id=? AND (lease_owner='' OR lease_expires_at IS NULL OR lease_expires_at<=?)`,
+		owner, token, expires.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), id, now.Format(time.RFC3339Nano))
 	if err != nil {
 		return nil, err
 	}

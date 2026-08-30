@@ -1,6 +1,7 @@
 /* Nexus product API client (projects, agents, layouts, config). */
 
 import { Project, Agent, AgentDetail, RuntimeSession, AgentConfig, ConfigImpact } from '../types';
+import type { AutonomyContract } from '../types';
 
 export class NexusAPIError<TPayload = unknown> extends Error {
   readonly status: number;
@@ -227,10 +228,15 @@ export const nexus = {
       method: 'POST',
       body: JSON.stringify({ package_id: packageId, phase_id: phaseId }),
     }),
-  runPlan: (planId: string, agentId?: string, maxRetries?: number) =>
+  runPlan: (planId: string, options?: { agentId?: string; contract?: AutonomyContract; autonomous?: boolean; approvedRevision?: number }) =>
     request<import('../types').MissionRun>(`/api/v1/plans/${planId}/run`, {
       method: 'POST',
-      body: JSON.stringify({ agent_id: agentId, max_retries: maxRetries, autonomous: true }),
+      body: JSON.stringify({
+        agent_id: options?.agentId,
+        contract: options?.contract,
+        autonomous: options?.autonomous ?? true,
+        approved_revision: options?.approvedRevision,
+      }),
     }),
   getRuns: () =>
     request<import('../types').MissionRun[]>('/api/v1/runs'),
@@ -250,10 +256,18 @@ export const nexus = {
     request<import('../types').MissionRun>(`/api/v1/runs/${runId}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   getSchedules: (projectId: string) =>
     request<import('../types').MissionSchedule[]>(`/api/v1/schedules?project_id=${encodeURIComponent(projectId)}`),
-  schedulePlan: (planId: string, mode: 'AT' | 'AFTER_RUN' | 'WHEN_RESOURCES', options?: { scheduledFor?: string; afterRunId?: string; agentId?: string }) =>
+  schedulePlan: (planId: string, mode: 'AT' | 'AFTER_RUN' | 'WHEN_RESOURCES', options?: { scheduledFor?: string; afterRunId?: string; agentId?: string; contract?: AutonomyContract; approvedRevision?: number }) =>
     request<import('../types').MissionSchedule>('/api/v1/schedules', {
       method: 'POST',
-      body: JSON.stringify({ plan_id: planId, mode, scheduled_for: options?.scheduledFor, after_run_id: options?.afterRunId, agent_id: options?.agentId }),
+      body: JSON.stringify({
+        plan_id: planId,
+        mode,
+        scheduled_for: options?.scheduledFor,
+        after_run_id: options?.afterRunId,
+        agent_id: options?.agentId,
+        contract: options?.contract,
+        approved_revision: options?.approvedRevision,
+      }),
     }),
   cancelSchedule: (scheduleId: string) =>
     request<{ canceled: boolean }>('/api/v1/schedules', { method: 'POST', body: JSON.stringify({ cancel_id: scheduleId }) }),

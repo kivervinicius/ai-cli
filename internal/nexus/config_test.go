@@ -254,3 +254,26 @@ func TestResolveStartParamsRejectsUnpersistedOverride(t *testing.T) {
 		t.Fatalf("expected persisted-resource error, got %v", err)
 	}
 }
+
+func TestSafeApplyRestartPreservesRuntimeAgentIdentity(t *testing.T) {
+	n := openTestNexus(t)
+	st, _ := n.OpenProject()
+	proj, _ := st.CreateProject(store.Project{Name: "P", CanonicalPath: t.TempDir()})
+	agent, _ := st.CreateAgent(store.Agent{ProjectID: proj.ID, Name: "Dev"})
+	initial := AgentConfig{Provider: "claude", Profile: "default"}
+	if _, err := n.SafeApply(context.Background(), agent.ID, initial); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.StartAgent(context.Background(), agent.ID, "claude", "default"); err != nil {
+		t.Fatal(err)
+	}
+	proposed := initial
+	proposed.Model = "sonnet"
+	if _, err := n.SafeApply(context.Background(), agent.ID, proposed); err != nil {
+		t.Fatal(err)
+	}
+	mock := n.launcher.(*mockLauncher)
+	if mock.lastOptions.AgentID != agent.ID {
+		t.Fatalf("SafeApply launch lost AgentID: got %q want %q", mock.lastOptions.AgentID, agent.ID)
+	}
+}

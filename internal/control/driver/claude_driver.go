@@ -112,6 +112,8 @@ func (d *ClaudeDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effec
 			Mechanism:       "claude -p (print mode)",
 			Tested:          true,
 		},
+		AutonomousCoding: CapabilityEvidence{Status: CapabilitySupported, ProviderVersion: version, Mechanism: "claude -p with explicit permission policy", Tested: true},
+		ReadOnlyReview:   CapabilityEvidence{Status: CapabilitySupported, ProviderVersion: version, Mechanism: "claude --permission-mode plan", Tested: true},
 		SlashControl: CapabilityEvidence{
 			Status:    CapabilitySupported,
 			Mechanism: "Universal /ai slash command router",
@@ -167,4 +169,22 @@ func (d *ClaudeDriver) BuildResumeArgs(ctx context.Context, p model.Profile, pro
 
 func (d *ClaudeDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error) {
 	return []string{"-p", kickoffPrompt}, nil
+}
+
+func (d *ClaudeDriver) BuildAutonomousArgs(ctx context.Context, p model.Profile, kickoffPrompt string, mode AutonomousMode, policy AutonomousPolicy) ([]string, error) {
+	args, err := d.BuildKickoffArgs(ctx, p, kickoffPrompt)
+	if err != nil {
+		return nil, err
+	}
+	switch mode {
+	case AutonomousReview:
+		return append(args, "--permission-mode", "plan", "--output-format", "text"), nil
+	case AutonomousCoding:
+		if !policy.AllowToolAutoApproval {
+			return nil, fmt.Errorf("claude autonomous coding requires explicit tool auto approval")
+		}
+		return append(args, "--dangerously-skip-permissions", "--output-format", "text"), nil
+	default:
+		return nil, fmt.Errorf("unsupported autonomous mode %q", mode)
+	}
 }

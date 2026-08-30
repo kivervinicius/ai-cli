@@ -16,7 +16,10 @@ import (
 // mockLauncher satisfies the Launcher interface for unit tests without spawning
 // real processes. It registers runtimes in the DefaultRegistry so runtimeAlive()
 // returns true for mocked sessions, and tracks Stop calls.
-type mockLauncher struct{}
+type mockLauncher struct {
+	lastOptions launcher.LaunchOptions
+	launches    int
+}
 
 func newMockLauncher() *mockLauncher {
 	// Reset the singleton so each test gets an isolated registry.
@@ -25,11 +28,14 @@ func newMockLauncher() *mockLauncher {
 }
 
 func (m *mockLauncher) Launch(_ context.Context, opts launcher.LaunchOptions) (*registry.RuntimeSession, error) {
+	m.lastOptions = opts
+	m.launches++
 	if opts.ProviderID == "" {
 		return nil, fmt.Errorf("provider is required")
 	}
 	sess := registry.RuntimeSession{
 		RuntimeID:         opts.RuntimeID,
+		AgentID:           opts.AgentID,
 		ProviderID:        opts.ProviderID,
 		ProfileID:         opts.ProfileID,
 		ProviderSessionID: opts.ProviderSessionID,
@@ -130,5 +136,21 @@ func TestRecoverAgentRequiresKnownRuntime(t *testing.T) {
 	}
 	if agent.ID == "" {
 		t.Fatal("agent id empty")
+	}
+}
+
+func TestStartAgentRejectsDuplicateLiveRuntime(t *testing.T) {
+	n := openTestNexus(t)
+	st, _ := n.OpenProject()
+	proj, _ := st.CreateProject(store.Project{Name: "P", CanonicalPath: t.TempDir()})
+	agent, _ := st.CreateAgent(store.Agent{ProjectID: proj.ID, Name: "Dev"})
+	if _, err := n.SafeApply(context.Background(), agent.ID, AgentConfig{Provider: "claude", Profile: "default"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.StartAgent(context.Background(), agent.ID, "claude", "default"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.StartAgent(context.Background(), agent.ID, "claude", "default"); err == nil {
+		t.Fatal("second StartAgent must reject an already-live Agent runtime")
 	}
 }

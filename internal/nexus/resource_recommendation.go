@@ -19,6 +19,8 @@ type TaskRequirements struct {
 	PreferProvider       string   `json:"prefer_provider,omitempty"`
 	ProjectPolicy        string   `json:"project_policy,omitempty"`
 	AgentPreference      string   `json:"agent_preference,omitempty"`
+	ProviderLock         string   `json:"provider_lock,omitempty"`
+	ProfileLock          string   `json:"profile_lock,omitempty"`
 }
 
 // ResourceCandidate represents an evaluated provider account scored for a specific task.
@@ -102,6 +104,20 @@ func evaluateCandidate(acc ProviderAccount, req TaskRequirements, policy Schedul
 		Cons:           make([]string, 0),
 		Eligible:       true,
 		Confidence:     "UNKNOWN",
+	}
+
+	// Hard Gate 0: an explicit provider/profile lock is authoritative.
+	if lock := strings.TrimSpace(req.ProviderLock); lock != "" && !strings.EqualFold(acc.Provider, lock) {
+		c.Eligible = false
+		c.RejectionReason = fmt.Sprintf("Provider bloqueado para %s", lock)
+		c.Cons = append(c.Cons, c.RejectionReason)
+		return c
+	}
+	if lock := strings.TrimSpace(req.ProfileLock); lock != "" && acc.Profile != lock {
+		c.Eligible = false
+		c.RejectionReason = fmt.Sprintf("Profile bloqueado para %s", lock)
+		c.Cons = append(c.Cons, c.RejectionReason)
+		return c
 	}
 
 	// Hard Gate 1: Must be authenticated
@@ -204,23 +220,27 @@ func evaluateCandidate(acc ProviderAccount, req TaskRequirements, policy Schedul
 	c.ScoreBreakdown["affinity"] = affinityScore
 	score += affinityScore
 
-	// 4. Role & Capability Fit (0 to 20 pts)
+	// 4. Role & Capability Fit (0 to 20 pts). Never infer competence from
+	// provider brand/name; drivers publish the capabilities used here.
 	roleScore := 10.0
+	supported := func(name string) bool {
+		return strings.EqualFold(strings.TrimSpace(acc.Capabilities[normalizeCapabilityName(name)]), "SUPPORTED")
+	}
 	switch req.Role {
 	case "reviewer", "tester":
-		if acc.Provider == "codex" || acc.Provider == "claude" {
+		if supported("read_only_review") {
 			roleScore = 20.0
-			c.Pros = append(c.Pros, "Especialista para revisão e verificação técnica")
+			c.Pros = append(c.Pros, "Capability explícita para revisão independente/read-only")
 		}
 	case "implementer":
-		if acc.Provider == "codex" || acc.Provider == "claude" || acc.Provider == "agy" {
+		if supported("autonomous_coding") {
 			roleScore = 20.0
-			c.Pros = append(c.Pros, "Alta performance para implementação de código")
+			c.Pros = append(c.Pros, "Capability explícita para implementação autônoma")
 		}
 	case "architect", "planner":
-		if acc.Provider == "claude" || acc.Provider == "codex" {
+		if supported("headless") && supported("submit_prompt") {
 			roleScore = 20.0
-			c.Pros = append(c.Pros, "Capacidade avançada de raciocínio e decomposição")
+			c.Pros = append(c.Pros, "Capabilities explícitas para planejamento headless")
 		}
 	}
 	c.ScoreBreakdown["role_fit"] = roleScore

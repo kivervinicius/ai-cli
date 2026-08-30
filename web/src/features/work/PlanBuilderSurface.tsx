@@ -20,8 +20,11 @@ import {
 } from 'lucide-react';
 import { Badge, Button, Card, InlineAlert, Input } from '../../design-system';
 import { nexusApi } from '../../nexus/api';
-import type { Agent, ClarificationCheckpoint, MissionRun, MissionSchedule, PlanPhase, PlanRevision, PlanRevisionDiff, Project, WorkPackage, WorkPlan } from '../../types';
+import type { Agent, AutonomyContract, ClarificationCheckpoint, MissionRun, MissionSchedule, PlanPhase, PlanRevision, PlanRevisionDiff, Project, WorkPackage, WorkPlan } from '../../types';
 import { clarificationFromError, unresolvedBlocking } from './clarificationModel';
+import { defaultMissionAutonomyContract } from './missionAutonomyModel';
+import { MissionAutonomyCard } from './MissionAutonomyCard';
+import { getProviderLock, mergePackages, planSuggestionDiff, setProviderLock, splitPackage } from './planBuilderModel';
 
 export const PlanBuilderSurface: React.FC<{
   project: Project;
@@ -38,6 +41,9 @@ export const PlanBuilderSurface: React.FC<{
   const [activeRun, setActiveRun] = useState<MissionRun | null>(null);
   const [schedules, setSchedules] = useState<MissionSchedule[]>([]);
   const [scheduleAt, setScheduleAt] = useState('');
+  const [afterRunId, setAfterRunId] = useState('');
+  const [recentRuns, setRecentRuns] = useState<MissionRun[]>([]);
+  const [autonomyContract, setAutonomyContract] = useState<AutonomyContract>(() => defaultMissionAutonomyContract());
   const [revisions, setRevisions] = useState<PlanRevision[]>([]);
   const [revisionDiff, setRevisionDiff] = useState<PlanRevisionDiff | null>(null);
   const [dragPackage, setDragPackage] = useState<{ phaseId: string; packageId: string } | null>(null);
@@ -46,6 +52,8 @@ export const PlanBuilderSurface: React.FC<{
   const [clarification, setClarification] = useState<ClarificationCheckpoint | null>(null);
   const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
   const [planError, setPlanError] = useState('');
+  const [resources, setResources] = useState<any[]>([]);
+  const [pendingAIPlan, setPendingAIPlan] = useState<{ plan: WorkPlan; diff: ReturnType<typeof planSuggestionDiff> } | null>(null);
 
   const loadPlans = useCallback(async () => {
     try {
@@ -73,6 +81,18 @@ export const PlanBuilderSurface: React.FC<{
   useEffect(() => {
     nexusApi.getSchedules(project.id).then(setSchedules).catch((error) => console.error('Failed to load mission schedules:', error));
   }, [project.id]);
+
+  useEffect(() => {
+    nexusApi.listResources()
+      .then((result) => setResources((result.accounts || []).filter((account: any) => account.authenticated && account.available)))
+      .catch((error) => console.error('Failed to load provider/profile locks:', error));
+  }, [project.id]);
+
+  useEffect(() => {
+    nexusApi.getRuns()
+      .then((runs) => setRecentRuns((runs || []).filter((run) => run.project_id === project.id)))
+      .catch((error) => console.error('Failed to load Mission dependencies:', error));
+  }, [project.id, activeRun?.id, activeRun?.state]);
 
   useEffect(() => {
     if (!selectedPlan) { setRevisions([]); return; }
@@ -120,7 +140,7 @@ export const PlanBuilderSurface: React.FC<{
         goal: autoGoal,
         auto_plan: true,
       });
-      selectGeneratedPlan(plan);
+      setPendingAIPlan({ plan, diff: planSuggestionDiff(selectedPlan, plan) });
     } catch (e) {
       const checkpoint = clarificationFromError(e);
       if (checkpoint) {
@@ -287,6 +307,50 @@ export const PlanBuilderSurface: React.FC<{
     }
   };
 
+  const handleSplitPackage = async (phaseId: string, packageId: string) => {
+    if (!selectedPlan) return;
+    try {
+      const next = splitPackage(selectedPlan, phaseId, packageId, `pkg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+      await persistPlan(next, 'Pacote dividido preservando dependências DAG');
+    } catch (error) {
+      setPlanError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const handleMergeNextPackage = async (phaseId: string, packageId: string) => {
+    if (!selectedPlan) return;
+    const phase = selectedPlan.phases.find((item) => item.id === phaseId);
+    const index = phase?.packages.findIndex((item) => item.id === packageId) ?? -1;
+    const nextPackage = phase && index >= 0 ? phase.packages[index + 1] : undefined;
+    if (!nextPackage) return;
+    try {
+      await persistPlan(mergePackages(selectedPlan, phaseId, packageId, nextPackage.id), 'Pacotes mesclados e dependências reescritas');
+    } catch (error) {
+      setPlanError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const handleProviderLock = async (phaseId: string, pkg: WorkPackage, value: string) => {
+    const [provider = '', profile = ''] = value ? value.split('::') : ['', ''];
+    try {
+      await patchPackage(phaseId, pkg.id, { task_requirements: setProviderLock(pkg.task_requirements, provider, profile) }, provider ? `Provider lock: ${provider}/${profile}` : 'Provider lock removido');
+    } catch (error) {
+      setPlanError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const handleApplyAISuggestion = () => {
+    if (!pendingAIPlan) return;
+    selectGeneratedPlan(pendingAIPlan.plan);
+    setPendingAIPlan(null);
+  };
+
+  const handleRejectAISuggestion = async () => {
+    if (!pendingAIPlan) return;
+    try { await nexusApi.deletePlan(pendingAIPlan.plan.id); } catch (error) { console.error('Failed to discard AI plan suggestion:', error); }
+    setPendingAIPlan(null);
+  };
+
   const handleCompilePrompt = async (packageId: string, phaseId: string) => {
     if (!selectedPlan) return;
     try {
@@ -300,7 +364,7 @@ export const PlanBuilderSurface: React.FC<{
   const handleLaunchRun = async () => {
     if (!selectedPlan) return;
     try {
-      const run = await nexusApi.runPlan(selectedPlan.id, agents[0]?.id);
+      const run = await nexusApi.runPlan(selectedPlan.id, { contract: autonomyContract, autonomous: true, approvedRevision: selectedPlan.current_revision });
       setActiveRun(run);
     } catch (e) {
       console.error('Failed to launch run:', e);
@@ -352,7 +416,7 @@ export const PlanBuilderSurface: React.FC<{
   const handleScheduleAt = async () => {
     if (!selectedPlan || !scheduleAt) return;
     try {
-      const item = await nexusApi.schedulePlan(selectedPlan.id, 'AT', { scheduledFor: new Date(scheduleAt).toISOString(), agentId: agents[0]?.id });
+      const item = await nexusApi.schedulePlan(selectedPlan.id, 'AT', { scheduledFor: new Date(scheduleAt).toISOString(), contract: autonomyContract, approvedRevision: selectedPlan.current_revision });
       setSchedules((prev) => [item, ...prev]);
       setScheduleAt('');
     } catch (e) {
@@ -363,10 +427,21 @@ export const PlanBuilderSurface: React.FC<{
   const handleWhenResources = async () => {
     if (!selectedPlan) return;
     try {
-      const item = await nexusApi.schedulePlan(selectedPlan.id, 'WHEN_RESOURCES', { agentId: agents[0]?.id });
+      const item = await nexusApi.schedulePlan(selectedPlan.id, 'WHEN_RESOURCES', { contract: autonomyContract, approvedRevision: selectedPlan.current_revision });
       setSchedules((prev) => [item, ...prev]);
     } catch (e) {
       console.error('Failed to schedule mission for resource availability:', e);
+    }
+  };
+
+  const handleAfterRun = async () => {
+    if (!selectedPlan || !afterRunId) return;
+    try {
+      const item = await nexusApi.schedulePlan(selectedPlan.id, 'AFTER_RUN', { afterRunId, contract: autonomyContract, approvedRevision: selectedPlan.current_revision });
+      setSchedules((prev) => [item, ...prev]);
+      setAfterRunId('');
+    } catch (e) {
+      console.error('Failed to schedule dependent Mission:', e);
     }
   };
 
@@ -406,6 +481,27 @@ export const PlanBuilderSurface: React.FC<{
           </Button>
         </div>
       </Card>
+
+      {pendingAIPlan && (
+        <Card style={{ marginBottom: '16px', padding: '16px', border: '1px solid var(--color-brand-border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start' }}>
+            <div>
+              <strong>AI plan suggestion — review required</strong>
+              <div style={{ marginTop: 6, fontSize: 12, color: 'var(--color-text-muted)' }}>
+                +{pendingAIPlan.diff.added.length} added · -{pendingAIPlan.diff.removed.length} removed · ~{pendingAIPlan.diff.changed.length} changed.
+                The current approved plan has not been modified.
+              </div>
+              {pendingAIPlan.diff.added.length > 0 && <div style={{ marginTop: 4, fontSize: 11 }}>Added: {pendingAIPlan.diff.added.join(', ')}</div>}
+              {pendingAIPlan.diff.removed.length > 0 && <div style={{ marginTop: 4, fontSize: 11 }}>Removed: {pendingAIPlan.diff.removed.join(', ')}</div>}
+              {pendingAIPlan.diff.changed.length > 0 && <div style={{ marginTop: 4, fontSize: 11 }}>Changed: {pendingAIPlan.diff.changed.join(', ')}</div>}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button onClick={() => void handleRejectAISuggestion()}>Reject</Button>
+              <Button tone="brand" onClick={handleApplyAISuggestion}>Apply suggestion</Button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {planError && (
         <InlineAlert tone="danger" title="Nexus Intelligence could not generate the plan">
@@ -495,7 +591,7 @@ export const PlanBuilderSurface: React.FC<{
                 <Plus size={14} /> Adicionar Fase
               </Button>
               <Button tone="brand" disabled={!selectedPlan} onClick={handleLaunchRun}>
-                <Play size={14} /> Executar Plano
+                <Play size={14} /> Approve Contract & Run Mission
               </Button>
             </div>
           </div>
@@ -566,6 +662,8 @@ export const PlanBuilderSurface: React.FC<{
                             <Button size="sm" onClick={() => handleCompilePrompt(pkg.id, phase.id)}>
                             <Copy size={12} /> Compilar Prompt
                           </Button>
+                            <Button size="sm" disabled={(pkg.acceptance_criteria || []).length < 2} onClick={() => void handleSplitPackage(phase.id, pkg.id)}>Split</Button>
+                            <Button size="sm" disabled={phase.packages[phase.packages.findIndex((item) => item.id === pkg.id) + 1] == null} onClick={() => void handleMergeNextPackage(phase.id, pkg.id)}>Merge next</Button>
                             <Button size="sm" onClick={() => void handleDeletePackage(phase.id, pkg.id)}><Trash2 size={12} /></Button>
                           </div>
                         </div>
@@ -582,6 +680,15 @@ export const PlanBuilderSurface: React.FC<{
                             <select value={pkg.agent_allocation || ''} onChange={(event) => void patchPackage(phase.id, pkg.id, { agent_allocation: event.target.value }, 'Agent allocation alterado')}>
                               <option value="">Auto scheduler</option>
                               {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                            </select>
+                          </label>
+                          <label style={{ display: 'grid', gap: 4 }}>Provider/profile lock
+                            <select
+                              value={(() => { const lock = getProviderLock(pkg.task_requirements); return lock.provider ? `${lock.provider}::${lock.profile}` : ''; })()}
+                              onChange={(event) => void handleProviderLock(phase.id, pkg, event.target.value)}
+                            >
+                              <option value="">Auto scheduler</option>
+                              {resources.map((account: any) => <option key={account.id || `${account.provider}:${account.profile}`} value={`${account.provider}::${account.profile}`}>{account.display_name || account.provider} · {account.profile}</option>)}
                             </select>
                           </label>
                           <label style={{ display: 'grid', gap: 4 }}>Parallel group
@@ -640,6 +747,8 @@ export const PlanBuilderSurface: React.FC<{
             </div>
           </Card>
 
+          <MissionAutonomyCard value={autonomyContract} onChange={setAutonomyContract} />
+
           <Card style={{ padding: '16px' }}>
             <div style={{ fontWeight: 600, marginBottom: 10 }}>Mission Scheduling</div>
             <div style={{ display: 'grid', gap: 8 }}>
@@ -653,12 +762,21 @@ export const PlanBuilderSurface: React.FC<{
                 <Button disabled={!selectedPlan || !scheduleAt} onClick={handleScheduleAt}>Schedule date/time</Button>
                 <Button disabled={!selectedPlan} onClick={handleWhenResources}>When resources free</Button>
               </div>
-              {activeRun && selectedPlan && (
-                <Button onClick={async () => {
-                  const item = await nexusApi.schedulePlan(selectedPlan.id, 'AFTER_RUN', { afterRunId: activeRun.id, agentId: agents[0]?.id });
-                  setSchedules((prev) => [item, ...prev]);
-                }}>Run after current Mission</Button>
-              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+                <select
+                  value={afterRunId}
+                  onChange={(event) => setAfterRunId(event.target.value)}
+                  aria-label="Mission dependency"
+                  style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'inherit', minWidth: 0 }}
+                >
+                  <option value="">After another Mission…</option>
+                  {recentRuns.filter((run) => run.id !== activeRun?.id).map((run) => (
+                    <option key={run.id} value={run.id}>{run.id.slice(0, 12)} · {run.state}</option>
+                  ))}
+                  {activeRun ? <option value={activeRun.id}>{activeRun.id.slice(0, 12)} · current {activeRun.state}</option> : null}
+                </select>
+                <Button disabled={!selectedPlan || !afterRunId} onClick={handleAfterRun}>Run after Mission</Button>
+              </div>
               {schedules.slice(0, 3).map((item) => (
                 <div key={item.id} style={{ fontSize: 11, color: 'var(--color-text-muted)', display: 'flex', justifyContent: 'space-between' }}>
                   <span>{item.mode}{item.scheduled_for ? ` · ${new Date(item.scheduled_for).toLocaleString()}` : ''}</span>

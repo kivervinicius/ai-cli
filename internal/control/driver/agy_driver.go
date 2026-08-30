@@ -112,6 +112,8 @@ func (d *AGYDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effectiv
 			Mechanism:       "agy -p (print mode)",
 			Tested:          true,
 		},
+		AutonomousCoding: CapabilityEvidence{Status: CapabilitySupported, ProviderVersion: version, Mechanism: "agy -p with explicit permission policy", Tested: true},
+		ReadOnlyReview:   CapabilityEvidence{Status: CapabilityUnsupported, ProviderVersion: version, Reason: "no verified read-only headless review mode", Tested: true},
 		SlashControl: CapabilityEvidence{
 			Status:    CapabilitySupported,
 			Mechanism: "Universal /ai slash command router",
@@ -167,4 +169,21 @@ func (d *AGYDriver) BuildResumeArgs(ctx context.Context, p model.Profile, provid
 
 func (d *AGYDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error) {
 	return []string{"-p", kickoffPrompt}, nil
+}
+
+func (d *AGYDriver) BuildAutonomousArgs(ctx context.Context, p model.Profile, kickoffPrompt string, mode AutonomousMode, policy AutonomousPolicy) ([]string, error) {
+	if mode == AutonomousReview {
+		return nil, fmt.Errorf("agy has no verified read-only autonomous review mode")
+	}
+	if mode != AutonomousCoding {
+		return nil, fmt.Errorf("unsupported autonomous mode %q", mode)
+	}
+	if !policy.AllowToolAutoApproval {
+		return nil, fmt.Errorf("agy autonomous coding requires explicit tool auto approval")
+	}
+	args, err := d.BuildKickoffArgs(ctx, p, kickoffPrompt)
+	if err != nil {
+		return nil, err
+	}
+	return append(args, "--dangerously-skip-permissions", "--sandbox", "--print-timeout", "60m"), nil
 }

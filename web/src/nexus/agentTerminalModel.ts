@@ -4,6 +4,13 @@ export function agentTerminalWebSocketURL(protocol: string, host: string, agentI
 }
 export function normalizeTerminalRole(role: unknown): TerminalRole { return role === 'CONTROL' ? 'CONTROL' : 'VIEW_ONLY'; }
 
+export type TerminalLeaseCommand = 'lease_acquire' | 'lease_release';
+
+export function terminalLeaseCommand(previous: TerminalRole, next: TerminalRole): TerminalLeaseCommand | null {
+  if (previous === next) return null;
+  return next === 'CONTROL' ? 'lease_acquire' : 'lease_release';
+}
+
 export function terminalReconnectDelay(attempt: number): number {
   const safeAttempt = Number.isFinite(attempt) ? Math.max(0, Math.floor(attempt)) : 0;
   return Math.min(3000, 250 * (2 ** safeAttempt));

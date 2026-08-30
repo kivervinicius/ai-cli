@@ -15,6 +15,21 @@ type Policy struct {
 	DisallowDestructiveGit bool
 	AllowGitPush           bool
 	AllowDeploy            bool
+	AllowExternalNetwork   bool
+	AllowSecretAccess      bool
+	AllowPaidServices      bool
+}
+
+var externalNetworkTools = map[string]struct{}{
+	"curl": {}, "wget": {}, "ssh": {}, "scp": {}, "sftp": {}, "ftp": {}, "nc": {}, "ncat": {}, "telnet": {},
+}
+
+var secretAccessTools = map[string]struct{}{
+	"vault": {}, "op": {}, "pass": {}, "secret-tool": {},
+}
+
+var paidServiceTools = map[string]struct{}{
+	"aws": {}, "gcloud": {}, "az": {}, "doctl": {}, "fly": {}, "vercel": {}, "netlify": {}, "pulumi": {},
 }
 
 var deployMutations = map[string][]string{
@@ -45,6 +60,22 @@ func WriteCommandGuards(dir string, policy Policy) ([]string, error) {
 			tools = append(tools, tool)
 		}
 	}
+	if !policy.AllowExternalNetwork {
+		for tool := range externalNetworkTools {
+			tools = append(tools, tool)
+		}
+	}
+	if !policy.AllowSecretAccess {
+		for tool := range secretAccessTools {
+			tools = append(tools, tool)
+		}
+	}
+	if !policy.AllowPaidServices {
+		for tool := range paidServiceTools {
+			tools = append(tools, tool)
+		}
+	}
+	tools = uniqueToolNames(tools)
 	sort.Strings(tools)
 	created := make([]string, 0, len(tools))
 	for _, tool := range tools {
@@ -75,6 +106,31 @@ func WriteCommandGuards(dir string, policy Policy) ([]string, error) {
 	return created, nil
 }
 
+func uniqueToolNames(in []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(in))
+	for _, tool := range in {
+		if tool != "" && !seen[tool] {
+			seen[tool] = true
+			out = append(out, tool)
+		}
+	}
+	return out
+}
+
+func blockEntireTool(tool string, policy Policy) bool {
+	if _, ok := externalNetworkTools[tool]; ok && !policy.AllowExternalNetwork {
+		return true
+	}
+	if _, ok := secretAccessTools[tool]; ok && !policy.AllowSecretAccess {
+		return true
+	}
+	if _, ok := paidServiceTools[tool]; ok && !policy.AllowPaidServices {
+		return true
+	}
+	return false
+}
+
 func blockedPatterns(tool string, policy Policy) []string {
 	var patterns []string
 	if tool == "git" {
@@ -97,6 +153,9 @@ func renderUnixCommandGuard(real, tool string, policy Policy) string {
 	b.WriteString("#!/bin/sh\nARGS=\" $* \"\nblock() { echo \"NEXUS_AUTONOMY_BLOCKED: ")
 	b.WriteString(tool)
 	b.WriteString(" $*\" >&2; exit 126; }\n")
+	if blockEntireTool(tool, policy) {
+		b.WriteString("block\n")
+	}
 	for _, pattern := range blockedPatterns(tool, policy) {
 		words := strings.Fields(pattern)
 		if len(words) == 1 {
@@ -114,6 +173,9 @@ func renderUnixCommandGuard(real, tool string, policy Policy) string {
 func renderWindowsCommandGuard(real, tool string, policy Policy) string {
 	var b strings.Builder
 	b.WriteString("@echo off\r\nsetlocal\r\nset \"ARGS= %* \"\r\n")
+	if blockEntireTool(tool, policy) {
+		b.WriteString("goto :blocked\r\n")
+	}
 	for _, pattern := range blockedPatterns(tool, policy) {
 		words := strings.Fields(pattern)
 		if len(words) == 1 {

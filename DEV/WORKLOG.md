@@ -701,3 +701,11 @@ Linux runtime fully verified. Windows/macOS build-verified only (conditional lim
 - `npx eslint .`: 0 errors, 0 warnings.
 - `bun run build`: Web bundle compiled in ~180ms.
 - `make build`: Nexus binary `v0.5.0-beta.4` compiled and installed.
+
+## 2026-08-29 — Maximum Delivery blocks 1–5 + deep review
+
+- Closed Mission Runner/durability/Take Control/WorkPlan/E2E contract gaps on `feat/nexus-maximum-delivery`.
+- Added durable execution evidence, lease concurrency hardening, WorkPlan DAG/revision protection, session rotation/logout, project Mission routing and real-provider local E2E harness.
+- Revalidated frontend: 22 files / 76 tests, TypeScript, ESLint and build PASS in sandbox.
+- Deep review verdict: `CONDITIONAL_GO` candidate. Production `GO` remains gated by Go 1.25 full vet/test/race, real SQLite/WebSocket dependencies, physical Windows/macOS runtime and a real authenticated-provider smoke.
+- See `DEV/NEXUS_MAXIMUM_DELIVERY_*.md` for evidence and release conditions.

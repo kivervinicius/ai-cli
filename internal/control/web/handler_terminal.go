@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -55,16 +54,10 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 	}
 	defer ws.Close()
 
-	var wsMu sync.Mutex
-	safeWriteJSON := func(v any) error {
-		wsMu.Lock()
-		defer wsMu.Unlock()
-		return ws.WriteJSON(v)
-	}
-
 	broker := DefaultBroker()
 	hasRuntime := runtimeID != ""
-	role := broker.Attach(agentID, ws, hasRuntime)
+	role, socketWriter := broker.Attach(agentID, ws, hasRuntime)
+	safeWriteJSON := socketWriter.WriteJSON
 	defer broker.Detach(agentID, ws)
 	_ = safeWriteJSON(TerminalMessage{
 		Type: "lease",

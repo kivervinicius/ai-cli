@@ -156,6 +156,60 @@ func redactGitRemote(remote string) string {
 	return parsed.String()
 }
 
+// filesystemRoot returns the root of the volume containing path using the
+// current OS filepath semantics ("/" on Unix, e.g. "C:\\" on Windows).
+func filesystemRoot(path string) string {
+	abs, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return string(os.PathSeparator)
+	}
+	volume := filepath.VolumeName(abs)
+	root := volume + string(os.PathSeparator)
+	return filepath.Clean(root)
+}
+
+func buildBreadcrumbs(absPath string) []string {
+	clean := filepath.Clean(absPath)
+	reversed := make([]string, 0, 8)
+	for {
+		reversed = append(reversed, clean)
+		parent := filepath.Dir(clean)
+		if parent == clean {
+			break
+		}
+		clean = parent
+	}
+	for left, right := 0, len(reversed)-1; left < right; left, right = left+1, right-1 {
+		reversed[left], reversed[right] = reversed[right], reversed[left]
+	}
+	return reversed
+}
+
+func defaultScanRoots(home, cwd string) []string {
+	roots := make([]string, 0, 8)
+	appendUnique := func(path string) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+		clean := filepath.Clean(path)
+		for _, existing := range roots {
+			if existing == clean {
+				return
+			}
+		}
+		roots = append(roots, clean)
+	}
+	appendUnique(cwd)
+	if home != "" {
+		appendUnique(home)
+		for _, name := range []string{"projetos", "projects", "workspace", "dev", "src", "Desktop", "Documents"} {
+			appendUnique(filepath.Join(home, name))
+		}
+	}
+	return roots
+}
+
 // getOSBookmarks returns convenient OS bookmark paths.
 func getOSBookmarks() []FSBookmark {
 	var bookmarks []FSBookmark
@@ -185,13 +239,14 @@ func getOSBookmarks() []FSBookmark {
 		}
 	}
 
-	// Root /projetos if exists on host
-	if _, err := os.Stat("/projetos"); err == nil {
-		bookmarks = append(bookmarks, FSBookmark{Label: "/projetos", Path: "/projetos", Icon: "folder"})
+	rootBase := homeDir
+	if rootBase == "" {
+		rootBase, _ = os.Getwd()
 	}
-
-	// Root filesystem
-	bookmarks = append(bookmarks, FSBookmark{Label: "Root (/)", Path: "/", Icon: "root"})
+	if rootBase != "" {
+		root := filesystemRoot(rootBase)
+		bookmarks = append(bookmarks, FSBookmark{Label: "Filesystem Root", Path: root, Icon: "root"})
+	}
 
 	return bookmarks
 }
@@ -215,7 +270,7 @@ func (h *NexusHandler) handleFSBrowse(w http.ResponseWriter, r *http.Request) {
 		} else if home, err := os.UserHomeDir(); err == nil {
 			targetPath = home
 		} else {
-			targetPath = "/"
+			targetPath = os.TempDir()
 		}
 	}
 
@@ -306,21 +361,9 @@ func (h *NexusHandler) handleFSBrowse(w http.ResponseWriter, r *http.Request) {
 		parent = ""
 	}
 
-	// Build breadcrumbs
-	cleanParts := strings.Split(filepath.ToSlash(absPath), "/")
-	var breadcrumbs []string
-	curr := ""
-	for _, p := range cleanParts {
-		if p == "" {
-			if curr == "" {
-				curr = "/"
-				breadcrumbs = append(breadcrumbs, "/")
-			}
-			continue
-		}
-		curr = filepath.Join(curr, p)
-		breadcrumbs = append(breadcrumbs, curr)
-	}
+	// Build breadcrumbs from filepath parents so Windows drive roots and Unix
+	// roots are both represented with native absolute paths.
+	breadcrumbs := buildBreadcrumbs(absPath)
 
 	resp := FSBrowseResponse{
 		CurrentPath: absPath,
@@ -437,17 +480,8 @@ func (h *NexusHandler) handleFSScan(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		home, _ := os.UserHomeDir()
-		if home != "" {
-			scanRoots = append(scanRoots, home)
-			scanRoots = append(scanRoots, filepath.Join(home, "projetos"))
-			scanRoots = append(scanRoots, filepath.Join(home, "workspace"))
-			scanRoots = append(scanRoots, filepath.Join(home, "dev"))
-			scanRoots = append(scanRoots, filepath.Join(home, "src"))
-			scanRoots = append(scanRoots, filepath.Join(home, "Desktop"))
-		}
-		if _, err := os.Stat("/projetos"); err == nil {
-			scanRoots = append(scanRoots, "/projetos")
-		}
+		cwd, _ := os.Getwd()
+		scanRoots = defaultScanRoots(home, cwd)
 	}
 
 	var discovered []FSScanResult

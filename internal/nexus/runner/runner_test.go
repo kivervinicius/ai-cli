@@ -65,3 +65,37 @@ func TestMissionRunnerBoundedRetries(t *testing.T) {
 		t.Fatalf("unexpected run state %s", run.State)
 	}
 }
+
+func TestMissionRunnerRunsFinalVerificationAfterIndependentReview(t *testing.T) {
+	repo := NewMemoryRunRepository()
+	exec := &fakeExecutor{reviewOK: true}
+	r := NewMissionRunner(repo, exec)
+	contract := DefaultAutonomyContract()
+	contract.MaxTotalIterations = 30
+	contract.VerificationCommands = []string{"echo verified"}
+	plan := PlanSpec{ID: "plan-final-verify", ProjectID: "proj", Revision: 1, Packages: []PackageSpec{{ID: "pkg", Title: "P", Goal: "G"}}}
+
+	run, err := r.StartMissionRun(context.Background(), plan, t.TempDir(), contract, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seenVerifying := false
+	for i := 0; i < 20 && run.State != StateCompletedVerified; i++ {
+		run, _, err = r.ExecuteNextStep(context.Background(), run.ID)
+		if err != nil {
+			t.Fatalf("step %d: %v", i, err)
+		}
+		if run.PackageRuns[0].State == StateVerifying {
+			seenVerifying = true
+		}
+	}
+	if !seenVerifying {
+		t.Fatal("review approval must transition through VERIFYING before VERIFIED")
+	}
+	if run.State != StateCompletedVerified {
+		t.Fatalf("state=%s", run.State)
+	}
+	if got := len(run.PackageRuns[0].Verifications); got < 2 {
+		t.Fatalf("expected test verification plus final verification evidence, got %d", got)
+	}
+}

@@ -90,7 +90,7 @@ func (m *MemoryRunRepository) AcquireLease(_ context.Context, id, owner string, 
 		return nil, ErrRunNotFound
 	}
 	now := time.Now().UTC()
-	if r.LeaseOwner != "" && r.LeaseOwner != owner && r.LeaseExpiresAt != nil && r.LeaseExpiresAt.After(now) {
+	if r.LeaseOwner != "" && r.LeaseExpiresAt != nil && r.LeaseExpiresAt.After(now) {
 		return nil, ErrLeaseHeld
 	}
 	token := fmt.Sprintf("lease-%s-%d", owner, now.UnixNano())

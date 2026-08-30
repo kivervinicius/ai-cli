@@ -92,7 +92,7 @@ export const DirectSessionLauncher: React.FC<{
       <div className="nx-form-stack">
         <InlineAlert tone={request?.mode === 'assisted' ? 'info' : 'success'} title={request?.mode === 'assisted' ? 'Assisted work remains optional' : 'No Mission required'}>
           {request?.mode === 'assisted'
-            ? 'Nexus may enrich context when Intelligence is configured, but the selected provider session remains directly controllable.'
+            ? 'The selected provider session remains directly controllable. This launcher does not silently rewrite the prompt; use AI Planning when you want Intelligence to analyze and structure the work.'
             : 'This creates a Persistent Agent and starts the selected coding CLI directly inside this Project.'}
         </InlineAlert>
 

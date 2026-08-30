@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NexusAPIError, nexusApi } from './api';
+import type { AutonomyContract } from '../types';
 
 describe('nexus API request errors', () => {
   beforeEach(() => {
@@ -57,5 +58,50 @@ describe('mission manual-control API routes', () => {
     vi.stubGlobal('fetch', fetchMock);
     await nexusApi.returnToMission('run-1');
     expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/runs/run-1/return-to-mission');
+  });
+});
+
+describe('mission autonomy contract API', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const contract: AutonomyContract = {
+    max_retries: 4,
+    max_total_iterations: 80,
+    max_no_progress: 3,
+    package_timeout_seconds: 1800,
+    auto_remediate: true,
+    require_verification: true,
+    disallow_destructive_git: true,
+    allowed_file_patterns: ['src/**'],
+    verification_commands: ['npm test'],
+    escalate_on_failure: true,
+    allow_tool_auto_approval: false,
+    allow_git_push: false,
+    allow_deploy: false,
+    allow_external_network: false,
+    allow_secret_access: false,
+    allow_paid_services: false,
+  };
+
+  it('sends the approved contract as a nested run contract without forcing a default agent', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ id: 'run-1' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    await nexusApi.runPlan('plan-1', { contract: { ...contract }, autonomous: true, approvedRevision: 7 });
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body.contract).toEqual(contract);
+    expect(body.approved_revision).toBe(7);
+    expect(body.agent_id).toBeUndefined();
+  });
+
+  it('persists the same approved contract in a scheduled Mission', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ id: 'schedule-1' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    await nexusApi.schedulePlan('plan-1', 'WHEN_RESOURCES', { contract: { ...contract }, approvedRevision: 7 });
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body.contract).toEqual(contract);
+    expect(body.approved_revision).toBe(7);
+    expect(body.agent_id).toBeUndefined();
   });
 });

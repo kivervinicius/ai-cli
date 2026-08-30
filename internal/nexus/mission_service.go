@@ -99,17 +99,58 @@ func (n *Nexus) StartMissionRun(ctx context.Context, planID, defaultAgentID stri
 	if err != nil {
 		return nil, err
 	}
+	return n.startMissionRunAtRevision(ctx, plan, plan.CurrentRevision, defaultAgentID, contract, autonomous)
+}
+
+// StartMissionRunApproved starts the exact WorkPlan revision the user approved.
+// It rejects a stale UI approval if the current plan revision changed between
+// rendering and the Run action.
+func (n *Nexus) StartMissionRunApproved(ctx context.Context, planID string, approvedRevision int, defaultAgentID string, contract runner.AutonomyContract, autonomous bool) (*runner.MissionRun, error) {
+	st, err := n.OpenProject()
+	if err != nil {
+		return nil, err
+	}
+	plan, err := st.GetWorkPlan(planID)
+	if err != nil {
+		return nil, err
+	}
+	if approvedRevision <= 0 {
+		return nil, fmt.Errorf("approved_revision is required")
+	}
+	if plan.CurrentRevision != approvedRevision {
+		return nil, fmt.Errorf("work plan changed after approval: approved revision %d, current revision %d; review and approve the latest plan", approvedRevision, plan.CurrentRevision)
+	}
+	return n.startMissionRunAtRevision(ctx, plan, approvedRevision, defaultAgentID, contract, autonomous)
+}
+
+// startMissionRunAtRevision loads the immutable revision snapshot and never
+// substitutes the mutable current WorkPlan. Scheduled Missions use this path.
+func (n *Nexus) startMissionRunAtRevision(ctx context.Context, currentPlan *store.WorkPlan, revisionNumber int, defaultAgentID string, contract runner.AutonomyContract, autonomous bool) (*runner.MissionRun, error) {
+	st, err := n.OpenProject()
+	if err != nil {
+		return nil, err
+	}
+	if currentPlan == nil {
+		return nil, fmt.Errorf("work plan is required")
+	}
+	revision, err := st.GetPlanRevision(currentPlan.ID, revisionNumber)
+	if err != nil {
+		return nil, fmt.Errorf("resolve immutable plan revision %d: %w", revisionNumber, err)
+	}
+	var plan store.WorkPlan
+	if err := json.Unmarshal([]byte(revision.SnapshotJSON), &plan); err != nil {
+		return nil, fmt.Errorf("decode immutable plan revision %d: %w", revisionNumber, err)
+	}
+	if plan.ID != currentPlan.ID || plan.ProjectID != currentPlan.ProjectID || plan.CurrentRevision != revisionNumber {
+		return nil, fmt.Errorf("immutable plan revision %d identity mismatch", revisionNumber)
+	}
 	project, err := st.GetProject(plan.ProjectID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve mission project: %w", err)
 	}
-	revision, err := st.GetPlanRevision(plan.ID, plan.CurrentRevision)
-	if err != nil {
-		return nil, fmt.Errorf("resolve immutable plan revision %d: %w", plan.CurrentRevision, err)
-	}
 
 	contract = normalizeAutonomyContract(contract, project.CanonicalPath)
-	frozenPlan, err := freezePlanForExecution(ctx, n, *plan)
+	frozenPlan, err := freezePlanForExecution(ctx, n, plan)
 	if err != nil {
 		return nil, err
 	}
@@ -142,6 +183,9 @@ func normalizeAutonomyContract(contract runner.AutonomyContract, workspace strin
 	}
 	if contract.MaxTotalIterations <= 0 {
 		contract.MaxTotalIterations = defaults.MaxTotalIterations
+	}
+	if contract.MaxNoProgress <= 0 {
+		contract.MaxNoProgress = defaults.MaxNoProgress
 	}
 	if contract.PackageTimeoutSeconds <= 0 {
 		contract.PackageTimeoutSeconds = defaults.PackageTimeoutSeconds
@@ -340,9 +384,18 @@ func (n *Nexus) TakeControlMissionRun(ctx context.Context, runID, reason string)
 	if err != nil {
 		return nil, err
 	}
-	agentID := runner.ManualControlAgentID(run)
-	if agentID == "" {
+	pkg := runner.ManualControlPackage(run)
+	if pkg == nil || pkg.AssignedAgent == "" {
 		return run, nil
+	}
+	agentID := pkg.AssignedAgent
+	workspace := pkg.Workspace
+	if strings.TrimSpace(workspace) == "" {
+		workspace = run.Workspace
+	}
+	beforeFingerprint, err := workspaceFingerprint(ctx, workspace)
+	if err != nil {
+		return nil, fmt.Errorf("capture takeover checkpoint: %w", err)
 	}
 	st, err := n.OpenProject()
 	if err != nil {
@@ -362,6 +415,10 @@ func (n *Nexus) TakeControlMissionRun(ctx context.Context, runID, reason string)
 	if _, err := n.StartAgent(ctx, agentID, cfg.Provider, cfg.Profile); err != nil {
 		return nil, fmt.Errorf("start interactive takeover runtime: %w", err)
 	}
+	if _, err := n.Runner().BeginManualIntervention(ctx, runID, agentID, pkg.PackageID, workspace, beforeFingerprint, reason); err != nil {
+		_ = n.StopAgent(context.Background(), agentID)
+		return nil, fmt.Errorf("persist takeover checkpoint: %w", err)
+	}
 	return n.Runner().GetRun(ctx, runID)
 }
 
@@ -373,32 +430,50 @@ func (n *Nexus) ReturnMissionRun(ctx context.Context, runID string) (*runner.Mis
 	if err != nil {
 		return nil, err
 	}
-	agentID := runner.ManualControlAgentID(run)
-	if agentID != "" {
-		if err := n.StopAgent(ctx, agentID); err != nil {
-			return nil, fmt.Errorf("stop interactive takeover runtime: %w", err)
+	pkg := runner.ManualControlPackage(run)
+	if pkg == nil || pkg.AssignedAgent == "" {
+		return nil, fmt.Errorf("mission run has no active manual-control package")
+	}
+	agentID := pkg.AssignedAgent
+	var active *runner.ManualIntervention
+	for i := len(run.ManualInterventions) - 1; i >= 0; i-- {
+		entry := &run.ManualInterventions[i]
+		if entry.AgentID == agentID && entry.PackageID == pkg.PackageID && entry.CompletedAt == nil {
+			active = entry
+			break
 		}
 	}
+	if active == nil {
+		return nil, fmt.Errorf("manual takeover checkpoint is missing for package %s", pkg.PackageID)
+	}
+	if err := n.StopAgent(ctx, agentID); err != nil {
+		return nil, fmt.Errorf("stop interactive takeover runtime: %w", err)
+	}
+	workspace := active.Workspace
+	if strings.TrimSpace(workspace) == "" {
+		workspace = pkg.Workspace
+	}
+	if strings.TrimSpace(workspace) == "" {
+		workspace = run.Workspace
+	}
+	changed, guardErr := autonomyguard.GitChangedPaths(ctx, workspace)
+	if guardErr != nil {
+		return nil, fmt.Errorf("capture manual takeover changes: %w", guardErr)
+	}
 	if len(run.Contract.AllowedFilePatterns) > 0 {
-		snapshot, snapErr := n.loadMissionSnapshot(run)
-		if snapErr != nil {
+		if _, snapErr := n.loadMissionSnapshot(run); snapErr != nil {
 			return nil, snapErr
-		}
-		_ = snapshot // Contract is already bound to run; loading proves immutable snapshot still exists.
-		pkgWorkspace := run.Workspace
-		for i := range run.PackageRuns {
-			if run.PackageRuns[i].AssignedAgent == agentID && run.PackageRuns[i].Workspace != "" {
-				pkgWorkspace = run.PackageRuns[i].Workspace
-				break
-			}
-		}
-		changed, guardErr := autonomyguard.GitChangedPaths(ctx, pkgWorkspace)
-		if guardErr != nil {
-			return nil, fmt.Errorf("validate manual takeover changes: %w", guardErr)
 		}
 		if guardErr := autonomyguard.ValidateAllowedChanges(changed, run.Contract.AllowedFilePatterns); guardErr != nil {
 			return nil, fmt.Errorf("manual takeover violates autonomy contract: %w", guardErr)
 		}
+	}
+	afterFingerprint, err := workspaceFingerprint(ctx, workspace)
+	if err != nil {
+		return nil, fmt.Errorf("capture return checkpoint: %w", err)
+	}
+	if _, err := n.Runner().CompleteManualIntervention(ctx, runID, active.ID, afterFingerprint, changed); err != nil {
+		return nil, fmt.Errorf("persist return-to-mission checkpoint: %w", err)
 	}
 	return n.ResumeMissionRun(ctx, runID)
 }

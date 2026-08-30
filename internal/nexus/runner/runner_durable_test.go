@@ -562,3 +562,76 @@ func TestMissionRunnerHonorsAutoRemediateDisabled(t *testing.T) {
 		t.Fatalf("AutoRemediate=false must not retry provider execution, executions=%d", exec.executed)
 	}
 }
+
+func TestRunToTerminalWaitsForExpiredLeaseAndRecovers(t *testing.T) {
+	repo := NewMemoryRunRepository()
+	exec := &fakeExecutor{reviewOK: true}
+	creator := NewMissionRunner(repo, exec)
+	contract := DefaultAutonomyContract()
+	contract.MaxTotalIterations = 50
+	contract.VerificationCommands = []string{"true"}
+	plan := PlanSpec{ID: "lease-recovery", ProjectID: "proj", Revision: 1, Packages: []PackageSpec{{ID: "pkg", Title: "P", Goal: "G"}}}
+	run, err := creator.StartMissionRun(context.Background(), plan, t.TempDir(), contract, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.AcquireLease(context.Background(), run.ID, "crashed-worker", 35*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := NewMissionRunner(repo, exec)
+	restarted.leaseTTL = 30 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	completed, err := restarted.RunToTerminal(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("restarted runner must reclaim an expired lease: %v", err)
+	}
+	if completed.State != StateCompletedVerified {
+		t.Fatalf("expected recovered mission completion, got %s", completed.State)
+	}
+}
+
+func TestManualInterventionIsDurableAndReturnsImplementationToTesting(t *testing.T) {
+	repo := NewMemoryRunRepository()
+	r := NewMissionRunner(repo, &fakeExecutor{reviewOK: true})
+	contract := DefaultAutonomyContract()
+	plan := PlanSpec{ID: "manual", ProjectID: "proj", Revision: 1, Packages: []PackageSpec{{ID: "pkg", Title: "P", Goal: "G", AgentAllocation: "agent-1"}}}
+	run, err := r.StartMissionRun(context.Background(), plan, t.TempDir(), contract, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a package already executing when the user takes control.
+	stored, _ := repo.GetRun(context.Background(), run.ID)
+	stored.PackageRuns[0].State = StateExecuting
+	stored.PackageRuns[0].Workspace = "/worktrees/agent-1"
+	if err := repo.SaveRun(context.Background(), stored); err != nil {
+		t.Fatal(err)
+	}
+
+	intervention, err := r.BeginManualIntervention(context.Background(), run.ID, "agent-1", "pkg", "/worktrees/agent-1", "before-hash", "user takeover")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if intervention.ID == "" || intervention.CompletedAt != nil {
+		t.Fatalf("invalid intervention: %+v", intervention)
+	}
+
+	updated, err := r.CompleteManualIntervention(context.Background(), run.ID, intervention.ID, "after-hash", []string{"internal/a.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.PackageRuns[0].State != StateTesting {
+		t.Fatalf("manual implementation must return to TESTING, got %s", updated.PackageRuns[0].State)
+	}
+	if len(updated.ManualInterventions) != 1 || updated.ManualInterventions[0].AfterFingerprint != "after-hash" {
+		t.Fatalf("manual checkpoint evidence not persisted: %+v", updated.ManualInterventions)
+	}
+	restored, err := r.GetRun(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(restored.ManualInterventions) != 1 || restored.ManualInterventions[0].CompletedAt == nil {
+		t.Fatalf("manual checkpoint not durable after reload: %+v", restored.ManualInterventions)
+	}
+}

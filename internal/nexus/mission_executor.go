@@ -140,6 +140,15 @@ func autonomyPromptBoundaries(contract runner.AutonomyContract) string {
 	if !contract.AllowDeploy {
 		rules = append(rules, "Do not deploy, publish releases, or modify external production systems.")
 	}
+	if !contract.AllowExternalNetwork {
+		rules = append(rules, "Do not use external-network tools from the implementation workspace; work only with local repository resources and the already-authorized AI provider transport.")
+	}
+	if !contract.AllowSecretAccess {
+		rules = append(rules, "Do not read secret managers, credentials, tokens, keychains, or unrelated authentication material.")
+	}
+	if !contract.AllowPaidServices {
+		rules = append(rules, "Do not create or mutate paid cloud/services or execute actions that can incur new external charges.")
+	}
 	if len(contract.AllowedFilePatterns) > 0 {
 		rules = append(rules, "Only modify files matching: "+strings.Join(contract.AllowedFilePatterns, ", "))
 	}
@@ -223,18 +232,11 @@ func (e *nexusPackageExecutor) ensureReviewerAgent(ctx context.Context, st *stor
 		}
 	}
 
-	req := TaskRequirements{TaskKind: "review", Role: "reviewer", RequiredCapabilities: []string{"headless", "submit_prompt"}}
+	req := TaskRequirements{TaskKind: "review", Role: "reviewer", RequiredCapabilities: []string{"headless", "submit_prompt", "read_only_review"}}
 	accounts, err := e.n.ListResources()
 	if err != nil {
 		return store.Agent{}, err
 	}
-	reviewAccounts := make([]ProviderAccount, 0, len(accounts))
-	for _, account := range accounts {
-		if supportsSafeHeadlessReview(account.Provider) {
-			reviewAccounts = append(reviewAccounts, account)
-		}
-	}
-	accounts = reviewAccounts
 
 	// Independence means a distinct Agent identity and, whenever possible, a
 	// distinct provider/profile from the implementer. Do not accidentally reward
@@ -276,20 +278,11 @@ func (e *nexusPackageExecutor) ensureReviewerAgent(ctx context.Context, st *stor
 	return reviewer, nil
 }
 
-func supportsSafeHeadlessReview(provider string) bool {
-	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "claude", "gemini", "cursor":
-		return true
-	default:
-		return false
-	}
-}
-
 func missionTaskRequirements(pkg *runner.PackageRun) TaskRequirements {
 	req := TaskRequirements{
 		TaskKind:             "coding",
 		Role:                 defaultRole(pkg.Role, "implementer"),
-		RequiredCapabilities: []string{"headless", "submit_prompt"},
+		RequiredCapabilities: []string{"headless", "submit_prompt", "autonomous_coding"},
 	}
 	if strings.TrimSpace(pkg.TaskRequirements) != "" {
 		var explicit TaskRequirements
@@ -304,6 +297,8 @@ func missionTaskRequirements(pkg *runner.PackageRun) TaskRequirements {
 			req.PreferProvider = explicit.PreferProvider
 			req.AgentPreference = explicit.AgentPreference
 			req.ProjectPolicy = explicit.ProjectPolicy
+			req.ProviderLock = explicit.ProviderLock
+			req.ProfileLock = explicit.ProfileLock
 			req.RequiredCapabilities = mergeRequiredCapabilities(req.RequiredCapabilities, explicit.RequiredCapabilities)
 		}
 	}

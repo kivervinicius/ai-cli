@@ -143,8 +143,8 @@ func (a *AuthManager) RotateSession(oldSessionID string) (*Session, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	delete(a.sessions, oldSessionID)
-
+	// Generate the complete replacement session before revoking the old one.
+	// A transient entropy failure must never log out an otherwise valid user.
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
 		return nil, err
@@ -165,6 +165,7 @@ func (a *AuthManager) RotateSession(oldSessionID string) (*Session, error) {
 		ExpiresAt:    now.Add(sessionTTL),
 		LastActiveAt: now,
 	}
+	delete(a.sessions, oldSessionID)
 	a.sessions[sessID] = sess
 	return sess, nil
 }
@@ -177,17 +178,22 @@ func (a *AuthManager) ExchangeBootstrapToken(token string) (*Session, bool) {
 		return nil, false
 	}
 
-	// Mark bootstrap token as consumed (one-time use)
-	a.usedBootstrap = true
-
-	// Create new authenticated session
+	// Generate all session entropy before consuming the one-time bootstrap token.
+	// A transient CSPRNG failure must fail closed without burning the token.
 	bytes := make([]byte, 32)
-	_, _ = rand.Read(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		return nil, false
+	}
 	sessID := hex.EncodeToString(bytes)
 
 	csrfBytes := make([]byte, 16)
-	_, _ = rand.Read(csrfBytes)
+	if _, err := rand.Read(csrfBytes); err != nil {
+		return nil, false
+	}
 	csrfToken := hex.EncodeToString(csrfBytes)
+
+	// Mark bootstrap token as consumed only after a complete session can be created.
+	a.usedBootstrap = true
 
 	now := time.Now()
 	sess := &Session{

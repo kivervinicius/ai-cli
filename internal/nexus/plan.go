@@ -8,6 +8,7 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/control/ids"
 	"github.com/kivervinicius/ai-cli/internal/nexus/intelligence"
+	"github.com/kivervinicius/ai-cli/internal/nexus/plangraph"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 
 	"sort"
@@ -24,15 +25,54 @@ func (n *Nexus) CreateWorkPlan(ctx context.Context, projectID, title, descriptio
 		return nil, fmt.Errorf("plan title is required")
 	}
 
+	normalized, err := normalizeAndValidatePlanPhases(phases)
+	if err != nil {
+		return nil, fmt.Errorf("invalid work plan: %w", err)
+	}
 	plan := store.WorkPlan{
 		ProjectID:       projectID,
 		Title:           title,
 		Description:     description,
-		Phases:          phases,
+		Phases:          normalized,
 		StructuredFacts: facts,
 	}
 
 	return st.CreateWorkPlan(plan)
+}
+
+func normalizeAndValidatePlanPhases(phases []store.PlanPhase) ([]store.PlanPhase, error) {
+	normalized := make([]store.PlanPhase, len(phases))
+	nodes := make([]plangraph.Node, 0)
+	for pi, phase := range phases {
+		normalized[pi] = phase
+		if strings.TrimSpace(normalized[pi].ID) == "" {
+			normalized[pi].ID = "phase_" + ids.NewRuntimeID()
+		}
+		normalized[pi].Packages = append([]store.WorkPackage(nil), phase.Packages...)
+		for wi := range normalized[pi].Packages {
+			pkg := &normalized[pi].Packages[wi]
+			if strings.TrimSpace(pkg.ID) == "" {
+				pkg.ID = "pkg_" + ids.NewRuntimeID()
+			}
+			pkg.Dependencies = append([]string(nil), pkg.Dependencies...)
+			nodes = append(nodes, plangraph.Node{ID: pkg.ID, Title: pkg.Title, Dependencies: pkg.Dependencies})
+		}
+	}
+	graph, err := plangraph.NormalizeAndValidate(nodes)
+	if err != nil {
+		return nil, err
+	}
+	depsByID := make(map[string][]string, len(graph))
+	for _, node := range graph {
+		depsByID[node.ID] = append([]string(nil), node.Dependencies...)
+	}
+	for pi := range normalized {
+		for wi := range normalized[pi].Packages {
+			pkg := &normalized[pi].Packages[wi]
+			pkg.Dependencies = depsByID[pkg.ID]
+		}
+	}
+	return normalized, nil
 }
 
 // GetWorkPlan fetches a plan by ID.
@@ -59,6 +99,20 @@ func (n *Nexus) UpdateWorkPlan(ctx context.Context, plan store.WorkPlan, changeS
 	if err != nil {
 		return nil, nil, err
 	}
+	existing, err := st.GetWorkPlan(plan.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	// Identity and ownership are server-authoritative. A client editing a plan
+	// cannot move it to another project or rewrite immutable creation metadata.
+	plan.ProjectID = existing.ProjectID
+	plan.MissionID = existing.MissionID
+	plan.CreatedAt = existing.CreatedAt
+	normalized, err := normalizeAndValidatePlanPhases(plan.Phases)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid work plan: %w", err)
+	}
+	plan.Phases = normalized
 	return st.UpdateWorkPlan(plan, changeSummary)
 }
 

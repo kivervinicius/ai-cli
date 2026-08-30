@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 
@@ -135,6 +136,8 @@ func (d *CursorDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effec
 			Mechanism:       "cursor-agent -p / --print",
 			Tested:          true,
 		},
+		AutonomousCoding: CapabilityEvidence{Status: status, ProviderVersion: version, Mechanism: "cursor-agent non-interactive write mode", Tested: true},
+		ReadOnlyReview:   CapabilityEvidence{Status: status, ProviderVersion: version, Mechanism: "cursor-agent --mode=ask", Tested: true},
 		SlashControl: CapabilityEvidence{
 			Status:    CapabilitySupported,
 			Mechanism: "Universal /ai slash command router",
@@ -195,4 +198,22 @@ func (d *CursorDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, ki
 		return []string{"-p", kickoffPrompt, "--output-format", "text"}, nil
 	}
 	return []string{}, nil
+}
+
+func (d *CursorDriver) BuildAutonomousArgs(ctx context.Context, p model.Profile, kickoffPrompt string, mode AutonomousMode, policy AutonomousPolicy) ([]string, error) {
+	args, err := d.BuildKickoffArgs(ctx, p, kickoffPrompt)
+	if err != nil {
+		return nil, err
+	}
+	switch mode {
+	case AutonomousReview:
+		return append(args, "--mode=ask"), nil
+	case AutonomousCoding:
+		if !policy.AllowToolAutoApproval {
+			return nil, fmt.Errorf("cursor autonomous coding requires explicit tool auto approval")
+		}
+		return args, nil
+	default:
+		return nil, fmt.Errorf("unsupported autonomous mode %q", mode)
+	}
 }

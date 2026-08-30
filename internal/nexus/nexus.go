@@ -230,6 +230,9 @@ func (n *Nexus) StartAgent(ctx context.Context, agentID, provider, profile strin
 	var previousGen *store.RuntimeGeneration
 	if prior, priorErr := st.CurrentGeneration(agentID); priorErr == nil {
 		previousGen = &prior
+		if prior.RuntimeID != "" && n.runtimeAlive(prior.RuntimeID) {
+			return nil, fmt.Errorf("agent %s already has a live runtime %s; attach to it or stop it before starting another generation", agentID, prior.RuntimeID)
+		}
 	}
 	continuityLaunch, err := continuityForNextGeneration(ctx, agentCfg, previousGen)
 	if err != nil {

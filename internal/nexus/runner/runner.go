@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -248,16 +249,41 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 		}
 		pkg.Verdicts = append(pkg.Verdicts, verdict)
 		if verdict.Approved {
-			pkg.State = StateVerified
-			now := time.Now().UTC()
-			pkg.FinishedAt = &now
-			pkg.RemediationContext = ""
+			pkg.State = StateVerifying
 		} else {
 			if terminalErr := r.markRemediation(run, pkg, StateCompiling, reviewFailureContext(verdict)); terminalErr != nil {
 				run.UpdatedAt = time.Now().UTC()
 				_ = r.repo.SaveRun(ctx, run)
 				return run, false, terminalErr
 			}
+		}
+	case StateVerifying:
+		if run.Contract.RequireVerification && len(run.Contract.VerificationCommands) == 0 {
+			pkg.State = StateFailed
+			run.State = StateFailedVerification
+			run.UpdatedAt = time.Now().UTC()
+			_ = r.repo.SaveRun(ctx, run)
+			return run, false, fmt.Errorf("final verification required but no verification commands are configured")
+		}
+		results := r.verifier.RunVerification(opCtx, pkg.Workspace, run.Contract.VerificationCommands)
+		pkg.Verifications = append(pkg.Verifications, results...)
+		if verificationPassed(results, run.Contract.RequireVerification) {
+			pkg.State = StateVerified
+			now := time.Now().UTC()
+			pkg.FinishedAt = &now
+			pkg.RemediationContext = ""
+			pkg.ErrorMessage = ""
+		} else if !run.Contract.AutoRemediate {
+			pkg.State = StateFailed
+			pkg.ErrorMessage = verificationFailureContext(results)
+			run.State = StateFailedVerification
+			run.UpdatedAt = time.Now().UTC()
+			_ = r.repo.SaveRun(ctx, run)
+			return run, false, fmt.Errorf("final verification failed: %s", pkg.ErrorMessage)
+		} else if terminalErr := r.markRemediation(run, pkg, StateCompiling, verificationFailureContext(results)); terminalErr != nil {
+			run.UpdatedAt = time.Now().UTC()
+			_ = r.repo.SaveRun(ctx, run)
+			return run, false, terminalErr
 		}
 	case StateRemediating:
 		canRetry, reason := r.retry.ShouldRetry(pkg, run.Contract)
@@ -411,6 +437,25 @@ func (r *MissionRunner) RunToTerminal(ctx context.Context, runID string) (*Missi
 		}
 		run, done, stepErr := r.ExecuteNextStep(ctx, runID)
 		if run == nil {
+			if errors.Is(stepErr, ErrLeaseHeld) {
+				delay := r.leaseTTL / 3
+				if delay < 10*time.Millisecond {
+					delay = 10 * time.Millisecond
+				}
+				if delay > time.Second {
+					delay = time.Second
+				}
+				timer := time.NewTimer(delay)
+				select {
+				case <-ctx.Done():
+					if !timer.Stop() {
+						<-timer.C
+					}
+					return nil, ctx.Err()
+				case <-timer.C:
+					continue
+				}
+			}
 			return nil, stepErr
 		}
 		if done || run.State == StateCompletedVerified {
@@ -604,8 +649,10 @@ func packageStageRank(state State) int {
 		return 4
 	case StateReviewing:
 		return 5
-	case StateRemediating:
+	case StateVerifying:
 		return 6
+	case StateRemediating:
+		return 7
 	default:
 		return 100
 	}

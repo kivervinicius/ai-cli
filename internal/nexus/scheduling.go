@@ -18,11 +18,12 @@ const (
 )
 
 type missionSchedulePayload struct {
-	AgentID  string                  `json:"agent_id,omitempty"`
-	Contract runner.AutonomyContract `json:"contract"`
+	AgentID      string                  `json:"agent_id,omitempty"`
+	PlanRevision int                     `json:"plan_revision"`
+	Contract     runner.AutonomyContract `json:"contract"`
 }
 
-func (n *Nexus) ScheduleMission(ctx context.Context, planID, mode string, scheduledFor *time.Time, afterRunID, agentID string, contract runner.AutonomyContract) (*store.MissionSchedule, error) {
+func (n *Nexus) ScheduleMission(ctx context.Context, planID string, approvedRevision int, mode string, scheduledFor *time.Time, afterRunID, agentID string, contract runner.AutonomyContract) (*store.MissionSchedule, error) {
 	st, err := n.OpenProject()
 	if err != nil {
 		return nil, err
@@ -30,6 +31,12 @@ func (n *Nexus) ScheduleMission(ctx context.Context, planID, mode string, schedu
 	plan, err := st.GetWorkPlan(planID)
 	if err != nil {
 		return nil, err
+	}
+	if approvedRevision <= 0 {
+		return nil, fmt.Errorf("approved_revision is required")
+	}
+	if plan.CurrentRevision != approvedRevision {
+		return nil, fmt.Errorf("work plan changed after approval: approved revision %d, current revision %d; review and approve the latest plan", approvedRevision, plan.CurrentRevision)
 	}
 	mode = strings.ToUpper(strings.TrimSpace(mode))
 	switch mode {
@@ -50,7 +57,7 @@ func (n *Nexus) ScheduleMission(ctx context.Context, planID, mode string, schedu
 	default:
 		return nil, fmt.Errorf("unsupported schedule mode %q", mode)
 	}
-	payload, err := json.Marshal(missionSchedulePayload{AgentID: agentID, Contract: normalizeAutonomyContract(contract, "")})
+	payload, err := json.Marshal(missionSchedulePayload{AgentID: agentID, PlanRevision: approvedRevision, Contract: normalizeAutonomyContract(contract, "")})
 	if err != nil {
 		return nil, err
 	}
@@ -128,16 +135,27 @@ func (n *Nexus) processMissionSchedules(ctx context.Context) error {
 		if schedule.Mode == ScheduleWhenResources && !n.hasAutonomousResource() {
 			continue
 		}
+		claimed, claimErr := st.ClaimMissionSchedule(schedule.ID)
+		if claimErr != nil || !claimed {
+			continue // another process/tick owns this schedule
+		}
 		var payload missionSchedulePayload
 		if err := json.Unmarshal([]byte(schedule.ContractJSON), &payload); err != nil {
 			_ = st.UpdateMissionScheduleStatus(schedule.ID, store.ScheduleFailed)
 			continue
 		}
-		run, startErr := n.StartMissionRun(ctx, schedule.PlanID, payload.AgentID, payload.Contract, true)
+		// Create durably first but do not start the worker until the schedule row
+		// is bound. This prevents a losing duplicate claimant from doing work.
+		currentPlan, planErr := st.GetWorkPlan(schedule.PlanID)
+		if planErr != nil || payload.PlanRevision <= 0 {
+			_ = st.UpdateMissionScheduleStatus(schedule.ID, store.ScheduleFailed)
+			continue
+		}
+		run, startErr := n.startMissionRunAtRevision(ctx, currentPlan, payload.PlanRevision, payload.AgentID, payload.Contract, false)
 		if startErr != nil {
-			// Resource/transient failures remain pending for WHEN_RESOURCES; fixed
-			// time/dependency schedules become FAILED and are visible to the user.
-			if schedule.Mode != ScheduleWhenResources {
+			if schedule.Mode == ScheduleWhenResources {
+				_ = st.UpdateMissionScheduleStatus(schedule.ID, store.SchedulePending)
+			} else {
 				_ = st.UpdateMissionScheduleStatus(schedule.ID, store.ScheduleFailed)
 			}
 			continue
@@ -145,7 +163,9 @@ func (n *Nexus) processMissionSchedules(ctx context.Context) error {
 		if err := st.BindMissionScheduleRun(schedule.ID, run.ID); err != nil {
 			_, _ = n.CancelMissionRun(ctx, run.ID, "schedule binding failed")
 			_ = st.UpdateMissionScheduleStatus(schedule.ID, store.ScheduleFailed)
+			continue
 		}
+		n.StartMissionWorker(run.ID)
 	}
 	return nil
 }
@@ -155,6 +175,6 @@ func (n *Nexus) hasAutonomousResource() bool {
 	if err != nil || len(accounts) == 0 {
 		return false
 	}
-	rec := RecommendResources(accounts, TaskRequirements{TaskKind: "coding", Role: "implementer", RequiredCapabilities: []string{"headless", "submit_prompt"}}, PolicyBalanced)
+	rec := RecommendResources(accounts, TaskRequirements{TaskKind: "coding", Role: "implementer", RequiredCapabilities: []string{"headless", "submit_prompt", "autonomous_coding"}}, PolicyBalanced)
 	return rec.Recommended != nil
 }

@@ -115,6 +115,8 @@ func (d *CodexDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effect
 			Reason: "Supports -p non-interactive prompts in classic mode",
 			Tested: true,
 		},
+		AutonomousCoding: CapabilityEvidence{Status: CapabilityUnsupported, Reason: "submit_prompt/headless autonomous contract is not verified", Tested: true},
+		ReadOnlyReview:   CapabilityEvidence{Status: CapabilityUnsupported, Reason: "no verified read-only autonomous review mode", Tested: true},
 		SlashControl: CapabilityEvidence{
 			Status:    CapabilitySupported,
 			Mechanism: "Universal /ai slash command router",
@@ -171,4 +173,8 @@ func (d *CodexDriver) BuildResumeArgs(ctx context.Context, p model.Profile, prov
 
 func (d *CodexDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error) {
 	return []string{"-m", "gpt-5.6-sol", kickoffPrompt}, nil
+}
+
+func (d *CodexDriver) BuildAutonomousArgs(ctx context.Context, p model.Profile, kickoffPrompt string, mode AutonomousMode, policy AutonomousPolicy) ([]string, error) {
+	return nil, fmt.Errorf("codex autonomous execution is disabled until submit_prompt/headless support is verified")
 }

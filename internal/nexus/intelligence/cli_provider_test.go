@@ -36,26 +36,3 @@ func TestCLIProviderAnalyzeParsesJSONEnvelope(t *testing.T) {
 		t.Fatal("expected a compiled CLI prompt")
 	}
 }
-
-func TestHeadlessPromptArgsMatchSupportedProviderCLIs(t *testing.T) {
-	cases := []struct {
-		provider string
-		want0    string
-	}{
-		{"claude", "-p"}, {"agy", "-p"}, {"gemini", "-p"}, {"cursor", "-p"}, {"opencode", "run"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.provider, func(t *testing.T) {
-			args, err := HeadlessPromptArgs(tc.provider, "hello")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(args) != 2 || args[0] != tc.want0 || args[1] != "hello" {
-				t.Fatalf("unexpected args %#v", args)
-			}
-		})
-	}
-	if _, err := HeadlessPromptArgs("codex", "hello"); err == nil {
-		t.Fatal("codex must not be used as CLI intelligence while headless/submit_prompt is not SUPPORTED")
-	}
-}

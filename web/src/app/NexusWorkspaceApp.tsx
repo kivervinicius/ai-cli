@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { initSession } from '../api';
+import { resolveSessionState, type BrowserSessionState } from './sessionModel';
 import { setNexusCSRF, nexus } from '../nexus/api';
 import { Spinner } from '../design-system';
 import { ThemeProvider } from '../design-system';
@@ -28,20 +29,30 @@ const tourKey = 'iapro:nexus:tour-complete:v1';
 
 export const NexusWorkspaceApp: React.FC<{ popoutSurface?: WorkspaceSurface }> = ({ popoutSurface }) => {
   const { t } = useTranslation();
-  const [sessionReady, setSessionReady] = useState(false);
+  const [sessionState, setSessionState] = useState<BrowserSessionState>('loading');
 
   useEffect(() => {
-    initSession()
-      .then((session) => {
-        if (session.csrf_token) setNexusCSRF(session.csrf_token);
-      })
-      .finally(() => setSessionReady(true));
+    initSession().then((session) => {
+      if (session.csrf_token) setNexusCSRF(session.csrf_token);
+      setSessionState(resolveSessionState(session));
+    });
   }, []);
 
-  if (!sessionReady) {
+  if (sessionState === 'loading') {
     return (
       <div className="nx-app-loading">
         <Spinner label={t('app.starting')} />
+      </div>
+    );
+  }
+
+  if (sessionState === 'unauthenticated') {
+    return (
+      <div className="nx-app-loading" role="alert">
+        <div>
+          <strong>Nexus session is not authenticated.</strong>
+          <p>Open Nexus again from the local launcher/bootstrap URL to establish a new browser session.</p>
+        </div>
       </div>
     );
   }

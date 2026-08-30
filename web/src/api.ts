@@ -16,6 +16,35 @@ export async function initSession(): Promise<{ authenticated: boolean; csrf_toke
   }
 }
 
+export async function rotateSession(): Promise<{ authenticated: boolean; csrf_token: string }> {
+  const headers = new Headers();
+  headers.set('Accept', 'application/json');
+  headers.set('Content-Type', 'application/json');
+  if (csrfToken) headers.set('X-CSRF-Token', csrfToken);
+  const res = await fetch('/api/v1/session/rotate', { method: 'POST', headers, body: '{}' });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errBody.error || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  if (!data.csrf_token) throw new Error('session rotation returned no CSRF token');
+  csrfToken = data.csrf_token;
+  return data;
+}
+
+export async function logoutSession(): Promise<void> {
+  const headers = new Headers();
+  headers.set('Accept', 'application/json');
+  headers.set('Content-Type', 'application/json');
+  if (csrfToken) headers.set('X-CSRF-Token', csrfToken);
+  const res = await fetch('/api/v1/session/logout', { method: 'POST', headers, body: '{}' });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errBody.error || `HTTP ${res.status}`);
+  }
+  csrfToken = '';
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
   headers.set('Accept', 'application/json');

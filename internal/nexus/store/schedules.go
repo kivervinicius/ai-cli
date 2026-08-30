@@ -10,6 +10,7 @@ import (
 
 const (
 	SchedulePending   = "PENDING"
+	ScheduleClaimed   = "CLAIMED"
 	ScheduleRunning   = "RUNNING"
 	ScheduleCompleted = "COMPLETED"
 	ScheduleCanceled  = "CANCELED"
@@ -106,6 +107,22 @@ func (s *Store) ListReadyMissionSchedules(now time.Time) ([]MissionSchedule, err
 	return out, rows.Err()
 }
 
+// ClaimMissionSchedule atomically moves one due schedule out of PENDING before
+// any MissionRun is created. This is the duplicate-execution fence when two
+// Nexus processes/scheduler ticks observe the same due row.
+func (s *Store) ClaimMissionSchedule(id string) (bool, error) {
+	res, err := s.db.Exec(`UPDATE mission_schedules SET status=?,updated_at=? WHERE id=? AND status=?`,
+		ScheduleClaimed, time.Now().UTC().Format(time.RFC3339Nano), id, SchedulePending)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n == 1, nil
+}
+
 func (s *Store) UpdateMissionScheduleStatus(id, status string) error {
 	res, err := s.db.Exec(`UPDATE mission_schedules SET status=?,updated_at=? WHERE id=?`, status, time.Now().UTC().Format(time.RFC3339Nano), id)
 	if err != nil {
@@ -118,12 +135,12 @@ func (s *Store) UpdateMissionScheduleStatus(id, status string) error {
 }
 
 func (s *Store) BindMissionScheduleRun(id, runID string) error {
-	res, err := s.db.Exec(`UPDATE mission_schedules SET run_id=?,status=?,updated_at=? WHERE id=? AND status=?`, runID, ScheduleRunning, time.Now().UTC().Format(time.RFC3339Nano), id, SchedulePending)
+	res, err := s.db.Exec(`UPDATE mission_schedules SET run_id=?,status=?,updated_at=? WHERE id=? AND status=?`, runID, ScheduleRunning, time.Now().UTC().Format(time.RFC3339Nano), id, ScheduleClaimed)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return fmt.Errorf("mission schedule is no longer pending")
+		return fmt.Errorf("mission schedule is not claimed")
 	}
 	return nil
 }

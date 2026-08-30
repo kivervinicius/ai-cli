@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Accessibility, ArrowUpCircle, MonitorCog, Palette, RefreshCw, RotateCcw, Sparkles } from 'lucide-react';
+import { Accessibility, ArrowUpCircle, LogOut, MonitorCog, Palette, RefreshCw, RotateCcw, ShieldCheck, Sparkles } from 'lucide-react';
 import { Badge, Button, Card, InlineAlert, Input, Segmented, Switch } from '../../design-system';
 import { useTheme, type ThemeAccent, type ThemeDensity, type ThemeScheme } from '../../design-system';
 import { useWorkspace } from '../../workspace/WorkspaceProvider';
-import { nexus } from '../../nexus/api';
+import { nexus, setNexusCSRF } from '../../nexus/api';
+import { logoutSession, rotateSession } from '../../api';
 import type { IntelligenceMode, IntelligenceStatus, ProviderAccount } from '../../types';
 import { useTranslation } from 'react-i18next';
 import { normalizeLanguage, supportedLanguages, type SupportedLanguage } from '../../i18n';
@@ -21,6 +22,9 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
   const [intelligenceResources, setIntelligenceResources] = useState<ProviderAccount[]>([]);
   const [intelligenceSaving, setIntelligenceSaving] = useState(false);
   const [intelligenceError, setIntelligenceError] = useState('');
+  const [sessionAction, setSessionAction] = useState<'rotate' | 'logout' | ''>('');
+  const [sessionMessage, setSessionMessage] = useState('');
+  const [sessionError, setSessionError] = useState('');
 
   const checkUpdates = async () => {
     try {
@@ -73,6 +77,34 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
   ), [intelligenceResources]);
 
   const selectedCLI = `${intelligenceDraft.provider || ''}:${intelligenceDraft.profile || ''}`;
+
+  const handleRotateSession = async () => {
+    setSessionAction('rotate');
+    setSessionError('');
+    setSessionMessage('');
+    try {
+      const next = await rotateSession();
+      setNexusCSRF(next.csrf_token);
+      setSessionMessage('Browser session rotated successfully. Active workspace state was preserved.');
+    } catch (error) {
+      setSessionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSessionAction('');
+    }
+  };
+
+  const handleLogoutSession = async () => {
+    setSessionAction('logout');
+    setSessionError('');
+    try {
+      await logoutSession();
+      setNexusCSRF('');
+      window.location.reload();
+    } catch (error) {
+      setSessionError(error instanceof Error ? error.message : String(error));
+      setSessionAction('');
+    }
+  };
 
   const saveIntelligence = async () => {
     setIntelligenceSaving(true);
@@ -261,6 +293,27 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
             <Button tone="brand" onClick={handleUpdate} disabled={updating}>
               <RefreshCw size={14} className={updating ? 'nx-spin' : ''} />
               {updating ? t('settings.updating') : t('settings.update')}
+            </Button>
+          </div>
+        </Card>
+
+        <Card className="nx-settings-card">
+          <div className="nx-settings-card__title">
+            <ShieldCheck size={17} />
+            <div>
+              <strong>Browser session security</strong>
+              <small>Rotate browser credentials without restarting Nexus, or revoke this browser session.</small>
+            </div>
+          </div>
+          {sessionMessage && <InlineAlert tone="success" title="Session updated">{sessionMessage}</InlineAlert>}
+          {sessionError && <InlineAlert tone="danger" title="Session action failed">{sessionError}</InlineAlert>}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Button onClick={() => void handleRotateSession()} disabled={Boolean(sessionAction)}>
+              <RefreshCw size={14} className={sessionAction === 'rotate' ? 'nx-spin' : ''} />
+              {sessionAction === 'rotate' ? 'Rotating…' : 'Rotate session'}
+            </Button>
+            <Button tone="warning" onClick={() => void handleLogoutSession()} disabled={Boolean(sessionAction)}>
+              <LogOut size={14} /> {sessionAction === 'logout' ? 'Logging out…' : 'Logout browser'}
             </Button>
           </div>
         </Card>

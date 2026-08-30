@@ -22,19 +22,6 @@ type CLIProvider struct {
 	run                 CLIPromptRunner
 }
 
-// HeadlessPromptArgs returns the verified non-interactive invocation contract for
-// coding-agent CLIs that currently advertise both Headless and SubmitPrompt support.
-func HeadlessPromptArgs(providerID, prompt string) ([]string, error) {
-	switch strings.ToLower(strings.TrimSpace(providerID)) {
-	case "claude", "agy", "gemini", "cursor":
-		return []string{"-p", prompt}, nil
-	case "opencode":
-		return []string{"run", prompt}, nil
-	default:
-		return nil, fmt.Errorf("provider %q has no verified headless prompt contract", providerID)
-	}
-}
-
 func NewCLIProvider(providerID, profile string, capabilityValidated bool, run CLIPromptRunner) *CLIProvider {
 	return &CLIProvider{providerID: strings.TrimSpace(providerID), profile: strings.TrimSpace(profile), capabilityValidated: capabilityValidated, run: run}
 }

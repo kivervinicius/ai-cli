@@ -138,3 +138,18 @@ func TestRenderGuardBlocksDeployMutationButAllowsReadOnly(t *testing.T) {
 		t.Fatalf("read-only kubectl get must not be blocked: %s", script)
 	}
 }
+
+func TestAutonomyGuardRendersNetworkSecretAndPaidServiceBlocks(t *testing.T) {
+	network := renderUnixCommandGuard("/usr/bin/curl", "curl", Policy{AllowExternalNetwork: false})
+	if !strings.Contains(network, "NEXUS_AUTONOMY_BLOCKED") || !strings.Contains(network, "block") {
+		t.Fatalf("network guard must block curl when external network is denied: %s", network)
+	}
+	secret := renderUnixCommandGuard("/usr/bin/vault", "vault", Policy{AllowSecretAccess: false})
+	if !strings.Contains(secret, "NEXUS_AUTONOMY_BLOCKED") {
+		t.Fatalf("secret manager guard missing: %s", secret)
+	}
+	paid := renderWindowsCommandGuard(`C:\\Tools\\aws.exe`, "aws", Policy{AllowPaidServices: false})
+	if !strings.Contains(paid, "NEXUS_AUTONOMY_BLOCKED") {
+		t.Fatalf("paid-service guard missing: %s", paid)
+	}
+}

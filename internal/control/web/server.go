@@ -82,6 +82,8 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	// REST API Routes
 	mux.HandleFunc("/api/v1/health", api.handleHealth)
 	mux.HandleFunc("/api/v1/session", api.handleSession)
+	mux.HandleFunc("/api/v1/session/rotate", s.authMiddleware(s.handleSessionRotate))
+	mux.HandleFunc("/api/v1/session/logout", s.authMiddleware(s.handleSessionLogout))
 	mux.HandleFunc("/api/v1/workspaces", s.authMiddleware(api.handleWorkspaces))
 	mux.HandleFunc("/api/v1/runtimes", s.authMiddleware(api.handleRuntimes))
 	mux.HandleFunc("/api/v1/runtimes/", s.routeRuntime)
@@ -204,6 +206,57 @@ func (s *Server) withSecurityHeaders(next http.Handler) http.Handler {
 	})
 }
 
+func (s *Server) handleSessionRotate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	old := s.auth.AuthenticateRequest(r)
+	if old == nil {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	next, err := s.auth.RotateSession(old.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to rotate session")
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    next.ID,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"authenticated": true,
+		"csrf_token":    next.CSRFToken,
+	})
+}
+
+func (s *Server) handleSessionLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	sess := s.auth.AuthenticateRequest(r)
+	if sess == nil {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	s.auth.RevokeSession(sess.ID)
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   -1,
+		Expires:  time.Unix(1, 0),
+	})
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) routeRuntime(w http.ResponseWriter, r *http.Request) {
 	// Check for WebSocket terminal route: /api/v1/runtimes/:id/terminal
 	if strings.HasSuffix(r.URL.Path, "/terminal") {
@@ -231,6 +284,27 @@ func (s *Server) routeRuntime(w http.ResponseWriter, r *http.Request) {
 	s.authMiddleware(s.api.handleRuntimeDetail)(w, r)
 }
 
+func projectSubroute(path string) string {
+	switch {
+	case strings.HasSuffix(path, "/layout"):
+		return "layout"
+	case strings.HasSuffix(path, "/agents"):
+		return "agents"
+	case strings.HasSuffix(path, "/missions"):
+		return "missions"
+	case strings.HasSuffix(path, "/plans"):
+		return "plans"
+	case strings.HasSuffix(path, "/open-os"):
+		return "open-os"
+	case strings.HasSuffix(path, "/git/branches"):
+		return "git-branches"
+	case strings.HasSuffix(path, "/git/checkout"):
+		return "git-checkout"
+	default:
+		return "detail"
+	}
+}
+
 // routeProject dispatches project detail, layout, and agents sub-routes.
 func (s *Server) routeProject(h *NexusHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -251,22 +325,28 @@ func (s *Server) routeProject(h *NexusHandler) http.HandlerFunc {
 				return
 			}
 		}
-		switch {
-		case strings.HasSuffix(r.URL.Path, "/layout"):
+		switch projectSubroute(r.URL.Path) {
+		case "layout":
 			h.handleProjectLayout(w, r)
-		case strings.HasSuffix(r.URL.Path, "/agents"):
+		case "agents":
 			if r.Method == http.MethodGet {
 				h.handleAgentsList(w, r)
 			} else {
 				h.handleAgentCreate(w, r)
 			}
-		case strings.HasSuffix(r.URL.Path, "/plans"):
+		case "missions":
+			if r.Method == http.MethodGet {
+				h.handleMissionsList(w, r)
+			} else {
+				h.handleMissionCreate(w, r)
+			}
+		case "plans":
 			h.handleProjectPlans(w, r)
-		case strings.HasSuffix(r.URL.Path, "/open-os"):
+		case "open-os":
 			h.handleProjectOpenOS(w, r)
-		case strings.HasSuffix(r.URL.Path, "/git/branches"):
+		case "git-branches":
 			h.handleProjectGitBranches(w, r)
-		case strings.HasSuffix(r.URL.Path, "/git/checkout"):
+		case "git-checkout":
 			h.handleProjectGitCheckout(w, r)
 		default:
 			h.handleProjectDetail(w, r)

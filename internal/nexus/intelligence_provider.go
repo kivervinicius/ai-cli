@@ -127,7 +127,7 @@ func (n *Nexus) cliIntelligenceProvider(ctx context.Context, projectID string, c
 		}
 	}
 	runner := func(runCtx context.Context, prompt string) (string, error) {
-		args, err := intelligence.HeadlessPromptArgs(providerID, prompt)
+		args, err := d.BuildKickoffArgs(runCtx, prof, prompt)
 		if err != nil {
 			return "", err
 		}
