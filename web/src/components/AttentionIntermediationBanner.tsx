@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AlertCircle, CheckCircle2, HelpCircle, Send, Terminal, X } from 'lucide-react';
 import { api } from '../api';
 import type { RuntimeSession } from '../types';
+import { sanitizeAttentionText } from './attentionText';
 
 export const AttentionIntermediationBanner: React.FC<{
   runtimes: RuntimeSession[];
@@ -24,7 +25,10 @@ export const AttentionIntermediationBanner: React.FC<{
   const current = attentionRuntimes[0];
   const projName = current.project_name || t('missions.project');
   const reason = current.attention_reason || (current.state === 'APPROVAL' ? 'APPROVAL' : 'QUESTION');
-  const contextText = current.attention_context || current.dynamic_title || t('attentionBanner.defaultContext');
+  const contextText = sanitizeAttentionText(
+    current.attention_context || current.dynamic_title,
+    t('attentionBanner.defaultContext'),
+  );
 
   const handleSend = async (text: string) => {
     if (!text.trim() || sending) return;

@@ -52,6 +52,22 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         foreground: '#e2e8f0',
         cursor: '#38bdf8',
         selectionBackground: 'rgba(56, 189, 248, 0.3)',
+        black: '#0b0f14',
+        red: '#ff7b7b',
+        green: '#51cf9a',
+        yellow: '#f3bd67',
+        blue: '#62b4ff',
+        magenta: '#bba5ff',
+        cyan: '#65d6e7',
+        white: '#e6e9ef',
+        brightBlack: '#626c82',
+        brightRed: '#ff9b9b',
+        brightGreen: '#8ae6bd',
+        brightYellow: '#ffd58f',
+        brightBlue: '#9acbff',
+        brightMagenta: '#d6c7ff',
+        brightCyan: '#a0eef5',
+        brightWhite: '#ffffff',
       },
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       fontSize: 13,
@@ -147,14 +163,17 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       }
     });
 
-    const handleWindowResize = () => {
-      fitAddon.fit();
-    };
+    const handleWindowResize = () => fitAddon.fit();
+    const resizeObserver = new ResizeObserver(() => {
+      window.requestAnimationFrame(handleWindowResize);
+    });
+    resizeObserver.observe(containerRef.current);
     window.addEventListener('resize', handleWindowResize);
 
     return () => {
       dataListener.dispose();
       resizeListener.dispose();
+      resizeObserver.disconnect();
       window.removeEventListener('resize', handleWindowResize);
       ws.close();
       term.dispose();
@@ -174,7 +193,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#090d16] border border-slate-800 rounded-lg overflow-hidden shadow-xl">
+    <div className="nx-agent-terminal">
       {/* Terminal Toolbar */}
       <div className="flex items-center justify-between px-3 py-2 bg-slate-900 border-b border-slate-800 text-xs font-mono select-none">
         <div className="flex items-center space-x-2">
@@ -261,7 +280,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       </div>
 
       {/* xterm container */}
-      <div className="flex-1 w-full p-2 overflow-hidden" ref={containerRef} />
+      <div className="nx-agent-terminal__xterm" ref={containerRef} />
     </div>
   );
 };
