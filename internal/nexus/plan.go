@@ -9,6 +9,8 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/ids"
 	"github.com/kivervinicius/ai-cli/internal/nexus/intelligence"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
+
+	"sort"
 )
 
 // CreateWorkPlan creates a new structured engineering work plan.
@@ -88,9 +90,19 @@ func (n *Nexus) CompilePackagePrompt(ctx context.Context, planID, phaseID, packa
 	if err != nil {
 		return nil, err
 	}
+	return n.compilePackagePromptFromPlan(ctx, plan, phaseID, packageID)
+}
 
+// compilePackagePromptFromPlan compiles from an immutable in-memory plan
+// snapshot. Mission execution uses this function so edits to the live WorkPlan
+// cannot mutate prompts for an already-approved run.
+func (n *Nexus) compilePackagePromptFromPlan(ctx context.Context, plan *store.WorkPlan, phaseID, packageID string) (*intelligence.PromptCompilationResult, error) {
+	if plan == nil {
+		return nil, fmt.Errorf("work plan snapshot is required")
+	}
 	var targetPkg *store.WorkPackage
-	for _, ph := range plan.Phases {
+	for pi := range plan.Phases {
+		ph := &plan.Phases[pi]
 		if phaseID != "" && ph.ID != phaseID {
 			continue
 		}
@@ -104,39 +116,68 @@ func (n *Nexus) CompilePackagePrompt(ctx context.Context, planID, phaseID, packa
 			break
 		}
 	}
-
 	if targetPkg == nil {
-		return nil, fmt.Errorf("work package %s not found in plan %s", packageID, planID)
+		return nil, fmt.Errorf("work package %s not found in plan %s", packageID, plan.ID)
 	}
 
+	// Maestro remains the sole authority for skill IDs. Explicit gates are part
+	// of the approved contract and must never be silently dropped.
+	validatedSkills, err := n.validateMaestroGatesStrict(ctx, targetPkg.MaestroGates)
+	if err != nil {
+		return nil, err
+	}
+	return compileTargetPackagePrompt(ctx, plan, targetPkg, validatedSkills)
+}
+
+func (n *Nexus) validateMaestroGates(ctx context.Context, gates []string) []string {
+	if len(gates) == 0 {
+		return nil
+	}
+	available, err := NewMaestroClient().ListSkills(ctx)
+	if err != nil {
+		return nil
+	}
+	allowed := make(map[string]struct{}, len(available))
+	for _, skill := range available {
+		allowed[skill] = struct{}{}
+	}
+	var out []string
+	for _, skill := range gates {
+		if _, ok := allowed[skill]; ok {
+			out = append(out, skill)
+		}
+	}
+	return out
+}
+
+func compileTargetPackagePrompt(ctx context.Context, plan *store.WorkPlan, targetPkg *store.WorkPackage, validatedSkills []string) (*intelligence.PromptCompilationResult, error) {
 	engine := intelligence.NewNexusEngine(nil)
 	outline := intelligence.WorkPackageOutline{
-		Title:        targetPkg.Title,
-		Goal:         targetPkg.Goal,
-		Priority:     targetPkg.Priority,
-		Dependencies: targetPkg.Dependencies,
-		Role:         targetPkg.Role,
-		Acceptance:   targetPkg.AcceptanceCriteria,
+		Title: targetPkg.Title, Goal: targetPkg.Goal, Priority: targetPkg.Priority,
+		Dependencies: targetPkg.Dependencies, Role: targetPkg.Role, Acceptance: targetPkg.AcceptanceCriteria,
 	}
+	return engine.CompilePrompt(ctx, outline, plan.StructuredFacts, validatedSkills)
+}
 
-	// Only explicitly assigned and currently advertised Maestro skill IDs are
-	// compiled into execution prompts. Nexus never injects the full skill catalog.
-	var validatedSkills []string
-	if len(targetPkg.MaestroGates) > 0 {
-		client := NewMaestroClient()
-		available, _ := client.ListSkills(ctx)
-		allowed := make(map[string]struct{}, len(available))
-		for _, skill := range available {
-			allowed[skill] = struct{}{}
+// compilePackagePromptFromExecutionSnapshot trusts only Maestro gates already
+// frozen into the approved snapshot. It never consults mutable live planning state.
+func compilePackagePromptFromExecutionSnapshot(ctx context.Context, plan *store.WorkPlan, phaseID, packageID string) (*intelligence.PromptCompilationResult, error) {
+	if plan == nil {
+		return nil, fmt.Errorf("work plan snapshot is required")
+	}
+	for pi := range plan.Phases {
+		ph := &plan.Phases[pi]
+		if phaseID != "" && ph.ID != phaseID {
+			continue
 		}
-		for _, skill := range targetPkg.MaestroGates {
-			if _, ok := allowed[skill]; ok {
-				validatedSkills = append(validatedSkills, skill)
+		for i := range ph.Packages {
+			pkg := &ph.Packages[i]
+			if pkg.ID == packageID {
+				return compileTargetPackagePrompt(ctx, plan, pkg, append([]string(nil), pkg.MaestroGates...))
 			}
 		}
 	}
-
-	return engine.CompilePrompt(ctx, outline, plan.StructuredFacts, validatedSkills)
+	return nil, fmt.Errorf("work package %s not found in execution snapshot", packageID)
 }
 
 // ClarificationCheckpoint is the durable user-facing representation of a blocking ambiguity set.
@@ -319,4 +360,98 @@ func (n *Nexus) createPlanFromOutlines(ctx context.Context, projectID, goal stri
 	mergedFacts["scope"] = intent.Scope
 	mergedFacts["risk_level"] = intent.RiskLevel
 	return n.CreateWorkPlan(ctx, projectID, intent.Intent, fmt.Sprintf("AI-generated plan for: %s", goal), []store.PlanPhase{phase}, mergedFacts)
+}
+
+// PlanRevisionDiff is a semantic diff suitable for UI/audit without relying on
+// textual JSON ordering.
+type PlanRevisionDiff struct {
+	FromRevision       int      `json:"from_revision"`
+	ToRevision         int      `json:"to_revision"`
+	TitleChanged       bool     `json:"title_changed"`
+	DescriptionChanged bool     `json:"description_changed"`
+	AddedPackages      []string `json:"added_packages"`
+	RemovedPackages    []string `json:"removed_packages"`
+	ChangedPackages    []string `json:"changed_packages"`
+}
+
+func (n *Nexus) ComparePlanRevisions(ctx context.Context, planID string, fromRevision, toRevision int) (*PlanRevisionDiff, error) {
+	st, err := n.OpenProject()
+	if err != nil {
+		return nil, err
+	}
+	fromRow, err := st.GetPlanRevision(planID, fromRevision)
+	if err != nil {
+		return nil, err
+	}
+	toRow, err := st.GetPlanRevision(planID, toRevision)
+	if err != nil {
+		return nil, err
+	}
+	var from, to store.WorkPlan
+	if err := json.Unmarshal([]byte(fromRow.SnapshotJSON), &from); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal([]byte(toRow.SnapshotJSON), &to); err != nil {
+		return nil, err
+	}
+	diff := &PlanRevisionDiff{FromRevision: fromRevision, ToRevision: toRevision, TitleChanged: from.Title != to.Title, DescriptionChanged: from.Description != to.Description}
+	left, right := flattenPackages(from), flattenPackages(to)
+	for id, pkg := range right {
+		old, ok := left[id]
+		if !ok {
+			diff.AddedPackages = append(diff.AddedPackages, id)
+			continue
+		}
+		oldJSON, _ := json.Marshal(old)
+		newJSON, _ := json.Marshal(pkg)
+		if string(oldJSON) != string(newJSON) {
+			diff.ChangedPackages = append(diff.ChangedPackages, id)
+		}
+	}
+	for id := range left {
+		if _, ok := right[id]; !ok {
+			diff.RemovedPackages = append(diff.RemovedPackages, id)
+		}
+	}
+	sort.Strings(diff.AddedPackages)
+	sort.Strings(diff.RemovedPackages)
+	sort.Strings(diff.ChangedPackages)
+	return diff, nil
+}
+
+func flattenPackages(plan store.WorkPlan) map[string]store.WorkPackage {
+	out := map[string]store.WorkPackage{}
+	for _, phase := range plan.Phases {
+		for _, pkg := range phase.Packages {
+			out[pkg.ID] = pkg
+		}
+	}
+	return out
+}
+
+// RestoreWorkPlanRevision creates a NEW revision from a historical immutable
+// snapshot; history is never rewritten or deleted.
+func (n *Nexus) RestoreWorkPlanRevision(ctx context.Context, planID string, revision int) (*store.WorkPlan, *store.PlanRevision, error) {
+	st, err := n.OpenProject()
+	if err != nil {
+		return nil, nil, err
+	}
+	row, err := st.GetPlanRevision(planID, revision)
+	if err != nil {
+		return nil, nil, err
+	}
+	var historical store.WorkPlan
+	if err := json.Unmarshal([]byte(row.SnapshotJSON), &historical); err != nil {
+		return nil, nil, err
+	}
+	current, err := st.GetWorkPlan(planID)
+	if err != nil {
+		return nil, nil, err
+	}
+	historical.ID = current.ID
+	historical.ProjectID = current.ProjectID
+	historical.MissionID = current.MissionID
+	historical.CurrentRevision = current.CurrentRevision
+	historical.CreatedAt = current.CreatedAt
+	return st.UpdateWorkPlan(historical, fmt.Sprintf("Restore from revision %d", revision))
 }

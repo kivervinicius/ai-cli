@@ -1,28 +1,59 @@
 package runner
 
-import (
-	"time"
-)
+import "time"
 
-// State represents the explicit phase in the autonomous execution state machine.
+// State is an explicit durable state in the autonomous execution lifecycle.
 type State string
 
 const (
-	StateReady       State = "READY"
-	StateAllocating  State = "ALLOCATING"
-	StateCompiling   State = "COMPILING"
-	StateExecuting   State = "EXECUTING"
-	StateTesting     State = "TESTING"
-	StateReviewing   State = "REVIEWING"
-	StateRemediating State = "REMEDIATING"
-	StateVerified    State = "VERIFIED"
-	StateCompleted   State = "COMPLETED"
-	StateFailed      State = "FAILED"
-	StateEscalated   State = "ESCALATED"
-	StatePaused      State = "PAUSED"
+	StatePending              State = "PENDING"
+	StateReady                State = "READY"
+	StateAllocating           State = "ALLOCATING"
+	StateCompiling            State = "COMPILING"
+	StateExecuting            State = "EXECUTING"
+	StateTesting              State = "TESTING"
+	StateReviewing            State = "REVIEWING"
+	StateRemediating          State = "REMEDIATING"
+	StateVerified             State = "VERIFIED"
+	StateCompletedVerified    State = "COMPLETED_VERIFIED"
+	StateFailed               State = "FAILED"
+	StateFailedNoProgress     State = "FAILED_NO_PROGRESS"
+	StateFailedBudgetExceeded State = "FAILED_BUDGET_EXCEEDED"
+	StateFailedVerification   State = "FAILED_VERIFICATION"
+	StateBlockedNeedsUser     State = "BLOCKED_NEEDS_USER"
+	StateEscalated            State = "ESCALATED" // compatibility for older clients
+	StatePaused               State = "PAUSED"
+	StateCanceledByUser       State = "CANCELED_BY_USER"
+	// StateCompleted is retained as an alias for old integrations.
+	StateCompleted = StateCompletedVerified
 )
 
-// ReviewVerdict records the independent evaluation of a work package implementation.
+// PlanSpec is the immutable execution input consumed by runner. It deliberately
+// does not import the SQLite store package, keeping the state machine testable.
+type PlanSpec struct {
+	ID                  string        `json:"id"`
+	ProjectID           string        `json:"project_id"`
+	Revision            int           `json:"revision"`
+	ExecutionSnapshotID string        `json:"execution_snapshot_id,omitempty"`
+	Packages            []PackageSpec `json:"packages"`
+}
+
+type PackageSpec struct {
+	ID                 string   `json:"id"`
+	PhaseID            string   `json:"phase_id"`
+	Title              string   `json:"title"`
+	Goal               string   `json:"goal"`
+	Priority           string   `json:"priority"`
+	Dependencies       []string `json:"dependencies,omitempty"`
+	ParallelGroup      string   `json:"parallel_group,omitempty"`
+	Role               string   `json:"role,omitempty"`
+	TaskRequirements   string   `json:"task_requirements,omitempty"`
+	AgentAllocation    string   `json:"agent_allocation,omitempty"`
+	AcceptanceCriteria []string `json:"acceptance_criteria,omitempty"`
+}
+
+// ReviewVerdict records independent evaluation evidence. A verdict without a
+// reviewer identity is never accepted by MissionRunner.
 type ReviewVerdict struct {
 	Approved        bool      `json:"approved"`
 	ReviewerAgentID string    `json:"reviewer_agent_id"`
@@ -31,7 +62,6 @@ type ReviewVerdict struct {
 	ReviewedAt      time.Time `json:"reviewed_at"`
 }
 
-// VerificationResult holds the output of independent automated tests and gates.
 type VerificationResult struct {
 	Command       string    `json:"command"`
 	Passed        bool      `json:"passed"`
@@ -41,33 +71,69 @@ type VerificationResult struct {
 	VerifiedAt    time.Time `json:"verified_at"`
 }
 
-// PackageRun tracks the execution, retries, and verification of one WorkPackage.
 type PackageRun struct {
-	ID              string               `json:"id"`
-	PackageID       string               `json:"package_id"`
-	Title           string               `json:"title"`
-	State           State                `json:"state"`
-	Attempt         int                  `json:"attempt"`
-	AssignedAgent   string               `json:"assigned_agent"`
-	AssignedRuntime string               `json:"assigned_runtime,omitempty"`
-	CompiledPrompt  string               `json:"compiled_prompt,omitempty"`
-	Verdicts        []ReviewVerdict      `json:"verdicts,omitempty"`
-	Verifications   []VerificationResult `json:"verifications,omitempty"`
-	ErrorMessage    string               `json:"error_message,omitempty"`
-	StartedAt       time.Time            `json:"started_at"`
-	FinishedAt      *time.Time           `json:"finished_at,omitempty"`
+	ID                   string               `json:"id"`
+	PackageID            string               `json:"package_id"`
+	PhaseID              string               `json:"phase_id,omitempty"`
+	Title                string               `json:"title"`
+	Goal                 string               `json:"goal,omitempty"`
+	Priority             string               `json:"priority,omitempty"`
+	Role                 string               `json:"role,omitempty"`
+	TaskRequirements     string               `json:"task_requirements,omitempty"`
+	Dependencies         []string             `json:"dependencies,omitempty"`
+	ParallelGroup        string               `json:"parallel_group,omitempty"`
+	AcceptanceCriteria   []string             `json:"acceptance_criteria,omitempty"`
+	State                State                `json:"state"`
+	Attempt              int                  `json:"attempt"`
+	AssignedAgent        string               `json:"assigned_agent"`
+	AssignedRuntime      string               `json:"assigned_runtime,omitempty"`
+	Workspace            string               `json:"workspace,omitempty"`
+	PromptVersionID      string               `json:"prompt_version_id,omitempty"`
+	CompiledPrompt       string               `json:"compiled_prompt,omitempty"`
+	RemediationContext   string               `json:"remediation_context,omitempty"`
+	RetryFrom            State                `json:"retry_from,omitempty"`
+	LastFailureSignature string               `json:"last_failure_signature,omitempty"`
+	NoProgressCount      int                  `json:"no_progress_count,omitempty"`
+	Verdicts             []ReviewVerdict      `json:"verdicts,omitempty"`
+	Verifications        []VerificationResult `json:"verifications,omitempty"`
+	ErrorMessage         string               `json:"error_message,omitempty"`
+	StartedAt            time.Time            `json:"started_at"`
+	FinishedAt           *time.Time           `json:"finished_at,omitempty"`
 }
 
-// MissionRun tracks the full end-to-end execution of a WorkPlan under an AutonomyContract.
 type MissionRun struct {
-	ID              string           `json:"id"`
-	PlanID          string           `json:"plan_id"`
-	ProjectID       string           `json:"project_id"`
-	State           State            `json:"state"`
-	Contract        AutonomyContract `json:"contract"`
-	CurrentPkgIndex int              `json:"current_pkg_index"`
-	PackageRuns     []PackageRun     `json:"package_runs"`
-	StartedAt       time.Time        `json:"started_at"`
-	UpdatedAt       time.Time        `json:"updated_at"`
-	CompletedAt     *time.Time       `json:"completed_at,omitempty"`
+	ID                  string           `json:"id"`
+	PlanID              string           `json:"plan_id"`
+	PlanRevision        int              `json:"plan_revision"`
+	ExecutionSnapshotID string           `json:"execution_snapshot_id,omitempty"`
+	ProjectID           string           `json:"project_id"`
+	Workspace           string           `json:"workspace"`
+	State               State            `json:"state"`
+	Contract            AutonomyContract `json:"contract"`
+	CurrentPkgIndex     int              `json:"current_pkg_index"` // compatibility/UI hint only
+	TotalIterations     int              `json:"total_iterations"`
+	PackageRuns         []PackageRun     `json:"package_runs"`
+	LeaseOwner          string           `json:"lease_owner,omitempty"`
+	LeaseToken          string           `json:"lease_token,omitempty"`
+	LeaseExpiresAt      *time.Time       `json:"lease_expires_at,omitempty"`
+	HeartbeatAt         *time.Time       `json:"heartbeat_at,omitempty"`
+	PausedReason        string           `json:"paused_reason,omitempty"`
+	StartedAt           time.Time        `json:"started_at"`
+	UpdatedAt           time.Time        `json:"updated_at"`
+	CompletedAt         *time.Time       `json:"completed_at,omitempty"`
+}
+
+type AllocationResult struct {
+	AgentID   string `json:"agent_id"`
+	Workspace string `json:"workspace"`
+}
+
+type PromptArtifact struct {
+	VersionID string `json:"version_id"`
+	Content   string `json:"content"`
+}
+
+type ExecutionResult struct {
+	RuntimeID string `json:"runtime_id"`
+	Output    string `json:"output,omitempty"`
 }

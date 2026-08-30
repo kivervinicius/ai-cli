@@ -21,17 +21,17 @@ IAPro Nexus es un espacio de control local para agentes de programación con IA.
 Linux y macOS:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/IAPro-Community/ai-manager/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.sh | bash
 nexus doctor
-nexus control web
+nexus web
 ```
 
 Windows PowerShell:
 
 ```powershell
-iwr https://raw.githubusercontent.com/IAPro-Community/ai-manager/main/install.ps1 -UseBasicParsing | iex
+iwr https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.ps1 -UseBasicParsing | iex
 nexus doctor
-nexus control web
+nexus web
 ```
 
 ## Idioma
@@ -52,8 +52,8 @@ Los locales disponibles son `pt-BR`, `en` y `es`. Los nombres de comandos, flags
 ## Uso esencial
 
 ```bash
-nexus                         # abre la TUI
-nexus control web             # abre la interfaz web
+nexus                         # abre Workspace OS Web (predeterminado)
+nexus web                     # abre explícitamente Workspace OS Web
 nexus providers               # proveedores detectados
 nexus profiles                # perfiles configurados
 nexus add codex trabajo       # crea un perfil

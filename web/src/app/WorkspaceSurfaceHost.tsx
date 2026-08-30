@@ -10,7 +10,6 @@ import { ContinueModal } from '../components/ContinueModal';
 import { TerminalPane } from '../components/TerminalPane';
 import { AgentTerminal } from '../nexus/AgentTerminal';
 import { MaestroPage } from '../nexus/MaestroPage';
-import { MissionsPage } from '../nexus/MissionsPage';
 import { ResourcePicker } from '../nexus/ResourcePicker';
 import { api } from '../api';
 import type { Agent, EventRecord, ProfileInfo, Project, ProviderInfo, RuntimeSession, Workspace } from '../types';
@@ -18,6 +17,7 @@ import type { WorkspaceSurface } from '../workspace/model';
 import { ProjectManagerSurface } from '../features/projects/ProjectManagerSurface';
 import { ProjectOverviewSurface } from '../features/overview/ProjectOverviewSurface';
 import { WorkSurface } from '../features/work/WorkSurface';
+import { PlanBuilderSurface } from '../features/work/PlanBuilderSurface';
 import { DirectSessionLauncher, type DirectSessionRequest } from '../features/work/DirectSessionLauncher';
 import { AgentsSurface } from '../features/agents/AgentsSurface';
 import { AgentConfigurationSurface } from '../features/agents/AgentConfigurationSurface';
@@ -198,7 +198,7 @@ export const WorkspaceSurfaceHost: React.FC<{
             <p>{t('surfaces.missionsIntro')}</p>
           </div>
         </div>
-        <MissionsPage projectId={project.id} />
+        <PlanBuilderSurface project={project} agents={agents} onOpenAgent={terminal} />
       </div>
     );
 

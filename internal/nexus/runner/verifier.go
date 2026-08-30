@@ -3,65 +3,53 @@ package runner
 import (
 	"context"
 	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 )
 
-// VerificationEngine executes concrete test/lint commands against the workspace (§Phase H).
+// VerificationEngine executes concrete gates against the package workspace.
 type VerificationEngine struct{}
 
-func NewVerificationEngine() *VerificationEngine {
-	return &VerificationEngine{}
-}
+func NewVerificationEngine() *VerificationEngine { return &VerificationEngine{} }
 
-// RunVerification executes commands in the given workspace directory and returns structured evidence.
+// RunVerification executes each approved command through the platform shell so
+// quoting and package-manager syntax behave consistently on Unix and Windows.
 func (v *VerificationEngine) RunVerification(ctx context.Context, workspace string, commands []string) []VerificationResult {
 	var results []VerificationResult
-
 	for _, cmdStr := range commands {
 		cmdStr = strings.TrimSpace(cmdStr)
 		if cmdStr == "" {
 			continue
 		}
-
 		start := time.Now()
-		parts := strings.Fields(cmdStr)
-		cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
+		cmd := platformShellCommand(ctx, cmdStr)
 		cmd.Dir = workspace
-
 		out, err := cmd.CombinedOutput()
 		dur := time.Since(start).Milliseconds()
-
-		exitCode := 0
-		passed := true
+		exitCode, passed := 0, err == nil
 		if err != nil {
-			passed = false
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				exitCode = exitErr.ExitCode()
 			} else {
 				exitCode = -1
 			}
 		}
-
 		snippet := string(out)
-		if len(snippet) > 2048 {
-			snippet = snippet[len(snippet)-2048:] // Keep last 2KB
+		if len(snippet) > 8192 {
+			snippet = snippet[len(snippet)-8192:]
 		}
-
-		results = append(results, VerificationResult{
-			Command:       cmdStr,
-			Passed:        passed,
-			ExitCode:      exitCode,
-			OutputSnippet: snippet,
-			DurationMs:    dur,
-			VerifiedAt:    time.Now().UTC(),
-		})
-
-		// Stop at first failure
+		results = append(results, VerificationResult{Command: cmdStr, Passed: passed, ExitCode: exitCode, OutputSnippet: snippet, DurationMs: dur, VerifiedAt: time.Now().UTC()})
 		if !passed {
 			break
 		}
 	}
-
 	return results
+}
+
+func platformShellCommand(ctx context.Context, command string) *exec.Cmd {
+	if runtime.GOOS == "windows" {
+		return exec.CommandContext(ctx, "cmd.exe", "/d", "/s", "/c", command)
+	}
+	return exec.CommandContext(ctx, "/bin/sh", "-lc", command)
 }

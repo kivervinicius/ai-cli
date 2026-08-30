@@ -92,7 +92,7 @@ export const NexusShell: React.FC<{
               </span>
               <span className="nx-project-info">
                 <strong>{project.name}</strong>
-                <small>{project.default_branch || 'main'}</small>
+                <small>{project.default_branch || 'unknown'}</small>
               </span>
               <ChevronDown size={12} className="nx-project-chevron" />
             </button>
@@ -137,7 +137,7 @@ export const NexusShell: React.FC<{
 
             {/* System Versions Pill */}
             <div className="nx-topbar-version-pill" title="Nexus & Maestro Versions">
-              <span className="nx-ver-nexus">Nexus v{sysInfo?.nexus_version || '0.4.1'}</span>
+              <span className="nx-ver-nexus">Nexus v{sysInfo?.nexus_version || 'unknown'}</span>
             </div>
 
             {/* Language Switcher */}

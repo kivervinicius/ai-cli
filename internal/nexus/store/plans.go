@@ -274,3 +274,31 @@ func (s *Store) CreateExecutionSnapshot(planID, revisionID string, stateJSON str
 	}
 	return &snap, nil
 }
+
+// GetPlanRevision returns the immutable snapshot for one exact plan revision.
+func (s *Store) GetPlanRevision(planID string, revision int) (*PlanRevision, error) {
+	var r PlanRevision
+	var created string
+	err := s.db.QueryRow(`SELECT id, plan_id, revision, snapshot_json, change_summary, created_at
+		FROM plan_revisions WHERE plan_id=? AND revision=?`, planID, revision).Scan(
+		&r.ID, &r.PlanID, &r.Revision, &r.SnapshotJSON, &r.ChangeSummary, &created)
+	if err != nil {
+		return nil, err
+	}
+	r.CreatedAt, _ = time.Parse(time.RFC3339, created)
+	return &r, nil
+}
+
+// GetExecutionSnapshot returns an immutable mission execution snapshot by ID.
+func (s *Store) GetExecutionSnapshot(id string) (*ExecutionSnapshot, error) {
+	var snap ExecutionSnapshot
+	var created string
+	err := s.db.QueryRow(`SELECT id, plan_id, revision_id, state_json, created_at
+		FROM execution_snapshots WHERE id=?`, id).Scan(
+		&snap.ID, &snap.PlanID, &snap.RevisionID, &snap.StateJSON, &created)
+	if err != nil {
+		return nil, err
+	}
+	snap.CreatedAt, _ = time.Parse(time.RFC3339, created)
+	return &snap, nil
+}

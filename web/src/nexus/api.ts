@@ -216,6 +216,12 @@ export const nexus = {
     }),
   deletePlan: (planId: string) =>
     request<{ deleted: boolean }>(`/api/v1/plans/${planId}`, { method: 'DELETE' }),
+  restorePlanRevision: (planId: string, revision: number) =>
+    request<{ plan: import('../types').WorkPlan; revision: import('../types').PlanRevision }>(`/api/v1/plans/${planId}/restore`, {
+      method: 'POST', body: JSON.stringify({ revision }),
+    }),
+  diffPlanRevisions: (planId: string, from: number, to: number) =>
+    request<import('../types').PlanRevisionDiff>(`/api/v1/plans/${planId}/diff?from=${from}&to=${to}`),
   compilePackagePrompt: (planId: string, packageId: string, phaseId?: string) =>
     request<any>(`/api/v1/plans/${planId}/compile`, {
       method: 'POST',
@@ -224,16 +230,33 @@ export const nexus = {
   runPlan: (planId: string, agentId?: string, maxRetries?: number) =>
     request<import('../types').MissionRun>(`/api/v1/plans/${planId}/run`, {
       method: 'POST',
-      body: JSON.stringify({ agent_id: agentId, max_retries: maxRetries }),
+      body: JSON.stringify({ agent_id: agentId, max_retries: maxRetries, autonomous: true }),
     }),
   getRuns: () =>
     request<import('../types').MissionRun[]>('/api/v1/runs'),
   getRun: (runId: string) =>
     request<import('../types').MissionRun>(`/api/v1/runs/${runId}`),
   stepRun: (runId: string) =>
-    request<{ run: import('../types').MissionRun; completed: boolean }>(`/api/v1/runs/${runId}`, {
+    request<{ run: import('../types').MissionRun; completed: boolean }>(`/api/v1/runs/${runId}/step`, { method: 'POST' }),
+  pauseRun: (runId: string, reason?: string) =>
+    request<import('../types').MissionRun>(`/api/v1/runs/${runId}/pause`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  takeControlRun: (runId: string, reason?: string) =>
+    request<import('../types').MissionRun>(`/api/v1/runs/${runId}/take-control`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  resumeRun: (runId: string) =>
+    request<import('../types').MissionRun>(`/api/v1/runs/${runId}/resume`, { method: 'POST' }),
+  returnToMission: (runId: string) =>
+    request<import('../types').MissionRun>(`/api/v1/runs/${runId}/return-to-mission`, { method: 'POST' }),
+  cancelRun: (runId: string, reason?: string) =>
+    request<import('../types').MissionRun>(`/api/v1/runs/${runId}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  getSchedules: (projectId: string) =>
+    request<import('../types').MissionSchedule[]>(`/api/v1/schedules?project_id=${encodeURIComponent(projectId)}`),
+  schedulePlan: (planId: string, mode: 'AT' | 'AFTER_RUN' | 'WHEN_RESOURCES', options?: { scheduledFor?: string; afterRunId?: string; agentId?: string }) =>
+    request<import('../types').MissionSchedule>('/api/v1/schedules', {
       method: 'POST',
+      body: JSON.stringify({ plan_id: planId, mode, scheduled_for: options?.scheduledFor, after_run_id: options?.afterRunId, agent_id: options?.agentId }),
     }),
+  cancelSchedule: (scheduleId: string) =>
+    request<{ canceled: boolean }>('/api/v1/schedules', { method: 'POST', body: JSON.stringify({ cancel_id: scheduleId }) }),
   recommendResources: (requirements: any, policy?: string) =>
     request<import('../types').RecommendationResult>('/api/v1/resources/recommend', {
       method: 'POST',

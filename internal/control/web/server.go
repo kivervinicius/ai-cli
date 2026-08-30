@@ -111,6 +111,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	// Autonomous Mission Runs (Phase F & H)
 	mux.HandleFunc("/api/v1/runs", s.authMiddleware(nexusHandler.handleRunsList))
 	mux.HandleFunc("/api/v1/runs/", s.routeRun(nexusHandler))
+	mux.HandleFunc("/api/v1/schedules", s.authMiddleware(nexusHandler.handleMissionSchedules))
 
 	// Missions (Gate 7 Beta)
 	mux.HandleFunc("/api/v1/missions/", s.routeMission(nexusHandler))
@@ -297,6 +298,10 @@ func (s *Server) routePlan(h *NexusHandler) http.HandlerFunc {
 			h.handlePlanCompile(w, r)
 		case strings.HasSuffix(r.URL.Path, "/run"):
 			h.handlePlanRun(w, r)
+		case strings.HasSuffix(r.URL.Path, "/restore"):
+			h.handlePlanRestore(w, r)
+		case strings.HasSuffix(r.URL.Path, "/diff"):
+			h.handlePlanDiff(w, r)
 		default:
 			h.handlePlanDetail(w, r)
 		}

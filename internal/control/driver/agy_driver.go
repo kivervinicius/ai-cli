@@ -166,5 +166,5 @@ func (d *AGYDriver) BuildResumeArgs(ctx context.Context, p model.Profile, provid
 }
 
 func (d *AGYDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error) {
-	return []string{kickoffPrompt}, nil
+	return []string{"-p", kickoffPrompt}, nil
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/agy"
 	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/claude"
 	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/codex"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/cursor"
 	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/gemini"
 	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/opencode"
 	"github.com/kivervinicius/ai-cli/internal/core/quota"
@@ -49,6 +50,7 @@ func initRegistry() *provider.Registry {
 	_ = reg.Register(claude.New())
 	_ = reg.Register(opencode.New())
 	_ = reg.Register(gemini.New())
+	_ = reg.Register(cursor.New())
 	globalRegistry = reg
 	return reg
 }
@@ -192,7 +194,7 @@ func Run(args []string) error {
 		return controlCmd(args[1:])
 	case "__control-host":
 		return controlHostCmd(args[1:])
-	case "codex", "agy", "claude", "opencode", "gemini":
+	case "codex", "agy", "claude", "opencode", "gemini", "cursor":
 		prov := args[0]
 		targetProfile := ""
 		rest := args[1:]
@@ -221,7 +223,7 @@ func Run(args []string) error {
 
 func isSupportedProvider(p string) bool {
 	switch strings.ToLower(p) {
-	case "codex", "agy", "claude", "opencode", "gemini":
+	case "codex", "agy", "claude", "opencode", "gemini", "cursor":
 		return true
 	default:
 		return false
@@ -415,7 +417,7 @@ func usage() {
 	fmt.Println(localization.T("help.header", map[string]any{"Version": buildinfo.Version}))
 	fmt.Println(localization.T("help.usage"))
 	body := fmt.Sprintf(`
-  %s                              Open interactive Workspace OS (TUI)
+  %s                              Open Web Workspace OS (default)
   %s web [flags]                  Launch IAPro Nexus Workspace OS (Web UI)
   %s control [subcmd]             Nexus Supervised Agent Runtimes (alias: %s ui)
   %s start <provider> [flags]     Start supervised agent runtime & attach
@@ -714,7 +716,7 @@ func useCmd(args []string) error {
 }
 
 func currentCmd(args []string) error {
-	providers := []string{"codex", "agy", "claude", "opencode", "gemini"}
+	providers := []string{"codex", "agy", "claude", "opencode", "gemini", "cursor"}
 	if len(args) >= 1 && args[0] != "--json" {
 		providers = []string{args[0]}
 	}
@@ -1316,7 +1318,7 @@ func completionCmd(args []string) error {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage inspect sessions workspaces bind unbind bindings explain doctor security history stats config update completion version release codex agy claude opencode gemini"
+    opts="web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage inspect sessions workspaces bind unbind bindings explain doctor security history stats config update completion version release codex agy claude opencode gemini cursor"
     COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
     return 0
 }
@@ -1368,7 +1370,7 @@ complete -c ai -f -a "web start stop ps running attach handoff continue resume c
         'control', 'ui', 'providers', 'profiles', 'add', 'remove', 'login', 'logout', 'use',
         'status', 'usage', 'inspect', 'sessions', 'workspaces', 'bind', 'unbind', 'bindings',
         'explain', 'doctor', 'security', 'history', 'stats', 'config', 'update', 'completion', 'version', 'release',
-        'codex', 'agy', 'claude', 'opencode', 'gemini'
+        'codex', 'agy', 'claude', 'opencode', 'gemini', 'cursor'
     )
     $commands | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
         [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)

@@ -132,7 +132,7 @@ if ! command -v orquestrador-maestro >/dev/null 2>&1 && ! command -v maestro >/d
             echo "   npm install -g @iapro/orquestrador-maestro-cli"
         }
     else
-        echo "⚠️  Node.js / npm not detected. Maestro process engine will run in fallback mode."
+        echo "⚠️  Node.js / npm not detected. Maestro will remain unavailable/degraded; Nexus will not fabricate Maestro advice or skills."
     fi
 fi
 
@@ -166,4 +166,4 @@ echo ""
 echo "Quick Start:"
 echo "  nexus doctor            # Check provider & Maestro dependencies"
 echo "  nexus web               # Launch IAPro Nexus Workspace OS (Web UI)"
-echo "  nexus                   # Open interactive TUI Workspace OS"
+echo "  nexus                   # Launch IAPro Nexus Workspace OS (Web UI, default)"

@@ -370,24 +370,66 @@ export interface PlanRevision {
   created_at: string;
 }
 
+export interface PlanRevisionDiff {
+  from_revision: number;
+  to_revision: number;
+  title_changed: boolean;
+  description_changed: boolean;
+  added_packages: string[];
+  removed_packages: string[];
+  changed_packages: string[];
+}
+
 export interface AutonomyContract {
   max_retries: number;
   max_total_iterations: number;
+  package_timeout_seconds: number;
   auto_remediate: boolean;
   require_verification: boolean;
   disallow_destructive_git: boolean;
+  allowed_file_patterns?: string[];
   verification_commands?: string[];
   escalate_on_failure: boolean;
+  allow_tool_auto_approval: boolean;
+  allow_git_push: boolean;
+  allow_deploy: boolean;
+}
+
+export interface VerificationResult {
+  command: string;
+  passed: boolean;
+  exit_code: number;
+  output_snippet: string;
+  duration_ms: number;
+  verified_at: string;
+}
+
+export interface ReviewVerdict {
+  approved: boolean;
+  reviewer_agent_id: string;
+  findings?: string[];
+  remediation_tips?: string[];
+  reviewed_at: string;
 }
 
 export interface PackageRun {
   id: string;
   package_id: string;
+  phase_id?: string;
   title: string;
+  goal?: string;
   state: string;
   attempt: number;
   assigned_agent: string;
+  assigned_runtime?: string;
+  workspace?: string;
+  prompt_version_id?: string;
+  dependencies?: string[];
+  parallel_group?: string;
+  verifications?: VerificationResult[];
+  verdicts?: ReviewVerdict[];
   error_message?: string;
+  remediation_context?: string;
   started_at: string;
   finished_at?: string;
 }
@@ -395,14 +437,32 @@ export interface PackageRun {
 export interface MissionRun {
   id: string;
   plan_id: string;
+  plan_revision: number;
+  execution_snapshot_id?: string;
   project_id: string;
+  workspace: string;
   state: string;
   contract: AutonomyContract;
   current_pkg_index: number;
+  total_iterations: number;
   package_runs: PackageRun[];
+  paused_reason?: string;
   started_at: string;
   updated_at: string;
   completed_at?: string;
+}
+
+export interface MissionSchedule {
+  id: string;
+  plan_id: string;
+  project_id: string;
+  mode: 'AT' | 'AFTER_RUN' | 'WHEN_RESOURCES';
+  scheduled_for?: string;
+  after_run_id?: string;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'CANCELED' | 'FAILED';
+  run_id?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ResourceCandidate {

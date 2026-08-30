@@ -10,6 +10,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/driver"
 	"github.com/kivervinicius/ai-cli/internal/control/host"
 	"github.com/kivervinicius/ai-cli/internal/control/ids"
+	"github.com/kivervinicius/ai-cli/internal/control/launchenv"
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
@@ -18,6 +19,7 @@ import (
 // LaunchOptions defines parameters for launching a supervised AI runtime.
 type LaunchOptions struct {
 	RuntimeID         string
+	AgentID           string
 	Title             string
 	ProviderID        string
 	ProfileID         string
@@ -30,6 +32,7 @@ type LaunchOptions struct {
 	Environment       map[string]string `json:"environment,omitempty"`
 	Isolation         string            `json:"isolation,omitempty"`
 	Options           map[string]any    `json:"options,omitempty"`
+	PathPrepend       []string          `json:"path_prepend,omitempty"`
 }
 
 // Launcher unifies supervised SessionHost spawning and handshake verification across all commands.
@@ -82,11 +85,7 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 	if err != nil {
 		return nil, fmt.Errorf("failed to build command for %s:%s: %w", opts.ProviderID, opts.ProfileID, err)
 	}
-	for k, v := range opts.Environment {
-		if k != "" {
-			env = append(env, k+"="+v)
-		}
-	}
+	env = launchenv.Merge(env, opts.Environment, opts.PathPrepend)
 
 	title := opts.Title
 	if strings.TrimSpace(title) == "" {
@@ -95,6 +94,7 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 
 	sess := registry.RuntimeSession{
 		RuntimeID:         opts.RuntimeID,
+		AgentID:           opts.AgentID,
 		Title:             title,
 		ProviderID:        opts.ProviderID,
 		ProfileID:         opts.ProfileID,

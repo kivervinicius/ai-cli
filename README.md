@@ -217,8 +217,8 @@ O comando canônico é `nexus`, com o alias `ai` preservado para compatibilidade
 ### Comandos principais
 
 ```bash
-nexus                  # Workspace OS interativo (TUI)
-nexus web              # Painel Web Workspace OS (recomendado)
+nexus                  # Abre o Web Workspace OS (experiência padrão)
+nexus web              # Abre explicitamente o Web Workspace OS
 nexus start codex      # Inicia runtime supervisionado e conecta terminal
 nexus stop <id>        # Encerra runtime supervisionado com segurança
 nexus ps               # Lista runtimes supervisionados ativos
@@ -413,16 +413,22 @@ cookies, segredos de provedor, chaves privadas, transcript completo do terminal.
 
 ---
 
-## 13. Suporte a plataformas (honesto)
+## 13. Suporte a plataformas e evidência de release
 
-| Plataforma | Compila | Testes unit/race | Runtime E2E (CI) | Runtime E2E local |
-|---|---|---|---|---|
-| Linux amd64/arm64 | ✅ | ✅ | ✅ | ✅ validado |
-| Windows amd64/arm64 | ✅ | ✅ | ✅ ConPTY/NamedPipe/PowerShell | pendente (seu teste local fecha) |
-| macOS amd64/arm64 | ✅ | ✅ | ✅ PTY/socket/Web | pendente (Apple Silicon incluído) |
+O código e o pipeline têm como alvo Linux, Windows e macOS em amd64/arm64. A
+matriz obrigatória de CI executa Go 1.25, testes, runtime E2E e build nativo em
+`ubuntu-latest`, `windows-latest` e `macos-latest`; o snapshot do GoReleaser só
+roda depois dos três jobs.
 
-"Compila" não é "suporta": a declaração de suporte só vale com evidência de
-runtime.
+| Plataforma alvo | Runtime coberto pela CI | Artefato de release | Evidência nesta cópia local |
+|---|---|---|---|
+| Linux amd64/arm64 | PTY, socket, SessionHost e Web | `tar.gz` | Frontend + unidades Go offline disponíveis; suíte Go 1.25 completa requer CI |
+| Windows amd64/arm64 | ConPTY, Named Pipe, SessionHost e Web | `.zip` | requer job `windows-latest` |
+| macOS amd64/arm64 | PTY, socket, SessionHost e Web | `tar.gz` | requer job `macos-latest` |
+
+**Regra de release:** uma plataforma só deve ser anunciada como validada para a
+versão quando o job nativo correspondente estiver verde. Build cruzado, sozinho,
+não é evidência de runtime.
 
 ---
 
@@ -435,8 +441,7 @@ ai doctor
 Confira que a porta não está ocupada e que o token bootstrap foi usado na URL.
 
 **`could not open a new TTY`**
-Comando TUI (`ai`, `ai ui`) precisa de um terminal real. Use `ai control web` em
-sessões sem TTY.
+A TUI opcional de compatibilidade (`nexus --tui` ou `nexus control`) precisa de um terminal real. Use `nexus`/`nexus web` em sessões sem TTY.
 
 **O agente está `RECOVERABLE`.**
 O processo morreu (reboot/crash). O agente está intacto — clique em **Recover**.
@@ -453,23 +458,22 @@ limitado). Se o runtime morreu, o estado vira `RECOVERABLE`.
 
 **Preciso de ajuda com o Maestro.**
 O Maestro é o repositório irmão [Orquestrador-Maestro](https://github.com/IAPro-Community/Orquestrador-Maestro).
-No Nexus, o modo `ASSIST` é o padrão e o painel Maestro chega no Gate 6.
+No Nexus, o Maestro é opcional. Se a integração estiver indisponível, o estado é `MAESTRO_DEGRADED`; o Nexus não fabrica skills, gates ou recomendações.
 
 ---
 
-## 15. Roadmap (Gates do IAPro Nexus 1.0)
+## 15. Estado funcional da candidata
 
-| Gate | Escopo | Status |
-|---|---|---|
-| 0 | Baseline, benchmark, salvage do Maestro WIP | ✅ |
-| 1 | Fundação: Projetos + SQLite + UI/design system + slice vertical | ✅ |
-| 2 | Agentes persistentes + recover + estado honesto | ✅ |
-| 3 | Drawer de configuração + safe apply (restart/resume/verify) | 🚧 próximo |
-| 4 | Broker de terminal por agente + splits + replay | 🚧 |
-| 5 | Resource Scheduler + políticas de alocação | 🚧 |
-| 6 | Maestro Assist (contrato máq. + UI) | 🚧 |
-| 7 | Mission Beta (feature flag off por padrão) | 🚧 |
-| 8 | Polish: `iapro` CLI, doctor, a11y, visual QA, installers, RC | 🚧 |
+A candidata atual integra: Workspace OS Web-first, trabalho Direct sem Mission,
+Agents persistentes, terminal supervisionado e reconexão, Safe Apply, seleção de
+recursos/quotas, Intelligence explícita, integração Maestro degradável, WorkPlan
+versionado, clarificações bloqueantes, Mission Runner durável, DAG/paralelismo,
+worktrees por pacote, review independente, remediação governada, scheduling e
+Take Control/Return to Mission.
+
+Isso **não substitui os gates de release**. Antes de publicar uma versão, execute
+a matriz completa descrita em `.github/workflows/ci.yml` e o roteiro em
+`DEV/NEXUS_FINAL_LOCAL_VALIDATION_PROMPT.md`.
 
 ---
 

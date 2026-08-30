@@ -167,5 +167,5 @@ func (d *GeminiDriver) BuildResumeArgs(ctx context.Context, p model.Profile, pro
 }
 
 func (d *GeminiDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error) {
-	return []string{kickoffPrompt}, nil
+	return []string{"-p", kickoffPrompt}, nil
 }

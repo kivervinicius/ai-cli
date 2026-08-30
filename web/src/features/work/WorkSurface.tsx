@@ -33,7 +33,7 @@ export const WorkSurface: React.FC<{ project: Project; agents: Agent[]; onDirect
             ]}
           />
         </div>
-        <PlanBuilderSurface project={project} agents={agents} />
+        <PlanBuilderSurface project={project} agents={agents} onOpenAgent={onDirect} />
       </div>
     );
   }

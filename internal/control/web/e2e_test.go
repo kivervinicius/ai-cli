@@ -130,7 +130,7 @@ func TestWeb_FullE2E(t *testing.T) {
 
 	// 4a. Unauthenticated WebSocket dial (no cookie): MUST return 401 Unauthorized
 	unauthHeader := http.Header{}
-	unauthHeader.Set("Origin", "http://127.0.0.1")
+	unauthHeader.Set("Origin", parsedURL.Scheme+"://"+parsedURL.Host)
 	_, badResp, err := websocket.DefaultDialer.Dial(wsURL, unauthHeader)
 	if err == nil {
 		t.Errorf("expected unauthenticated WebSocket dial to fail")
@@ -165,7 +165,7 @@ func TestWeb_FullE2E(t *testing.T) {
 
 	// 4d. Authenticated dial with valid Origin: MUST succeed in upgrading
 	authHeader := http.Header{}
-	authHeader.Set("Origin", "http://127.0.0.1")
+	authHeader.Set("Origin", parsedURL.Scheme+"://"+parsedURL.Host)
 	for _, c := range cookies {
 		authHeader.Add("Cookie", c.String())
 	}

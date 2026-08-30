@@ -1,27 +1,39 @@
 package runner
 
-// AutonomyContract defines the operational boundaries, auto-remediation policy,
-// and escalation rules for autonomous execution (§Phase F & H).
+// AutonomyContract defines operational boundaries, verification requirements,
+// and bounded remediation for autonomous local engineering work.
 type AutonomyContract struct {
-	MaxRetries             int      `json:"max_retries"`              // Max attempts per WorkPackage (bounded, default 3)
-	MaxTotalIterations     int      `json:"max_total_iterations"`     // Max loops across the mission
-	AutoRemediate          bool     `json:"auto_remediate"`           // Automatically retry on review rejection
-	RequireVerification    bool     `json:"require_verification"`     // Mandatory test/lint gate before package closure
-	DisallowDestructiveGit bool     `json:"disallow_destructive_git"` // Refuse force push, branch delete, hard reset
+	MaxRetries             int      `json:"max_retries"`
+	MaxTotalIterations     int      `json:"max_total_iterations"`
+	MaxNoProgress          int      `json:"max_no_progress"`
+	PackageTimeoutSeconds  int      `json:"package_timeout_seconds"`
+	AutoRemediate          bool     `json:"auto_remediate"`
+	RequireVerification    bool     `json:"require_verification"`
+	DisallowDestructiveGit bool     `json:"disallow_destructive_git"`
 	AllowedFilePatterns    []string `json:"allowed_file_patterns,omitempty"`
-	VerificationCommands   []string `json:"verification_commands,omitempty"` // e.g. ["go test -race ./...", "npm test"]
-	EscalateOnFailure      bool     `json:"escalate_on_failure"`             // Ask human when max retries exceeded
+	VerificationCommands   []string `json:"verification_commands,omitempty"`
+	EscalateOnFailure      bool     `json:"escalate_on_failure"`
+	AllowToolAutoApproval  bool     `json:"allow_tool_auto_approval"`
+	AllowGitPush           bool     `json:"allow_git_push"`
+	AllowDeploy            bool     `json:"allow_deploy"`
 }
 
-// DefaultAutonomyContract returns standard production-grade autonomy bounds.
+// DefaultAutonomyContract is intentionally local-first: it allows coding tools
+// inside isolated workspaces but never authorizes push/deploy. Verification
+// commands are detected from the target repository at Mission creation.
 func DefaultAutonomyContract() AutonomyContract {
 	return AutonomyContract{
 		MaxRetries:             3,
-		MaxTotalIterations:     12,
+		MaxTotalIterations:     120,
+		MaxNoProgress:          2,
+		PackageTimeoutSeconds:  3600,
 		AutoRemediate:          true,
 		RequireVerification:    true,
 		DisallowDestructiveGit: true,
-		VerificationCommands:   []string{"go test -race ./..."},
+		VerificationCommands:   nil,
 		EscalateOnFailure:      true,
+		AllowToolAutoApproval:  true,
+		AllowGitPush:           false,
+		AllowDeploy:            false,
 	}
 }

@@ -1,0 +1,64 @@
+ M .gitignore
+ M README.en.md
+ M README.es.md
+ M README.md
+ M install.sh
+ M internal/app/app.go
+ M internal/control/driver/agy_driver.go
+ M internal/control/driver/cursor_driver.go
+ M internal/control/driver/driver_test.go
+ M internal/control/driver/gemini_driver.go
+ M internal/control/driver/opencode_driver.go
+ M internal/control/launcher/launcher.go
+ M internal/control/web/auth.go
+ M internal/control/web/dist/bundle.css
+ M internal/control/web/dist/bundle.js
+ M internal/control/web/e2e_test.go
+ M internal/control/web/handlers_nexus.go
+ M internal/control/web/server.go
+ M internal/core/model/types.go
+ M internal/nexus/nexus.go
+ M internal/nexus/plan.go
+ M internal/nexus/runner/contract.go
+ D internal/nexus/runner/lease.go
+ M internal/nexus/runner/runner.go
+ M internal/nexus/runner/runner_test.go
+ M internal/nexus/runner/types.go
+ M internal/nexus/runner/verifier.go
+ M internal/nexus/store/plans.go
+ M internal/nexus/store/plans_test.go
+ M internal/tui/tui.go
+ M web/src/app/NexusShell.tsx
+ M web/src/app/WorkspaceSurfaceHost.tsx
+ M web/src/app/modals/MaestroControlModal.tsx
+ M web/src/app/modals/WelcomeModal.tsx
+ M web/src/features/work/PlanBuilderSurface.tsx
+ M web/src/features/work/WorkSurface.tsx
+ M web/src/nexus/api.test.ts
+ M web/src/nexus/api.ts
+ M web/src/types.ts
+ M web/src/workspace/WorkspaceTaskbar.tsx
+?? internal/control/launchenv/
+?? internal/control/originpolicy/
+?? internal/core/provider/adapters/cursor/
+?? internal/nexus/autonomyguard/
+?? internal/nexus/maestrogates/
+?? internal/nexus/mission_execution.go
+?? internal/nexus/mission_executor.go
+?? internal/nexus/mission_repository.go
+?? internal/nexus/mission_service.go
+?? internal/nexus/runner/executor.go
+?? internal/nexus/runner/manual_control.go
+?? internal/nexus/runner/repository.go
+?? internal/nexus/runner/runner_durable_test.go
+?? internal/nexus/runner/verifier_test.go
+?? internal/nexus/scheduling.go
+?? internal/nexus/store/autonomy.go
+?? internal/nexus/store/migrations/0005_autonomy_runtime.sql
+?? internal/nexus/store/migrations/0006_mission_schedule_run.sql
+?? internal/nexus/store/schedules.go
+?? web/src/app/maestroHonesty.test.ts
+?? web/src/app/versionHonesty.test.ts
+?? web/src/app/workspaceMissionRoute.test.ts
+?? web/src/features/work/planBuilderScheduling.test.ts
+?? web/src/workspace/taskbarHonesty.test.ts

@@ -65,15 +65,9 @@ export const MaestroControlModal: React.FC<{
   };
 
   const isAvailable = maestroStatus?.available;
-  const version = maestroStatus?.capabilities?.version || '0.1.25';
-  const skills = maestroStatus?.capabilities?.skills || [
-    { id: 'skill-saas-factory', name: 'SaaS Factory', description: 'Architecture & multi-tenant SaaS scaffolding' },
-    { id: 'skill-tdd', name: 'TDD Engine', description: 'Test-Driven Development & red-green-refactor loop' },
-    { id: 'skill-security-hooks', name: 'Security Hooks', description: 'Secret scanning & injection prevention' },
-    { id: 'skill-saas-security-scan', name: 'Security Scan', description: 'Automated vulnerability auditor' },
-    { id: 'skill-saas-dast-recon', name: 'DAST Recon', description: 'Dynamic application security testing' },
-    { id: 'skill-dev-hierarchy', name: 'Dev Hierarchy', description: 'Engineering team delegation & orchestrations' },
-  ];
+  const version = maestroStatus?.capabilities?.version;
+  const skills = maestroStatus?.capabilities?.skills || [];
+
 
   return (
     <Dialog open={open} onClose={onClose} title={t('maestroControl.title')}>
@@ -93,7 +87,7 @@ export const MaestroControlModal: React.FC<{
                   {isAvailable ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
                   {isAvailable ? t('maestroControl.available') : t('maestroControl.degraded')}
                 </Badge>
-                <Badge tone="brand">v{version}</Badge>
+                {version && <Badge tone="brand">v{version}</Badge>}
               </div>
             </div>
             <Button size="sm" tone="ghost" onClick={fetchStatus} disabled={loading}>

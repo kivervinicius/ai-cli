@@ -204,8 +204,8 @@ The canonical command is `nexus`, with the `ai` alias preserved for full backwar
 ### Main commands
 
 ```bash
-nexus                  # Interactive Workspace OS (TUI)
-nexus web              # Web Workspace OS dashboard (recommended)
+nexus                  # Web Workspace OS (default)
+nexus web              # Explicitly launch the Web Workspace OS
 nexus start codex      # Start a supervised runtime & attach terminal
 nexus stop <id>        # Gracefully stop a supervised runtime
 nexus ps               # List active supervised runtimes
@@ -397,15 +397,21 @@ provider secrets, private keys, full terminal transcripts.
 
 ---
 
-## 13. Platform support (honest)
+## 13. Platform targets and release evidence
 
-| Platform | Builds | unit/race | Runtime E2E (CI) | Local runtime E2E |
-|---|---|---|---|---|
-| Linux amd64/arm64 | ✅ | ✅ | ✅ | ✅ validated |
-| Windows amd64/arm64 | ✅ | ✅ | ✅ ConPTY/NamedPipe/PowerShell | pending (your local test closes it) |
-| macOS amd64/arm64 | ✅ | ✅ | ✅ PTY/socket/Web | pending (Apple Silicon included) |
+The code and pipeline target Linux, Windows and macOS on amd64/arm64. The
+mandatory CI matrix runs Go 1.25, tests, native runtime E2E and builds on
+`ubuntu-latest`, `windows-latest` and `macos-latest`; the GoReleaser snapshot only
+runs after all three jobs succeed.
 
-"Builds" is not "supported": support is only declared with runtime evidence.
+| Target platform | Runtime covered by CI | Release artifact | Evidence in this local copy |
+|---|---|---|---|
+| Linux amd64/arm64 | PTY, socket, SessionHost and Web | `tar.gz` | Frontend + available offline Go units; full Go 1.25 suite requires CI |
+| Windows amd64/arm64 | ConPTY, Named Pipe, SessionHost and Web | `.zip` | requires `windows-latest` job |
+| macOS amd64/arm64 | PTY, socket, SessionHost and Web | `tar.gz` | requires `macos-latest` job |
+
+**Release rule:** only advertise a platform as validated for a version after its
+native job is green. Cross-compilation alone is not runtime evidence.
 
 ---
 
@@ -418,8 +424,7 @@ ai doctor
 Make sure the port is free and the bootstrap token URL was used.
 
 **`could not open a new TTY`**
-TUI commands (`ai`, `ai ui`) need a real terminal. Use `ai control web` in
-TTY-less sessions.
+The optional compatibility TUI (`nexus --tui` or `nexus control`) needs a real terminal. Use `nexus`/`nexus web` in TTY-less sessions.
 
 **The agent is `RECOVERABLE`.**
 The process died (reboot/crash). The agent is intact — click **Recover**.
@@ -436,23 +441,22 @@ Browser closed? The runtime keeps running. Reopen and the terminal reconnects
 
 **Need help with Maestro.**
 Maestro is the sibling repo [Orquestrador-Maestro](https://github.com/IAPro-Community/Orquestrador-Maestro).
-In Nexus, `ASSIST` is the default mode and the Maestro panel arrives in Gate 6.
+In Nexus, Maestro is optional. If the integration is unavailable, the state is `MAESTRO_DEGRADED`; Nexus does not fabricate skills, gates or recommendations.
 
 ---
 
-## 15. Roadmap (IAPro Nexus 1.0 Gates)
+## 15. Current candidate capability set
 
-| Gate | Scope | Status |
-|---|---|---|
-| 0 | Baseline, benchmark, Maestro WIP salvage | ✅ |
-| 1 | Foundation: Projects + SQLite + UI/design system + vertical slice | ✅ |
-| 2 | Persistent agents + recover + honest state | ✅ |
-| 3 | Configuration drawer + safe apply (restart/resume/verify) | 🚧 next |
-| 4 | Agent terminal broker + splits + replay | 🚧 |
-| 5 | Resource Scheduler + allocation policies | 🚧 |
-| 6 | Maestro Assist (machine contract + UI) | 🚧 |
-| 7 | Mission Beta (feature flag off by default) | 🚧 |
-| 8 | Polish: `iapro` CLI, doctor, a11y, visual QA, installers, RC | 🚧 |
+The current candidate integrates: Web-first Workspace OS, Direct work without a
+Mission, persistent Agents, supervised/reconnecting terminals, Safe Apply,
+resource/quota selection, explicit Intelligence, degradable Maestro integration,
+versioned WorkPlans, blocking clarifications, durable Mission Runner, DAG/parallel
+execution, per-package worktrees, independent review, governed remediation,
+scheduling and Take Control/Return to Mission.
+
+This **does not replace release gates**. Before publishing a version, run the full
+matrix in `.github/workflows/ci.yml` and the procedure in
+`DEV/NEXUS_FINAL_LOCAL_VALIDATION_PROMPT.md`.
 
 ---
 

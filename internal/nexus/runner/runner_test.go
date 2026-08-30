@@ -3,114 +3,65 @@ package runner
 import (
 	"context"
 	"testing"
-
-	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
 
-func TestMissionRunner_Lifecycle(t *testing.T) {
-	runner := NewMissionRunner()
-	tmpDir := t.TempDir()
-
-	plan := store.WorkPlan{
-		ID:        "plan-1",
-		ProjectID: "proj-1",
-		Title:     "Auth Implementation",
-		Phases: []store.PlanPhase{
-			{
-				ID:    "phase-1",
-				Title: "Phase 1",
-				Packages: []store.WorkPackage{
-					{
-						ID:       "pkg-1",
-						Title:    "Unit Tests Setup",
-						Goal:     "Write initial unit tests",
-						Priority: "CRITICAL",
-					},
-				},
-			},
-		},
-	}
-
+func TestMissionRunnerLifecycleCompletesOnlyAfterVerificationAndReview(t *testing.T) {
+	repo := NewMemoryRunRepository()
+	exec := &fakeExecutor{reviewOK: true}
+	r := NewMissionRunner(repo, exec)
 	contract := DefaultAutonomyContract()
-	// Use echo command for deterministic pass in test environment
 	contract.VerificationCommands = []string{"echo OK"}
+	plan := PlanSpec{ID: "plan-1", ProjectID: "proj-1", Revision: 1, Packages: []PackageSpec{{ID: "pkg-1", Title: "Unit Tests", Goal: "Write tests"}}}
 
-	run, err := runner.StartMissionRun(context.Background(), plan, tmpDir, contract, "agt-1")
+	run, err := r.StartMissionRun(context.Background(), plan, t.TempDir(), contract, "")
 	if err != nil {
-		t.Fatalf("StartMissionRun failed: %v", err)
+		t.Fatal(err)
 	}
-
-	if run.State != StateExecuting {
-		t.Errorf("expected state EXECUTING, got %s", run.State)
-	}
-
-	// Step through the state machine until completion
-	done := false
-	for i := 0; i < 10; i++ {
-		completed, err := runner.ExecuteNextStep(context.Background(), run, tmpDir)
+	for i := 0; i < 10 && run.State != StateCompletedVerified; i++ {
+		run, _, err = r.ExecuteNextStep(context.Background(), run.ID)
 		if err != nil {
-			t.Fatalf("step %d failed: %v", i, err)
-		}
-		if completed {
-			done = true
-			break
+			t.Fatalf("step %d: %v", i, err)
 		}
 	}
-
-	if !done {
-		t.Errorf("expected mission run to complete, final state: %s", run.State)
+	if run.State != StateCompletedVerified {
+		t.Fatalf("expected completed verified, got %s", run.State)
+	}
+	if len(run.PackageRuns[0].Verifications) == 0 {
+		t.Fatal("verification evidence missing")
+	}
+	if len(run.PackageRuns[0].Verdicts) == 0 {
+		t.Fatal("review evidence missing")
 	}
 }
 
-func TestMissionRunner_BoundedRetries(t *testing.T) {
-	runner := NewMissionRunner()
-	tmpDir := t.TempDir()
-
-	plan := store.WorkPlan{
-		ID:        "plan-fail",
-		ProjectID: "proj-1",
-		Title:     "Failing Job",
-		Phases: []store.PlanPhase{
-			{
-				ID: "phase-1",
-				Packages: []store.WorkPackage{
-					{
-						ID:       "pkg-fail",
-						Title:    "Always Fails",
-						Goal:     "Trigger retry exhaustion",
-						Priority: "HIGH",
-					},
-				},
-			},
-		},
-	}
-
+func TestMissionRunnerBoundedRetries(t *testing.T) {
+	repo := NewMemoryRunRepository()
+	exec := &fakeExecutor{reviewOK: true}
+	r := NewMissionRunner(repo, exec)
 	contract := DefaultAutonomyContract()
 	contract.MaxRetries = 2
-	contract.VerificationCommands = []string{"false"} // Always fails
+	contract.VerificationCommands = []string{"false"}
+	plan := PlanSpec{ID: "plan-fail", ProjectID: "proj-1", Revision: 1, Packages: []PackageSpec{{ID: "pkg-fail", Title: "Always fails", Goal: "Fail"}}}
 
-	run, err := runner.StartMissionRun(context.Background(), plan, tmpDir, contract, "agt-1")
+	run, err := r.StartMissionRun(context.Background(), plan, t.TempDir(), contract, "")
 	if err != nil {
-		t.Fatalf("StartMissionRun failed: %v", err)
+		t.Fatal(err)
 	}
-
 	var finalErr error
-	for i := 0; i < 15; i++ {
-		completed, err := runner.ExecuteNextStep(context.Background(), run, tmpDir)
-		if err != nil {
-			finalErr = err
-			break
+	for i := 0; i < 20; i++ {
+		updated, _, stepErr := r.ExecuteNextStep(context.Background(), run.ID)
+		if updated != nil {
+			run = updated
 		}
-		if completed {
+		if stepErr != nil && run.PackageRuns[0].State == StateFailed {
+			finalErr = stepErr
 			break
 		}
 	}
-
 	if finalErr == nil {
-		t.Errorf("expected run to fail after exceeding max retries")
+		t.Fatal("expected bounded retry failure")
 	}
-
-	if run.State != StateEscalated && run.State != StateFailed {
-		t.Errorf("expected run state ESCALATED or FAILED, got %s", run.State)
+	if run.State != StateBlockedNeedsUser && run.State != StateFailedNoProgress {
+		t.Fatalf("unexpected run state %s", run.State)
 	}
 }

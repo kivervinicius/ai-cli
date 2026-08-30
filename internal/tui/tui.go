@@ -87,7 +87,7 @@ func InitialModel() Model {
 	cd := cooldown.NewTracker()
 	sel := scheduler.NewSelector(cfg, qEng, cd)
 
-	provs := []string{"codex", "agy", "claude", "opencode", "gemini"}
+	provs := []string{"codex", "agy", "claude", "opencode", "gemini", "cursor"}
 	profs, _ := profile.List()
 
 	accs := make(map[string]model.AccountInfo)

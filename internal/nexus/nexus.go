@@ -52,10 +52,14 @@ func (p *prodLauncher) Stop(runtimeID string) error {
 // Nexus is the product-level service bridging the durable store and the
 // control plane runtime layer.
 type Nexus struct {
-	mu       sync.RWMutex
-	st       *store.Store
-	launcher Launcher
-	runner   *runner.MissionRunner
+	mu            sync.RWMutex
+	st            *store.Store
+	launcher      Launcher
+	runner        *runner.MissionRunner
+	runnerMu      sync.Mutex
+	workersMu     sync.Mutex
+	workers       map[string]*missionWorker
+	schedulerOnce sync.Once
 
 	// Runtime change observers (set by the web layer to avoid circular imports).
 	onRuntimeChanged func(agentID, oldRuntimeID, newRuntimeID, provider, profile, continuity string)
@@ -65,8 +69,10 @@ type Nexus struct {
 
 // Runner returns the autonomous mission runner instance.
 func (n *Nexus) Runner() *runner.MissionRunner {
+	n.runnerMu.Lock()
+	defer n.runnerMu.Unlock()
 	if n.runner == nil {
-		n.runner = runner.NewMissionRunner()
+		n.runner = runner.NewMissionRunner(newStoreRunRepository(n.st), newNexusPackageExecutor(n))
 	}
 	return n.runner
 }
@@ -126,7 +132,11 @@ func Default() *Nexus {
 			// runtime features degrade gracefully instead of panicking.
 			st = nil
 		}
-		defaultNexus = &Nexus{st: st, launcher: &prodLauncher{l: launcher.Default()}}
+		defaultNexus = &Nexus{st: st, launcher: &prodLauncher{l: launcher.Default()}, workers: map[string]*missionWorker{}}
+		if st != nil {
+			_ = defaultNexus.RecoverMissionRuns(context.Background())
+			defaultNexus.StartScheduleLoop()
+		}
 	})
 	return defaultNexus
 }
@@ -230,6 +240,7 @@ func (n *Nexus) StartAgent(ctx context.Context, agentID, provider, profile strin
 		return nil, fmt.Errorf("resolve execution workspace: %w", err)
 	}
 	sess, err := n.launcher.Launch(ctx, launcher.LaunchOptions{
+		AgentID:           agentID,
 		ProviderID:        provider,
 		ProfileID:         agentCfg.Profile,
 		ProviderSessionID: continuityLaunch.ProviderSessionID,
@@ -476,6 +487,7 @@ func (n *Nexus) RecoverAgent(ctx context.Context, agentID string) (*registry.Run
 		return nil, fmt.Errorf("resolve execution workspace: %w", werr)
 	}
 	sess, err := n.launcher.Launch(ctx, launcher.LaunchOptions{
+		AgentID:           agentID,
 		ProviderID:        provider,
 		ProfileID:         profile,
 		ProviderSessionID: sessionID,

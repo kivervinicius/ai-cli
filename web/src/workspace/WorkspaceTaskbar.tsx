@@ -50,7 +50,7 @@ export const WorkspaceTaskbar: React.FC<{
               title={t('git.switchBranchTooltip', 'Clique para alternar ou criar branches Git')}
             >
               <GitBranch size={11} />
-              <span>{currentBranch || project.default_branch || 'main'}</span>
+              <span>{currentBranch || project.default_branch || 'unknown'}</span>
             </button>
 
             <BranchSwitcherModal
@@ -86,11 +86,11 @@ export const WorkspaceTaskbar: React.FC<{
       {/* Right: Versions & Connection */}
       <div className="nx-statusbar-right">
         <span className="nx-statusbar-item nx-statusbar-version" title="Nexus Core">
-          <strong>Nexus</strong> v{sysInfo?.nexus_version || '0.4.1'}
+          <strong>Nexus</strong> v{sysInfo?.nexus_version || 'unknown'}
         </span>
         <span className="nx-statusbar-item nx-statusbar-version" title="Orquestrador Maestro">
           <BrainCircuit size={11} />
-          <strong>Maestro</strong> v{sysInfo?.maestro_version || '0.1.25'}
+          <strong>Maestro</strong> v{sysInfo?.maestro_version || 'unavailable'}
         </span>
         <span className="nx-statusbar-item nx-statusbar-local">
           <Wifi size={11} />

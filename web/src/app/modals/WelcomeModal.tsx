@@ -155,7 +155,7 @@ export const WelcomeModal: React.FC<{
               <div className="nx-system-versions-card">
                 <div className="nx-version-row">
                   <span>{t('welcome.nexusVer')}</span>
-                  <Badge tone="brand">v{sysInfo?.nexus_version || '0.4.1'}</Badge>
+                  <Badge tone="brand">v{sysInfo?.nexus_version || 'unknown'}</Badge>
                 </div>
                 <div className="nx-version-row">
                   <span>{t('welcome.maestroVer')}</span>

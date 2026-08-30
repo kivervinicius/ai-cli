@@ -3,7 +3,6 @@ package web
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/kivervinicius/ai-cli/internal/control/originpolicy"
 )
 
 const (
@@ -52,19 +52,18 @@ func NewAuthManager(listenHost, listenPort string) (*AuthManager, string, error)
 	}, bootstrapToken, nil
 }
 
-// CheckOrigin parses and strictly verifies that the request Origin (or Referer if Origin is absent on direct HTTP requests)
-// is a valid loopback or private-network origin depending on the server bind address.
-// It extracts u.Hostname() after url.Parse and rejects domains like "http://localhost.evil.com".
+// CheckOrigin verifies that browser-originated requests target the exact Host
+// seen by the HTTP server. Direct non-browser HTTP clients may omit Origin,
+// while WebSocket upgrades must always provide it.
 func CheckOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
 		referer := r.Header.Get("Referer")
 		if referer == "" {
-			// For WebSocket upgrades, Origin header is mandatory.
 			if websocket.IsWebSocketUpgrade(r) || strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
 				return false
 			}
-			return true // Allow direct local HTTP clients (CLI / test clients)
+			return true
 		}
 		u, err := url.Parse(referer)
 		if err != nil {
@@ -72,32 +71,7 @@ func CheckOrigin(r *http.Request) bool {
 		}
 		origin = u.Scheme + "://" + u.Host
 	}
-
-	u, err := url.Parse(origin)
-	if err != nil {
-		return false
-	}
-
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return false
-	}
-
-	hostname := u.Hostname()
-	_ = u.Port() // Extracted and validated
-
-	// Loopback origins are always allowed.
-	if hostname == "127.0.0.1" || hostname == "localhost" || hostname == "::1" {
-		return true
-	}
-
-	// When the server is bound to a private/VPN address (--remote), also
-	// accept private IP origins that match the server's bind address.
-	// This aligns with the private remote Origin policy (P1).
-	if ip := net.ParseIP(hostname); ip != nil && isPrivateIP(ip) {
-		return true
-	}
-
-	return false
+	return originpolicy.Validate(r.Host, origin)
 }
 
 func (a *AuthManager) ValidateOrigin(r *http.Request) bool {

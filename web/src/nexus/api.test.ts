@@ -39,3 +39,23 @@ describe('nexus API request errors', () => {
     }
   });
 });
+
+describe('mission manual-control API routes', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('uses dedicated take-control endpoint instead of generic pause', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ id: 'run-1', state: 'PAUSED' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    await nexusApi.takeControlRun('run-1', 'manual');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/runs/run-1/take-control');
+  });
+
+  it('uses dedicated return-to-mission endpoint instead of generic resume', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ id: 'run-1', state: 'EXECUTING' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    await nexusApi.returnToMission('run-1');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/runs/run-1/return-to-mission');
+  });
+});

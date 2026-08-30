@@ -6,23 +6,29 @@ import {
   ChevronRight,
   Copy,
   FolderGit2,
+  GripVertical,
   History,
   Layers,
   Play,
+  Pause,
   Plus,
+  RotateCcw,
   Route,
+  XCircle,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 import { Badge, Button, Card, InlineAlert, Input } from '../../design-system';
 import { nexusApi } from '../../nexus/api';
-import type { Agent, ClarificationCheckpoint, MissionRun, PlanPhase, Project, WorkPackage, WorkPlan } from '../../types';
+import type { Agent, ClarificationCheckpoint, MissionRun, MissionSchedule, PlanPhase, PlanRevision, PlanRevisionDiff, Project, WorkPackage, WorkPlan } from '../../types';
 import { clarificationFromError, unresolvedBlocking } from './clarificationModel';
 
 export const PlanBuilderSurface: React.FC<{
   project: Project;
   agents: Agent[];
+  onOpenAgent?: (agent: Agent) => void;
   onClose?: () => void;
-}> = ({ project, agents }) => {
+}> = ({ project, agents, onOpenAgent }) => {
   const [plans, setPlans] = useState<WorkPlan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<WorkPlan | null>(null);
   const [_loading, setLoading] = useState(false);
@@ -30,7 +36,12 @@ export const PlanBuilderSurface: React.FC<{
   const [generating, setGenerating] = useState(false);
   const [compiledPrompt, setCompiledPrompt] = useState<any>(null);
   const [activeRun, setActiveRun] = useState<MissionRun | null>(null);
-  const [stepping, setStepping] = useState(false);
+  const [schedules, setSchedules] = useState<MissionSchedule[]>([]);
+  const [scheduleAt, setScheduleAt] = useState('');
+  const [revisions, setRevisions] = useState<PlanRevision[]>([]);
+  const [revisionDiff, setRevisionDiff] = useState<PlanRevisionDiff | null>(null);
+  const [dragPackage, setDragPackage] = useState<{ phaseId: string; packageId: string } | null>(null);
+  const [runBusy, setRunBusy] = useState(false);
   const [expandedPhases, setExpandedPhases] = useState<Record<string, boolean>>({});
   const [clarification, setClarification] = useState<ClarificationCheckpoint | null>(null);
   const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
@@ -58,6 +69,35 @@ export const PlanBuilderSurface: React.FC<{
   useEffect(() => {
     loadPlans();
   }, [loadPlans]);
+
+  useEffect(() => {
+    nexusApi.getSchedules(project.id).then(setSchedules).catch((error) => console.error('Failed to load mission schedules:', error));
+  }, [project.id]);
+
+  useEffect(() => {
+    if (!selectedPlan) { setRevisions([]); return; }
+    nexusApi.getPlan(selectedPlan.id).then((detail) => {
+      setRevisions(detail.revisions || []);
+      if (detail.plan.current_revision !== selectedPlan.current_revision) setSelectedPlan(detail.plan);
+    }).catch((error) => console.error('Failed to load plan revisions:', error));
+  }, [selectedPlan?.id, selectedPlan?.current_revision]);
+
+  useEffect(() => {
+    if (!activeRun) return;
+    const terminal = new Set(['COMPLETED_VERIFIED', 'FAILED', 'FAILED_NO_PROGRESS', 'FAILED_BUDGET_EXCEEDED', 'FAILED_VERIFICATION', 'CANCELED_BY_USER']);
+    if (terminal.has(activeRun.state) || activeRun.state === 'PAUSED' || activeRun.state === 'BLOCKED_NEEDS_USER') return;
+    let disposed = false;
+    const refresh = async () => {
+      try {
+        const run = await nexusApi.getRun(activeRun.id);
+        if (!disposed) setActiveRun(run);
+      } catch (error) {
+        if (!disposed) console.error('Failed to refresh mission run:', error);
+      }
+    };
+    const timer = window.setInterval(() => void refresh(), 1500);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, [activeRun?.id, activeRun?.state]);
 
   const selectGeneratedPlan = (plan: WorkPlan) => {
     setPlans((prev) => [plan, ...prev.filter((item) => item.id !== plan.id)]);
@@ -112,6 +152,79 @@ export const PlanBuilderSurface: React.FC<{
       setGenerating(false);
     }
   };
+
+  const persistPlan = async (nextPlan: WorkPlan, summary: string) => {
+    const res = await nexusApi.updatePlan(nextPlan.id, nextPlan, summary);
+    setSelectedPlan(res.plan);
+    setPlans((prev) => prev.map((p) => (p.id === res.plan.id ? res.plan : p)));
+    setRevisions((prev) => [res.revision, ...prev]);
+    return res.plan;
+  };
+
+  const patchPackage = async (phaseId: string, packageId: string, patch: Partial<WorkPackage>, summary: string) => {
+    if (!selectedPlan) return;
+    const next = {
+      ...selectedPlan,
+      phases: selectedPlan.phases.map((phase) => phase.id === phaseId ? {
+        ...phase,
+        packages: phase.packages.map((pkg) => pkg.id === packageId ? { ...pkg, ...patch } : pkg),
+      } : phase),
+    };
+    try { await persistPlan(next, summary); } catch (error) { console.error('Failed to update work package:', error); }
+  };
+
+  const handleDeletePackage = async (phaseId: string, packageId: string) => {
+    if (!selectedPlan) return;
+    const next = {
+      ...selectedPlan,
+      phases: selectedPlan.phases.map((phase) => ({
+        ...phase,
+        packages: phase.packages
+          .filter((pkg) => !(phase.id === phaseId && pkg.id === packageId))
+          .map((pkg) => ({ ...pkg, dependencies: (pkg.dependencies || []).filter((dep) => dep !== packageId) })),
+      })),
+    };
+    try { await persistPlan(next, 'Pacote removido e dependências normalizadas'); } catch (error) { console.error(error); }
+  };
+
+  const handleDropPackage = async (targetPhaseId: string, targetPackageId: string) => {
+    if (!selectedPlan || !dragPackage || (dragPackage.phaseId === targetPhaseId && dragPackage.packageId === targetPackageId)) return;
+    let moving: WorkPackage | undefined;
+    let phases = selectedPlan.phases.map((phase) => {
+      const found = phase.packages.find((pkg) => phase.id === dragPackage.phaseId && pkg.id === dragPackage.packageId);
+      if (found) moving = found;
+      return { ...phase, packages: phase.packages.filter((pkg) => !(phase.id === dragPackage.phaseId && pkg.id === dragPackage.packageId)) };
+    });
+    if (!moving) return;
+    phases = phases.map((phase) => {
+      if (phase.id !== targetPhaseId) return phase;
+      const index = phase.packages.findIndex((pkg) => pkg.id === targetPackageId);
+      const packages = [...phase.packages];
+      packages.splice(index < 0 ? packages.length : index, 0, moving!);
+      return { ...phase, packages };
+    });
+    setDragPackage(null);
+    try { await persistPlan({ ...selectedPlan, phases }, 'Pacotes reordenados por drag/drop'); } catch (error) { console.error(error); }
+  };
+
+  const handleRestoreRevision = async (revision: number) => {
+    if (!selectedPlan || revision === selectedPlan.current_revision) return;
+    try {
+      const result = await nexusApi.restorePlanRevision(selectedPlan.id, revision);
+      setSelectedPlan(result.plan);
+      setPlans((prev) => prev.map((plan) => plan.id === result.plan.id ? result.plan : plan));
+      setRevisions((prev) => [result.revision, ...prev]);
+      setRevisionDiff(null);
+    } catch (error) { console.error('Failed to restore plan revision:', error); }
+  };
+
+  const handleCompareRevision = async (revision: number) => {
+    if (!selectedPlan || revision === selectedPlan.current_revision) return;
+    try { setRevisionDiff(await nexusApi.diffPlanRevisions(selectedPlan.id, revision, selectedPlan.current_revision)); }
+    catch (error) { console.error('Failed to compare revisions:', error); }
+  };
+
+  const allPackages = selectedPlan?.phases.flatMap((phase) => phase.packages) || [];
 
   const handleAddPhase = async () => {
     if (!selectedPlan) return;
@@ -194,18 +307,69 @@ export const PlanBuilderSurface: React.FC<{
     }
   };
 
-  const handleStepRun = async () => {
+  const handleTakeControl = async () => {
     if (!activeRun) return;
     try {
-      setStepping(true);
-      const res = await nexusApi.stepRun(activeRun.id);
-      setActiveRun(res.run);
+      setRunBusy(true);
+      const run = await nexusApi.takeControlRun(activeRun.id, 'manual takeover from Workspace OS');
+      setActiveRun(run);
+      const current = run.package_runs[run.current_pkg_index];
+      if (current?.assigned_agent && onOpenAgent) {
+        const detail = await nexusApi.getAgent(current.assigned_agent);
+        onOpenAgent(detail.agent);
+      }
     } catch (e) {
-      console.error('Failed to step run:', e);
+      console.error('Failed to take control of mission:', e);
     } finally {
-      setStepping(false);
+      setRunBusy(false);
     }
   };
+
+  const handleResumeRun = async () => {
+    if (!activeRun) return;
+    try {
+      setRunBusy(true);
+      setActiveRun(await nexusApi.returnToMission(activeRun.id));
+    } catch (e) {
+      console.error('Failed to return mission to autopilot:', e);
+    } finally {
+      setRunBusy(false);
+    }
+  };
+
+  const handleCancelRun = async () => {
+    if (!activeRun) return;
+    try {
+      setRunBusy(true);
+      setActiveRun(await nexusApi.cancelRun(activeRun.id, 'canceled from Workspace OS'));
+    } catch (e) {
+      console.error('Failed to cancel mission:', e);
+    } finally {
+      setRunBusy(false);
+    }
+  };
+
+  const handleScheduleAt = async () => {
+    if (!selectedPlan || !scheduleAt) return;
+    try {
+      const item = await nexusApi.schedulePlan(selectedPlan.id, 'AT', { scheduledFor: new Date(scheduleAt).toISOString(), agentId: agents[0]?.id });
+      setSchedules((prev) => [item, ...prev]);
+      setScheduleAt('');
+    } catch (e) {
+      console.error('Failed to schedule mission:', e);
+    }
+  };
+
+  const handleWhenResources = async () => {
+    if (!selectedPlan) return;
+    try {
+      const item = await nexusApi.schedulePlan(selectedPlan.id, 'WHEN_RESOURCES', { agentId: agents[0]?.id });
+      setSchedules((prev) => [item, ...prev]);
+    } catch (e) {
+      console.error('Failed to schedule mission for resource availability:', e);
+    }
+  };
+
 
   return (
     <div className="nx-surface-scroll nx-plan-builder" style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
@@ -372,6 +536,10 @@ export const PlanBuilderSurface: React.FC<{
                     {phase.packages.map((pkg) => (
                       <div
                         key={pkg.id}
+                        draggable
+                        onDragStart={() => setDragPackage({ phaseId: phase.id, packageId: pkg.id })}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={() => void handleDropPackage(phase.id, pkg.id)}
                         style={{
                           padding: '14px',
                           borderRadius: '8px',
@@ -380,7 +548,9 @@ export const PlanBuilderSurface: React.FC<{
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                          <div>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                            <GripVertical size={15} style={{ color: 'var(--color-text-muted)', cursor: 'grab', marginTop: 2 }} />
+                            <div>
                             <strong style={{ fontSize: '15px' }}>{pkg.title}</strong>
                             <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
                               <Badge tone={pkg.priority === 'CRITICAL' ? 'danger' : pkg.priority === 'HIGH' ? 'warning' : 'default'}>
@@ -390,13 +560,39 @@ export const PlanBuilderSurface: React.FC<{
                                 <Bot size={12} style={{ marginRight: '3px' }} /> {pkg.role}
                               </Badge>
                             </div>
+                            </div>
                           </div>
-                          <Button size="sm" onClick={() => handleCompilePrompt(pkg.id, phase.id)}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <Button size="sm" onClick={() => handleCompilePrompt(pkg.id, phase.id)}>
                             <Copy size={12} /> Compilar Prompt
                           </Button>
+                            <Button size="sm" onClick={() => void handleDeletePackage(phase.id, pkg.id)}><Trash2 size={12} /></Button>
+                          </div>
                         </div>
 
                         <p style={{ fontSize: '13px', color: 'var(--color-text-muted)', margin: '6px 0' }}>{pkg.goal}</p>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginTop: 10, fontSize: 11 }}>
+                          <label style={{ display: 'grid', gap: 4 }}>Priority
+                            <select value={pkg.priority} onChange={(event) => void patchPackage(phase.id, pkg.id, { priority: event.target.value as WorkPackage['priority'] }, 'Prioridade alterada')}>
+                              {['CRITICAL','HIGH','NORMAL','LOW'].map((value) => <option key={value} value={value}>{value}</option>)}
+                            </select>
+                          </label>
+                          <label style={{ display: 'grid', gap: 4 }}>Agent allocation
+                            <select value={pkg.agent_allocation || ''} onChange={(event) => void patchPackage(phase.id, pkg.id, { agent_allocation: event.target.value }, 'Agent allocation alterado')}>
+                              <option value="">Auto scheduler</option>
+                              {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                            </select>
+                          </label>
+                          <label style={{ display: 'grid', gap: 4 }}>Parallel group
+                            <input value={pkg.parallel_group || ''} onChange={(event) => void patchPackage(phase.id, pkg.id, { parallel_group: event.target.value }, 'Parallel group alterado')} />
+                          </label>
+                          <label style={{ display: 'grid', gap: 4 }}>Dependencies
+                            <select multiple value={pkg.dependencies || []} onChange={(event) => void patchPackage(phase.id, pkg.id, { dependencies: Array.from(event.target.selectedOptions).map((option) => option.value) }, 'Dependências alteradas')}>
+                              {allPackages.filter((candidate) => candidate.id !== pkg.id).map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.title}</option>)}
+                            </select>
+                          </label>
+                        </div>
 
                         {pkg.acceptance_criteria && pkg.acceptance_criteria.length > 0 && (
                           <div style={{ marginTop: '8px', fontSize: '12px' }}>
@@ -426,6 +622,52 @@ export const PlanBuilderSurface: React.FC<{
 
         {/* Right Column: Prompt Compiler Preview & Live Mission Runner */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <Card style={{ padding: '16px' }}>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}><History size={14} /> Revision History</div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              {revisions.slice(0, 6).map((revision) => (
+                <div key={revision.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 6, alignItems: 'center', fontSize: 11 }}>
+                  <span>Rev {revision.revision} · {revision.change_summary}</span>
+                  <Button size="sm" disabled={revision.revision === selectedPlan?.current_revision} onClick={() => void handleCompareRevision(revision.revision)}>Diff</Button>
+                  <Button size="sm" disabled={revision.revision === selectedPlan?.current_revision} onClick={() => void handleRestoreRevision(revision.revision)}>Restore</Button>
+                </div>
+              ))}
+              {revisionDiff && (
+                <div style={{ padding: 8, border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 11 }}>
+                  Rev {revisionDiff.from_revision} → {revisionDiff.to_revision}: +{revisionDiff.added_packages.length} / -{revisionDiff.removed_packages.length} / ~{revisionDiff.changed_packages.length} packages
+                </div>
+              )}
+            </div>
+          </Card>
+
+          <Card style={{ padding: '16px' }}>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}>Mission Scheduling</div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <input
+                type="datetime-local"
+                value={scheduleAt}
+                onChange={(event) => setScheduleAt(event.target.value)}
+                style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'inherit' }}
+              />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <Button disabled={!selectedPlan || !scheduleAt} onClick={handleScheduleAt}>Schedule date/time</Button>
+                <Button disabled={!selectedPlan} onClick={handleWhenResources}>When resources free</Button>
+              </div>
+              {activeRun && selectedPlan && (
+                <Button onClick={async () => {
+                  const item = await nexusApi.schedulePlan(selectedPlan.id, 'AFTER_RUN', { afterRunId: activeRun.id, agentId: agents[0]?.id });
+                  setSchedules((prev) => [item, ...prev]);
+                }}>Run after current Mission</Button>
+              )}
+              {schedules.slice(0, 3).map((item) => (
+                <div key={item.id} style={{ fontSize: 11, color: 'var(--color-text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{item.mode}{item.scheduled_for ? ` · ${new Date(item.scheduled_for).toLocaleString()}` : ''}</span>
+                  <Badge tone={item.status === 'FAILED' ? 'danger' : item.status === 'COMPLETED' ? 'success' : 'default'}>{item.status}</Badge>
+                </div>
+              ))}
+            </div>
+          </Card>
+
           {/* Active Mission Runner Panel */}
           {activeRun && (
             <Card style={{ padding: '16px', border: '1px solid var(--color-brand)' }}>
@@ -433,13 +675,14 @@ export const PlanBuilderSurface: React.FC<{
                 <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Play size={14} style={{ color: 'var(--color-brand)' }} /> Autonomous Runner
                 </span>
-                <Badge tone={activeRun.state === 'COMPLETED' ? 'success' : activeRun.state === 'ESCALATED' ? 'danger' : 'brand'}>
+                <Badge tone={activeRun.state === 'COMPLETED_VERIFIED' ? 'success' : activeRun.state.startsWith('FAILED') || activeRun.state === 'BLOCKED_NEEDS_USER' ? 'danger' : activeRun.state === 'PAUSED' ? 'warning' : 'brand'}>
                   {activeRun.state}
                 </Badge>
               </div>
 
               <div style={{ fontSize: '13px', marginBottom: '12px' }}>
-                <div>Progresso: Pacote {activeRun.current_pkg_index + 1} de {activeRun.package_runs.length}</div>
+                <div>Progresso: {activeRun.package_runs.filter((pkg) => pkg.state === 'VERIFIED').length} de {activeRun.package_runs.length} pacotes verificados</div>
+                <div style={{ color: 'var(--color-text-muted)', fontSize: '12px' }}>Snapshot: {activeRun.execution_snapshot_id || '—'} · Rev {activeRun.plan_revision} · Iteração {activeRun.total_iterations}/{activeRun.contract.max_total_iterations}</div>
                 <div style={{ color: 'var(--color-text-muted)', fontSize: '12px' }}>
                   Tentativas permitidas: {activeRun.contract.max_retries} | Verificação: {activeRun.contract.require_verification ? 'Ativa' : 'Desativada'}
                 </div>
@@ -468,14 +711,23 @@ export const PlanBuilderSurface: React.FC<{
                 ))}
               </div>
 
-              <Button
-                tone="brand"
-                disabled={activeRun.state === 'COMPLETED' || stepping}
-                onClick={handleStepRun}
-                style={{ width: '100%' }}
-              >
-                <ArrowRight size={14} /> {stepping ? 'Executando passo...' : 'Avançar Passo de Autonomia'}
-              </Button>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {activeRun.state === 'PAUSED' || activeRun.state === 'BLOCKED_NEEDS_USER' ? (
+                  <Button tone="brand" disabled={runBusy} onClick={handleResumeRun}>
+                    <RotateCcw size={14} /> Return to Mission
+                  </Button>
+                ) : (
+                  <Button disabled={runBusy || activeRun.state === 'COMPLETED_VERIFIED' || activeRun.state.startsWith('FAILED') || activeRun.state === 'CANCELED_BY_USER'} onClick={handleTakeControl}>
+                    <Pause size={14} /> Take Control
+                  </Button>
+                )}
+                <Button disabled={runBusy || activeRun.state === 'COMPLETED_VERIFIED' || activeRun.state === 'CANCELED_BY_USER'} onClick={handleCancelRun}>
+                  <XCircle size={14} /> Cancel
+                </Button>
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '10px 0 0' }}>
+                The runner advances automatically. Take Control pauses autonomy and opens the current persistent Agent; Return to Mission resumes from the persisted checkpoint.
+              </p>
             </Card>
           )}
 

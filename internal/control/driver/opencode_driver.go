@@ -174,5 +174,5 @@ func (d *OpenCodeDriver) BuildResumeArgs(ctx context.Context, p model.Profile, p
 }
 
 func (d *OpenCodeDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error) {
-	return []string{kickoffPrompt}, nil
+	return []string{"run", kickoffPrompt}, nil
 }

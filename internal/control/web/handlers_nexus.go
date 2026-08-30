@@ -15,6 +15,10 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/nexus/intelligence"
 	"github.com/kivervinicius/ai-cli/internal/nexus/runner"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
+
+	"time"
+
+	"strconv"
 )
 
 // NexusHandler serves the Nexus product API (projects, agents, generations,
@@ -1253,44 +1257,42 @@ func (h *NexusHandler) handlePlanRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	planID := strings.TrimPrefix(r.URL.Path, "/api/v1/plans/")
-	planID = strings.TrimSuffix(planID, "/run")
-
-	plan, err := h.nexus.GetWorkPlan(r.Context(), planID)
-	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+	planID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/v1/plans/"), "/run")
+	if planID == "" {
+		writeError(w, http.StatusBadRequest, "plan id is required")
 		return
 	}
-
-	st, err := h.nexus.OpenProject()
-	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, err.Error())
-		return
-	}
-
-	proj, err := st.GetProject(plan.ProjectID)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "project not found")
-		return
-	}
-
 	var body struct {
-		AgentID  string `json:"agent_id"`
-		MaxRetry int    `json:"max_retries"`
+		AgentID               string   `json:"agent_id"`
+		MaxRetry              int      `json:"max_retries"`
+		MaxTotalIterations    int      `json:"max_total_iterations"`
+		PackageTimeoutSeconds int      `json:"package_timeout_seconds"`
+		VerificationCommands  []string `json:"verification_commands"`
+		Autonomous            *bool    `json:"autonomous"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-
 	contract := runner.DefaultAutonomyContract()
 	if body.MaxRetry > 0 {
 		contract.MaxRetries = body.MaxRetry
 	}
-
-	run, err := h.nexus.Runner().StartMissionRun(r.Context(), *plan, proj.CanonicalPath, contract, body.AgentID)
+	if body.MaxTotalIterations > 0 {
+		contract.MaxTotalIterations = body.MaxTotalIterations
+	}
+	if body.PackageTimeoutSeconds > 0 {
+		contract.PackageTimeoutSeconds = body.PackageTimeoutSeconds
+	}
+	if len(body.VerificationCommands) > 0 {
+		contract.VerificationCommands = body.VerificationCommands
+	}
+	autonomous := true
+	if body.Autonomous != nil {
+		autonomous = *body.Autonomous
+	}
+	run, err := h.nexus.StartMissionRun(r.Context(), planID, body.AgentID, contract, autonomous)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
 	writeJSON(w, http.StatusCreated, run)
 }
 
@@ -1300,44 +1302,87 @@ func (h *NexusHandler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	runs := h.nexus.Runner().Leases().ListActiveRuns()
+	runs, err := h.nexus.Runner().ListRuns(r.Context())
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, runs)
 }
 
-// handleRunDetail GET/POST /api/v1/runs/{id}
+// handleRunDetail exposes durable MissionRun state and explicit control actions.
+// POST /step exists for diagnostics; normal product execution uses the background worker.
 func (h *NexusHandler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
-	runID := strings.TrimPrefix(r.URL.Path, "/api/v1/runs/")
-	run, ok := h.nexus.Runner().Leases().GetRun(runID)
-	if !ok {
+	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/runs/"), "/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 0 || parts[0] == "" {
 		writeError(w, http.StatusNotFound, "run not found")
 		return
 	}
+	runID := parts[0]
+	action := ""
+	if len(parts) > 1 {
+		action = strings.ToLower(parts[1])
+	}
 
-	switch r.Method {
-	case http.MethodGet:
-		writeJSON(w, http.StatusOK, run)
-
-	case http.MethodPost:
-		// Step run execution
-		st, _ := h.nexus.OpenProject()
-		proj, err := st.GetProject(run.ProjectID)
-		workspace := ""
-		if err == nil {
-			workspace = proj.CanonicalPath
-		}
-		done, err := h.nexus.Runner().ExecuteNextStep(r.Context(), run, workspace)
+	if r.Method == http.MethodGet && action == "" {
+		run, err := h.nexus.Runner().GetRun(r.Context(), runID)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeError(w, http.StatusNotFound, "run not found")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"run":       run,
-			"completed": done,
-		})
-
-	default:
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		writeJSON(w, http.StatusOK, run)
+		return
 	}
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	var (
+		run *runner.MissionRun
+		err error
+	)
+	switch action {
+	case "pause":
+		run, err = h.nexus.PauseMissionRun(r.Context(), runID, firstNonEmpty(body.Reason, "paused by user"))
+	case "take-control":
+		run, err = h.nexus.TakeControlMissionRun(r.Context(), runID, firstNonEmpty(body.Reason, "manual takeover"))
+	case "resume":
+		run, err = h.nexus.ResumeMissionRun(r.Context(), runID)
+	case "return-to-mission":
+		run, err = h.nexus.ReturnMissionRun(r.Context(), runID)
+	case "cancel":
+		run, err = h.nexus.CancelMissionRun(r.Context(), runID, firstNonEmpty(body.Reason, "canceled by user"))
+	case "step", "":
+		var done bool
+		run, done, err = h.nexus.Runner().ExecuteNextStep(r.Context(), runID)
+		if err == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"run": run, "completed": done})
+			return
+		}
+	default:
+		writeError(w, http.StatusNotFound, "unknown run action")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, run)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 // handleIntelligence GET/PUT /api/v1/intelligence exposes secret-free Intelligence routing configuration.
@@ -1416,4 +1461,101 @@ func (h *NexusHandler) handleClarification(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+}
+
+// handleMissionSchedules creates/lists/cancels durable Mission schedules.
+func (h *NexusHandler) handleMissionSchedules(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		items, err := h.nexus.ListMissionSchedules(r.Context(), strings.TrimSpace(r.URL.Query().Get("project_id")))
+		if err != nil {
+			writeError(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, items)
+	case http.MethodPost:
+		var body struct {
+			PlanID       string                  `json:"plan_id"`
+			Mode         string                  `json:"mode"`
+			ScheduledFor string                  `json:"scheduled_for"`
+			AfterRunID   string                  `json:"after_run_id"`
+			AgentID      string                  `json:"agent_id"`
+			CancelID     string                  `json:"cancel_id"`
+			Contract     runner.AutonomyContract `json:"contract"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid body")
+			return
+		}
+		if body.CancelID != "" {
+			if err := h.nexus.CancelMissionSchedule(r.Context(), body.CancelID); err != nil {
+				writeError(w, http.StatusConflict, err.Error())
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]bool{"canceled": true})
+			return
+		}
+		contract := body.Contract
+		if contract.MaxRetries == 0 {
+			contract = runner.DefaultAutonomyContract()
+		}
+		var when *time.Time
+		if strings.TrimSpace(body.ScheduledFor) != "" {
+			parsed, err := time.Parse(time.RFC3339, body.ScheduledFor)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "scheduled_for must be RFC3339")
+				return
+			}
+			when = &parsed
+		}
+		item, err := h.nexus.ScheduleMission(r.Context(), body.PlanID, body.Mode, when, body.AfterRunID, body.AgentID, contract)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, item)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (h *NexusHandler) handlePlanRestore(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	planID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/v1/plans/"), "/restore")
+	var body struct {
+		Revision int `json:"revision"`
+	}
+	if json.NewDecoder(r.Body).Decode(&body) != nil || body.Revision <= 0 {
+		writeError(w, http.StatusBadRequest, "revision is required")
+		return
+	}
+	plan, rev, err := h.nexus.RestoreWorkPlanRevision(r.Context(), planID, body.Revision)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"plan": plan, "revision": rev})
+}
+
+func (h *NexusHandler) handlePlanDiff(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	planID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/v1/plans/"), "/diff")
+	from, err1 := strconv.Atoi(r.URL.Query().Get("from"))
+	to, err2 := strconv.Atoi(r.URL.Query().Get("to"))
+	if err1 != nil || err2 != nil || from <= 0 || to <= 0 {
+		writeError(w, http.StatusBadRequest, "from/to revisions are required")
+		return
+	}
+	diff, err := h.nexus.ComparePlanRevisions(r.Context(), planID, from, to)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, diff)
 }

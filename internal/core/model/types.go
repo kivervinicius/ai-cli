@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-// ProviderID identifies a supported AI CLI provider (e.g. "codex", "agy", "claude", "opencode", "gemini").
+// ProviderID identifies a supported AI CLI provider (e.g. "codex", "agy", "claude", "opencode", "gemini", "cursor").
 type ProviderID string
 
 const (
@@ -11,6 +11,7 @@ const (
 	ProviderClaude   ProviderID = "claude"
 	ProviderOpenCode ProviderID = "opencode"
 	ProviderGemini   ProviderID = "gemini"
+	ProviderCursor   ProviderID = "cursor"
 )
 
 // FailureKind categorizes the cause of a CLI execution failure.

@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/kivervinicius/ai-cli/internal/core/model"
@@ -56,5 +57,32 @@ func TestDriverRegistryAndCapabilities(t *testing.T) {
 	// Unknown provider check
 	if _, err := reg.Get("non-existent"); err == nil {
 		t.Errorf("expected error for non-existent driver")
+	}
+}
+
+func TestHeadlessKickoffArgsMatchProviderCLIContracts(t *testing.T) {
+	ctx := context.Background()
+	profile := model.Profile{Name: "default"}
+	cases := []struct {
+		name string
+		d    ControlDriver
+		want []string
+	}{
+		{name: "claude", d: NewClaudeDriver(), want: []string{"-p", "ship it"}},
+		{name: "agy", d: NewAGYDriver(), want: []string{"-p", "ship it"}},
+		{name: "gemini", d: NewGeminiDriver(), want: []string{"-p", "ship it"}},
+		{name: "opencode", d: NewOpenCodeDriver(), want: []string{"run", "ship it"}},
+		{name: "cursor", d: NewCursorDriver(), want: []string{"-p", "ship it", "--output-format", "text"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := tc.d.BuildKickoffArgs(ctx, profile, "ship it")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("kickoff args mismatch: got %#v want %#v", got, tc.want)
+			}
+		})
 	}
 }
