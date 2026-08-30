@@ -3,6 +3,7 @@ package web
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -35,6 +36,7 @@ type AuthManager struct {
 	sessions       map[string]*Session
 	listenHost     string
 	listenPort     string
+	entropy        io.Reader
 }
 
 func NewAuthManager(listenHost, listenPort string) (*AuthManager, string, error) {
@@ -49,6 +51,7 @@ func NewAuthManager(listenHost, listenPort string) (*AuthManager, string, error)
 		sessions:       make(map[string]*Session),
 		listenHost:     listenHost,
 		listenPort:     listenPort,
+		entropy:        rand.Reader,
 	}, bootstrapToken, nil
 }
 
@@ -80,13 +83,13 @@ func (a *AuthManager) ValidateOrigin(r *http.Request) bool {
 
 func (a *AuthManager) CreateSession() (*Session, error) {
 	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
+	if _, err := io.ReadFull(a.entropyReader(), bytes); err != nil {
 		return nil, err
 	}
 	sessID := hex.EncodeToString(bytes)
 
 	csrfBytes := make([]byte, 16)
-	if _, err := rand.Read(csrfBytes); err != nil {
+	if _, err := io.ReadFull(a.entropyReader(), csrfBytes); err != nil {
 		return nil, err
 	}
 	csrfToken := hex.EncodeToString(csrfBytes)
@@ -146,13 +149,13 @@ func (a *AuthManager) RotateSession(oldSessionID string) (*Session, error) {
 	// Generate the complete replacement session before revoking the old one.
 	// A transient entropy failure must never log out an otherwise valid user.
 	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
+	if _, err := io.ReadFull(a.entropyReader(), bytes); err != nil {
 		return nil, err
 	}
 	sessID := hex.EncodeToString(bytes)
 
 	csrfBytes := make([]byte, 16)
-	if _, err := rand.Read(csrfBytes); err != nil {
+	if _, err := io.ReadFull(a.entropyReader(), csrfBytes); err != nil {
 		return nil, err
 	}
 	csrfToken := hex.EncodeToString(csrfBytes)
@@ -181,13 +184,13 @@ func (a *AuthManager) ExchangeBootstrapToken(token string) (*Session, bool) {
 	// Generate all session entropy before consuming the one-time bootstrap token.
 	// A transient CSPRNG failure must fail closed without burning the token.
 	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
+	if _, err := io.ReadFull(a.entropyReader(), bytes); err != nil {
 		return nil, false
 	}
 	sessID := hex.EncodeToString(bytes)
 
 	csrfBytes := make([]byte, 16)
-	if _, err := rand.Read(csrfBytes); err != nil {
+	if _, err := io.ReadFull(a.entropyReader(), csrfBytes); err != nil {
 		return nil, false
 	}
 	csrfToken := hex.EncodeToString(csrfBytes)
@@ -205,4 +208,11 @@ func (a *AuthManager) ExchangeBootstrapToken(token string) (*Session, bool) {
 	}
 	a.sessions[sessID] = sess
 	return sess, true
+}
+
+func (a *AuthManager) entropyReader() io.Reader {
+	if a.entropy != nil {
+		return a.entropy
+	}
+	return rand.Reader
 }

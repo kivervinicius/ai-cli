@@ -135,7 +135,9 @@ func (s *Store) UpdateMissionScheduleStatus(id, status string) error {
 }
 
 func (s *Store) BindMissionScheduleRun(id, runID string) error {
-	res, err := s.db.Exec(`UPDATE mission_schedules SET run_id=?,status=?,updated_at=? WHERE id=? AND status=?`, runID, ScheduleRunning, time.Now().UTC().Format(time.RFC3339Nano), id, ScheduleClaimed)
+	// Direct durable bind is valid for serialized callers; the scheduler still
+	// claims first, preserving its duplicate-execution fence.
+	res, err := s.db.Exec(`UPDATE mission_schedules SET run_id=?,status=?,updated_at=? WHERE id=? AND status IN (?,?)`, runID, ScheduleRunning, time.Now().UTC().Format(time.RFC3339Nano), id, ScheduleClaimed, SchedulePending)
 	if err != nil {
 		return err
 	}
