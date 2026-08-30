@@ -1,3 +1,5 @@
+import { notificationTitle } from './notificationModel';
+
 export interface PushNotificationPayload {
   runtimeId: string;
   projectName?: string;
@@ -46,15 +48,7 @@ class PushNotificationService {
     this.lastNotifiedKey = key;
     this.lastNotifiedTime = now;
 
-    const proj = payload.projectName || 'Projeto';
-    let title = `[Nexus | ${proj}] Notificação`;
-    if (payload.reason === 'QUESTION') {
-      title = `[Nexus | ${proj}] ❓ Pergunta Requer Atenção`;
-    } else if (payload.reason === 'APPROVAL') {
-      title = `[Nexus | ${proj}] ⚠️ Aprovação Necessária`;
-    } else if (payload.reason === 'TASK_COMPLETED') {
-      title = `[Nexus | ${proj}] ✅ Tarefa Concluída!`;
-    }
+    const title = notificationTitle(payload.projectName, payload.reason, payload.dynamicTitle);
 
     try {
       const notif = new Notification(title, {
