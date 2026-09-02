@@ -47,7 +47,7 @@ export const ProjectRail: React.FC<{
         aria-label={t('rail.aria')}
       >
         <div className="nx-project-rail__brand">
-          <img src="./logo.png" alt="IAPro Nexus" className="nx-brand-mark nx-brand-mark-img" />
+          <span className="nx-brand-mark">N</span>
           <span>
             <strong>IAPro Nexus</strong>
             <small>Powered by Maestro</small>
@@ -97,10 +97,10 @@ export const ProjectRail: React.FC<{
               title={project.canonical_path}
             >
               <span className="nx-project-avatar">
-                {(project.name || '').slice(0, 2).toUpperCase()}
+                {(project.name || 'PR').slice(0, 2).toUpperCase()}
               </span>
               <span>
-                <strong>{project.name}</strong>
+                <strong>{project.name || project.id}</strong>
                 <small>{project.default_branch || 'main'}</small>
               </span>
               {selected?.id === project.id && <span className="nx-project-active-dot" />}

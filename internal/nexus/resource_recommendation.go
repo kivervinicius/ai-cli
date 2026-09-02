@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/kivervinicius/ai-cli/internal/core/telemetry"
 )
 
 // TaskRequirements specifies what an intelligence or execution task demands (§Gate 5, Phase B).
@@ -19,8 +21,6 @@ type TaskRequirements struct {
 	PreferProvider       string   `json:"prefer_provider,omitempty"`
 	ProjectPolicy        string   `json:"project_policy,omitempty"`
 	AgentPreference      string   `json:"agent_preference,omitempty"`
-	ProviderLock         string   `json:"provider_lock,omitempty"`
-	ProfileLock          string   `json:"profile_lock,omitempty"`
 }
 
 // ResourceCandidate represents an evaluated provider account scored for a specific task.
@@ -66,6 +66,39 @@ func RecommendResources(accounts []ProviderAccount, req TaskRequirements, policy
 		result.Candidates = append(result.Candidates, c)
 	}
 
+	eligibleIdx := make([]int, 0, len(result.Candidates))
+	allUnknown := true
+	for i, c := range result.Candidates {
+		if !c.Eligible {
+			continue
+		}
+		eligibleIdx = append(eligibleIdx, i)
+		if c.Confidence != "UNKNOWN" {
+			allUnknown = false
+		}
+	}
+	if allUnknown && len(eligibleIdx) > 0 {
+		lastUsed := profileSelectedAt()
+		sort.SliceStable(eligibleIdx, func(i, j int) bool {
+			left := result.Candidates[eligibleIdx[i]].Account
+			right := result.Candidates[eligibleIdx[j]].Account
+			leftKey := left.Provider + "/" + left.Profile
+			rightKey := right.Provider + "/" + right.Profile
+			return lastUsed[leftKey].Before(lastUsed[rightKey])
+		})
+		best := result.Candidates[eligibleIdx[0]]
+		result.Recommended = &best
+		for i := range result.Candidates {
+			result.Candidates[i].Rank = 0
+		}
+		for rank, idx := range eligibleIdx {
+			result.Candidates[idx].Rank = rank + 1
+		}
+		result.Explanation = fmt.Sprintf("Recomendado %s (%s) por LRU entre perfis saudáveis com quota desconhecida.",
+			best.Account.DisplayName, best.Account.Provider)
+		return result
+	}
+
 	// Sort candidates: eligible first, then higher score, then lower rate limit risk
 	sort.Slice(result.Candidates, func(i, j int) bool {
 		if result.Candidates[i].Eligible != result.Candidates[j].Eligible {
@@ -96,6 +129,24 @@ func RecommendResources(accounts []ProviderAccount, req TaskRequirements, policy
 	return result
 }
 
+func profileSelectedAt() map[string]time.Time {
+	result := make(map[string]time.Time)
+	events, err := telemetry.ReadRecentEvents(0)
+	if err != nil {
+		return result
+	}
+	for _, ev := range events {
+		if ev.Type != telemetry.EventProfileSelected {
+			continue
+		}
+		key := ev.ProviderID + "/" + ev.ProfileID
+		if old, ok := result[key]; !ok || ev.Timestamp.After(old) {
+			result[key] = ev.Timestamp
+		}
+	}
+	return result
+}
+
 func evaluateCandidate(acc ProviderAccount, req TaskRequirements, policy SchedulerPolicy) ResourceCandidate {
 	c := ResourceCandidate{
 		Account:        acc,
@@ -104,20 +155,6 @@ func evaluateCandidate(acc ProviderAccount, req TaskRequirements, policy Schedul
 		Cons:           make([]string, 0),
 		Eligible:       true,
 		Confidence:     "UNKNOWN",
-	}
-
-	// Hard Gate 0: an explicit provider/profile lock is authoritative.
-	if lock := strings.TrimSpace(req.ProviderLock); lock != "" && !strings.EqualFold(acc.Provider, lock) {
-		c.Eligible = false
-		c.RejectionReason = fmt.Sprintf("Provider bloqueado para %s", lock)
-		c.Cons = append(c.Cons, c.RejectionReason)
-		return c
-	}
-	if lock := strings.TrimSpace(req.ProfileLock); lock != "" && acc.Profile != lock {
-		c.Eligible = false
-		c.RejectionReason = fmt.Sprintf("Profile bloqueado para %s", lock)
-		c.Cons = append(c.Cons, c.RejectionReason)
-		return c
 	}
 
 	// Hard Gate 1: Must be authenticated
@@ -220,27 +257,23 @@ func evaluateCandidate(acc ProviderAccount, req TaskRequirements, policy Schedul
 	c.ScoreBreakdown["affinity"] = affinityScore
 	score += affinityScore
 
-	// 4. Role & Capability Fit (0 to 20 pts). Never infer competence from
-	// provider brand/name; drivers publish the capabilities used here.
+	// 4. Role & Capability Fit (0 to 20 pts)
 	roleScore := 10.0
-	supported := func(name string) bool {
-		return strings.EqualFold(strings.TrimSpace(acc.Capabilities[normalizeCapabilityName(name)]), "SUPPORTED")
-	}
 	switch req.Role {
 	case "reviewer", "tester":
-		if supported("read_only_review") {
+		if acc.Provider == "codex" || acc.Provider == "claude" {
 			roleScore = 20.0
-			c.Pros = append(c.Pros, "Capability explícita para revisão independente/read-only")
+			c.Pros = append(c.Pros, "Especialista para revisão e verificação técnica")
 		}
 	case "implementer":
-		if supported("autonomous_coding") {
+		if acc.Provider == "codex" || acc.Provider == "claude" || acc.Provider == "agy" {
 			roleScore = 20.0
-			c.Pros = append(c.Pros, "Capability explícita para implementação autônoma")
+			c.Pros = append(c.Pros, "Alta performance para implementação de código")
 		}
 	case "architect", "planner":
-		if supported("headless") && supported("submit_prompt") {
+		if acc.Provider == "claude" || acc.Provider == "codex" {
 			roleScore = 20.0
-			c.Pros = append(c.Pros, "Capabilities explícitas para planejamento headless")
+			c.Pros = append(c.Pros, "Capacidade avançada de raciocínio e decomposição")
 		}
 	}
 	c.ScoreBreakdown["role_fit"] = roleScore

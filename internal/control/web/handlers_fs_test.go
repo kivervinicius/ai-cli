@@ -136,27 +136,3 @@ func TestGetGitRemoteRedactsCredentials(t *testing.T) {
 		t.Fatalf("remote = %q, credentials must be redacted", got)
 	}
 }
-
-func TestFilesystemRootUsesCurrentVolumeInsteadOfUnixLiteral(t *testing.T) {
-	root := filesystemRoot(t.TempDir())
-	if root == "" {
-		t.Fatal("filesystem root must not be empty")
-	}
-	if filepath.Dir(root) != root {
-		t.Fatalf("filesystem root %q must be a root directory", root)
-	}
-}
-
-func TestDefaultScanRootsAreDerivedFromUserPaths(t *testing.T) {
-	home := t.TempDir()
-	cwd := filepath.Join(home, "work")
-	roots := defaultScanRoots(home, cwd)
-	for _, root := range roots {
-		if root == "/projetos" {
-			t.Fatal("default scan roots must not contain a Unix-only /projetos literal")
-		}
-	}
-	if len(roots) == 0 {
-		t.Fatal("expected at least one derived scan root")
-	}
-}

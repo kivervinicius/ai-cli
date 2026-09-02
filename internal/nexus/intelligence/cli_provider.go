@@ -22,6 +22,19 @@ type CLIProvider struct {
 	run                 CLIPromptRunner
 }
 
+// HeadlessPromptArgs returns the verified non-interactive invocation contract for
+// coding-agent CLIs that currently advertise both Headless and SubmitPrompt support.
+func HeadlessPromptArgs(providerID, prompt string) ([]string, error) {
+	switch strings.ToLower(strings.TrimSpace(providerID)) {
+	case "claude", "agy", "gemini", "cursor":
+		return []string{"-p", prompt}, nil
+	case "opencode":
+		return []string{"run", prompt}, nil
+	default:
+		return nil, fmt.Errorf("provider %q has no verified headless prompt contract", providerID)
+	}
+}
+
 func NewCLIProvider(providerID, profile string, capabilityValidated bool, run CLIPromptRunner) *CLIProvider {
 	return &CLIProvider{providerID: strings.TrimSpace(providerID), profile: strings.TrimSpace(profile), capabilityValidated: capabilityValidated, run: run}
 }
@@ -90,11 +103,11 @@ Intent: %s`, string(intentJSON))
 	return result.Unknowns, nil
 }
 
-func (p *CLIProvider) GeneratePlanOutline(ctx context.Context, intent *IntentAnalysis, facts map[string]string) ([]WorkPackageOutline, error) {
+func (p *CLIProvider) GeneratePlanOutline(ctx context.Context, intent *IntentAnalysis, facts map[string]string, contextData map[string]any) ([]WorkPackageOutline, error) {
 	if !p.Available(ctx) {
 		return nil, ErrIntelligenceUnavailable
 	}
-	input, _ := json.Marshal(map[string]any{"intent": intent, "confirmed_facts": facts})
+	input, _ := json.Marshal(map[string]any{"intent": intent, "confirmed_facts": facts, "project_context": contextData})
 	prompt := fmt.Sprintf(`Return ONLY a JSON object. Do not wrap it in prose.
 Decompose the engineering objective into independently reviewable WorkPackages. Do NOT invent Maestro skill identifiers. The skills array must be empty; Maestro is a separate authority.
 Schema: {"packages":[{"title":"...","goal":"...","priority":"CRITICAL|HIGH|NORMAL|LOW","dependencies":["package title"],"role":"implementer|reviewer|tester|architect","skills":[],"acceptance":["measurable criterion"]}]}

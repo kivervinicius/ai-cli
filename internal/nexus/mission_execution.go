@@ -77,15 +77,13 @@ func (n *Nexus) executeAgentPrompt(ctx context.Context, agentID, workspace, prom
 	if caps.Headless.Status != driver.CapabilitySupported || caps.SubmitPrompt.Status != driver.CapabilitySupported {
 		return nil, fmt.Errorf("provider %s:%s cannot execute autonomous prompt: headless=%s submit_prompt=%s", cfg.Provider, cfg.Profile, caps.Headless.Status, caps.SubmitPrompt.Status)
 	}
-	mode := driver.AutonomousCoding
-	if policy.Review {
-		mode = driver.AutonomousReview
-	}
-	kickoffArgs, err := d.BuildAutonomousArgs(ctx, profile, prompt, mode, driver.AutonomousPolicy{
-		AllowToolAutoApproval: policy.Contract.AllowToolAutoApproval,
-	})
+	kickoffArgs, err := d.BuildKickoffArgs(ctx, profile, prompt)
 	if err != nil {
-		return nil, fmt.Errorf("build autonomous provider args: %w", err)
+		return nil, fmt.Errorf("build provider kickoff args: %w", err)
+	}
+	kickoffArgs, err = missionProviderArgs(cfg.Provider, kickoffArgs, policy)
+	if err != nil {
+		return nil, err
 	}
 
 	// Do not silently steal an unrelated live terminal session. Mission agents
@@ -181,17 +179,58 @@ func (n *Nexus) executeAgentPrompt(ctx context.Context, agentID, workspace, prom
 	return &agentPromptExecution{RuntimeID: sess.RuntimeID, Output: output}, nil
 }
 
-func runtimeCompletionOutcome(state registry.RuntimeState, found bool) error {
-	if !found {
-		return fmt.Errorf("runtime completion not verified: registry state unavailable")
+func missionProviderArgs(provider string, args []string, policy agentPromptPolicy) ([]string, error) {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	out := append([]string(nil), args...)
+	if policy.Review {
+		switch provider {
+		case "claude":
+			return append(out, "--permission-mode", "plan", "--output-format", "text"), nil
+		case "gemini":
+			return append(out, "--approval-mode=plan", "--output-format", "text"), nil
+		case "cursor":
+			return append(out, "--mode=ask", "--output-format", "text"), nil
+		default:
+			return nil, fmt.Errorf("provider %s has no verified read-only headless review mode", provider)
+		}
 	}
-	switch state {
-	case registry.StateStopped:
-		return nil
-	case registry.StateFailed:
-		return fmt.Errorf("provider process exited with failure")
+
+	// A coding Mission must not hang waiting for an approval prompt. Auto-approval
+	// is an explicit contract decision and is restricted by Nexus to the Agent's
+	// isolated workspace plus prompt-level no-push/no-deploy boundaries.
+	switch provider {
+	case "claude":
+		if !policy.Contract.AllowToolAutoApproval {
+			return nil, fmt.Errorf("claude autonomous coding requires allow_tool_auto_approval")
+		}
+		return append(out, "--dangerously-skip-permissions", "--output-format", "text"), nil
+	case "gemini":
+		if !policy.Contract.AllowToolAutoApproval {
+			return nil, fmt.Errorf("gemini autonomous coding requires allow_tool_auto_approval")
+		}
+		return append(out, "--approval-mode=yolo", "--output-format", "text"), nil
+	case "agy":
+		if !policy.Contract.AllowToolAutoApproval {
+			return nil, fmt.Errorf("agy autonomous coding requires allow_tool_auto_approval")
+		}
+		return append(out, "--dangerously-skip-permissions", "--sandbox", "--print-timeout", "60m"), nil
+	case "opencode":
+		if !policy.Contract.AllowToolAutoApproval {
+			return nil, fmt.Errorf("opencode autonomous coding requires allow_tool_auto_approval")
+		}
+		if len(out) > 0 && out[0] == "run" {
+			out = append([]string{"run", "--auto"}, out[1:]...)
+		} else {
+			out = append([]string{"--auto"}, out...)
+		}
+		return out, nil
+	case "cursor":
+		if !policy.Contract.AllowToolAutoApproval {
+			return nil, fmt.Errorf("cursor non-interactive coding has write access and requires allow_tool_auto_approval")
+		}
+		return out, nil
 	default:
-		return fmt.Errorf("runtime completion not verified: terminal stream closed while registry state is %s", state)
+		return nil, fmt.Errorf("provider %s is not approved for autonomous coding", provider)
 	}
 }
 
@@ -235,17 +274,15 @@ func captureRuntimeOutput(ctx context.Context, runtimeID string) (string, error)
 		for time.Now().Before(deadline) {
 			if sess, ok := registry.DefaultRegistry().Get(runtimeID); ok {
 				switch sess.State {
-				case registry.StateFailed, registry.StateStopped:
-					return output, runtimeCompletionOutcome(sess.State, true)
+				case registry.StateFailed:
+					return output, fmt.Errorf("provider process exited with failure")
+				case registry.StateStopped:
+					return output, nil
 				}
 			}
 			time.Sleep(25 * time.Millisecond)
 		}
-		sess, ok := registry.DefaultRegistry().Get(runtimeID)
-		if !ok {
-			return output, runtimeCompletionOutcome("", false)
-		}
-		return output, runtimeCompletionOutcome(sess.State, true)
+		return output, nil
 	}
 }
 

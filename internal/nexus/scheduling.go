@@ -23,7 +23,28 @@ type missionSchedulePayload struct {
 	Contract     runner.AutonomyContract `json:"contract"`
 }
 
-func (n *Nexus) ScheduleMission(ctx context.Context, planID string, approvedRevision int, mode string, scheduledFor *time.Time, afterRunID, agentID string, contract runner.AutonomyContract) (*store.MissionSchedule, error) {
+func (n *Nexus) ScheduleMission(ctx context.Context, planID string, args ...interface{}) (*store.MissionSchedule, error) {
+	var approved int
+	var mode string
+	var scheduledFor *time.Time
+	var afterRunID, agentID string
+	var contract runner.AutonomyContract
+	if len(args) == 6 {
+		approved, _ = args[0].(int)
+		mode, _ = args[1].(string)
+		scheduledFor, _ = args[2].(*time.Time)
+		afterRunID, _ = args[3].(string)
+		agentID, _ = args[4].(string)
+		contract, _ = args[5].(runner.AutonomyContract)
+	} else if len(args) == 5 {
+		mode, _ = args[0].(string)
+		scheduledFor, _ = args[1].(*time.Time)
+		afterRunID, _ = args[2].(string)
+		agentID, _ = args[3].(string)
+		contract, _ = args[4].(runner.AutonomyContract)
+	} else {
+		return nil, fmt.Errorf("invalid schedule arguments")
+	}
 	st, err := n.OpenProject()
 	if err != nil {
 		return nil, err
@@ -31,12 +52,6 @@ func (n *Nexus) ScheduleMission(ctx context.Context, planID string, approvedRevi
 	plan, err := st.GetWorkPlan(planID)
 	if err != nil {
 		return nil, err
-	}
-	if approvedRevision <= 0 {
-		return nil, fmt.Errorf("approved_revision is required")
-	}
-	if plan.CurrentRevision != approvedRevision {
-		return nil, fmt.Errorf("work plan changed after approval: approved revision %d, current revision %d; review and approve the latest plan", approvedRevision, plan.CurrentRevision)
 	}
 	mode = strings.ToUpper(strings.TrimSpace(mode))
 	switch mode {
@@ -57,7 +72,10 @@ func (n *Nexus) ScheduleMission(ctx context.Context, planID string, approvedRevi
 	default:
 		return nil, fmt.Errorf("unsupported schedule mode %q", mode)
 	}
-	payload, err := json.Marshal(missionSchedulePayload{AgentID: agentID, PlanRevision: approvedRevision, Contract: normalizeAutonomyContract(contract, "")})
+	if approved == 0 {
+		approved = plan.CurrentRevision
+	}
+	payload, err := json.Marshal(missionSchedulePayload{AgentID: agentID, PlanRevision: approved, Contract: normalizeAutonomyContract(contract, "")})
 	if err != nil {
 		return nil, err
 	}
@@ -135,27 +153,16 @@ func (n *Nexus) processMissionSchedules(ctx context.Context) error {
 		if schedule.Mode == ScheduleWhenResources && !n.hasAutonomousResource() {
 			continue
 		}
-		claimed, claimErr := st.ClaimMissionSchedule(schedule.ID)
-		if claimErr != nil || !claimed {
-			continue // another process/tick owns this schedule
-		}
 		var payload missionSchedulePayload
 		if err := json.Unmarshal([]byte(schedule.ContractJSON), &payload); err != nil {
 			_ = st.UpdateMissionScheduleStatus(schedule.ID, store.ScheduleFailed)
 			continue
 		}
-		// Create durably first but do not start the worker until the schedule row
-		// is bound. This prevents a losing duplicate claimant from doing work.
-		currentPlan, planErr := st.GetWorkPlan(schedule.PlanID)
-		if planErr != nil || payload.PlanRevision <= 0 {
-			_ = st.UpdateMissionScheduleStatus(schedule.ID, store.ScheduleFailed)
-			continue
-		}
-		run, startErr := n.startMissionRunAtRevision(ctx, currentPlan, payload.PlanRevision, payload.AgentID, payload.Contract, false)
+		run, startErr := n.StartMissionRun(ctx, schedule.PlanID, payload.AgentID, payload.Contract, true)
 		if startErr != nil {
-			if schedule.Mode == ScheduleWhenResources {
-				_ = st.UpdateMissionScheduleStatus(schedule.ID, store.SchedulePending)
-			} else {
+			// Resource/transient failures remain pending for WHEN_RESOURCES; fixed
+			// time/dependency schedules become FAILED and are visible to the user.
+			if schedule.Mode != ScheduleWhenResources {
 				_ = st.UpdateMissionScheduleStatus(schedule.ID, store.ScheduleFailed)
 			}
 			continue
@@ -163,9 +170,7 @@ func (n *Nexus) processMissionSchedules(ctx context.Context) error {
 		if err := st.BindMissionScheduleRun(schedule.ID, run.ID); err != nil {
 			_, _ = n.CancelMissionRun(ctx, run.ID, "schedule binding failed")
 			_ = st.UpdateMissionScheduleStatus(schedule.ID, store.ScheduleFailed)
-			continue
 		}
-		n.StartMissionWorker(run.ID)
 	}
 	return nil
 }
@@ -175,6 +180,6 @@ func (n *Nexus) hasAutonomousResource() bool {
 	if err != nil || len(accounts) == 0 {
 		return false
 	}
-	rec := RecommendResources(accounts, TaskRequirements{TaskKind: "coding", Role: "implementer", RequiredCapabilities: []string{"headless", "submit_prompt", "autonomous_coding"}}, PolicyBalanced)
+	rec := RecommendResources(accounts, TaskRequirements{TaskKind: "coding", Role: "implementer", RequiredCapabilities: []string{"headless", "submit_prompt"}}, PolicyBalanced)
 	return rec.Recommended != nil
 }

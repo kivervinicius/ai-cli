@@ -28,7 +28,6 @@ import {
 } from 'lucide-react';
 import { Button, Card, Dialog, EmptyState, IconButton, Input, Badge, Segmented, Select, InlineAlert, Spinner } from '../../design-system';
 import { nexus } from '../../nexus/api';
-import { formatResourcePolicy, translateIsolation } from '../../i18n';
 import type { Agent, Project } from '../../types';
 import { AddProjectModal } from './AddProjectModal';
 import { DirectoryBrowserModal } from './DirectoryBrowserModal';
@@ -91,12 +90,12 @@ export const ProjectManagerSurface: React.FC<{
   const filtered = useMemo(() => {
     let list = projects.filter(
       (p) =>
-        (p.name || '').toLowerCase().includes(query.toLowerCase()) ||
-        (p.canonical_path || '').toLowerCase().includes(query.toLowerCase()) ||
+        p.name.toLowerCase().includes(query.toLowerCase()) ||
+        p.canonical_path.toLowerCase().includes(query.toLowerCase()) ||
         (p.default_branch || '').toLowerCase().includes(query.toLowerCase())
     );
     if (sortBy === 'name') {
-      list = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      list = [...list].sort((a, b) => a.name.localeCompare(b.name));
     }
     return list;
   }, [projects, query, sortBy]);
@@ -134,12 +133,12 @@ export const ProjectManagerSurface: React.FC<{
       const res = await nexus.checkoutProjectBranch(configProject.id, targetBranch.trim());
       if (res.success) {
         setCfgBranch(res.current_branch);
-        setCfgBranchAlert({ tone: 'success', message: `✓ ${t('git.checkoutSuccess', { branch: res.current_branch })}` });
+        setCfgBranchAlert({ tone: 'success', message: `✓ Alternado com sucesso para branch ${res.current_branch}` });
         const updated = { ...configProject, default_branch: res.current_branch };
         onProjectUpdated(updated);
       }
     } catch (err: any) {
-      setCfgBranchAlert({ tone: 'danger', message: err?.message || t('git.checkoutFailed') });
+      setCfgBranchAlert({ tone: 'danger', message: err?.message || 'Falha ao trocar de branch' });
     } finally {
       setCfgBranchSwitching(false);
     }
@@ -320,10 +319,10 @@ export const ProjectManagerSurface: React.FC<{
                 <div className="nx-desktop-card__header">
                   <div className="nx-desktop-card__brand">
                     <span className="nx-desktop-avatar">
-                      {(proj.name || '').slice(0, 2).toUpperCase()}
+                      {(proj.name || 'PR').slice(0, 2).toUpperCase()}
                     </span>
                     <div className="nx-desktop-title-stack">
-                      <strong>{proj.name}</strong>
+                      <strong>{proj.name || proj.id}</strong>
                       <span className="nx-desktop-branch">
                         <GitBranch size={11} />
                         {proj.default_branch || 'main'}
@@ -337,7 +336,7 @@ export const ProjectManagerSurface: React.FC<{
                       {t('projectManager.activeDesktop')}
                     </Badge>
                   ) : (
-                    <Badge tone="default">{translateIsolation(proj.default_isolation)}</Badge>
+                    <Badge tone="default">{proj.default_isolation || 'project'}</Badge>
                   )}
                 </div>
 
@@ -360,7 +359,7 @@ export const ProjectManagerSurface: React.FC<{
                   </span>
                   <span className="nx-tag-pill">
                     <Zap size={11} />
-                    {formatResourcePolicy(proj.resource_policy)}
+                    {proj.resource_policy || 'BALANCED'}
                   </span>
                 </div>
 
@@ -449,10 +448,10 @@ export const ProjectManagerSurface: React.FC<{
                     <td>
                       <div className="nx-table-proj-cell">
                         <span className="nx-desktop-avatar nx-desktop-avatar--sm">
-                          {(proj.name || '').slice(0, 2).toUpperCase()}
+                          {(proj.name || 'PR').slice(0, 2).toUpperCase()}
                         </span>
                         <div>
-                          <strong>{proj.name}</strong>
+                          <strong>{proj.name || proj.id}</strong>
                           <small>{proj.canonical_path}</small>
                         </div>
                       </div>
@@ -468,7 +467,7 @@ export const ProjectManagerSurface: React.FC<{
                       </Badge>
                     </td>
                     <td>
-                      <span className="nx-tag-pill">{formatResourcePolicy(proj.resource_policy)}</span>
+                      <span className="nx-tag-pill">{proj.resource_policy || 'BALANCED'}</span>
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>
                       <div className="nx-table-os-actions">

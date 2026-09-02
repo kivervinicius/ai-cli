@@ -20,17 +20,9 @@ type Policy struct {
 	AllowPaidServices      bool
 }
 
-var externalNetworkTools = map[string]struct{}{
-	"curl": {}, "wget": {}, "ssh": {}, "scp": {}, "sftp": {}, "ftp": {}, "nc": {}, "ncat": {}, "telnet": {},
-}
-
-var secretAccessTools = map[string]struct{}{
-	"vault": {}, "op": {}, "pass": {}, "secret-tool": {},
-}
-
-var paidServiceTools = map[string]struct{}{
-	"aws": {}, "gcloud": {}, "az": {}, "doctl": {}, "fly": {}, "vercel": {}, "netlify": {}, "pulumi": {},
-}
+var externalNetworkTools = map[string]struct{}{"curl": {}, "wget": {}, "ssh": {}, "scp": {}, "sftp": {}, "ftp": {}, "nc": {}, "ncat": {}, "telnet": {}}
+var secretAccessTools = map[string]struct{}{"vault": {}, "op": {}, "pass": {}, "secret-tool": {}}
+var paidServiceTools = map[string]struct{}{"aws": {}, "gcloud": {}, "az": {}, "doctl": {}, "fly": {}, "vercel": {}, "netlify": {}, "pulumi": {}}
 
 var deployMutations = map[string][]string{
 	"kubectl":   {"apply", "delete", "create", "patch", "replace", "edit", "scale", "rollout", "set", "label", "annotate", "taint", "cordon", "uncordon", "drain"},
@@ -75,7 +67,6 @@ func WriteCommandGuards(dir string, policy Policy) ([]string, error) {
 			tools = append(tools, tool)
 		}
 	}
-	tools = uniqueToolNames(tools)
 	sort.Strings(tools)
 	created := make([]string, 0, len(tools))
 	for _, tool := range tools {
@@ -106,30 +97,7 @@ func WriteCommandGuards(dir string, policy Policy) ([]string, error) {
 	return created, nil
 }
 
-func uniqueToolNames(in []string) []string {
-	seen := map[string]bool{}
-	out := make([]string, 0, len(in))
-	for _, tool := range in {
-		if tool != "" && !seen[tool] {
-			seen[tool] = true
-			out = append(out, tool)
-		}
-	}
-	return out
-}
-
-func blockEntireTool(tool string, policy Policy) bool {
-	if _, ok := externalNetworkTools[tool]; ok && !policy.AllowExternalNetwork {
-		return true
-	}
-	if _, ok := secretAccessTools[tool]; ok && !policy.AllowSecretAccess {
-		return true
-	}
-	if _, ok := paidServiceTools[tool]; ok && !policy.AllowPaidServices {
-		return true
-	}
-	return false
-}
+const blockAllSentinel = "__nexus_block_all__"
 
 func blockedPatterns(tool string, policy Policy) []string {
 	var patterns []string
@@ -142,8 +110,22 @@ func blockedPatterns(tool string, policy Policy) []string {
 		}
 		return patterns
 	}
+	// Category-wide blocks must be evaluated before deploy mutation patterns.
+	// deployMutations does not include network/secret/paid tools, so an early
+	// return there would leave curl/vault/aws unguarded.
+	if _, ok := externalNetworkTools[tool]; ok && !policy.AllowExternalNetwork {
+		return []string{blockAllSentinel}
+	}
+	if _, ok := secretAccessTools[tool]; ok && !policy.AllowSecretAccess {
+		return []string{blockAllSentinel}
+	}
+	if _, ok := paidServiceTools[tool]; ok && !policy.AllowPaidServices {
+		return []string{blockAllSentinel}
+	}
 	if !policy.AllowDeploy {
-		return append(patterns, deployMutations[tool]...)
+		if mutations, ok := deployMutations[tool]; ok {
+			return append(patterns, mutations...)
+		}
 	}
 	return nil
 }
@@ -153,30 +135,36 @@ func renderUnixCommandGuard(real, tool string, policy Policy) string {
 	b.WriteString("#!/bin/sh\nARGS=\" $* \"\nblock() { echo \"NEXUS_AUTONOMY_BLOCKED: ")
 	b.WriteString(tool)
 	b.WriteString(" $*\" >&2; exit 126; }\n")
-	if blockEntireTool(tool, policy) {
-		b.WriteString("block\n")
-	}
+	blockAll := false
 	for _, pattern := range blockedPatterns(tool, policy) {
+		if pattern == blockAllSentinel {
+			blockAll = true
+			b.WriteString("block\n")
+			continue
+		}
 		words := strings.Fields(pattern)
 		if len(words) == 1 {
 			fmt.Fprintf(&b, "case \"$ARGS\" in *\" %s \"*) block ;; esac\n", words[0])
 			continue
 		}
-		// Requiring each token catches common flag combinations while remaining
-		// shell-portable. False positives err on the side of the autonomy boundary.
 		fmt.Fprintf(&b, "case \"$ARGS\" in *\" %s \"*\" %s \"*) block ;; esac\n", words[0], words[1])
 	}
-	fmt.Fprintf(&b, "exec %s \"$@\"\n", shellQuote(real))
+	if !blockAll {
+		fmt.Fprintf(&b, "exec %s \"$@\"\n", shellQuote(real))
+	}
 	return b.String()
 }
 
 func renderWindowsCommandGuard(real, tool string, policy Policy) string {
 	var b strings.Builder
 	b.WriteString("@echo off\r\nsetlocal\r\nset \"ARGS= %* \"\r\n")
-	if blockEntireTool(tool, policy) {
-		b.WriteString("goto :blocked\r\n")
-	}
+	blockAll := false
 	for _, pattern := range blockedPatterns(tool, policy) {
+		if pattern == blockAllSentinel {
+			blockAll = true
+			b.WriteString("goto :blocked\r\n")
+			continue
+		}
 		words := strings.Fields(pattern)
 		if len(words) == 1 {
 			fmt.Fprintf(&b, "echo %%ARGS%% | findstr /I /C:\" %s \" >nul && goto :blocked\r\n", words[0])
@@ -184,7 +172,10 @@ func renderWindowsCommandGuard(real, tool string, policy Policy) string {
 			fmt.Fprintf(&b, "echo %%ARGS%% | findstr /I /C:\" %s \" >nul && echo %%ARGS%% | findstr /I /C:\" %s \" >nul && goto :blocked\r\n", words[0], words[1])
 		}
 	}
-	fmt.Fprintf(&b, "\"%s\" %%*\r\nexit /b %%ERRORLEVEL%%\r\n:blocked\r\necho NEXUS_AUTONOMY_BLOCKED: %s %%* 1>&2\r\nexit /b 126\r\n", strings.ReplaceAll(real, "\"", "\"\""), tool)
+	if !blockAll {
+		fmt.Fprintf(&b, "\"%s\" %%*\r\nexit /b %%ERRORLEVEL%%\r\n", strings.ReplaceAll(real, "\"", "\"\""))
+	}
+	fmt.Fprintf(&b, ":blocked\r\necho NEXUS_AUTONOMY_BLOCKED: %s %%* 1>&2\r\nexit /b 126\r\n", tool)
 	return b.String()
 }
 

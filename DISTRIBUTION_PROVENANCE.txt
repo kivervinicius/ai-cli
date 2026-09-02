@@ -1,0 +1,14 @@
+IAPro Nexus canonical V0 source distribution
+Final local branch: feat/nexus-canonical-review-rebuild
+Final local SHA: d7cb609886762bef9abc89faf028f42c8443564b
+Functional implementation checkpoint before final validation docs: 1e6404ac3dc487b78b1439a731a5ad47d16a1933
+Generated: 2026-09-01
+
+Intentionally excluded from this source distribution:
+- .git / worktree metadata
+- node_modules / web/dist caches
+- recovery and CURRENT_/SNAPSHOT_ artifacts
+- stale tracked prebuilt ./nexus binary from an older commit
+- temporary E2E screenshots/test caches
+
+Build the current binary from this source in the required Go 1.25 platform-validation environment.

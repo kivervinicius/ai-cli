@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	stdruntime "runtime"
 	"strings"
 	"syscall"
 
@@ -16,6 +17,29 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 )
+
+// WrapWithIsolatedSecretService runs a provider inside a private D-Bus session
+// and starts only the Secret Service component of gnome-keyring there. This is
+// used by AGY so profiles cannot silently reuse the desktop user's keyring.
+// The original command arguments are passed as positional parameters, avoiding
+// shell interpolation of provider arguments.
+func WrapWithIsolatedSecretService(bin string, args []string) (string, []string) {
+	if stdruntime.GOOS == "windows" {
+		return bin, args
+	}
+	dbus, err := LookPath("dbus-run-session")
+	if err != nil {
+		return bin, args
+	}
+	keyring, err := LookPath("gnome-keyring-daemon")
+	if err != nil {
+		return dbus, append([]string{"--", bin}, args...)
+	}
+	script := `eval "$("$1" --start --components=secrets 2>/dev/null)"; shift; exec "$@"`
+	wrapped := []string{"--", "/bin/sh", "-c", script, "nexus-agy-keyring", keyring, bin}
+	wrapped = append(wrapped, args...)
+	return dbus, wrapped
+}
 
 // LookPath searches for an executable in the system PATH and standard developer directories
 // (e.g. ~/.local/bin, ~/.bun/bin, ~/.opencode/bin, ~/.cargo/bin, ~/.nvm/versions/node/*/bin).

@@ -139,17 +139,37 @@ func TestRenderGuardBlocksDeployMutationButAllowsReadOnly(t *testing.T) {
 	}
 }
 
-func TestAutonomyGuardRendersNetworkSecretAndPaidServiceBlocks(t *testing.T) {
-	network := renderUnixCommandGuard("/usr/bin/curl", "curl", Policy{AllowExternalNetwork: false})
-	if !strings.Contains(network, "NEXUS_AUTONOMY_BLOCKED") || !strings.Contains(network, "block") {
-		t.Fatalf("network guard must block curl when external network is denied: %s", network)
+func TestRenderGuardBlocksNetworkSecretAndPaidToolsWithDeployDenied(t *testing.T) {
+	policy := Policy{AllowDeploy: false}
+	for _, tool := range []string{"curl", "vault", "aws"} {
+		script := renderUnixCommandGuard("/usr/bin/"+tool, tool, policy)
+		if !strings.Contains(script, "block\n") {
+			t.Fatalf("%s guard must block unconditionally: %s", tool, script)
+		}
+		if strings.Contains(script, "exec ") {
+			t.Fatalf("%s guard must not exec real binary when blocked: %s", tool, script)
+		}
 	}
-	secret := renderUnixCommandGuard("/usr/bin/vault", "vault", Policy{AllowSecretAccess: false})
-	if !strings.Contains(secret, "NEXUS_AUTONOMY_BLOCKED") {
-		t.Fatalf("secret manager guard missing: %s", secret)
+}
+
+func TestWriteCommandGuardsBlocksNetworkToolsWhenDeployDenied(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix wrapper execution test")
 	}
-	paid := renderWindowsCommandGuard(`C:\\Tools\\aws.exe`, "aws", Policy{AllowPaidServices: false})
-	if !strings.Contains(paid, "NEXUS_AUTONOMY_BLOCKED") {
-		t.Fatalf("paid-service guard missing: %s", paid)
+	if _, err := exec.LookPath("curl"); err != nil {
+		t.Skip("curl not installed")
+	}
+	dir := t.TempDir()
+	created, err := WriteCommandGuards(dir, Policy{AllowDeploy: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created) == 0 {
+		t.Fatal("expected guards to be created")
+	}
+	guardCurl := filepath.Join(dir, "curl")
+	out, err := exec.Command(guardCurl, "https://example.com").CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "NEXUS_AUTONOMY_BLOCKED") {
+		t.Fatalf("curl was not blocked with deploy denied: %v %s", err, out)
 	}
 }

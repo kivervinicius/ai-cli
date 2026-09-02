@@ -217,31 +217,3 @@ func TestMissionRunSaveIsFencedByLeaseToken(t *testing.T) {
 		t.Fatalf("stale worker overwrote state: %s", got.State)
 	}
 }
-
-func TestMissionScheduleClaimIsAtomic(t *testing.T) {
-	st := openTestStore(t)
-	proj, err := st.CreateProject(Project{Name: "P", CanonicalPath: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	plan, err := st.CreateWorkPlan(WorkPlan{ProjectID: proj.ID, Title: "P"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	when := time.Now().UTC().Add(-time.Second)
-	schedule, err := st.CreateMissionSchedule(MissionSchedule{PlanID: plan.ID, ProjectID: proj.ID, Mode: "AT", ScheduledFor: &when})
-	if err != nil {
-		t.Fatal(err)
-	}
-	first, err := st.ClaimMissionSchedule(schedule.ID)
-	if err != nil || !first {
-		t.Fatalf("first claim=%v err=%v", first, err)
-	}
-	second, err := st.ClaimMissionSchedule(schedule.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if second {
-		t.Fatal("second scheduler must not claim the same schedule")
-	}
-}

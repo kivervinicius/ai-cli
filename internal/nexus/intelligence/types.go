@@ -76,7 +76,7 @@ type IntelligenceProvider interface {
 	Available(ctx context.Context) bool
 	AnalyzeIntent(ctx context.Context, input string, contextData map[string]any) (*IntentAnalysis, error)
 	EvaluateAmbiguities(ctx context.Context, intent *IntentAnalysis) ([]AmbiguityItem, error)
-	GeneratePlanOutline(ctx context.Context, intent *IntentAnalysis, facts map[string]string) ([]WorkPackageOutline, error)
+	GeneratePlanOutline(ctx context.Context, intent *IntentAnalysis, facts map[string]string, contextData map[string]any) ([]WorkPackageOutline, error)
 }
 
 // WorkPackageOutline is the raw outline produced by an intelligence provider before optimization.

@@ -1,8 +1,15 @@
 import { Workspace, RuntimeSession, ProviderInfo, ProfileInfo, EventRecord } from './types';
 
 let csrfToken = '';
+export type BrowserSession = { authenticated: boolean; csrf_token?: string; expires_at?: string; idle_timeout?: number };
 
-export async function initSession(): Promise<{ authenticated: boolean; csrf_token?: string }> {
+function notifySessionExpired() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('nexus:session-expired'));
+  }
+}
+
+export async function initSession(): Promise<BrowserSession> {
   try {
     const res = await fetch('/api/v1/session');
     if (!res.ok) return { authenticated: false };
@@ -16,33 +23,18 @@ export async function initSession(): Promise<{ authenticated: boolean; csrf_toke
   }
 }
 
-export async function rotateSession(): Promise<{ authenticated: boolean; csrf_token: string }> {
-  const headers = new Headers();
-  headers.set('Accept', 'application/json');
-  headers.set('Content-Type', 'application/json');
-  if (csrfToken) headers.set('X-CSRF-Token', csrfToken);
-  const res = await fetch('/api/v1/session/rotate', { method: 'POST', headers, body: '{}' });
+export async function rotateSession(): Promise<BrowserSession> {
+  const res = await fetch('/api/v1/session/rotate', {
+    method: 'POST',
+    headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+  });
   if (!res.ok) {
-    const errBody = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(errBody.error || `HTTP ${res.status}`);
+    notifySessionExpired();
+    return { authenticated: false };
   }
-  const data = await res.json();
-  if (!data.csrf_token) throw new Error('session rotation returned no CSRF token');
-  csrfToken = data.csrf_token;
+  const data = (await res.json()) as BrowserSession;
+  if (data.csrf_token) csrfToken = data.csrf_token;
   return data;
-}
-
-export async function logoutSession(): Promise<void> {
-  const headers = new Headers();
-  headers.set('Accept', 'application/json');
-  headers.set('Content-Type', 'application/json');
-  if (csrfToken) headers.set('X-CSRF-Token', csrfToken);
-  const res = await fetch('/api/v1/session/logout', { method: 'POST', headers, body: '{}' });
-  if (!res.ok) {
-    const errBody = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(errBody.error || `HTTP ${res.status}`);
-  }
-  csrfToken = '';
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -58,6 +50,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const res = await fetch(path, { ...options, headers });
   if (!res.ok) {
+    if (res.status === 401) notifySessionExpired();
     const errBody = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(errBody.error || `HTTP ${res.status}`);
   }

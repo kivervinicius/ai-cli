@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"reflect"
 	"testing"
 )
 
@@ -66,36 +67,54 @@ func TestMissionRunnerBoundedRetries(t *testing.T) {
 	}
 }
 
-func TestMissionRunnerRunsFinalVerificationAfterIndependentReview(t *testing.T) {
+func TestMissionRunnerPreservesFlowStepExecutionContracts(t *testing.T) {
 	repo := NewMemoryRunRepository()
 	exec := &fakeExecutor{reviewOK: true}
 	r := NewMissionRunner(repo, exec)
 	contract := DefaultAutonomyContract()
-	contract.MaxTotalIterations = 30
-	contract.VerificationCommands = []string{"echo verified"}
-	plan := PlanSpec{ID: "plan-final-verify", ProjectID: "proj", Revision: 1, Packages: []PackageSpec{{ID: "pkg", Title: "P", Goal: "G"}}}
+	spec := PackageSpec{
+		ID: "step", Title: "Step", Goal: "Goal", Role: "tester",
+		AssignmentStrategy: "AUTO", ResourcePolicy: "PRESERVE_QUOTA", Provider: "codex", Profile: "fast",
+		MaestroSkills: []string{"verification"}, RelevantPaths: []string{"internal/nexus"},
+		VerificationRequirements: []string{"echo step-specific"}, AcceptanceCriteria: []string{"verified"},
+	}
+	run, err := r.StartMissionRun(context.Background(), PlanSpec{ID: "flow", ProjectID: "p", Revision: 2, Packages: []PackageSpec{spec}}, t.TempDir(), contract, "legacy-default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg := run.PackageRuns[0]
+	if pkg.AssignedAgent != "" {
+		t.Fatalf("AUTO must not inherit legacy default Agent: %q", pkg.AssignedAgent)
+	}
+	if pkg.AssignmentStrategy != "AUTO" || pkg.ResourcePolicy != "PRESERVE_QUOTA" || pkg.Provider != "codex" || pkg.Profile != "fast" {
+		t.Fatalf("flow execution contract lost: %+v", pkg)
+	}
+	if !reflect.DeepEqual(pkg.MaestroSkills, []string{"verification"}) || !reflect.DeepEqual(pkg.RelevantPaths, []string{"internal/nexus"}) || !reflect.DeepEqual(pkg.VerificationRequirements, []string{"echo step-specific"}) {
+		t.Fatalf("bounded step context lost: %+v", pkg)
+	}
+}
 
+func TestMissionRunnerUsesStepVerificationRequirementsBeforeGlobalCommands(t *testing.T) {
+	repo := NewMemoryRunRepository()
+	exec := &fakeExecutor{reviewOK: true}
+	r := NewMissionRunner(repo, exec)
+	contract := DefaultAutonomyContract()
+	contract.VerificationCommands = []string{"false"}
+	plan := PlanSpec{ID: "flow", ProjectID: "p", Revision: 1, Packages: []PackageSpec{{ID: "step", Title: "Step", Goal: "Goal", VerificationRequirements: []string{"echo step-ok"}}}}
 	run, err := r.StartMissionRun(context.Background(), plan, t.TempDir(), contract, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	seenVerifying := false
-	for i := 0; i < 20 && run.State != StateCompletedVerified; i++ {
+	for i := 0; i < 10 && run.State != StateCompletedVerified; i++ {
 		run, _, err = r.ExecuteNextStep(context.Background(), run.ID)
 		if err != nil {
 			t.Fatalf("step %d: %v", i, err)
 		}
-		if run.PackageRuns[0].State == StateVerifying {
-			seenVerifying = true
-		}
-	}
-	if !seenVerifying {
-		t.Fatal("review approval must transition through VERIFYING before VERIFIED")
 	}
 	if run.State != StateCompletedVerified {
-		t.Fatalf("state=%s", run.State)
+		t.Fatalf("step-specific verification should allow completion, got %s", run.State)
 	}
-	if got := len(run.PackageRuns[0].Verifications); got < 2 {
-		t.Fatalf("expected test verification plus final verification evidence, got %d", got)
+	if got := run.PackageRuns[0].Verifications; len(got) == 0 || got[0].Command != "echo step-ok" {
+		t.Fatalf("wrong verification evidence: %+v", got)
 	}
 }

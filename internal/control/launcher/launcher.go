@@ -66,6 +66,7 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 	if opts.Timeout <= 0 {
 		opts.Timeout = 10 * time.Second
 	}
+	cleanupOrphanLaunchEnvelopes(10 * time.Minute)
 
 	d, err := l.drivers.Get(opts.ProviderID)
 	if err != nil {
@@ -92,6 +93,12 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 		title = fmt.Sprintf("%s (%s)", strings.ToUpper(opts.ProviderID), opts.ProfileID)
 	}
 
+	// Detached hosts consume arguments through a one-time private envelope;
+	// standalone hosts can keep them in memory without registry persistence.
+	registryArgs := append([]string(nil), extraArgs...)
+	if !opts.Standalone {
+		registryArgs = nil
+	}
 	sess := registry.RuntimeSession{
 		RuntimeID:         opts.RuntimeID,
 		AgentID:           opts.AgentID,
@@ -99,9 +106,10 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 		ProviderID:        opts.ProviderID,
 		ProfileID:         opts.ProfileID,
 		ProviderSessionID: opts.ProviderSessionID,
+		Model:             opts.Model,
 		Workspace:         opts.Workspace,
 		Binary:            bin,
-		Args:              extraArgs,
+		Args:              registryArgs,
 		Env:               env,
 		State:             registry.StateStarting,
 		ControlLevel:      d.EffectiveCaps(ctx, prof).ControlLevel,
@@ -135,12 +143,17 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 			return nil, fmt.Errorf("failed to start SessionHost: %w", err)
 		}
 	} else {
+		if err := createLaunchEnvelope(opts.RuntimeID, extraArgs); err != nil {
+			_ = l.reg.UpdateState(opts.RuntimeID, registry.StateFailed)
+			return nil, fmt.Errorf("failed to create private launch envelope: %w", err)
+		}
 		selfExe, err := os.Executable()
 		if err != nil {
 			selfExe = "ai"
 		}
 		proc, err := SpawnDetachedHost(selfExe, opts.RuntimeID)
 		if err != nil {
+			removeLaunchEnvelope(opts.RuntimeID)
 			_ = l.reg.UpdateState(opts.RuntimeID, registry.StateFailed)
 			return nil, fmt.Errorf("failed to spawn detached SessionHost daemon: %w", err)
 		}

@@ -10,6 +10,7 @@ import (
 )
 
 type fakeExecutor struct {
+	mu        sync.Mutex
 	allocated int
 	compiled  int
 	executed  int
@@ -18,20 +19,34 @@ type fakeExecutor struct {
 }
 
 func (f *fakeExecutor) Allocate(_ context.Context, run *MissionRun, _ *PackageRun) (AllocationResult, error) {
+	f.mu.Lock()
 	f.allocated++
+	f.mu.Unlock()
 	return AllocationResult{AgentID: "agt-real", Workspace: run.Workspace}, nil
 }
 func (f *fakeExecutor) Compile(context.Context, *MissionRun, *PackageRun) (PromptArtifact, error) {
+	f.mu.Lock()
 	f.compiled++
+	f.mu.Unlock()
 	return PromptArtifact{VersionID: "prompt-v1", Content: "implement package"}, nil
 }
 func (f *fakeExecutor) Execute(context.Context, *MissionRun, *PackageRun, string) (ExecutionResult, error) {
+	f.mu.Lock()
 	f.executed++
+	f.mu.Unlock()
 	return ExecutionResult{RuntimeID: "rt-real"}, nil
 }
 func (f *fakeExecutor) Review(context.Context, *MissionRun, *PackageRun) (ReviewVerdict, error) {
+	f.mu.Lock()
 	f.reviewed++
+	f.mu.Unlock()
 	return ReviewVerdict{Approved: f.reviewOK, ReviewerAgentID: "agt-reviewer", Findings: []string{"review evidence"}}, nil
+}
+
+func (f *fakeExecutor) executedCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.executed
 }
 
 func durablePlan() PlanSpec {
@@ -563,75 +578,118 @@ func TestMissionRunnerHonorsAutoRemediateDisabled(t *testing.T) {
 	}
 }
 
-func TestRunToTerminalWaitsForExpiredLeaseAndRecovers(t *testing.T) {
-	repo := NewMemoryRunRepository()
-	exec := &fakeExecutor{reviewOK: true}
-	creator := NewMissionRunner(repo, exec)
-	contract := DefaultAutonomyContract()
-	contract.MaxTotalIterations = 50
-	contract.VerificationCommands = []string{"true"}
-	plan := PlanSpec{ID: "lease-recovery", ProjectID: "proj", Revision: 1, Packages: []PackageSpec{{ID: "pkg", Title: "P", Goal: "G"}}}
-	run, err := creator.StartMissionRun(context.Background(), plan, t.TempDir(), contract, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := repo.AcquireLease(context.Background(), run.ID, "crashed-worker", 35*time.Millisecond); err != nil {
-		t.Fatal(err)
-	}
+type dispatchObservingExecutor struct {
+	fakeExecutor
+	repo              RunRepository
+	mu                sync.Mutex
+	intentPersisted   bool
+	allGroupPersisted bool
+}
 
-	restarted := NewMissionRunner(repo, exec)
-	restarted.leaseTTL = 30 * time.Millisecond
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	completed, err := restarted.RunToTerminal(ctx, run.ID)
-	if err != nil {
-		t.Fatalf("restarted runner must reclaim an expired lease: %v", err)
+func (e *dispatchObservingExecutor) Execute(ctx context.Context, run *MissionRun, pkg *PackageRun, prompt string) (ExecutionResult, error) {
+	persisted, err := e.repo.GetRun(ctx, run.ID)
+	if err == nil {
+		intentPersisted := false
+		allGroupPersisted := false
+		for i := range persisted.PackageRuns {
+			candidate := &persisted.PackageRuns[i]
+			if candidate.PackageID == pkg.PackageID && candidate.DispatchID != "" && candidate.DispatchState == DispatchIntent {
+				intentPersisted = true
+			}
+		}
+		all := true
+		for i := range persisted.PackageRuns {
+			candidate := &persisted.PackageRuns[i]
+			if candidate.ParallelGroup == pkg.ParallelGroup && candidate.State == StateExecuting {
+				if candidate.DispatchID == "" || candidate.DispatchState != DispatchIntent {
+					all = false
+				}
+			}
+		}
+		if all {
+			allGroupPersisted = true
+		}
+		e.mu.Lock()
+		if intentPersisted {
+			e.intentPersisted = true
+		}
+		if allGroupPersisted {
+			e.allGroupPersisted = true
+		}
+		e.mu.Unlock()
 	}
-	if completed.State != StateCompletedVerified {
-		t.Fatalf("expected recovered mission completion, got %s", completed.State)
+	return e.fakeExecutor.Execute(ctx, run, pkg, prompt)
+}
+
+func TestMissionRunnerPersistsDispatchIntentBeforeProviderExecution(t *testing.T) {
+	repo := NewMemoryRunRepository()
+	exec := &dispatchObservingExecutor{fakeExecutor: fakeExecutor{reviewOK: true}, repo: repo}
+	r := NewMissionRunner(repo, exec)
+	contract := DefaultAutonomyContract()
+	contract.VerificationCommands = []string{"true"}
+	plan := PlanSpec{ID: "dispatch-intent", ProjectID: "proj", Revision: 1, Packages: []PackageSpec{{ID: "pkg", Title: "P", Goal: "G"}}}
+	run, err := r.StartMissionRun(context.Background(), plan, t.TempDir(), contract, "")
+	if err != nil { t.Fatal(err) }
+	for i := 0; i < 4; i++ {
+		updated, _, stepErr := r.ExecuteNextStep(context.Background(), run.ID)
+		if stepErr != nil { t.Fatal(stepErr) }
+		run = updated
+	}
+	if !exec.intentPersisted {
+		t.Fatal("dispatch intent must be durably persisted before provider Execute")
+	}
+	if run.PackageRuns[0].DispatchState != DispatchCompleted {
+		t.Fatalf("successful provider turn must finish dispatch evidence, got %q", run.PackageRuns[0].DispatchState)
 	}
 }
 
-func TestManualInterventionIsDurableAndReturnsImplementationToTesting(t *testing.T) {
+func TestMissionRunnerRestartRefusesUnknownInFlightDispatch(t *testing.T) {
 	repo := NewMemoryRunRepository()
-	r := NewMissionRunner(repo, &fakeExecutor{reviewOK: true})
+	exec := &fakeExecutor{reviewOK: true}
+	r := NewMissionRunner(repo, exec)
 	contract := DefaultAutonomyContract()
-	plan := PlanSpec{ID: "manual", ProjectID: "proj", Revision: 1, Packages: []PackageSpec{{ID: "pkg", Title: "P", Goal: "G", AgentAllocation: "agent-1"}}}
+	contract.VerificationCommands = []string{"true"}
+	plan := PlanSpec{ID: "dispatch-restart", ProjectID: "proj", Revision: 1, Packages: []PackageSpec{{ID: "pkg", Title: "P", Goal: "G"}}}
 	run, err := r.StartMissionRun(context.Background(), plan, t.TempDir(), contract, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Simulate a package already executing when the user takes control.
-	stored, _ := repo.GetRun(context.Background(), run.ID)
-	stored.PackageRuns[0].State = StateExecuting
-	stored.PackageRuns[0].Workspace = "/worktrees/agent-1"
-	if err := repo.SaveRun(context.Background(), stored); err != nil {
-		t.Fatal(err)
-	}
+	if err != nil { t.Fatal(err) }
+	run.PackageRuns[0].State = StateExecuting
+	run.PackageRuns[0].DispatchID = "dispatch-crash-window"
+	run.PackageRuns[0].DispatchState = DispatchIntent
+	if err := repo.SaveRun(context.Background(), run); err != nil { t.Fatal(err) }
 
-	intervention, err := r.BeginManualIntervention(context.Background(), run.ID, "agent-1", "pkg", "/worktrees/agent-1", "before-hash", "user takeover")
-	if err != nil {
-		t.Fatal(err)
+	restarted := NewMissionRunner(repo, exec)
+	updated, _, err := restarted.ExecuteNextStep(context.Background(), run.ID)
+	if err == nil {
+		t.Fatal("unknown in-flight dispatch must fail closed instead of re-executing")
 	}
-	if intervention.ID == "" || intervention.CompletedAt != nil {
-		t.Fatalf("invalid intervention: %+v", intervention)
+	if exec.executed != 0 {
+		t.Fatalf("provider was dispatched twice after restart: executions=%d", exec.executed)
 	}
+	if updated.State != StateBlockedNeedsUser {
+		t.Fatalf("unknown dispatch outcome must block for user resolution, got %s", updated.State)
+	}
+}
 
-	updated, err := r.CompleteManualIntervention(context.Background(), run.ID, intervention.ID, "after-hash", []string{"internal/a.go"})
-	if err != nil {
-		t.Fatal(err)
+func TestMissionRunnerParallelGroupPersistsAllDispatchIntentsBeforeLaunch(t *testing.T) {
+	repo := NewMemoryRunRepository()
+	exec := &dispatchObservingExecutor{fakeExecutor: fakeExecutor{reviewOK: true}, repo: repo}
+	r := NewMissionRunner(repo, exec)
+	contract := DefaultAutonomyContract()
+	contract.VerificationCommands = []string{"true"}
+	contract.MaxTotalIterations = 40
+	plan := PlanSpec{ID: "dispatch-parallel", ProjectID: "proj", Revision: 1, Packages: []PackageSpec{
+		{ID: "web", Title: "Web", ParallelGroup: "build"},
+		{ID: "api", Title: "API", ParallelGroup: "build"},
+	}}
+	run, err := r.StartMissionRun(context.Background(), plan, t.TempDir(), contract, "")
+	if err != nil { t.Fatal(err) }
+	for i := 0; i < 7; i++ {
+		updated, _, stepErr := r.ExecuteNextStep(context.Background(), run.ID)
+		if stepErr != nil { t.Fatal(stepErr) }
+		run = updated
+		if exec.executedCount() > 0 { break }
 	}
-	if updated.PackageRuns[0].State != StateTesting {
-		t.Fatalf("manual implementation must return to TESTING, got %s", updated.PackageRuns[0].State)
-	}
-	if len(updated.ManualInterventions) != 1 || updated.ManualInterventions[0].AfterFingerprint != "after-hash" {
-		t.Fatalf("manual checkpoint evidence not persisted: %+v", updated.ManualInterventions)
-	}
-	restored, err := r.GetRun(context.Background(), run.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(restored.ManualInterventions) != 1 || restored.ManualInterventions[0].CompletedAt == nil {
-		t.Fatalf("manual checkpoint not durable after reload: %+v", restored.ManualInterventions)
+	if !exec.allGroupPersisted {
+		t.Fatal("all parallel dispatch intents must be persisted before any provider goroutine launches")
 	}
 }

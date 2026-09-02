@@ -278,19 +278,50 @@ export interface GitCheckoutResult {
   error?: string;
 }
 
+export type ContextReadinessState = 'MISSING' | 'HYDRATING' | 'READY' | 'STALE' | 'FAILED';
+
+export interface ContextFingerprint {
+  project_id: string;
+  canonical_path: string;
+  branch: string;
+  head: string;
+  dirty_fingerprint: string;
+  maestro_version: string;
+}
+
+export interface ContextReadiness {
+  project_id: string;
+  state: ContextReadinessState;
+  current_fingerprint: ContextFingerprint;
+  current_fingerprint_id: string;
+  hydrated_fingerprint_id?: string;
+  maestro_available: boolean;
+  maestro_version: string;
+  error?: string;
+  hydrated_at?: string;
+  updated_at?: string;
+}
+
 export interface WorkPackage {
   id: string;
   title: string;
   goal: string;
   priority: 'CRITICAL' | 'HIGH' | 'NORMAL' | 'LOW';
-  status: 'PENDING' | 'READY' | 'ALLOCATING' | 'COMPILING' | 'COMPILING_PROMPT' | 'EXECUTING' | 'TESTING' | 'REVIEWING' | 'VERIFYING' | 'REMEDIATING' | 'VERIFIED' | 'FAILED' | 'BLOCKED';
+  status: 'PENDING' | 'READY' | 'ALLOCATING' | 'COMPILING' | 'EXECUTING' | 'TESTING' | 'REVIEWING' | 'VERIFIED' | 'FAILED' | 'BLOCKED';
   dependencies: string[];
   parallel_group?: string;
   role: string;
   task_requirements?: string;
   agent_allocation?: string;
+  assignment_strategy?: 'EXISTING' | 'CREATE' | 'AUTO';
+  resource_policy?: 'BALANCED' | 'PRESERVE_QUOTA' | 'PREFER_PROVIDER' | 'MANUAL' | string;
+  provider?: string;
+  profile?: string;
   maestro_gates?: string[];
+  maestro_skills?: string[];
+  relevant_paths?: string[];
   acceptance_criteria: string[];
+  verification_requirements?: string[];
   shared_artifacts?: string[];
   compiled_prompt?: string;
 }
@@ -416,6 +447,59 @@ export interface ReviewVerdict {
   reviewed_at: string;
 }
 
+export interface WorkReceipt {
+  id: string;
+  run_id: string;
+  step_id: string;
+  status: 'VERIFIED' | 'FAILED' | string;
+  summary: string;
+  changed_files: string[];
+  commands: string[];
+  tests: VerificationResult[];
+  decisions: string[];
+  artifacts: string[];
+  remaining_issues: string[];
+  verification: VerificationResult[];
+  agent_id: string;
+  base_revision: string;
+  result_revision: string;
+  started_at: string;
+  completed_at: string;
+}
+
+export interface ContextCapsule {
+  id: string;
+  run_id: string;
+  project_id: string;
+  flow_id: string;
+  flow_revision: number;
+  branch: string;
+  head: string;
+  dirty_fingerprint: string;
+  step: {
+    id: string;
+    title: string;
+    goal: string;
+    role: string;
+    dependencies: string[];
+    assignment_strategy: string;
+    verification_requirements: string[];
+  };
+  relevant_paths: string[];
+  durable_context_refs: string[];
+  dependency_receipts: WorkReceipt[];
+  maestro_skills: string[];
+  acceptance_criteria: string[];
+  constraints: string[];
+  created_at: string;
+}
+
+export interface FlowRunEvidence {
+  run_id: string;
+  capsules: ContextCapsule[];
+  receipts: WorkReceipt[];
+}
+
 export interface PackageRun {
   id: string;
   package_id: string;
@@ -434,21 +518,10 @@ export interface PackageRun {
   verdicts?: ReviewVerdict[];
   error_message?: string;
   remediation_context?: string;
+  context_capsule?: ContextCapsule;
+  work_receipt?: WorkReceipt;
   started_at: string;
   finished_at?: string;
-}
-
-export interface ManualIntervention {
-  id: string;
-  package_id: string;
-  agent_id: string;
-  workspace: string;
-  reason: string;
-  before_fingerprint: string;
-  after_fingerprint?: string;
-  changed_paths?: string[];
-  started_at: string;
-  completed_at?: string;
 }
 
 export interface MissionRun {
@@ -463,7 +536,6 @@ export interface MissionRun {
   current_pkg_index: number;
   total_iterations: number;
   package_runs: PackageRun[];
-  manual_interventions?: ManualIntervention[];
   paused_reason?: string;
   started_at: string;
   updated_at: string;
@@ -477,7 +549,7 @@ export interface MissionSchedule {
   mode: 'AT' | 'AFTER_RUN' | 'WHEN_RESOURCES';
   scheduled_for?: string;
   after_run_id?: string;
-  status: 'PENDING' | 'CLAIMED' | 'RUNNING' | 'COMPLETED' | 'CANCELED' | 'FAILED';
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'CANCELED' | 'FAILED';
   run_id?: string;
   created_at: string;
   updated_at: string;

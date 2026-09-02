@@ -285,7 +285,6 @@ func (n *Nexus) SafeApply(ctx context.Context, agentID string, proposed AgentCon
 
 	// Step 4: Launch generation N+1 with the validated candidate.
 	sess, err := n.launcher.Launch(ctx, launcher.LaunchOptions{
-		AgentID:           agentID,
 		ProviderID:        proposed.Provider,
 		ProfileID:         proposed.Profile,
 		ProviderSessionID: continuityLaunch.ProviderSessionID,
@@ -388,7 +387,6 @@ func (n *Nexus) restorePreviousRuntime(ctx context.Context, st *store.Store, pro
 		return err
 	}
 	sess, err := n.launcher.Launch(ctx, launcher.LaunchOptions{
-		AgentID:           agent.ID,
 		ProviderID:        previousCfg.Provider,
 		ProfileID:         previousCfg.Profile,
 		ProviderSessionID: continuity.ProviderSessionID,

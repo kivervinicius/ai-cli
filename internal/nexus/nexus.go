@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,6 +58,8 @@ type Nexus struct {
 	launcher      Launcher
 	runner        *runner.MissionRunner
 	runnerMu      sync.Mutex
+	submitPrompt  func(runtimeID, prompt string) error
+	maestroStatus func() MaestroStatus
 	workersMu     sync.Mutex
 	workers       map[string]*missionWorker
 	schedulerOnce sync.Once
@@ -177,6 +180,97 @@ func (n *Nexus) ResolveAgentByRuntimeID(runtimeID string) (string, error) {
 	return gen.AgentID, nil
 }
 
+// AskAgentResult confirms that a prompt was submitted to the requested
+// persistent Agent identity. AskAgent never creates another Agent.
+type AskAgentResult struct {
+	AgentID   string `json:"agent_id"`
+	RuntimeID string `json:"runtime_id"`
+	Started   bool   `json:"started"`
+	Accepted  bool   `json:"accepted"`
+}
+
+func submitPromptToRuntime(runtimeID, prompt string) error {
+	client, err := protocol.NewClient(runtimeID)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	return client.SubmitPrompt(prompt)
+}
+
+// AskAgent submits work to an existing persistent Agent. A stopped Agent may
+// be started first when explicitly requested, but Agent identity is preserved.
+func (n *Nexus) AskAgent(ctx context.Context, agentID, prompt string, startIfNeeded bool) (*AskAgentResult, error) {
+	prompt = strings.TrimSpace(prompt)
+	if prompt == "" {
+		return nil, fmt.Errorf("prompt is required")
+	}
+	st, err := n.OpenProject()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := st.GetAgent(agentID, ""); err != nil {
+		return nil, err
+	}
+
+	runtimeID := ""
+	started := false
+	if gen, genErr := st.CurrentGeneration(agentID); genErr == nil && n.runtimeAlive(gen.RuntimeID) {
+		runtimeID = gen.RuntimeID
+	} else {
+		if !startIfNeeded {
+			return nil, fmt.Errorf("agent %s has no active runtime; use Start & Ask", agentID)
+		}
+		state, _ := n.EffectiveAgentState(agentID)
+		var sess *registry.RuntimeSession
+		if state == store.AgentRecoverable {
+			sess, err = n.RecoverAgent(ctx, agentID)
+		} else {
+			provider, profile, resolveErr := n.ResolveStartParams(agentID, "", "")
+			if resolveErr != nil {
+				return nil, resolveErr
+			}
+			sess, err = n.StartAgent(ctx, agentID, provider, profile)
+		}
+		if err != nil {
+			return nil, err
+		}
+		runtimeID = sess.RuntimeID
+		started = true
+	}
+
+	submit := n.submitPrompt
+	if submit == nil {
+		submit = submitPromptToRuntime
+	}
+	if err := submit(runtimeID, prompt); err != nil {
+		return nil, fmt.Errorf("submit prompt to existing agent: %w", err)
+	}
+	return &AskAgentResult{AgentID: agentID, RuntimeID: runtimeID, Started: started, Accepted: true}, nil
+}
+
+// StartProjectShell launches an ordinary shell rooted at the Project canonical
+// path. It does not create an Agent, ConfigRevision, lineage or RuntimeGeneration.
+func (n *Nexus) StartProjectShell(ctx context.Context, projectID string) (*registry.RuntimeSession, error) {
+	st, err := n.OpenProject()
+	if err != nil {
+		return nil, err
+	}
+	project, err := st.GetProject(projectID)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(project.CanonicalPath) == "" {
+		return nil, fmt.Errorf("project canonical path is empty")
+	}
+	return n.launcher.Launch(ctx, launcher.LaunchOptions{
+		Title:      "Shell · " + project.Name,
+		ProviderID: "shell",
+		ProfileID:  "local",
+		Workspace:  project.CanonicalPath,
+	})
+}
+
 // StartAgent launches a supervised runtime for an agent, records a config
 // revision and a runtime generation, and updates agent status. The runtime
 // starts in the agent's project canonical path (P0-1). Empty provider is
@@ -230,9 +324,6 @@ func (n *Nexus) StartAgent(ctx context.Context, agentID, provider, profile strin
 	var previousGen *store.RuntimeGeneration
 	if prior, priorErr := st.CurrentGeneration(agentID); priorErr == nil {
 		previousGen = &prior
-		if prior.RuntimeID != "" && n.runtimeAlive(prior.RuntimeID) {
-			return nil, fmt.Errorf("agent %s already has a live runtime %s; attach to it or stop it before starting another generation", agentID, prior.RuntimeID)
-		}
 	}
 	continuityLaunch, err := continuityForNextGeneration(ctx, agentCfg, previousGen)
 	if err != nil {
@@ -298,7 +389,16 @@ func (n *Nexus) StartAgent(ctx context.Context, agentID, provider, profile strin
 // StopAgent performs a verified stop: sets STOPPING, sends graceful stop,
 // waits for process termination (PID identity check), then persists STOPPED.
 // Failures leave the agent in STOPPING/FAILED with explanation (P0-3).
-func (n *Nexus) StopAgent(ctx context.Context, agentID string) error {
+func (n *Nexus) StopAgent(args ...interface{}) error {
+	var agentID string
+	if len(args) == 1 {
+		agentID, _ = args[0].(string)
+	} else if len(args) == 2 {
+		_, _ = args[0].(context.Context)
+		agentID, _ = args[1].(string)
+	} else {
+		return fmt.Errorf("agent id is required")
+	}
 	st, err := n.OpenProject()
 	if err != nil {
 		return err

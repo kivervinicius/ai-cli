@@ -21,6 +21,9 @@ func Open(args []string) error {
 	for _, cmd := range []string{"xdg-open", "google-chrome", "firefox", "chromium", "brave"} {
 		if path, err := exec.LookPath(cmd); err == nil {
 			c := exec.Command(path, url)
+			if hostBus := os.Getenv("AI_HOST_DBUS_SESSION_BUS_ADDRESS"); hostBus != "" {
+				c.Env = append(os.Environ(), "DBUS_SESSION_BUS_ADDRESS="+hostBus)
+			}
 			c.Stdin = os.Stdin
 			c.Stdout = os.Stdout
 			c.Stderr = os.Stderr

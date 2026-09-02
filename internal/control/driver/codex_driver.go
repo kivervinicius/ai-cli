@@ -9,9 +9,7 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/control/terminal"
-	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
-	"github.com/kivervinicius/ai-cli/internal/core/security"
 	"github.com/kivervinicius/ai-cli/internal/runtime"
 )
 
@@ -115,8 +113,6 @@ func (d *CodexDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effect
 			Reason: "Supports -p non-interactive prompts in classic mode",
 			Tested: true,
 		},
-		AutonomousCoding: CapabilityEvidence{Status: CapabilityUnsupported, Reason: "submit_prompt/headless autonomous contract is not verified", Tested: true},
-		ReadOnlyReview:   CapabilityEvidence{Status: CapabilityUnsupported, Reason: "no verified read-only autonomous review mode", Tested: true},
 		SlashControl: CapabilityEvidence{
 			Status:    CapabilitySupported,
 			Mechanism: "Universal /ai slash command router",
@@ -136,15 +132,10 @@ func (d *CodexDriver) BuildCommand(ctx context.Context, p model.Profile, extraAr
 		return "", nil, nil, err
 	}
 
-	home, err := config.ProfileHome("codex", p.Name)
+	home, err := bootstrapProfile("codex", p)
 	if err != nil {
 		return "", nil, nil, err
 	}
-	_ = os.MkdirAll(home, 0700)
-
-	cfgObj, _ := config.LoadConfig()
-	_ = security.ApplyIsolation(home, security.GetPolicy(cfgObj.IsolationPreset))
-
 	env := runtime.EnvSet(os.Environ(), map[string]string{
 		"HOME":             home,
 		"CODEX_HOME":       home,
@@ -173,8 +164,4 @@ func (d *CodexDriver) BuildResumeArgs(ctx context.Context, p model.Profile, prov
 
 func (d *CodexDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error) {
 	return []string{"-m", "gpt-5.6-sol", kickoffPrompt}, nil
-}
-
-func (d *CodexDriver) BuildAutonomousArgs(ctx context.Context, p model.Profile, kickoffPrompt string, mode AutonomousMode, policy AutonomousPolicy) ([]string, error) {
-	return nil, fmt.Errorf("codex autonomous execution is disabled until submit_prompt/headless support is verified")
 }

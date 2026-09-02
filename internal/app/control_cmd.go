@@ -208,7 +208,15 @@ func controlHostCmd(args []string) error {
 	}
 
 	p := model.Profile{Name: sess.ProfileID, Provider: sess.ProviderID}
-	bin, cmdArgs, env, err := d.BuildCommand(context.Background(), p, sess.Args)
+	launchArgs, envelopeErr := launcher.ConsumeLaunchEnvelope(runtimeID)
+	if envelopeErr != nil {
+		// Compatibility for runtimes created before private launch envelopes.
+		launchArgs = sess.Args
+		if len(launchArgs) == 0 {
+			return fmt.Errorf("failed to consume private launch envelope: %w", envelopeErr)
+		}
+	}
+	bin, cmdArgs, env, err := d.BuildCommand(context.Background(), p, launchArgs)
 	if err != nil {
 		return fmt.Errorf("failed to build runtime command: %w", err)
 	}

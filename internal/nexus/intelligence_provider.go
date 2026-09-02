@@ -70,7 +70,7 @@ func (n *Nexus) IntelligenceStatus(ctx context.Context, projectID string) Intell
 }
 
 // ConfiguredIntelligenceProvider resolves the explicitly configured intelligence source.
-// Direct work never calls this function; assisted/planned operations do.
+// Direct work never calls this function; Composer analysis/planning does.
 func (n *Nexus) ConfiguredIntelligenceProvider(ctx context.Context, projectID string) (intelligence.IntelligenceProvider, error) {
 	cfg, err := n.GetIntelligenceConfig()
 	if err != nil {
@@ -127,7 +127,7 @@ func (n *Nexus) cliIntelligenceProvider(ctx context.Context, projectID string, c
 		}
 	}
 	runner := func(runCtx context.Context, prompt string) (string, error) {
-		args, err := d.BuildKickoffArgs(runCtx, prof, prompt)
+		args, err := intelligence.HeadlessPromptArgs(providerID, prompt)
 		if err != nil {
 			return "", err
 		}

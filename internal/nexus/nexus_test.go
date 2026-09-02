@@ -16,10 +16,7 @@ import (
 // mockLauncher satisfies the Launcher interface for unit tests without spawning
 // real processes. It registers runtimes in the DefaultRegistry so runtimeAlive()
 // returns true for mocked sessions, and tracks Stop calls.
-type mockLauncher struct {
-	lastOptions launcher.LaunchOptions
-	launches    int
-}
+type mockLauncher struct{}
 
 func newMockLauncher() *mockLauncher {
 	// Reset the singleton so each test gets an isolated registry.
@@ -28,14 +25,11 @@ func newMockLauncher() *mockLauncher {
 }
 
 func (m *mockLauncher) Launch(_ context.Context, opts launcher.LaunchOptions) (*registry.RuntimeSession, error) {
-	m.lastOptions = opts
-	m.launches++
 	if opts.ProviderID == "" {
 		return nil, fmt.Errorf("provider is required")
 	}
 	sess := registry.RuntimeSession{
 		RuntimeID:         opts.RuntimeID,
-		AgentID:           opts.AgentID,
 		ProviderID:        opts.ProviderID,
 		ProfileID:         opts.ProfileID,
 		ProviderSessionID: opts.ProviderSessionID,
@@ -139,18 +133,86 @@ func TestRecoverAgentRequiresKnownRuntime(t *testing.T) {
 	}
 }
 
-func TestStartAgentRejectsDuplicateLiveRuntime(t *testing.T) {
+func TestAskAgentReusesExistingAgentAndLiveRuntime(t *testing.T) {
+	n := openTestNexus(t)
+	st, _ := n.OpenProject()
+	proj, err := st.CreateProject(store.Project{Name: "P", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, err := st.CreateAgent(store.Agent{ProjectID: proj.ID, Name: "Dev"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := n.StartAgent(context.Background(), agent.ID, "fake", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gotRuntime, gotPrompt string
+	n.submitPrompt = func(runtimeID, prompt string) error { gotRuntime, gotPrompt = runtimeID, prompt; return nil }
+
+	result, err := n.AskAgent(context.Background(), agent.ID, "fix the tests", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AgentID != agent.ID || result.RuntimeID != sess.RuntimeID || result.Started {
+		t.Fatalf("Ask must reuse Agent/live runtime: %+v", result)
+	}
+	if gotRuntime != sess.RuntimeID || gotPrompt != "fix the tests" {
+		t.Fatalf("submit=%q %q", gotRuntime, gotPrompt)
+	}
+	agents, _ := st.ListAgents(proj.ID)
+	if len(agents) != 1 {
+		t.Fatalf("Ask created another Agent: %d", len(agents))
+	}
+}
+
+func TestAskAgentStoppedUsesStartAndAskWithoutCreatingAgent(t *testing.T) {
 	n := openTestNexus(t)
 	st, _ := n.OpenProject()
 	proj, _ := st.CreateProject(store.Project{Name: "P", CanonicalPath: t.TempDir()})
 	agent, _ := st.CreateAgent(store.Agent{ProjectID: proj.ID, Name: "Dev"})
-	if _, err := n.SafeApply(context.Background(), agent.ID, AgentConfig{Provider: "claude", Profile: "default"}); err != nil {
+	sess, err := n.StartAgent(context.Background(), agent.ID, "fake", "default")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := n.StartAgent(context.Background(), agent.ID, "claude", "default"); err != nil {
+	if err := n.StopAgent(agent.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := n.StartAgent(context.Background(), agent.ID, "claude", "default"); err == nil {
-		t.Fatal("second StartAgent must reject an already-live Agent runtime")
+	_ = sess
+	var submitted string
+	n.submitPrompt = func(runtimeID, prompt string) error { submitted = runtimeID; return nil }
+	result, err := n.AskAgent(context.Background(), agent.ID, "continue", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AgentID != agent.ID || !result.Started || result.RuntimeID == "" || submitted != result.RuntimeID {
+		t.Fatalf("Start & Ask result=%+v submitted=%q", result, submitted)
+	}
+	agents, _ := st.ListAgents(proj.ID)
+	if len(agents) != 1 {
+		t.Fatalf("Start & Ask created another Agent: %d", len(agents))
+	}
+}
+
+func TestStartProjectShellUsesCanonicalPathAndCreatesNoAgent(t *testing.T) {
+	n := openTestNexus(t)
+	st, _ := n.OpenProject()
+	root := t.TempDir()
+	proj, err := st.CreateProject(store.Project{Name: "P", CanonicalPath: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _ := st.ListAgents(proj.ID)
+	sess, err := n.StartProjectShell(context.Background(), proj.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.ProviderID != "shell" || sess.ProfileID != "local" || sess.Workspace != root {
+		t.Fatalf("unexpected shell runtime: %+v", sess)
+	}
+	after, _ := st.ListAgents(proj.ID)
+	if len(after) != len(before) {
+		t.Fatalf("Project Shell created Agent: before=%d after=%d", len(before), len(after))
 	}
 }

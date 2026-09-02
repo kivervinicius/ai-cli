@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/cooldown"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/quota"
+	"github.com/kivervinicius/ai-cli/internal/core/telemetry"
 )
 
 // CandidateEvaluation holds the scoring breakdown for a single candidate profile.
@@ -114,6 +116,25 @@ func (s *Selector) SelectBestProfile(ctx context.Context, provider string, works
 		}, fmt.Errorf("no usable %s profiles available: %s", provider, strings.Join(rejectSummaries, ", "))
 	}
 
+	// When no candidate has trustworthy quota evidence, rotate healthy
+	// authenticated profiles by least-recently-selected instead of favoring a
+	// stale default profile.
+	allUnknown := true
+	for _, ev := range eligible {
+		if s.quotaEng.Trustworthy(ev.Usage) {
+			allUnknown = false
+			break
+		}
+	}
+	if allUnknown {
+		lastUsed := selectedAt(provider)
+		sort.SliceStable(eligible, func(i, j int) bool {
+			return lastUsed[eligible[i].Profile.Name].Before(lastUsed[eligible[j].Profile.Name])
+		})
+		best := eligible[0]
+		return &SelectionResult{SelectedProfile: &best.Profile, Reason: "quota UNKNOWN; LRU among healthy authenticated profiles", Evaluations: evals}, nil
+	}
+
 	// Sort eligible candidates by Score descending
 	sort.Slice(eligible, func(i, j int) bool {
 		return eligible[i].Score > eligible[j].Score
@@ -130,6 +151,22 @@ func (s *Selector) SelectBestProfile(ctx context.Context, provider string, works
 		Reason:          reason,
 		Evaluations:     evals,
 	}, nil
+}
+
+func selectedAt(provider string) map[string]time.Time {
+	result := make(map[string]time.Time)
+	events, err := telemetry.ReadRecentEvents(0)
+	if err != nil {
+		return result
+	}
+	for _, ev := range events {
+		if ev.Type == telemetry.EventProfileSelected && ev.ProviderID == provider {
+			if old, ok := result[ev.ProfileID]; !ok || ev.Timestamp.After(old) {
+				result[ev.ProfileID] = ev.Timestamp
+			}
+		}
+	}
+	return result
 }
 
 // EvaluateAll scores all candidate profiles for a provider.

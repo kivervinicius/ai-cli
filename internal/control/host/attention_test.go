@@ -42,6 +42,18 @@ func TestAttentionDetectorQuestions(t *testing.T) {
 	}
 }
 
+func TestAttentionDetectorIgnoresShortcutHint(t *testing.T) {
+	var gotReason string
+	detector := NewAttentionDetector("rt-shortcuts", "codex", "default", "/workspace/project", func(reason, _, _ string, _ registry.RuntimeState) {
+		gotReason = reason
+	})
+
+	detector.ProcessChunk([]byte("\r\n? for shortcuts\r\n"))
+	if gotReason == "QUESTION" {
+		t.Fatal("terminal shortcut hint must not be treated as an agent question")
+	}
+}
+
 func TestAttentionDetectorTaskCompleted(t *testing.T) {
 	var mu sync.Mutex
 	var gotReason, gotContext, gotTitle string
@@ -69,25 +81,6 @@ func TestAttentionDetectorTaskCompleted(t *testing.T) {
 	}
 	if gotTitle == "" || !containsAny(gotTitle, "backend-api", "Concluído") {
 		t.Fatalf("expected dynamic title with project and Concluído, got %q", gotTitle)
-	}
-}
-
-func TestAttentionDetectorInputAcknowledgementDropsStalePrompt(t *testing.T) {
-	var gotReason string
-	detector := NewAttentionDetector("rt-ack", "agy", "default", "/workspace/proxy-nginx", func(reason, context, dynamicTitle string, state registry.RuntimeState) {
-		gotReason = reason
-	})
-
-	detector.ProcessChunk([]byte("\r\nDo you want to proceed? [y/n]\r\n"))
-	if gotReason != "QUESTION" {
-		t.Fatalf("expected initial question, got %q", gotReason)
-	}
-
-	detector.AcknowledgeInput()
-	gotReason = ""
-	detector.ProcessChunk([]byte("\r\nContinuing with the requested work.\r\n"))
-	if gotReason != "" {
-		t.Fatalf("stale prompt was reclassified after acknowledgement: %q", gotReason)
 	}
 }
 

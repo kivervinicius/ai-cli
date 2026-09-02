@@ -18,14 +18,15 @@ import { ProjectManagerSurface } from '../features/projects/ProjectManagerSurfac
 import { ProjectOverviewSurface } from '../features/overview/ProjectOverviewSurface';
 import { WorkSurface } from '../features/work/WorkSurface';
 import { PlanBuilderSurface } from '../features/work/PlanBuilderSurface';
+import { FlowRunSurface } from '../features/work/FlowRunSurface';
 import { DirectSessionLauncher, type DirectSessionRequest } from '../features/work/DirectSessionLauncher';
 import { AgentsSurface } from '../features/agents/AgentsSurface';
 import { AgentConfigurationSurface } from '../features/agents/AgentConfigurationSurface';
 import { SessionsSurface } from '../features/sessions/SessionsSurface';
 import { SettingsSurface } from '../features/settings/SettingsSurface';
+import { ProjectShellSurface } from '../features/shell/ProjectShellSurface';
 import { useTranslation } from 'react-i18next';
-import { formatResourcePolicy } from '../i18n';
-import { agentConfigSurface, agentTerminalSurface, projectSurface } from './surfaces';
+import { agentConfigSurface, agentTerminalSurface, flowRunSurface, projectSurface } from './surfaces';
 
 export const WorkspaceSurfaceHost: React.FC<{
   surface: WorkspaceSurface;
@@ -72,6 +73,12 @@ export const WorkspaceSurfaceHost: React.FC<{
   const [cont, setCont] = useState<RuntimeSession | null>(null);
   const [directSession, setDirectSession] = useState<DirectSessionRequest | null>(null);
 
+  React.useEffect(() => {
+    const onNewSession = () => setDirectSession({ mode: 'direct', prompt: '' });
+    window.addEventListener('nexus:new-ai-session', onNewSession);
+    return () => window.removeEventListener('nexus:new-ai-session', onNewSession);
+  }, []);
+
   const open = (kind: string) =>
     openSurface(projectSurface(project.id, kind as Parameters<typeof projectSurface>[1]));
   const terminal = (target: Agent, initialPrompt = '') => openSurface(agentTerminalSurface(target.id, target.name, initialPrompt));
@@ -112,6 +119,7 @@ export const WorkspaceSurfaceHost: React.FC<{
           onStartSession={(mode, prompt) => setDirectSession({ mode, prompt })}
           onPlan={() => open('missions')}
           onMaestro={() => open('maestro')}
+          onFlowRun={(run) => openSurface(flowRunSurface(run.id, `Flow Run · ${(run.id || '').slice(-6)}`))}
         />
         <DirectSessionLauncher
           open={!!directSession}
@@ -122,6 +130,13 @@ export const WorkspaceSurfaceHost: React.FC<{
           onStarted={(created, prompt) => terminal(created, prompt)}
         />
       </>
+    );
+
+  if (surface.type === 'flow-run')
+    return surface.data?.runId ? (
+      <FlowRunSurface runId={surface.data.runId} project={project} agents={agents} onOpenAgent={terminal} />
+    ) : (
+      <EmptyState title="Flow Run unavailable" />
     );
 
   if (surface.type === 'agents')
@@ -137,6 +152,9 @@ export const WorkspaceSurfaceHost: React.FC<{
 
   if (surface.type === 'agent-config')
     return <AgentConfigurationSurface agent={agent} onApplied={refreshAgents} />;
+
+  if (surface.type === 'project-shell')
+    return surface.data?.runtimeId ? <ProjectShellSurface runtimeId={surface.data.runtimeId} title={surface.title} onRuntimeChanged={refreshGlobal} /> : <EmptyState title="Project shell unavailable" />;
 
   if (surface.type === 'terminal')
     return surface.data?.agentId ? (
@@ -166,7 +184,7 @@ export const WorkspaceSurfaceHost: React.FC<{
               <Gauge size={18} />
               <div>
                 <strong>{t('surfaces.allocation')}</strong>
-                <small>{formatResourcePolicy(project.resource_policy)}</small>
+                <small>{project.resource_policy || 'BALANCED'}</small>
               </div>
             </div>
             <p className="nx-muted-copy">{t('surfaces.allocationBody')}</p>
@@ -199,7 +217,7 @@ export const WorkspaceSurfaceHost: React.FC<{
             <p>{t('surfaces.missionsIntro')}</p>
           </div>
         </div>
-        <PlanBuilderSurface project={project} agents={agents} onOpenAgent={terminal} />
+        <PlanBuilderSurface project={project} agents={agents} onOpenAgent={terminal} onRunCreated={(run) => openSurface(flowRunSurface(run.id, `Flow Run · ${run.id.slice(-6)}`))} />
       </div>
     );
 

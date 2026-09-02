@@ -55,7 +55,7 @@ export const ProjectHub: React.FC<{ onCreated: (project: Project) => void }> = (
     <>
       <div className="nx-project-hub">
         <div className="nx-project-hub__brand">
-          <img src="./logo.png" alt="IAPro Nexus" className="nx-brand-mark nx-brand-mark--hero nx-brand-mark-img" />
+          <span className="nx-brand-mark nx-brand-mark--hero">N</span>
           <span className="nx-eyebrow">IAPro Nexus · Powered by Maestro</span>
           <h1>{t('projects.headline')}</h1>
           <p>{t('projects.intro')}</p>

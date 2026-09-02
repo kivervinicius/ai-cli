@@ -18,6 +18,7 @@ import { WorkspaceTaskbar } from '../workspace/WorkspaceTaskbar';
 import { nexus } from '../nexus/api';
 import { AttentionIntermediationBanner } from '../components/AttentionIntermediationBanner';
 import { pushNotifications } from '../notifications/PushNotificationManager';
+import { InAppNotificationCenter } from '../notifications/InAppNotificationCenter';
 import type { Agent, Project, RuntimeSession } from '../types';
 
 export const NexusShell: React.FC<{
@@ -73,6 +74,7 @@ export const NexusShell: React.FC<{
       {rail}
 
       <div className="nx-os-main">
+        <div className="nx-shell-chrome">
         {/* Top OS Header */}
         <header className="nx-topbar">
           <div className="nx-topbar__context">
@@ -88,7 +90,7 @@ export const NexusShell: React.FC<{
               title="Open Project Manager (Ctrl+P)"
             >
               <span className="nx-project-avatar nx-project-avatar--top">
-                {(project.name || '').slice(0, 2).toUpperCase()}
+                {(project.name || 'PR').slice(0, 2).toUpperCase()}
               </span>
               <span className="nx-project-info">
                 <strong>{project.name}</strong>
@@ -190,13 +192,14 @@ export const NexusShell: React.FC<{
           </div>
         </header>
 
-        {/* Attention & Intermediation Alert Banner */}
-        <AttentionIntermediationBanner
-          runtimes={runtimes}
-          onFocusRuntime={(rtId) => {
-            if (onFocusRuntime) onFocusRuntime(rtId);
-          }}
-        />
+          {/* Attention & Intermediation Alert Banner */}
+          <AttentionIntermediationBanner
+            runtimes={runtimes}
+            onFocusRuntime={(rtId) => {
+              if (onFocusRuntime) onFocusRuntime(rtId);
+            }}
+          />
+        </div>
 
         {/* Workspace Canvas (Tabs inside stacks) */}
         <main id="nexus-workspace" className="nx-workspace-host">
@@ -206,6 +209,10 @@ export const NexusShell: React.FC<{
         {/* OS Status Bar */}
         <WorkspaceTaskbar project={project} agents={agents} />
       </div>
+      <InAppNotificationCenter
+        runtimes={runtimes}
+        onFocusRuntime={(runtimeId) => onFocusRuntime?.(runtimeId)}
+      />
     </div>
   );
 };

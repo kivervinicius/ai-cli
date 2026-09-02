@@ -19,7 +19,6 @@ type unixPTYBackend struct {
 	ptmx   *os.File
 	inPipe io.WriteCloser
 	rPipe  io.ReadCloser
-	readW  *io.PipeWriter
 	isPTY  bool
 }
 
@@ -83,29 +82,19 @@ func (b *unixPTYBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 	}
 
 	b.ptmx = ptmx
-	// Drain the PTY in a small relay so output produced immediately before the
-	// child exits is not lost when the kernel reports EIO on the next read
-	// (notably on macOS). The public Read method still blocks with normal
-	// io.Reader semantics, while Write continues to target the PTY directly.
-	readR, readW := io.Pipe()
-	b.rPipe = readR
-	b.readW = readW
 	b.isPTY = true
-	go func() {
-		_, copyErr := io.Copy(readW, ptmx)
-		if copyErr == syscall.EIO {
-			copyErr = nil
-		}
-		_ = readW.CloseWithError(copyErr)
-	}()
 	return nil
 }
 
 func (b *unixPTYBackend) Read(p []byte) (int, error) {
 	b.mu.Lock()
+	ptmx := b.ptmx
 	rPipe := b.rPipe
 	b.mu.Unlock()
 
+	if ptmx != nil {
+		return ptmx.Read(p)
+	}
 	if rPipe != nil {
 		return rPipe.Read(p)
 	}
@@ -157,10 +146,6 @@ func (b *unixPTYBackend) Close() error {
 		_ = b.rPipe.Close()
 		b.rPipe = nil
 	}
-	if b.readW != nil {
-		_ = b.readW.Close()
-		b.readW = nil
-	}
 	return nil
 }
 
@@ -192,11 +177,22 @@ func (b *unixPTYBackend) Mechanism() string {
 func (b *unixPTYBackend) Wait() error {
 	b.mu.Lock()
 	cmd := b.cmd
+	ptmx := b.ptmx
 	b.mu.Unlock()
 	if cmd == nil {
 		return nil
 	}
-	return cmd.Wait()
+	err := cmd.Wait()
+	if ptmx != nil {
+		buf := make([]byte, 4096)
+		for {
+			_, readErr := ptmx.Read(buf)
+			if readErr != nil {
+				break
+			}
+		}
+	}
+	return err
 }
 
 // Signal delivers sig to the child process group.

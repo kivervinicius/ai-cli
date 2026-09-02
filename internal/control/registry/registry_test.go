@@ -229,3 +229,44 @@ func TestRuntimeSession_NoEnvOrSecretPersistence(t *testing.T) {
 		t.Fatalf("runtimes.json contains serialized env/binary/args: %s", diskStr)
 	}
 }
+
+func TestRuntimeSessionModelPersistence(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "runtimes.json")
+	reg := NewRegistry(dbPath)
+
+	sess := RuntimeSession{
+		RuntimeID:         "rt-model-test",
+		ProviderID:        "agy",
+		ProfileID:         "kiver",
+		ProviderSessionID: "sess-abc",
+		Model:             "claude-sonnet-4-20250514",
+		Workspace:         "/projects/alpha",
+		PID:               os.Getpid(),
+		State:             StateRunning,
+		ControlLevel:      ControlLevelTerminal,
+		StartedAt:         time.Now(),
+	}
+
+	if err := reg.Register(sess); err != nil {
+		t.Fatalf("failed to register session with model: %v", err)
+	}
+
+	got, ok := reg.Get("rt-model-test")
+	if !ok {
+		t.Fatal("session not found in memory")
+	}
+	if got.Model != "claude-sonnet-4-20250514" {
+		t.Errorf("expected Model 'claude-sonnet-4-20250514', got %q", got.Model)
+	}
+
+	// Reload from disk to verify JSON serialization
+	reg2 := NewRegistry(dbPath)
+	got2, ok2 := reg2.Get("rt-model-test")
+	if !ok2 {
+		t.Fatal("session not found after reloading from disk")
+	}
+	if got2.Model != "claude-sonnet-4-20250514" {
+		t.Errorf("expected reloaded Model 'claude-sonnet-4-20250514', got %q", got2.Model)
+	}
+}

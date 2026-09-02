@@ -3,7 +3,6 @@ package store
 import (
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -36,20 +35,27 @@ type PlanPhase struct {
 
 // WorkPackage is a concrete, reviewable unit of autonomous engineering work.
 type WorkPackage struct {
-	ID                 string   `json:"id"`
-	Title              string   `json:"title"`
-	Goal               string   `json:"goal"`
-	Priority           string   `json:"priority"` // "CRITICAL" | "HIGH" | "NORMAL" | "LOW"
-	Status             string   `json:"status"`   // "PENDING" | "READY" | "ALLOCATING" | "COMPILING" | "EXECUTING" | "TESTING" | "REVIEWING" | "VERIFIED" | "FAILED" | "BLOCKED"
-	Dependencies       []string `json:"dependencies"`
-	ParallelGroup      string   `json:"parallel_group,omitempty"`
-	Role               string   `json:"role"` // "implementer" | "reviewer" | "tester" | "architect"
-	TaskRequirements   string   `json:"task_requirements,omitempty"`
-	AgentAllocation    string   `json:"agent_allocation,omitempty"`
-	MaestroGates       []string `json:"maestro_gates,omitempty"`
-	AcceptanceCriteria []string `json:"acceptance_criteria"`
-	SharedArtifacts    []string `json:"shared_artifacts,omitempty"`
-	CompiledPrompt     string   `json:"compiled_prompt,omitempty"`
+	ID                       string   `json:"id"`
+	Title                    string   `json:"title"`
+	Goal                     string   `json:"goal"`
+	Priority                 string   `json:"priority"` // "CRITICAL" | "HIGH" | "NORMAL" | "LOW"
+	Status                   string   `json:"status"`   // "PENDING" | "READY" | "ALLOCATING" | "COMPILING" | "EXECUTING" | "TESTING" | "REVIEWING" | "VERIFIED" | "FAILED" | "BLOCKED"
+	Dependencies             []string `json:"dependencies"`
+	ParallelGroup            string   `json:"parallel_group,omitempty"`
+	Role                     string   `json:"role"` // "implementer" | "reviewer" | "tester" | "architect"
+	TaskRequirements         string   `json:"task_requirements,omitempty"`
+	AgentAllocation          string   `json:"agent_allocation,omitempty"`
+	AssignmentStrategy       string   `json:"assignment_strategy,omitempty"` // EXISTING | CREATE | AUTO
+	ResourcePolicy           string   `json:"resource_policy,omitempty"`
+	Provider                 string   `json:"provider,omitempty"`
+	Profile                  string   `json:"profile,omitempty"`
+	MaestroGates             []string `json:"maestro_gates,omitempty"` // legacy compatibility
+	MaestroSkills            []string `json:"maestro_skills,omitempty"`
+	RelevantPaths            []string `json:"relevant_paths,omitempty"`
+	AcceptanceCriteria       []string `json:"acceptance_criteria"`
+	VerificationRequirements []string `json:"verification_requirements,omitempty"`
+	SharedArtifacts          []string `json:"shared_artifacts,omitempty"`
+	CompiledPrompt           string   `json:"compiled_prompt,omitempty"`
 }
 
 // PlanRevision records an immutable revision of a WorkPlan for safe diff/restore.
@@ -63,15 +69,6 @@ type PlanRevision struct {
 }
 
 // ExecutionSnapshot captures the full state of active runs and verification evidence.
-var ErrPlanRevisionConflict = errors.New("work plan revision conflict")
-
-func validateExpectedPlanRevision(expected, current int) error {
-	if expected <= 0 || expected != current {
-		return fmt.Errorf("%w: expected revision %d, current revision %d", ErrPlanRevisionConflict, expected, current)
-	}
-	return nil
-}
-
 type ExecutionSnapshot struct {
 	ID         string    `json:"id"`
 	PlanID     string    `json:"plan_id"`
@@ -193,7 +190,11 @@ func (s *Store) ListWorkPlans(projectID string) ([]WorkPlan, error) {
 
 func (s *Store) UpdateWorkPlan(p WorkPlan, changeSummary string) (*WorkPlan, *PlanRevision, error) {
 	now := time.Now().UTC()
-	expectedRevision := p.CurrentRevision
+	p.UpdatedAt = now
+	p.CurrentRevision++
+
+	phasesJSON, _ := json.Marshal(p.Phases)
+	factsJSON, _ := json.Marshal(p.StructuredFacts)
 
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -201,32 +202,12 @@ func (s *Store) UpdateWorkPlan(p WorkPlan, changeSummary string) (*WorkPlan, *Pl
 	}
 	defer tx.Rollback()
 
-	var currentRevision int
-	if err := tx.QueryRow(`SELECT current_revision FROM work_plans WHERE id=?`, p.ID).Scan(&currentRevision); err != nil {
-		return nil, nil, err
-	}
-	if err := validateExpectedPlanRevision(expectedRevision, currentRevision); err != nil {
-		return nil, nil, err
-	}
-
-	p.CurrentRevision = expectedRevision + 1
-	p.UpdatedAt = now
-	phasesJSON, _ := json.Marshal(p.Phases)
-	factsJSON, _ := json.Marshal(p.StructuredFacts)
-
-	result, err := tx.Exec(`UPDATE work_plans SET title=?, description=?, status=?, current_revision=?, phases_json=?, facts_json=?, updated_at=?
-		WHERE id=? AND current_revision=?`,
+	_, err = tx.Exec(`UPDATE work_plans SET title=?, description=?, status=?, current_revision=?, phases_json=?, facts_json=?, updated_at=?
+		WHERE id=?`,
 		p.Title, p.Description, p.Status, p.CurrentRevision, string(phasesJSON), string(factsJSON),
-		now.Format(time.RFC3339), p.ID, expectedRevision)
+		now.Format(time.RFC3339), p.ID)
 	if err != nil {
 		return nil, nil, err
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return nil, nil, err
-	}
-	if rows != 1 {
-		return nil, nil, fmt.Errorf("%w: expected revision %d changed before commit", ErrPlanRevisionConflict, expectedRevision)
 	}
 
 	planBytes, _ := json.Marshal(p)

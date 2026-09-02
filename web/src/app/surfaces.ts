@@ -17,8 +17,8 @@ export type ProjectSurfaceKind =
 const labels: Record<ProjectSurfaceKind, string> = {
   projects: 'Workspace Desktops',
   overview: 'Overview',
-  work: 'Work',
-  missions: 'Plan',
+  work: 'Composer',
+  missions: 'Flow Runs',
   agents: 'Agents',
   maestro: 'Maestro',
   sessions: 'Sessions',
@@ -43,8 +43,6 @@ export function projectSurface(projectId: string, kind: ProjectSurfaceKind): Wor
   const titleKey = kind === 'projects' ? 'projectManager.desktopsTitle' : `nav.${key}`;
   return {
     id: `project:${projectId}:${kind}`,
-    viewId: `view:project:${projectId}:${kind}`,
-    logicalKey: `project:${projectId}:${kind}`,
     type: kind,
     title: labels[kind],
     titleKey,
@@ -56,8 +54,6 @@ export function projectSurface(projectId: string, kind: ProjectSurfaceKind): Wor
 export function agentTerminalSurface(agentId: string, agentName: string, initialPrompt = ''): WorkspaceSurface {
   return {
     id: `agent:${agentId}:terminal`,
-    viewId: `view:agent:${agentId}:terminal`,
-    logicalKey: `session:${agentId}`,
     type: 'terminal',
     title: agentName,
     subtitle: 'Persistent Agent terminal',
@@ -69,13 +65,39 @@ export function agentTerminalSurface(agentId: string, agentName: string, initial
 export function agentConfigSurface(agentId: string, agentName: string): WorkspaceSurface {
   return {
     id: `agent:${agentId}:config`,
-    viewId: `view:agent:${agentId}:config`,
-    logicalKey: `agent:${agentId}:config`,
     type: 'agent-config',
     title: `${agentName} · Configure`,
     titleKey: 'workspace.configureAgent',
     titleParams: { name: agentName },
     data: { agentId },
+    closable: true,
+  };
+}
+
+export function projectShellSurface(projectId: string, runtimeId: string, title = 'Project Shell'): WorkspaceSurface {
+  const logicalKey = `shell:${runtimeId}`;
+  return {
+    id: logicalKey,
+    viewId: `view:${logicalKey}`,
+    logicalKey,
+    type: 'project-shell',
+    title,
+    subtitle: 'Project shell',
+    data: { projectId, runtimeId },
+    closable: true,
+  };
+}
+
+export function flowRunSurface(runId: string, title = 'Flow Run'): WorkspaceSurface {
+  const logicalKey = `flow-run:${runId}`;
+  return {
+    id: logicalKey,
+    viewId: `view:${logicalKey}`,
+    logicalKey,
+    type: 'flow-run',
+    title,
+    subtitle: 'Durable Flow execution',
+    data: { runId },
     closable: true,
   };
 }

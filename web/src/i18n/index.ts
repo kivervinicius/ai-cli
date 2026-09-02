@@ -43,37 +43,4 @@ export function translateStatus(status?: string): string {
   return i18n.exists(key) ? i18n.t(key) : status;
 }
 
-export function formatResourcePolicy(policy?: string | null): string {
-  if (!policy || policy === '{}' || policy === 'null' || policy.trim() === '') {
-    return i18n.t('policy.balanced');
-  }
-  try {
-    const parsed = JSON.parse(policy);
-    if (typeof parsed === 'object' && parsed !== null) {
-      const mode = parsed.mode || parsed.policy || parsed.name;
-      if (mode) return formatResourcePolicy(mode);
-      return i18n.t('policy.balanced');
-    }
-  } catch {}
-  const upper = policy.toUpperCase();
-  if (upper === 'BALANCED') return i18n.t('policy.balanced');
-  if (upper === 'PERFORMANCE') return i18n.t('policy.performance');
-  if (upper === 'COST') return i18n.t('policy.cost');
-  return policy;
-}
-
-export function translateContinuityStatus(status?: string): string {
-  if (!status) return i18n.t('continuity.PENDING');
-  const key = `continuity.${status}`;
-  return i18n.exists(key) ? i18n.t(key) : status.replace(/_/g, ' ');
-}
-
-export function translateIsolation(isolation?: string): string {
-  if (!isolation || isolation === 'project') return i18n.t('isolation.project');
-  if (isolation === 'worktree') return i18n.t('isolation.worktree');
-  if (isolation === 'none') return i18n.t('isolation.none');
-  if (isolation === 'developer') return i18n.t('isolation.developer');
-  return isolation;
-}
-
 export default i18n;

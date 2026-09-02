@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NexusAPIError, nexusApi } from './api';
-import type { AutonomyContract } from '../types';
 
 describe('nexus API request errors', () => {
   beforeEach(() => {
@@ -61,47 +60,35 @@ describe('mission manual-control API routes', () => {
   });
 });
 
-describe('mission autonomy contract API', () => {
-  beforeEach(() => {
-    vi.unstubAllGlobals();
+describe('direct Agent and Project Shell API routes', () => {
+  beforeEach(() => { vi.unstubAllGlobals(); });
+
+  it('submits Ask to the existing Agent endpoint with explicit start policy', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ agent_id: 'agt-1', runtime_id: 'rt-1', started: false, accepted: true }) });
+    vi.stubGlobal('fetch', fetchMock);
+    await nexusApi.askAgent('agt-1', 'fix the tests', false);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/agents/agt-1/ask');
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({ prompt: 'fix the tests', start_if_needed: false });
   });
 
-  const contract: AutonomyContract = {
-    max_retries: 4,
-    max_total_iterations: 80,
-    max_no_progress: 3,
-    package_timeout_seconds: 1800,
-    auto_remediate: true,
-    require_verification: true,
-    disallow_destructive_git: true,
-    allowed_file_patterns: ['src/**'],
-    verification_commands: ['npm test'],
-    escalate_on_failure: true,
-    allow_tool_auto_approval: false,
-    allow_git_push: false,
-    allow_deploy: false,
-    allow_external_network: false,
-    allow_secret_access: false,
-    allow_paid_services: false,
-  };
-
-  it('sends the approved contract as a nested run contract without forcing a default agent', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ id: 'run-1' }) });
+  it('starts an independent Project Shell through the project endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ runtime: { runtime_id: 'rt-shell' } }) });
     vi.stubGlobal('fetch', fetchMock);
-    await nexusApi.runPlan('plan-1', { contract: { ...contract }, autonomous: true, approvedRevision: 7 });
-    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
-    expect(body.contract).toEqual(contract);
-    expect(body.approved_revision).toBe(7);
-    expect(body.agent_id).toBeUndefined();
+    await nexusApi.startProjectShell('prj-1');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/projects/prj-1/shell');
   });
+});
 
-  it('persists the same approved contract in a scheduled Mission', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ id: 'schedule-1' }) });
+describe('Flow Run evidence API', () => {
+  beforeEach(() => { vi.unstubAllGlobals(); });
+
+  it('loads typed evidence from the run-scoped endpoint without a mutation request', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ run_id: 'run-1', capsules: [], receipts: [] }) });
     vi.stubGlobal('fetch', fetchMock);
-    await nexusApi.schedulePlan('plan-1', 'WHEN_RESOURCES', { contract: { ...contract }, approvedRevision: 7 });
-    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
-    expect(body.contract).toEqual(contract);
-    expect(body.approved_revision).toBe(7);
-    expect(body.agent_id).toBeUndefined();
+    await nexusApi.getRunEvidence('run-1');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/runs/run-1/evidence');
+    const init = (fetchMock.mock.calls[0][1] || {}) as RequestInit;
+    expect(init.method).toBeUndefined();
   });
 });

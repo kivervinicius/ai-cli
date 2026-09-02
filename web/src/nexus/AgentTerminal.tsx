@@ -1,19 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Eye, Keyboard, Unplug } from 'lucide-react';
+import { Eye, Keyboard, Shield, ShieldAlert, Unplug } from 'lucide-react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import {
   agentTerminalWebSocketURL,
-  canOpenAgentTerminal,
   normalizeInitialPrompt,
   normalizeTerminalRole,
-  terminalLeaseCommand,
   terminalReconnectDelay,
   type TerminalRole,
 } from './agentTerminalModel';
-import { nexus } from './api';
 import { pushNotifications } from '../notifications/PushNotificationManager';
-import { frameString, parseTerminalFrame } from './terminalProtocol';
 
 export const AgentTerminal: React.FC<{
   agentId: string;
@@ -21,6 +17,7 @@ export const AgentTerminal: React.FC<{
   onClose?: () => void;
 }> = ({ agentId, initialPrompt, onClose }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const [role, setRole] = useState<TerminalRole>('VIEW_ONLY');
   const [connection, setConnection] = useState<'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('CONNECTING');
   const [message, setMessage] = useState('');
@@ -34,7 +31,6 @@ export const AgentTerminal: React.FC<{
     let reconnectAttempt = 0;
     let reconnectTimer: number | undefined;
     const roleRef: { current: TerminalRole } = { current: 'VIEW_ONLY' };
-    const wsRef: { current: WebSocket | null } = { current: null };
     const kickoffRef = { current: normalizeInitialPrompt(initialPrompt), sent: false };
 
     const term = new Terminal({
@@ -42,28 +38,7 @@ export const AgentTerminal: React.FC<{
       fontSize: 13,
       lineHeight: 1.25,
       fontFamily: 'var(--nx-font-mono)',
-      theme: {
-        background: '#090b10',
-        foreground: '#e6e9ef',
-        cursor: '#62b4ff',
-        selectionBackground: 'rgba(98, 180, 255, 0.28)',
-        black: '#0b0f14',
-        red: '#ff7b7b',
-        green: '#51cf9a',
-        yellow: '#f3bd67',
-        blue: '#62b4ff',
-        magenta: '#bba5ff',
-        cyan: '#65d6e7',
-        white: '#e6e9ef',
-        brightBlack: '#626c82',
-        brightRed: '#ff9b9b',
-        brightGreen: '#8ae6bd',
-        brightYellow: '#ffd58f',
-        brightBlue: '#9acbff',
-        brightMagenta: '#d6c7ff',
-        brightCyan: '#a0eef5',
-        brightWhite: '#ffffff',
-      },
+      theme: { background: '#090b10' },
       scrollback: 5000,
     });
     const fit = new FitAddon();
@@ -72,7 +47,9 @@ export const AgentTerminal: React.FC<{
 
     const fitAndResize = () => {
       try {
-        fit.fit();
+        if (container.clientWidth > 0 && container.clientHeight > 0) {
+          fit.fit();
+        }
       } catch {
         return;
       }
@@ -102,29 +79,21 @@ export const AgentTerminal: React.FC<{
       setMessage(`Reconnecting Agent terminal in ${delay}ms…`);
       reconnectTimer = window.setTimeout(() => {
         reconnectTimer = undefined;
-        void connect();
+        connect();
       }, delay);
     };
 
     const connect = async () => {
       if (disposed) return;
-      try {
-        const detail = await nexus.getAgent(agentId);
-        if (!canOpenAgentTerminal(detail.agent.status)) {
-          setConnection('DISCONNECTED');
-          setMessage('Agent runtime is not running — start or recover the Agent before opening Terminal.');
-          return;
-        }
-      } catch {
-        // Let the WebSocket transport surface a transient API/server failure and
-        // retain its normal reconnect behavior.
-      }
+      setConnection('CONNECTING');
+      setMessage('');
+
       if (disposed) return;
+
       const ws = new WebSocket(agentTerminalWebSocketURL(window.location.protocol, window.location.host, agentId));
       wsRef.current = ws;
       roleRef.current = 'VIEW_ONLY';
       setRole('VIEW_ONLY');
-      setConnection('CONNECTING');
 
       ws.onopen = () => {
         reconnectAttempt = 0;
@@ -134,45 +103,37 @@ export const AgentTerminal: React.FC<{
       };
 
       ws.onmessage = (event) => {
-        const frame = parseTerminalFrame(event.data);
-        if (frame.kind === 'output') {
-          term.write(frame.data);
-        } else if (frame.kind === 'protocol-error') {
-          console.error(`Terminal protocol error: ${frame.message}`);
-          setMessage('Terminal protocol error');
-        } else {
-          const payload = frame.payload;
-          if (frame.type === 'lease') {
-            const previous = roleRef.current;
-            const next = normalizeTerminalRole(frameString(payload, 'role'));
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.type === 'output' && payload.data) {
+            term.write(payload.data);
+          } else if (payload.type === 'lease') {
+            const next = normalizeTerminalRole(payload.role);
             roleRef.current = next;
             setRole(next);
-            const leaseCommand = terminalLeaseCommand(previous, next);
-            if (leaseCommand && ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: leaseCommand }));
-            }
             maybeSendKickoff();
-          } else if (frame.type === 'runtime_changed') {
+          } else if (payload.type === 'runtime_changed') {
             setMessage('Runtime generation changed — rebinding terminal…');
             // The server currently closes the generation-bound socket after this
             // event. Closing proactively also keeps this client compatible with a
             // future server that leaves the old transport open for a grace period.
             ws.close(1012, 'runtime generation changed');
-          } else if (frame.type === 'title' && frameString(payload, 'data')) {
-            setCustomTitle(frameString(payload, 'data')!);
-          } else if (frame.type === 'attention') {
-            const dynamicTitle = frameString(payload, 'dynamic_title');
-            if (dynamicTitle) setCustomTitle(dynamicTitle);
+          } else if (payload.type === 'title' && payload.data) {
+            setCustomTitle(payload.data);
+          } else if (payload.type === 'attention') {
+            if (payload.dynamic_title) setCustomTitle(payload.dynamic_title);
             pushNotifications.sendPush({
-              runtimeId: frameString(payload, 'runtime_id') || agentId,
-              projectName: frameString(payload, 'project_name'),
-              reason: frameString(payload, 'attention_reason') || 'QUESTION',
-              context: frameString(payload, 'context') || frameString(payload, 'summary') || 'Atenção necessária no terminal',
-              dynamicTitle,
+              runtimeId: payload.runtime_id || agentId,
+              projectName: payload.project_name,
+              reason: payload.attention_reason || 'QUESTION',
+              context: payload.context || payload.summary || 'Atenção necessária no terminal',
+              dynamicTitle: payload.dynamic_title,
             });
-          } else if (frame.type === 'error') {
+          } else if (payload.type === 'error') {
             setMessage(String(payload.data ?? 'Terminal error'));
           }
+        } catch {
+          term.write(event.data);
         }
       };
 
@@ -205,7 +166,7 @@ export const AgentTerminal: React.FC<{
     };
     document.addEventListener('visibilitychange', visibility);
 
-    void connect();
+    connect();
 
     return () => {
       disposed = true;
@@ -217,6 +178,20 @@ export const AgentTerminal: React.FC<{
       term.dispose();
     };
   }, [agentId, initialPrompt]);
+
+  const requestControl = () => {
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'lease_acquire' }));
+    }
+  };
+
+  const releaseControl = () => {
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'lease_release' }));
+    }
+  };
 
   return (
     <section className="nx-agent-terminal" aria-label={`Terminal for Agent ${agentId}`}>
@@ -235,6 +210,17 @@ export const AgentTerminal: React.FC<{
               <Unplug size={12} />
               {message}
             </span>
+          )}
+          {role === 'CONTROL' ? (
+            <button type="button" onClick={releaseControl} title="Release control">
+              <Shield size={13} />
+              Release
+            </button>
+          ) : (
+            <button type="button" onClick={requestControl} title="Take control">
+              <ShieldAlert size={13} />
+              Take Control
+            </button>
           )}
           {onClose && (
             <button type="button" onClick={onClose}>

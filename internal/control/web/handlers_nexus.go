@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"os"
 	"os/exec"
 	"strings"
 
@@ -162,6 +160,56 @@ func (h *NexusHandler) handleProjectDetail(w http.ResponseWriter, r *http.Reques
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+// handleProjectContext GET /api/v1/projects/{id}/context returns the persisted
+// five-state readiness contract with live source-drift observation.
+func (h *NexusHandler) handleProjectContext(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	readiness, err := h.nexus.ObserveContextReadiness(projectIDFromPath(r.URL.Path))
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, readiness)
+}
+
+// handleProjectContextPrepare POST /api/v1/projects/{id}/context/prepare checks
+// durable context artifacts; semantic hydration itself remains owned by Maestro.
+func (h *NexusHandler) handleProjectContextPrepare(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	readiness, err := h.nexus.PrepareContext(projectIDFromPath(r.URL.Path))
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, readiness)
+}
+
+// handleProjectShell POST /api/v1/projects/{id}/shell launches a normal
+// supervised project shell without creating an Agent.
+func (h *NexusHandler) handleProjectShell(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	projectID := projectIDFromPath(r.URL.Path)
+	if projectID == "" {
+		writeError(w, http.StatusNotFound, "missing project id")
+		return
+	}
+	sess, err := h.nexus.StartProjectShell(r.Context(), projectID)
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"runtime": sess})
 }
 
 // handleProjectLayout GET/PUT /api/v1/projects/{id}/layout
@@ -349,6 +397,34 @@ func (h *NexusHandler) handleAgentStart(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"runtime": sess})
+}
+
+// handleAgentAsk POST /api/v1/agents/{id}/ask submits work to the existing
+// persistent Agent. It never creates a new Agent.
+func (h *NexusHandler) handleAgentAsk(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	id := agentIDFromPath(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "missing agent id")
+		return
+	}
+	var body struct {
+		Prompt        string `json:"prompt"`
+		StartIfNeeded bool   `json:"start_if_needed"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Prompt) == "" {
+		writeError(w, http.StatusBadRequest, "prompt is required")
+		return
+	}
+	result, err := h.nexus.AskAgent(r.Context(), id, body.Prompt, body.StartIfNeeded)
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 // handleAgentStop POST /api/v1/agents/{id}/stop
@@ -655,32 +731,7 @@ func (h *NexusHandler) handleSystemUpdate(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	// Reuse the executable that is serving this request. The updater has a
-	// deliberately narrow contract: it may update Maestro, but it never claims
-	// to have replaced the running Nexus binary.
-	binary, err := os.Executable()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "cannot locate local Nexus executable")
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, binary, "update", "--json")
-	out, err := cmd.Output()
-	if err != nil {
-		if ctx.Err() != nil {
-			writeError(w, http.StatusGatewayTimeout, "local updater timed out")
-			return
-		}
-		writeError(w, http.StatusBadGateway, "local updater failed")
-		return
-	}
-	var result map[string]any
-	if err := json.Unmarshal(out, &result); err != nil {
-		writeError(w, http.StatusBadGateway, "local updater returned an invalid result")
-		return
-	}
-	writeJSON(w, http.StatusOK, result)
+	writeError(w, http.StatusNotImplemented, "system update not yet implemented")
 }
 
 // handleMissionsList GET /api/v1/projects/{id}/missions — list missions for a project.
@@ -1105,10 +1156,6 @@ func (h *NexusHandler) handleProjectGitCheckout(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Update project's default branch in database
-	proj.DefaultBranch = targetBranch
-	_ = st.UpdateProject(proj)
-
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success":        true,
 		"current_branch": targetBranch,
@@ -1166,7 +1213,12 @@ func (h *NexusHandler) handleProjectPlans(w http.ResponseWriter, r *http.Request
 						"detail": err.Error(),
 					})
 				default:
-					writeError(w, http.StatusBadGateway, err.Error())
+					var contextErr *nexus.ComposerContextNotReadyError
+					if errors.As(err, &contextErr) {
+						writeJSON(w, http.StatusConflict, map[string]any{"error": "context_not_ready", "detail": err.Error(), "readiness": contextErr.Readiness})
+					} else {
+						writeError(w, http.StatusBadGateway, err.Error())
+					}
 				}
 				return
 			}
@@ -1228,10 +1280,6 @@ func (h *NexusHandler) handlePlanDetail(w http.ResponseWriter, r *http.Request) 
 		body.Plan.ID = planID
 		updated, rev, err := h.nexus.UpdateWorkPlan(r.Context(), body.Plan, body.ChangeSummary)
 		if err != nil {
-			if errors.Is(err, store.ErrPlanRevisionConflict) {
-				writeError(w, http.StatusConflict, err.Error())
-				return
-			}
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -1294,43 +1342,40 @@ func (h *NexusHandler) handlePlanRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		AgentID               string                        `json:"agent_id"`
-		ApprovedRevision      int                           `json:"approved_revision"`
-		Contract              *runner.AutonomyContractPatch `json:"contract"`
-		MaxRetry              int                           `json:"max_retries"`
-		MaxTotalIterations    int                           `json:"max_total_iterations"`
-		PackageTimeoutSeconds int                           `json:"package_timeout_seconds"`
-		VerificationCommands  []string                      `json:"verification_commands"`
-		Autonomous            *bool                         `json:"autonomous"`
+		AgentID               string   `json:"agent_id"`
+		PlanRevision          int      `json:"plan_revision"`
+		MaxRetry              int      `json:"max_retries"`
+		MaxTotalIterations    int      `json:"max_total_iterations"`
+		PackageTimeoutSeconds int      `json:"package_timeout_seconds"`
+		VerificationCommands  []string `json:"verification_commands"`
+		Autonomous            *bool    `json:"autonomous"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
-		writeError(w, http.StatusBadRequest, "invalid body")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	patch := body.Contract
-	// Backward compatibility for older clients that sent a small flat contract.
-	if patch == nil && (body.MaxRetry > 0 || body.MaxTotalIterations > 0 || body.PackageTimeoutSeconds > 0 || len(body.VerificationCommands) > 0) {
-		patch = &runner.AutonomyContractPatch{}
-		if body.MaxRetry > 0 {
-			patch.MaxRetries = &body.MaxRetry
-		}
-		if body.MaxTotalIterations > 0 {
-			patch.MaxTotalIterations = &body.MaxTotalIterations
-		}
-		if body.PackageTimeoutSeconds > 0 {
-			patch.PackageTimeoutSeconds = &body.PackageTimeoutSeconds
-		}
-		if len(body.VerificationCommands) > 0 {
-			commands := append([]string(nil), body.VerificationCommands...)
-			patch.VerificationCommands = &commands
-		}
+	if body.PlanRevision <= 0 {
+		writeError(w, http.StatusBadRequest, "plan_revision is required")
+		return
 	}
-	contract := runner.ApplyAutonomyContractPatch(patch)
+	contract := runner.DefaultAutonomyContract()
+	if body.MaxRetry > 0 {
+		contract.MaxRetries = body.MaxRetry
+	}
+	if body.MaxTotalIterations > 0 {
+		contract.MaxTotalIterations = body.MaxTotalIterations
+	}
+	if body.PackageTimeoutSeconds > 0 {
+		contract.PackageTimeoutSeconds = body.PackageTimeoutSeconds
+	}
+	if len(body.VerificationCommands) > 0 {
+		contract.VerificationCommands = body.VerificationCommands
+	}
 	autonomous := true
 	if body.Autonomous != nil {
 		autonomous = *body.Autonomous
 	}
-	run, err := h.nexus.StartMissionRunApproved(r.Context(), planID, body.ApprovedRevision, body.AgentID, contract, autonomous)
+	run, err := h.nexus.StartMissionRunApproved(r.Context(), planID, body.PlanRevision, body.AgentID, contract, autonomous)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1376,6 +1421,10 @@ func (h *NexusHandler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, run)
 		return
 	}
+	if r.Method == http.MethodGet && action == "evidence" {
+		h.handleRunEvidence(w, r, runID)
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -1416,6 +1465,54 @@ func (h *NexusHandler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, run)
+}
+
+// handleRunEvidence returns only typed, bounded Flow evidence. Raw Agent or
+// provider transcripts are intentionally absent from this API because they are
+// not part of ContextCapsule/WorkReceipt persistence.
+func (h *NexusHandler) handleRunEvidence(w http.ResponseWriter, r *http.Request, runID string) {
+	if _, err := h.nexus.Runner().GetRun(r.Context(), runID); err != nil {
+		writeError(w, http.StatusNotFound, "run not found")
+		return
+	}
+	st, err := h.nexus.OpenProject()
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	capsuleRecords, err := st.ListFlowContextCapsules(runID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	receiptRecords, err := st.ListFlowWorkReceipts(runID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	capsules := make([]runner.ContextCapsule, 0, len(capsuleRecords))
+	for _, record := range capsuleRecords {
+		var capsule runner.ContextCapsule
+		if err := json.Unmarshal([]byte(record.ContentJSON), &capsule); err != nil {
+			writeError(w, http.StatusInternalServerError, "decode persisted context capsule")
+			return
+		}
+		capsules = append(capsules, capsule)
+	}
+	receipts := make([]runner.WorkReceipt, 0, len(receiptRecords))
+	for _, record := range receiptRecords {
+		var receipt runner.WorkReceipt
+		if err := json.Unmarshal([]byte(record.ContentJSON), &receipt); err != nil {
+			writeError(w, http.StatusInternalServerError, "decode persisted work receipt")
+			return
+		}
+		receipts = append(receipts, receipt)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"run_id":   runID,
+		"capsules": capsules,
+		"receipts": receipts,
+	})
 }
 
 func firstNonEmpty(values ...string) string {
@@ -1496,6 +1593,14 @@ func (h *NexusHandler) handleClarification(w http.ResponseWriter, r *http.Reques
 				})
 				return
 			}
+			var contextErr *nexus.ComposerContextNotReadyError
+			if errors.As(err, &contextErr) {
+				writeJSON(w, http.StatusConflict, map[string]any{
+					"error": "context_not_ready", "detail": err.Error(),
+					"readiness": contextErr.Readiness, "clarification": checkpoint,
+				})
+				return
+			}
 			writeError(w, http.StatusBadGateway, err.Error())
 			return
 		}
@@ -1517,14 +1622,13 @@ func (h *NexusHandler) handleMissionSchedules(w http.ResponseWriter, r *http.Req
 		writeJSON(w, http.StatusOK, items)
 	case http.MethodPost:
 		var body struct {
-			PlanID           string                        `json:"plan_id"`
-			ApprovedRevision int                           `json:"approved_revision"`
-			Mode             string                        `json:"mode"`
-			ScheduledFor     string                        `json:"scheduled_for"`
-			AfterRunID       string                        `json:"after_run_id"`
-			AgentID          string                        `json:"agent_id"`
-			CancelID         string                        `json:"cancel_id"`
-			Contract         *runner.AutonomyContractPatch `json:"contract"`
+			PlanID       string                  `json:"plan_id"`
+			Mode         string                  `json:"mode"`
+			ScheduledFor string                  `json:"scheduled_for"`
+			AfterRunID   string                  `json:"after_run_id"`
+			AgentID      string                  `json:"agent_id"`
+			CancelID     string                  `json:"cancel_id"`
+			Contract     runner.AutonomyContract `json:"contract"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid body")
@@ -1538,7 +1642,10 @@ func (h *NexusHandler) handleMissionSchedules(w http.ResponseWriter, r *http.Req
 			writeJSON(w, http.StatusOK, map[string]bool{"canceled": true})
 			return
 		}
-		contract := runner.ApplyAutonomyContractPatch(body.Contract)
+		contract := body.Contract
+		if contract.MaxRetries == 0 {
+			contract = runner.DefaultAutonomyContract()
+		}
 		var when *time.Time
 		if strings.TrimSpace(body.ScheduledFor) != "" {
 			parsed, err := time.Parse(time.RFC3339, body.ScheduledFor)
@@ -1548,7 +1655,7 @@ func (h *NexusHandler) handleMissionSchedules(w http.ResponseWriter, r *http.Req
 			}
 			when = &parsed
 		}
-		item, err := h.nexus.ScheduleMission(r.Context(), body.PlanID, body.ApprovedRevision, body.Mode, when, body.AfterRunID, body.AgentID, contract)
+		item, err := h.nexus.ScheduleMission(r.Context(), body.PlanID, body.Mode, when, body.AfterRunID, body.AgentID, contract)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return

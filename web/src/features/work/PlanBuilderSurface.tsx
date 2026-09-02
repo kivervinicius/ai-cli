@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight,
   Bot,
@@ -21,19 +20,21 @@ import {
 } from 'lucide-react';
 import { Badge, Button, Card, InlineAlert, Input } from '../../design-system';
 import { nexusApi } from '../../nexus/api';
-import type { Agent, AutonomyContract, ClarificationCheckpoint, MissionRun, MissionSchedule, PlanPhase, PlanRevision, PlanRevisionDiff, Project, WorkPackage, WorkPlan } from '../../types';
-import { clarificationFromError, seedProjectPathAnswers, unresolvedBlocking } from './clarificationModel';
-import { defaultMissionAutonomyContract } from './missionAutonomyModel';
-import { MissionAutonomyCard } from './MissionAutonomyCard';
-import { getProviderLock, mergePackages, normalizeWorkPlan, planSuggestionDiff, setProviderLock, splitPackage } from './planBuilderModel';
+import type { Agent, ClarificationCheckpoint, MissionRun, MissionSchedule, PlanPhase, PlanRevision, PlanRevisionDiff, Project, WorkPackage, WorkPlan } from '../../types';
+import { clarificationFromError, unresolvedBlocking } from './clarificationModel';
+import { composerGateForReadiness } from './composerModel';
+import { FlowCanvas } from './FlowCanvas';
+import { FlowStepInspector } from './FlowStepInspector';
+import { expandStepLocalized, flowFromWorkPlan, removeStepLocalized, splitStepLocalized, updateStepLocalized, validateFlow, workPlanFromFlow, type FlowDraftModel, type FlowStepModel } from './flowModel';
 
 export const PlanBuilderSurface: React.FC<{
   project: Project;
   agents: Agent[];
   onOpenAgent?: (agent: Agent) => void;
+  onRunCreated?: (run: MissionRun) => void;
   onClose?: () => void;
-}> = ({ project, agents, onOpenAgent }) => {
-  const { t } = useTranslation();
+  initialGoal?: string;
+}> = ({ project, agents, onOpenAgent, onRunCreated, initialGoal = '' }) => {
   const [plans, setPlans] = useState<WorkPlan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<WorkPlan | null>(null);
   const [_loading, setLoading] = useState(false);
@@ -43,9 +44,6 @@ export const PlanBuilderSurface: React.FC<{
   const [activeRun, setActiveRun] = useState<MissionRun | null>(null);
   const [schedules, setSchedules] = useState<MissionSchedule[]>([]);
   const [scheduleAt, setScheduleAt] = useState('');
-  const [afterRunId, setAfterRunId] = useState('');
-  const [recentRuns, setRecentRuns] = useState<MissionRun[]>([]);
-  const [autonomyContract, setAutonomyContract] = useState<AutonomyContract>(() => defaultMissionAutonomyContract());
   const [revisions, setRevisions] = useState<PlanRevision[]>([]);
   const [revisionDiff, setRevisionDiff] = useState<PlanRevisionDiff | null>(null);
   const [dragPackage, setDragPackage] = useState<{ phaseId: string; packageId: string } | null>(null);
@@ -54,20 +52,23 @@ export const PlanBuilderSurface: React.FC<{
   const [clarification, setClarification] = useState<ClarificationCheckpoint | null>(null);
   const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
   const [planError, setPlanError] = useState('');
-  const [resources, setResources] = useState<any[]>([]);
-  const [pendingAIPlan, setPendingAIPlan] = useState<{ plan: WorkPlan; diff: ReturnType<typeof planSuggestionDiff> } | null>(null);
+  const [flowDraft, setFlowDraft] = useState<FlowDraftModel | null>(null);
+  const [selectedStepId, setSelectedStepId] = useState('');
+  const [flowNotice, setFlowNotice] = useState('');
+  const [stepComparison, setStepComparison] = useState('');
+
+  useEffect(() => { if (initialGoal.trim()) setAutoGoal((current) => current || initialGoal.trim()); }, [initialGoal]);
 
   const loadPlans = useCallback(async () => {
     try {
       setLoading(true);
       const list = await nexusApi.getPlans(project.id);
-      const normalizedPlans = (list || []).map(normalizeWorkPlan);
-      setPlans(normalizedPlans);
-      if (normalizedPlans.length > 0 && !selectedPlan) {
-        setSelectedPlan(normalizedPlans[0]);
+      setPlans(list || []);
+      if (list && list.length > 0 && !selectedPlan) {
+        setSelectedPlan(list[0]);
         // Expand first phase by default
-        if (normalizedPlans[0].phases.length > 0) {
-          setExpandedPhases({ [normalizedPlans[0].phases[0].id]: true });
+        if (list[0].phases && list[0].phases.length > 0) {
+          setExpandedPhases({ [list[0].phases[0].id]: true });
         }
       }
     } catch (e) {
@@ -82,28 +83,23 @@ export const PlanBuilderSurface: React.FC<{
   }, [loadPlans]);
 
   useEffect(() => {
-    nexusApi.getSchedules(project.id).then((res) => setSchedules(Array.isArray(res) ? res : [])).catch((error) => console.error('Failed to load mission schedules:', error));
+    nexusApi.getSchedules(project.id).then(setSchedules).catch((error) => console.error('Failed to load mission schedules:', error));
   }, [project.id]);
-
-  useEffect(() => {
-    nexusApi.listResources()
-      .then((result) => setResources(((result && result.accounts) || []).filter((account: any) => account.authenticated && account.available)))
-      .catch((error) => console.error('Failed to load provider/profile locks:', error));
-  }, [project.id]);
-
-  useEffect(() => {
-    nexusApi.getRuns()
-      .then((runs) => setRecentRuns((Array.isArray(runs) ? runs : []).filter((run) => run.project_id === project.id)))
-      .catch((error) => console.error('Failed to load Mission dependencies:', error));
-  }, [project.id, activeRun?.id, activeRun?.state]);
 
   useEffect(() => {
     if (!selectedPlan) { setRevisions([]); return; }
     nexusApi.getPlan(selectedPlan.id).then((detail) => {
-      setRevisions((detail && Array.isArray(detail.revisions)) ? detail.revisions : []);
-      if (detail && detail.plan && detail.plan.current_revision !== selectedPlan.current_revision) setSelectedPlan(detail.plan);
+      setRevisions(detail.revisions || []);
+      if (detail.plan.current_revision !== selectedPlan.current_revision) setSelectedPlan(detail.plan);
     }).catch((error) => console.error('Failed to load plan revisions:', error));
   }, [selectedPlan?.id, selectedPlan?.current_revision]);
+
+  useEffect(() => {
+    if (!selectedPlan) { setFlowDraft(null); setSelectedStepId(''); return; }
+    const next = flowFromWorkPlan(selectedPlan);
+    setFlowDraft(next);
+    setSelectedStepId((current) => current && next.steps.some((step) => step.id === current) ? current : (next.steps[0]?.id || ''));
+  }, [selectedPlan]);
 
   useEffect(() => {
     if (!activeRun) return;
@@ -133,23 +129,33 @@ export const PlanBuilderSurface: React.FC<{
     }
   };
 
+  const selectedStep = useMemo(() => flowDraft?.steps.find((step) => step.id === selectedStepId) || null, [flowDraft, selectedStepId]);
+  const baselineFlow = useMemo(() => selectedPlan ? flowFromWorkPlan(selectedPlan) : null, [selectedPlan]);
+  const flowDirty = Boolean(flowDraft && baselineFlow && JSON.stringify(flowDraft) !== JSON.stringify(baselineFlow));
+  const flowErrors = useMemo(() => flowDraft ? validateFlow(flowDraft) : [], [flowDraft]);
+
   const handleGenerateAIPlan = async () => {
     if (!autoGoal.trim()) return;
     try {
       setGenerating(true);
       setPlanError('');
       setClarification(null);
+      const readiness = await nexusApi.getContextReadiness(project.id);
+      const gate = composerGateForReadiness(readiness.state);
+      if (!gate.canCompose) {
+        setPlanError(gate.reason);
+        return;
+      }
       const plan = await nexusApi.createPlan(project.id, {
         goal: autoGoal,
         auto_plan: true,
       });
-      const normalizedPlan = normalizeWorkPlan(plan);
-      setPendingAIPlan({ plan: normalizedPlan, diff: planSuggestionDiff(selectedPlan, normalizedPlan) });
+      selectGeneratedPlan(plan);
     } catch (e) {
       const checkpoint = clarificationFromError(e);
       if (checkpoint) {
         setClarification(checkpoint);
-        setClarificationAnswers(seedProjectPathAnswers(checkpoint, project.canonical_path));
+        setClarificationAnswers(Object.fromEntries(checkpoint.unknowns.filter((item) => item.answer).map((item) => [item.key, item.answer || ''])));
       } else {
         setPlanError(e instanceof Error ? e.message : String(e));
       }
@@ -169,10 +175,6 @@ export const PlanBuilderSurface: React.FC<{
       const checkpoint = clarificationFromError(e);
       if (checkpoint) {
         setClarification(checkpoint);
-        setClarificationAnswers((previous) => ({
-          ...seedProjectPathAnswers(checkpoint, project.canonical_path),
-          ...previous,
-        }));
       } else {
         setPlanError(e instanceof Error ? e.message : String(e));
       }
@@ -183,9 +185,8 @@ export const PlanBuilderSurface: React.FC<{
 
   const persistPlan = async (nextPlan: WorkPlan, summary: string) => {
     const res = await nexusApi.updatePlan(nextPlan.id, nextPlan, summary);
-    const normalizedPlan = normalizeWorkPlan(res.plan);
-    setSelectedPlan(normalizedPlan);
-    setPlans((prev) => prev.map((p) => (p.id === normalizedPlan.id ? normalizedPlan : p)));
+    setSelectedPlan(res.plan);
+    setPlans((prev) => prev.map((p) => (p.id === res.plan.id ? res.plan : p)));
     setRevisions((prev) => [res.revision, ...prev]);
     return res.plan;
   };
@@ -213,7 +214,7 @@ export const PlanBuilderSurface: React.FC<{
           .map((pkg) => ({ ...pkg, dependencies: (pkg.dependencies || []).filter((dep) => dep !== packageId) })),
       })),
     };
-    try { await persistPlan(next, t('planBuilder.packageDeleted')); } catch (error) { console.error(error); }
+    try { await persistPlan(next, 'Pacote removido e dependências normalizadas'); } catch (error) { console.error(error); }
   };
 
   const handleDropPackage = async (targetPhaseId: string, targetPackageId: string) => {
@@ -240,10 +241,8 @@ export const PlanBuilderSurface: React.FC<{
     if (!selectedPlan || revision === selectedPlan.current_revision) return;
     try {
       const result = await nexusApi.restorePlanRevision(selectedPlan.id, revision);
-      setSelectedPlan(normalizeWorkPlan(result.plan));
-      const normalizedPlan = normalizeWorkPlan(result.plan);
-      setSelectedPlan(normalizedPlan);
-      setPlans((prev) => prev.map((plan) => plan.id === normalizedPlan.id ? normalizedPlan : plan));
+      setSelectedPlan(result.plan);
+      setPlans((prev) => prev.map((plan) => plan.id === result.plan.id ? result.plan : plan));
       setRevisions((prev) => [result.revision, ...prev]);
       setRevisionDiff(null);
     } catch (error) { console.error('Failed to restore plan revision:', error); }
@@ -282,9 +281,8 @@ export const PlanBuilderSurface: React.FC<{
     };
     try {
       const res = await nexusApi.updatePlan(selectedPlan.id, updatedPlan, 'Fase adicionada');
-      const normalizedPlan = normalizeWorkPlan(res.plan);
-      setSelectedPlan(normalizedPlan);
-      setPlans((prev) => prev.map((p) => (p.id === normalizedPlan.id ? normalizedPlan : p)));
+      setSelectedPlan(res.plan);
+      setPlans((prev) => prev.map((p) => (p.id === res.plan.id ? res.plan : p)));
       setExpandedPhases((prev) => ({ ...prev, [newPhase.id]: true }));
     } catch (e) {
       console.error('Failed to add phase:', e);
@@ -312,56 +310,11 @@ export const PlanBuilderSurface: React.FC<{
     };
     try {
       const res = await nexusApi.updatePlan(selectedPlan.id, updatedPlan, 'Pacote adicionado');
-      const normalizedPlan = normalizeWorkPlan(res.plan);
-      setSelectedPlan(normalizedPlan);
-      setPlans((prev) => prev.map((p) => (p.id === normalizedPlan.id ? normalizedPlan : p)));
+      setSelectedPlan(res.plan);
+      setPlans((prev) => prev.map((p) => (p.id === res.plan.id ? res.plan : p)));
     } catch (e) {
       console.error('Failed to add package:', e);
     }
-  };
-
-  const handleSplitPackage = async (phaseId: string, packageId: string) => {
-    if (!selectedPlan) return;
-    try {
-      const next = splitPackage(selectedPlan, phaseId, packageId, `pkg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
-      await persistPlan(next, 'Pacote dividido preservando dependências DAG');
-    } catch (error) {
-      setPlanError(error instanceof Error ? error.message : String(error));
-    }
-  };
-
-  const handleMergeNextPackage = async (phaseId: string, packageId: string) => {
-    if (!selectedPlan) return;
-    const phase = selectedPlan.phases.find((item) => item.id === phaseId);
-    const index = phase?.packages.findIndex((item) => item.id === packageId) ?? -1;
-    const nextPackage = phase && index >= 0 ? phase.packages[index + 1] : undefined;
-    if (!nextPackage) return;
-    try {
-      await persistPlan(mergePackages(selectedPlan, phaseId, packageId, nextPackage.id), 'Pacotes mesclados e dependências reescritas');
-    } catch (error) {
-      setPlanError(error instanceof Error ? error.message : String(error));
-    }
-  };
-
-  const handleProviderLock = async (phaseId: string, pkg: WorkPackage, value: string) => {
-    const [provider = '', profile = ''] = value ? value.split('::') : ['', ''];
-    try {
-      await patchPackage(phaseId, pkg.id, { task_requirements: setProviderLock(pkg.task_requirements, provider, profile) }, provider ? `Provider lock: ${provider}/${profile}` : 'Provider lock removido');
-    } catch (error) {
-      setPlanError(error instanceof Error ? error.message : String(error));
-    }
-  };
-
-  const handleApplyAISuggestion = () => {
-    if (!pendingAIPlan) return;
-    selectGeneratedPlan(pendingAIPlan.plan);
-    setPendingAIPlan(null);
-  };
-
-  const handleRejectAISuggestion = async () => {
-    if (!pendingAIPlan) return;
-    try { await nexusApi.deletePlan(pendingAIPlan.plan.id); } catch (error) { console.error('Failed to discard AI plan suggestion:', error); }
-    setPendingAIPlan(null);
   };
 
   const handleCompilePrompt = async (packageId: string, phaseId: string) => {
@@ -374,13 +327,85 @@ export const PlanBuilderSurface: React.FC<{
     }
   };
 
-  const handleLaunchRun = async () => {
-    if (!selectedPlan) return;
+  const saveFlowDraft = async (summary = 'Flow Draft updated') => {
+    if (!selectedPlan || !flowDraft) return null;
+    const errors = validateFlow(flowDraft);
+    if (errors.length) { setPlanError(errors.join(' ')); return null; }
     try {
-      const run = await nexusApi.runPlan(selectedPlan.id, { contract: autonomyContract, autonomous: true, approvedRevision: selectedPlan.current_revision });
+      const persisted = await persistPlan(workPlanFromFlow(flowDraft, selectedPlan), summary);
+      setFlowNotice(`Flow Draft saved as revision ${persisted.current_revision}.`);
+      return persisted;
+    } catch (error) {
+      setPlanError(error instanceof Error ? error.message : String(error));
+      return null;
+    }
+  };
+
+  const changeFlowStep = (patch: Partial<FlowStepModel>) => {
+    if (!flowDraft || !selectedStep) return;
+    setFlowDraft(updateStepLocalized(flowDraft, selectedStep.id, patch));
+    setStepComparison('');
+  };
+
+  const handleFlowStepAction = (action: 'REFINE' | 'EXPAND' | 'COMPARE' | 'SPLIT' | 'REMOVE') => {
+    if (!flowDraft || !selectedStep) return;
+    if (action === 'REFINE') {
+      const unique = (items: string[]) => [...new Set(items.map((item) => item.trim()).filter(Boolean))];
+      setFlowDraft(updateStepLocalized(flowDraft, selectedStep.id, {
+        title: selectedStep.title.trim(), goal: selectedStep.goal.trim(),
+        acceptanceCriteria: unique(selectedStep.acceptanceCriteria), relevantPaths: unique(selectedStep.relevantPaths),
+        maestroSkills: unique(selectedStep.maestroSkills), verificationRequirements: unique(selectedStep.verificationRequirements),
+      }));
+      setFlowNotice(`Refined only “${selectedStep.title}”; unrelated Steps were preserved.`);
+      return;
+    }
+    if (action === 'EXPAND') {
+      setFlowDraft(expandStepLocalized(flowDraft, selectedStep.id));
+      setFlowNotice(`Expanded only “${selectedStep.title}”; unrelated Steps were preserved.`);
+      return;
+    }
+    if (action === 'COMPARE') {
+      const previous = revisions.find((revision) => revision.revision < (selectedPlan?.current_revision || 0));
+      if (!previous) { setStepComparison('No previous revision is available for this Step.'); return; }
+      try {
+        const previousPlan = JSON.parse(previous.snapshot_json) as WorkPlan;
+        const prior = flowFromWorkPlan(previousPlan).steps.find((step) => step.id === selectedStep.id);
+        setStepComparison(prior ? `Revision ${previous.revision}\n${JSON.stringify(prior, null, 2)}\n\nCurrent draft\n${JSON.stringify(selectedStep, null, 2)}` : 'This Step did not exist in the previous revision.');
+      } catch { setStepComparison('The previous revision could not be decoded.'); }
+      return;
+    }
+    if (action === 'SPLIT') {
+      const stamp = Date.now().toString(36);
+      const next = splitStepLocalized(flowDraft, selectedStep.id, [`${selectedStep.id}-a-${stamp}`, `${selectedStep.id}-b-${stamp}`]);
+      setFlowDraft(next); setSelectedStepId(next.steps.find((step) => step.id.startsWith(`${selectedStep.id}-a-`))?.id || '');
+      setFlowNotice(`Split “${selectedStep.title}” locally and redirected direct dependents.`);
+      return;
+    }
+    const next = removeStepLocalized(flowDraft, selectedStep.id);
+    setFlowDraft(next); setSelectedStepId(next.steps[0]?.id || '');
+    setFlowNotice(`Removed “${selectedStep.title}” and normalized direct dependency references.`);
+  };
+
+  const handleLaunchRun = async () => {
+    if (!selectedPlan || !flowDraft) return;
+    const errors = validateFlow(flowDraft);
+    if (errors.length) { setPlanError(errors.join(' ')); return; }
+    try {
+      setPlanError('');
+      let approved = selectedPlan;
+      if (flowDirty || selectedPlan.status === 'DRAFT') {
+        const nextDraft = { ...flowDraft, policyStored: true, status: 'READY' as const };
+        setFlowDraft(nextDraft);
+        const saved = await persistPlan(workPlanFromFlow(nextDraft, selectedPlan), 'Flow approved for execution');
+        approved = saved;
+      }
+      const legacyDefault = approved.phases.flatMap((phase) => phase.packages).some((pkg) => !pkg.assignment_strategy) ? agents[0]?.id : undefined;
+      const run = await nexusApi.runPlan(approved.id, approved.current_revision, legacyDefault);
       setActiveRun(run);
+      onRunCreated?.(run);
+      setFlowNotice(`Flow Run ${run.id} started from revision ${run.plan_revision}.`);
     } catch (e) {
-      console.error('Failed to launch run:', e);
+      setPlanError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -429,7 +454,7 @@ export const PlanBuilderSurface: React.FC<{
   const handleScheduleAt = async () => {
     if (!selectedPlan || !scheduleAt) return;
     try {
-      const item = await nexusApi.schedulePlan(selectedPlan.id, 'AT', { scheduledFor: new Date(scheduleAt).toISOString(), contract: autonomyContract, approvedRevision: selectedPlan.current_revision });
+      const item = await nexusApi.schedulePlan(selectedPlan.id, 'AT', { scheduledFor: new Date(scheduleAt).toISOString(), agentId: agents[0]?.id });
       setSchedules((prev) => [item, ...prev]);
       setScheduleAt('');
     } catch (e) {
@@ -440,21 +465,10 @@ export const PlanBuilderSurface: React.FC<{
   const handleWhenResources = async () => {
     if (!selectedPlan) return;
     try {
-      const item = await nexusApi.schedulePlan(selectedPlan.id, 'WHEN_RESOURCES', { contract: autonomyContract, approvedRevision: selectedPlan.current_revision });
+      const item = await nexusApi.schedulePlan(selectedPlan.id, 'WHEN_RESOURCES', { agentId: agents[0]?.id });
       setSchedules((prev) => [item, ...prev]);
     } catch (e) {
       console.error('Failed to schedule mission for resource availability:', e);
-    }
-  };
-
-  const handleAfterRun = async () => {
-    if (!selectedPlan || !afterRunId) return;
-    try {
-      const item = await nexusApi.schedulePlan(selectedPlan.id, 'AFTER_RUN', { afterRunId, contract: autonomyContract, approvedRevision: selectedPlan.current_revision });
-      setSchedules((prev) => [item, ...prev]);
-      setAfterRunId('');
-    } catch (e) {
-      console.error('Failed to schedule dependent Mission:', e);
     }
   };
 
@@ -464,11 +478,11 @@ export const PlanBuilderSurface: React.FC<{
       <div className="nx-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
           <span className="nx-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--color-brand)' }}>
-            <Route size={14} /> NEXUS INTELLIGENCE & WORKPLANS
+            <Route size={14} /> COMPOSER · FLOW DRAFT
           </span>
-          <h1 style={{ fontSize: '24px', fontWeight: 600, margin: '4px 0' }}>Visual Plan Builder & Autonomy Runner</h1>
+          <h1 style={{ fontSize: '24px', fontWeight: 600, margin: '4px 0' }}>Flow Canvas & Step Inspector</h1>
           <p style={{ color: 'var(--color-text-muted)' }}>
-            Decomposição estruturada de objetivos em WorkPackages auditáveis com compilação determinística e portões de verificação.
+            Static approved DAG over the existing WorkPlan/Mission engine. Draft edits never execute work.
           </p>
         </div>
         <Badge tone="brand">
@@ -480,7 +494,7 @@ export const PlanBuilderSurface: React.FC<{
       <Card style={{ marginBottom: '24px', padding: '16px', border: '1px solid var(--color-brand-border, #3b82f640)', background: 'var(--color-surface-elevated, #18181b)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontWeight: 600 }}>
           <Sparkles size={16} style={{ color: 'var(--color-brand)' }} />
-          <span>Nexus Intent Decomposer (AI Planning)</span>
+          <span>Create Flow Draft</span>
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
           <Input
@@ -490,31 +504,10 @@ export const PlanBuilderSurface: React.FC<{
             style={{ flex: 1 }}
           />
           <Button tone="brand" disabled={!autoGoal.trim() || generating} onClick={handleGenerateAIPlan}>
-            <Sparkles size={14} /> {generating ? 'Decompondo...' : 'Gerar Plano Estruturado'}
+            <Sparkles size={14} /> {generating ? 'Creating…' : 'Generate Flow Draft'}
           </Button>
         </div>
       </Card>
-
-      {pendingAIPlan && (
-        <Card style={{ marginBottom: '16px', padding: '16px', border: '1px solid var(--color-brand-border)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start' }}>
-            <div>
-              <strong>AI plan suggestion — review required</strong>
-              <div style={{ marginTop: 6, fontSize: 12, color: 'var(--color-text-muted)' }}>
-                +{pendingAIPlan.diff.added.length} added · -{pendingAIPlan.diff.removed.length} removed · ~{pendingAIPlan.diff.changed.length} changed.
-                The current approved plan has not been modified.
-              </div>
-              {pendingAIPlan.diff.added.length > 0 && <div style={{ marginTop: 4, fontSize: 11 }}>Added: {pendingAIPlan.diff.added.join(', ')}</div>}
-              {pendingAIPlan.diff.removed.length > 0 && <div style={{ marginTop: 4, fontSize: 11 }}>Removed: {pendingAIPlan.diff.removed.join(', ')}</div>}
-              {pendingAIPlan.diff.changed.length > 0 && <div style={{ marginTop: 4, fontSize: 11 }}>Changed: {pendingAIPlan.diff.changed.join(', ')}</div>}
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Button onClick={() => void handleRejectAISuggestion()}>Reject</Button>
-              <Button tone="brand" onClick={handleApplyAISuggestion}>Apply suggestion</Button>
-            </div>
-          </div>
-        </Card>
-      )}
 
       {planError && (
         <InlineAlert tone="danger" title="Nexus Intelligence could not generate the plan">
@@ -525,15 +518,10 @@ export const PlanBuilderSurface: React.FC<{
       {clarification && (
         <Card style={{ margin: '16px 0 24px', padding: '16px' }}>
           <div style={{ marginBottom: 12 }}>
-            <strong>Confirmação necessária antes de gerar o plano</strong>
+            <strong>Clarification required before autonomous planning</strong>
             <p style={{ margin: '6px 0 0', color: 'var(--color-text-muted)' }}>
-              O Nexus pausa quando falta um fato importante. Revise as respostas abaixo; elas serão registradas no WorkPlan.
+              Nexus stopped instead of guessing. These answers become durable facts in the WorkPlan.
             </p>
-            {project.canonical_path && unresolvedBlocking(clarification).some((item) => clarificationAnswers[item.key] === project.canonical_path) && (
-              <p className="nx-plan-builder__clarification-hint">
-                Caminho do repositório preenchido a partir do Projeto atual. Você pode revisá-lo antes de continuar.
-              </p>
-            )}
           </div>
           <div style={{ display: 'grid', gap: 14 }}>
             {unresolvedBlocking(clarification).map((item) => (
@@ -541,18 +529,18 @@ export const PlanBuilderSurface: React.FC<{
                 <span><strong>{item.question}</strong></span>
                 {item.rationale && <small style={{ color: 'var(--color-text-muted)' }}>{item.rationale}</small>}
                 {item.suggested_options && item.suggested_options.length > 0 ? (
-                  <select className="nx-select"
+                  <select
                     value={clarificationAnswers[item.key] || ''}
                     onChange={(event) => setClarificationAnswers((prev) => ({ ...prev, [item.key]: event.target.value }))}
                   >
-                    <option value="">Selecione uma opção…</option>
+                    <option value="">Choose…</option>
                     {item.suggested_options.map((option) => <option key={option} value={option}>{option}</option>)}
                   </select>
                 ) : (
                   <Input
                     value={clarificationAnswers[item.key] || ''}
                     onChange={(value) => setClarificationAnswers((prev) => ({ ...prev, [item.key]: value }))}
-                    placeholder="Informe uma resposta"
+                    placeholder="Answer required"
                   />
                 )}
               </label>
@@ -564,20 +552,20 @@ export const PlanBuilderSurface: React.FC<{
               disabled={generating || unresolvedBlocking(clarification).some((item) => !(clarificationAnswers[item.key] || '').trim())}
               onClick={() => void handleResolveClarification()}
             >
-              <ArrowRight size={14} /> Continuar planejamento
+              <ArrowRight size={14} /> Continue planning
             </Button>
           </div>
         </Card>
       )}
 
       {/* Main Two-Column Layout: Plan Hierarchy & Inspector/Runner */}
-      <div className="nx-plan-builder__columns">
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: '24px' }}>
         {/* Left Column: Plan Hierarchy */}
         <div>
           {/* Plan Selector & Actions */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <select className="nx-select nx-plan-selector"
+              <select
                 value={selectedPlan?.id || ''}
                 onChange={(e) => {
                   const p = plans.find((x) => x.id === e.target.value);
@@ -609,12 +597,28 @@ export const PlanBuilderSurface: React.FC<{
                 <Plus size={14} /> Adicionar Fase
               </Button>
               <Button tone="brand" disabled={!selectedPlan} onClick={handleLaunchRun}>
-                <Play size={14} /> Approve Contract & Run Mission
+                <Play size={14} /> Approve & Run
               </Button>
             </div>
           </div>
 
-          {/* Phases & Packages Tree */}
+          {flowNotice && <InlineAlert tone="success" title="Flow Draft">{flowNotice}</InlineAlert>}
+          {flowErrors.length > 0 && <InlineAlert tone="warning" title="Flow needs attention">{flowErrors.join(' ')}</InlineAlert>}
+          {flowDraft && (
+            <>
+              <div className="nx-flow-editor-toolbar">
+                <label>Autonomy policy
+                  <select value={flowDraft.policy} onChange={(event) => setFlowDraft({ ...flowDraft, policy: event.target.value as FlowDraftModel['policy'], policyStored: true })}>
+                    <option value="GUIDED">Guided</option><option value="AUTONOMOUS">Autonomous</option>
+                  </select>
+                </label>
+                <Badge tone={flowDirty ? 'warning' : 'success'}>{flowDirty ? 'Unsaved Draft' : `Revision ${selectedPlan?.current_revision || 0}`}</Badge>
+                <Button size="sm" disabled={!flowDirty || flowErrors.length > 0} onClick={() => void saveFlowDraft()}>{flowDirty ? 'Save Draft' : 'Saved'}</Button>
+              </div>
+              <FlowCanvas flow={flowDraft} selectedId={selectedStepId} onSelect={setSelectedStepId} />
+              {stepComparison && <Card className="nx-flow-step-compare"><pre>{stepComparison}</pre></Card>}
+              <details className="nx-flow-compat-details"><summary>Advanced WorkPlan compatibility view</summary>
+                    {/* Phases & Packages Tree */}
           {selectedPlan?.phases?.map((phase, phaseIdx) => {
             const isExpanded = expandedPhases[phase.id] ?? true;
             return (
@@ -680,8 +684,6 @@ export const PlanBuilderSurface: React.FC<{
                             <Button size="sm" onClick={() => handleCompilePrompt(pkg.id, phase.id)}>
                             <Copy size={12} /> Compilar Prompt
                           </Button>
-                            <Button size="sm" disabled={(pkg.acceptance_criteria || []).length < 2} onClick={() => void handleSplitPackage(phase.id, pkg.id)}>Split</Button>
-                            <Button size="sm" disabled={phase.packages[phase.packages.findIndex((item) => item.id === pkg.id) + 1] == null} onClick={() => void handleMergeNextPackage(phase.id, pkg.id)}>Merge next</Button>
                             <Button size="sm" onClick={() => void handleDeletePackage(phase.id, pkg.id)}><Trash2 size={12} /></Button>
                           </div>
                         </div>
@@ -690,30 +692,21 @@ export const PlanBuilderSurface: React.FC<{
 
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginTop: 10, fontSize: 11 }}>
                           <label style={{ display: 'grid', gap: 4 }}>Priority
-                            <select className="nx-select" value={pkg.priority} onChange={(event) => void patchPackage(phase.id, pkg.id, { priority: event.target.value as WorkPackage['priority'] }, 'Prioridade alterada')}>
+                            <select value={pkg.priority} onChange={(event) => void patchPackage(phase.id, pkg.id, { priority: event.target.value as WorkPackage['priority'] }, 'Prioridade alterada')}>
                               {['CRITICAL','HIGH','NORMAL','LOW'].map((value) => <option key={value} value={value}>{value}</option>)}
                             </select>
                           </label>
                           <label style={{ display: 'grid', gap: 4 }}>Agent allocation
-                            <select className="nx-select" value={pkg.agent_allocation || ''} onChange={(event) => void patchPackage(phase.id, pkg.id, { agent_allocation: event.target.value }, 'Agent allocation alterado')}>
+                            <select value={pkg.agent_allocation || ''} onChange={(event) => void patchPackage(phase.id, pkg.id, { agent_allocation: event.target.value }, 'Agent allocation alterado')}>
                               <option value="">Auto scheduler</option>
                               {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-                            </select>
-                          </label>
-                          <label style={{ display: 'grid', gap: 4 }}>Provider/profile lock
-                            <select className="nx-select"
-                              value={(() => { const lock = getProviderLock(pkg.task_requirements); return lock.provider ? `${lock.provider}::${lock.profile}` : ''; })()}
-                              onChange={(event) => void handleProviderLock(phase.id, pkg, event.target.value)}
-                            >
-                              <option value="">Auto scheduler</option>
-                              {resources.map((account: any) => <option key={account.id || `${account.provider}:${account.profile}`} value={`${account.provider}::${account.profile}`}>{account.display_name || account.provider} · {account.profile}</option>)}
                             </select>
                           </label>
                           <label style={{ display: 'grid', gap: 4 }}>Parallel group
                             <input value={pkg.parallel_group || ''} onChange={(event) => void patchPackage(phase.id, pkg.id, { parallel_group: event.target.value }, 'Parallel group alterado')} />
                           </label>
                           <label style={{ display: 'grid', gap: 4 }}>Dependencies
-                            <select className="nx-select" multiple value={pkg.dependencies || []} onChange={(event) => void patchPackage(phase.id, pkg.id, { dependencies: Array.from(event.target.selectedOptions).map((option) => option.value) }, 'Dependências alteradas')}>
+                            <select multiple value={pkg.dependencies || []} onChange={(event) => void patchPackage(phase.id, pkg.id, { dependencies: Array.from(event.target.selectedOptions).map((option) => option.value) }, 'Dependências alteradas')}>
                               {allPackages.filter((candidate) => candidate.id !== pkg.id).map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.title}</option>)}
                             </select>
                           </label>
@@ -740,41 +733,37 @@ export const PlanBuilderSurface: React.FC<{
           {(!selectedPlan || selectedPlan.phases.length === 0) && (
             <Card style={{ padding: '32px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
               <Route size={32} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
-              <p>{t('planBuilder.emptyPlan')}</p>
+              <p>No Flow Draft yet. Simple work can stay with an Agent.</p>
             </Card>
+          )}
+              </details>
+            </>
           )}
         </div>
 
-        {/* Right Column: Prompt Compiler Preview & Live Mission Runner */}
+        {/* Right Column: Step Inspector + compatibility tools */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {flowDraft && <FlowStepInspector flow={flowDraft} step={selectedStep} agents={agents} onChange={changeFlowStep} onAction={handleFlowStepAction} />}
           <Card style={{ padding: '16px' }}>
-            <div style={{ fontWeight: 600, marginBottom: 10 }}><History size={14} /> {t('planBuilder.revisionHistory')}</div>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}><History size={14} /> Revision History</div>
             <div style={{ display: 'grid', gap: 6 }}>
               {(revisions || []).slice(0, 6).map((revision) => (
                 <div key={revision.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 6, alignItems: 'center', fontSize: 11 }}>
                   <span>Rev {revision.revision} · {revision.change_summary}</span>
-                  <Button size="sm" disabled={revision.revision === selectedPlan?.current_revision} onClick={() => void handleCompareRevision(revision.revision)}>{t('planBuilder.diff')}</Button>
-                  <Button size="sm" disabled={revision.revision === selectedPlan?.current_revision} onClick={() => void handleRestoreRevision(revision.revision)}>{t('planBuilder.restore')}</Button>
+                  <Button size="sm" disabled={revision.revision === selectedPlan?.current_revision} onClick={() => void handleCompareRevision(revision.revision)}>Diff</Button>
+                  <Button size="sm" disabled={revision.revision === selectedPlan?.current_revision} onClick={() => void handleRestoreRevision(revision.revision)}>Restore</Button>
                 </div>
               ))}
               {revisionDiff && (
                 <div style={{ padding: 8, border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 11 }}>
-                  {t('planBuilder.diffSummary', {
-                    from: revisionDiff.from_revision,
-                    to: revisionDiff.to_revision,
-                    added: revisionDiff.added_packages.length,
-                    removed: revisionDiff.removed_packages.length,
-                    changed: revisionDiff.changed_packages.length,
-                  })}
+                  Rev {revisionDiff.from_revision} → {revisionDiff.to_revision}: +{revisionDiff.added_packages.length} / -{revisionDiff.removed_packages.length} / ~{revisionDiff.changed_packages.length} packages
                 </div>
               )}
             </div>
           </Card>
 
-          <MissionAutonomyCard value={autonomyContract} onChange={setAutonomyContract} />
-
           <Card style={{ padding: '16px' }}>
-            <div style={{ fontWeight: 600, marginBottom: 10 }}>{t('planBuilder.scheduling')}</div>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}>Mission Scheduling</div>
             <div style={{ display: 'grid', gap: 8 }}>
               <input
                 type="datetime-local"
@@ -783,24 +772,15 @@ export const PlanBuilderSurface: React.FC<{
                 style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'inherit' }}
               />
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <Button disabled={!selectedPlan || !scheduleAt} onClick={handleScheduleAt}>{t('planBuilder.scheduleDateTime')}</Button>
-                <Button disabled={!selectedPlan} onClick={handleWhenResources}>{t('planBuilder.whenResourcesFree')}</Button>
+                <Button disabled={!selectedPlan || !scheduleAt} onClick={handleScheduleAt}>Schedule date/time</Button>
+                <Button disabled={!selectedPlan} onClick={handleWhenResources}>When resources free</Button>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
-                <select className="nx-select"
-                  value={afterRunId}
-                  onChange={(event) => setAfterRunId(event.target.value)}
-                  aria-label="Mission dependency"
-                  style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'inherit', minWidth: 0 }}
-                >
-                  <option value="">{t('planBuilder.afterMission')}</option>
-                  {(recentRuns || []).filter((run) => run && run.id !== activeRun?.id).map((run) => (
-                    <option key={run.id} value={run.id}>{(run.id || '').slice(0, 12)} · {run.state}</option>
-                  ))}
-                  {activeRun ? <option value={activeRun.id}>{(activeRun.id || '').slice(0, 12)} · {t('planBuilder.currentRun', { state: activeRun.state })}</option> : null}
-                </select>
-                <Button disabled={!selectedPlan || !afterRunId} onClick={handleAfterRun}>{t('planBuilder.runAfterMission')}</Button>
-              </div>
+              {activeRun && selectedPlan && (
+                <Button onClick={async () => {
+                  const item = await nexusApi.schedulePlan(selectedPlan.id, 'AFTER_RUN', { afterRunId: activeRun.id, agentId: agents[0]?.id });
+                  setSchedules((prev) => [item, ...prev]);
+                }}>Run after current Mission</Button>
+              )}
               {(schedules || []).slice(0, 3).map((item) => (
                 <div key={item.id} style={{ fontSize: 11, color: 'var(--color-text-muted)', display: 'flex', justifyContent: 'space-between' }}>
                   <span>{item.mode}{item.scheduled_for ? ` · ${new Date(item.scheduled_for).toLocaleString()}` : ''}</span>
@@ -810,9 +790,11 @@ export const PlanBuilderSurface: React.FC<{
             </div>
           </Card>
 
-          {/* Active Mission Runner Panel */}
+          {/* Legacy Mission Runner controls remain available without competing with the canonical Flow Run surface. */}
           {activeRun && (
-            <Card style={{ padding: '16px', border: '1px solid var(--color-brand)' }}>
+            <details className="nx-flow-compat-details nx-flow-run-compat">
+              <summary>Advanced Mission Runner compatibility view · {activeRun.state}</summary>
+              <Card style={{ padding: '16px', border: '1px solid var(--color-brand)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Play size={14} style={{ color: 'var(--color-brand)' }} /> Autonomous Runner
@@ -871,6 +853,7 @@ export const PlanBuilderSurface: React.FC<{
                 The runner advances automatically. Take Control pauses autonomy and opens the current persistent Agent; Return to Mission resumes from the persisted checkpoint.
               </p>
             </Card>
+            </details>
           )}
 
           {/* Compiled Prompt Inspector */}

@@ -15,6 +15,7 @@ func TestApplyLaunchConfigurationModelFlags(t *testing.T) {
 		{"claude", "opus", []string{"--model", "opus"}},
 		{"gemini", "gemini-2.5-pro", []string{"--model", "gemini-2.5-pro"}},
 		{"opencode", "ollama/deepseek-r1", []string{"--model", "ollama/deepseek-r1"}},
+		{"agy", "claude-sonnet-4-20250514", []string{"--model", "claude-sonnet-4-20250514"}},
 	}
 	for _, tt := range tests {
 		got, err := ApplyLaunchConfiguration(tt.provider, tt.model, nil, nil)
@@ -28,8 +29,8 @@ func TestApplyLaunchConfigurationModelFlags(t *testing.T) {
 }
 
 func TestApplyLaunchConfigurationRejectsUnsupportedModel(t *testing.T) {
-	if _, err := ApplyLaunchConfiguration("agy", "some-model", nil, nil); err == nil {
-		t.Fatal("AGY model override must not be silently ignored")
+	if _, err := ApplyLaunchConfiguration("cursor", "some-model", nil, nil); err == nil {
+		t.Fatal("Cursor model override must not be silently ignored")
 	}
 }
 

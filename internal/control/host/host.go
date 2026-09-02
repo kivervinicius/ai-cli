@@ -46,9 +46,9 @@ type SessionHost struct {
 	listener     net.Listener
 	clients      map[net.Conn]bool
 	activeWriter net.Conn
+	pendingControlCommand string
 	stopChan     chan struct{}
 	doneChan     chan struct{}
-	streamDone   chan struct{}
 	prefixRouter *SlashPrefixRouter
 	detector     *AttentionDetector
 	stopOnce     sync.Once
@@ -76,19 +76,11 @@ func NewSessionHost(cfg Config) (*SessionHost, error) {
 		clients:      make(map[net.Conn]bool),
 		stopChan:     make(chan struct{}),
 		doneChan:     make(chan struct{}),
-		streamDone:   make(chan struct{}),
 		prefixRouter: NewSlashPrefixRouter(),
 	}
 
 	sh.detector = NewAttentionDetector(cfg.Session.RuntimeID, cfg.Session.ProviderID, cfg.Session.ProfileID, cfg.Cwd, func(reason, context, dynamicTitle string, state registry.RuntimeState) {
 		sh.mu.Lock()
-		// A terminal reader can finish concurrently with startup. Once listener
-		// creation has failed, attention callbacks must not resurrect the runtime
-		// as RUNNING after Start has marked it FAILED.
-		if sh.session.State == registry.StateFailed {
-			sh.mu.Unlock()
-			return
-		}
 		sh.session.State = state
 		sh.session.AttentionReason = reason
 		sh.session.AttentionContext = context
@@ -122,10 +114,7 @@ func (sh *SessionHost) Start() error {
 	}
 
 	// Start reading stdout from terminal backend
-	go func() {
-		defer close(sh.streamDone)
-		sh.streamReader(sh.termBackend)
-	}()
+	go sh.streamReader(sh.termBackend)
 
 	// Update session details
 	sh.session.PID = sh.termBackend.PID()
@@ -299,45 +288,22 @@ func (sh *SessionHost) streamAttachedInput(conn net.Conn, reader *bufio.Reader) 
 }
 
 func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
-	// Input is the hot path and may block on the terminal transport. Handle it
-	// before taking SessionHost.mu so detector callbacks cannot deadlock behind
-	// a blocked PTY/ConPTY write.
-	if req.Command == protocol.CmdInput {
-		if req.Version != 0 && req.Version != protocol.ProtocolVersion {
-			resp := protocol.NewErrorResponse("ERROR_PROTOCOL_VERSION")
-			data, _ := json.Marshal(resp)
-			_, _ = conn.Write(append(data, '\n'))
-			return
-		}
-		if req.Payload != nil {
-			var p protocol.InputPayload
-			if json.Unmarshal(req.Payload, &p) == nil && p.Data != "" {
-				// API responses arrive over a short-lived RPC connection, not the
-				// browser connection holding the terminal lease. Route them as
-				// authenticated external input instead of rejecting them as a
-				// non-owner connection.
-				sh.processExternalInput([]byte(p.Data))
-			}
-		}
-		resp, _ := protocol.NewResponse("input_received")
-		data, _ := json.Marshal(resp)
-		_, _ = conn.Write(append(data, '\n'))
-		return
-	}
-
 	sh.mu.Lock()
-	defer sh.mu.Unlock()
 
-	// Protocol version is enforced: an incompatible client must not continue
-	// silently. Version 0 is accepted as legacy/unset.
 	if req.Version != 0 && req.Version != protocol.ProtocolVersion {
 		resp := protocol.NewErrorResponse("ERROR_PROTOCOL_VERSION")
+		sh.mu.Unlock()
 		data, _ := json.Marshal(resp)
 		_, _ = conn.Write(append(data, '\n'))
 		return
 	}
 
 	var resp protocol.Response
+	var resizeRows, resizeCols int
+	var promptWrite []byte
+	var forwardWrite []byte
+	var controlCmd string
+	skipResponse := false
 
 	switch req.Command {
 	case protocol.CmdPing:
@@ -359,11 +325,9 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 	case protocol.CmdAttach:
 		sh.clients[conn] = true
 		sh.fanout.AddClient(conn)
-		// Acquire single-writer lease if none active
 		if sh.activeWriter == nil {
 			sh.activeWriter = conn
 		}
-		// Send initial terminal history from ring buffer
 		history := sh.ringBuffer.Bytes()
 		resp, _ = protocol.NewResponse(string(history))
 
@@ -379,14 +343,31 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		if req.Payload != nil {
 			var p protocol.ResizePayload
 			if json.Unmarshal(req.Payload, &p) == nil && p.Rows > 0 && p.Cols > 0 {
-				_ = sh.termBackend.Resize(p.Rows, p.Cols)
+				resizeRows, resizeCols = p.Rows, p.Cols
 			}
 		}
 		resp, _ = protocol.NewResponse("resized")
 
 	case protocol.CmdInput:
-		// Handled before the state lock above.
+		if req.Payload != nil {
+			var p protocol.InputPayload
+			if json.Unmarshal(req.Payload, &p) == nil && p.Data != "" {
+				forwardWrite = sh.collectAttachedInputLocked(conn, []byte(p.Data))
+				controlCmd = sh.pendingControlCommand
+				sh.pendingControlCommand = ""
+			}
+		}
 		resp, _ = protocol.NewResponse("input_received")
+
+	case protocol.CmdSubmitPrompt:
+		var p protocol.SubmitPromptPayload
+		if req.Payload == nil || json.Unmarshal(req.Payload, &p) != nil || strings.TrimSpace(p.Prompt) == "" {
+			resp = protocol.NewErrorResponse("prompt is required")
+			break
+		}
+		prompt := strings.TrimRight(p.Prompt, "\r\n") + "\r"
+		promptWrite = []byte(prompt)
+		resp, _ = protocol.NewResponse("prompt_submitted")
 
 	case protocol.CmdStop:
 		go sh.Stop()
@@ -397,11 +378,6 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		resp, _ = protocol.NewResponse("terminated")
 
 	case protocol.CmdLeaseAcquire:
-		// Lease acquisition is authoritative only when it is requested on an
-		// attached streaming connection. This makes the connection that receives
-		// terminal input the exact same connection that owns the SessionHost
-		// writer lease; an out-of-band RPC socket must never arbitrarily select a
-		// different browser/CLI client from the clients map.
 		if _, attached := sh.clients[conn]; !attached {
 			resp = protocol.NewErrorResponse("lease acquisition requires attached streaming client")
 			break
@@ -419,100 +395,76 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		resp = protocol.NewErrorResponse(fmt.Sprintf("unknown command %q", req.Command))
 	}
 
-	// In attached streaming mode, do not echo RPC response back for CmdResize to avoid polluting stdout
-	if _, isAttached := sh.clients[conn]; isAttached && req.Command == protocol.CmdResize {
+	_, isAttached := sh.clients[conn]
+	if isAttached && req.Command == protocol.CmdResize {
+		skipResponse = true
+	}
+	sh.mu.Unlock()
+
+	if resizeRows > 0 && resizeCols > 0 {
+		_ = sh.termBackend.Resize(resizeRows, resizeCols)
+	}
+	if len(forwardWrite) > 0 {
+		_, _ = sh.termBackend.Write(forwardWrite)
+	}
+	if len(promptWrite) > 0 {
+		_, _ = sh.termBackend.Write(promptWrite)
+	}
+	if controlCmd != "" {
+		sh.mu.Lock()
+		sh.handleControlCommandLocked(controlCmd)
+		sh.mu.Unlock()
+	}
+	if skipResponse {
 		return
 	}
-
 	data, _ := json.Marshal(resp)
 	_, _ = conn.Write(append(data, '\n'))
 }
 
 func (sh *SessionHost) processAttachedInput(conn net.Conn, data []byte) {
 	sh.mu.Lock()
-	writes, commands, accepted := sh.processAttachedInputLocked(conn, data, false)
+	forward := sh.collectAttachedInputLocked(conn, data)
+	controlCmd := sh.pendingControlCommand
+	sh.pendingControlCommand = ""
 	sh.mu.Unlock()
-	if accepted {
-		sh.acknowledgeInput()
-	}
 
-	// Terminal I/O is deliberately outside SessionHost.mu. A provider can
-	// apply backpressure here while the detector concurrently calls back into
-	// SessionHost state.
-	for _, output := range writes {
-		_, _ = sh.termBackend.Write(output)
+	if len(forward) > 0 {
+		_, _ = sh.termBackend.Write(forward)
 	}
-	sh.mu.Lock()
-	for _, command := range commands {
-		sh.handleControlCommandLocked(command)
+	if controlCmd != "" {
+		sh.mu.Lock()
+		sh.handleControlCommandLocked(controlCmd)
+		sh.mu.Unlock()
 	}
-	sh.mu.Unlock()
 }
 
-func (sh *SessionHost) processExternalInput(data []byte) {
-	sh.mu.Lock()
-	writes, commands, accepted := sh.processAttachedInputLocked(nil, data, true)
-	sh.mu.Unlock()
-	if accepted {
-		sh.acknowledgeInput()
-	}
-
-	for _, output := range writes {
-		_, _ = sh.termBackend.Write(output)
-	}
-	sh.mu.Lock()
-	for _, command := range commands {
-		sh.handleControlCommandLocked(command)
-	}
-	sh.mu.Unlock()
-}
-
-func (sh *SessionHost) processAttachedInputLocked(conn net.Conn, data []byte, external bool) ([][]byte, []string, bool) {
-	var writes [][]byte
-	var commands []string
+func (sh *SessionHost) collectAttachedInputLocked(conn net.Conn, data []byte) []byte {
+	var forward []byte
 	// Only active writer (or first attached client) can send input to child process
-	if !external && sh.activeWriter != nil && sh.activeWriter != conn {
-		return nil, nil, false
+	if sh.activeWriter != nil && sh.activeWriter != conn {
+		return nil
 	}
-	if !external && sh.activeWriter == nil {
+	if sh.activeWriter == nil {
 		sh.activeWriter = conn
 	}
 
-	// Discard spurious browser terminal focus tracking and cursor report sequences
 	if bytes.Equal(data, []byte("\x1b[I")) || bytes.Equal(data, []byte("\x1b[O")) ||
 		bytes.Equal(data, []byte("[I")) || bytes.Equal(data, []byte("[O")) ||
 		bytes.Equal(data, []byte("\x1b[1;1R")) || bytes.Equal(data, []byte("[1;1R")) {
-		return nil, nil, false
+		return nil
 	}
 
 	for _, b := range data {
 		out := sh.prefixRouter.ProcessByte(b)
 		if len(out.ForwardBytes) > 0 {
-			writes = append(writes, append([]byte(nil), out.ForwardBytes...))
+			forward = append(forward, out.ForwardBytes...)
 		}
 		if out.Action == ActionControlCommand && out.ControlCmd != "" {
-			commands = append(commands, out.ControlCmd)
+			sh.pendingControlCommand = out.ControlCmd
 		}
 	}
-	return writes, commands, true
-}
-
-func (sh *SessionHost) acknowledgeInput() {
-	// The detector callback takes SessionHost.mu, so reset it before taking the
-	// host lock to avoid a detector-callback/input deadlock.
-	sh.detector.AcknowledgeInput()
-	sh.mu.Lock()
-	sh.session.State = registry.StateRunning
-	sh.session.AttentionReason = ""
-	sh.session.AttentionContext = ""
-	runtimeID := sh.session.RuntimeID
-	sh.mu.Unlock()
-	select {
-	case <-sh.stopChan:
-		return
-	default:
-	}
-	_ = registry.DefaultRegistry().UpdateAttention(runtimeID, registry.StateRunning, "", "", "", "", "")
+	return forward
 }
 
 func (sh *SessionHost) handleControlCommandLocked(cmd string) {
@@ -577,6 +529,8 @@ func (sh *SessionHost) waitProcess() {
 	err := sh.termBackend.Wait()
 
 	sh.mu.Lock()
+	defer sh.mu.Unlock()
+
 	_ = sh.termBackend.Close()
 
 	// Tear down IPC surfaces so attached clients disconnect cleanly instead of
@@ -590,15 +544,6 @@ func (sh *SessionHost) waitProcess() {
 	}
 	sh.clients = make(map[net.Conn]bool)
 	sh.activeWriter = nil
-	sh.mu.Unlock()
-
-	// Closing the terminal transport unblocks streamReader. Wait for it before
-	// publishing the terminal state, so no detector callback can outlive Wait
-	// and race with registry/test cleanup.
-	<-sh.streamDone
-
-	sh.mu.Lock()
-	defer sh.mu.Unlock()
 
 	state := registry.StateStopped
 	if err != nil {

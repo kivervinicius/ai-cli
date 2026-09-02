@@ -1,5 +1,66 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-02 — Notificações de atenção no padrão Untitled UI com Sonner
+
+- Refatorada a arquitetura de atenção do terminal para adotar a biblioteca externa `sonner` combinada com o design system do [Untitled UI (Notifications)](https://www.untitledui.com/react/components/notifications).
+- Criado o componente `AttentionNotificationCard`: card flutuante moderno com avatar/ícone circular temático (rose para aprovação, amber para perguntas, brand para atenção genérica), badges de projeto e status, descrição limpa do contexto, ações rápidas (`Sim (y)`, `Não (n)`), botão para focar o terminal e formulário compacto para respostas personalizadas.
+- Criado o gerenciador `AttentionNotificationManager`: integrado com `sonner` (`Toaster` posicionado em `top-right`), gerenciando o ciclo de vida dos alertas (abertura automática para runtimes em `QUESTION` ou `APPROVAL`, descarte após envio de resposta e auto-dismiss caso o runtime mude de estado ou seja interrompido).
+- `AttentionIntermediationBanner` mantido como fachada transparente para garantir retrocompatibilidade total com todos os pontos de consumo no shell do Nexus.
+- Corrigidas tipagens no `resources.ts` e escopo de referência no `AgentTerminal.tsx`.
+- Validação: 115 testes do frontend passando com sucesso (`vitest`), checagem de tipos (`tsc`) e lint (`eslint`) limpos, e `make build` concluído com bundle gerado e binário compilado.
+
+## 2026-09-02 — Reuso de tabelas visuais no CLI
+
+- Extraído `RunDataTable`, componente Charm genérico para listagens humanas,
+  com navegação e filtro compartilhados.
+- `usage` e `sessions` agora reutilizam essa superfície; provedores, perfis,
+  planos, agentes e projetos foram identificados como próxima migração direta.
+
+## 2026-09-02 — Tabela TUI de uso pesquisável
+
+- Adicionado Charm Bubbles ao conjunto TUI já baseado em Bubble Tea e Lip Gloss.
+- `nexus usage` abre uma tabela navegável e filtrável por perfil, conta,
+  provedor, grupo ou status; pressione `/` para buscar e `q` para sair.
+- A saída normal e `--json` foram preservadas para leitura rápida e automação.
+
+## 2026-09-02 — Persistência de modelo ao trocar de conta (independente de provider)
+
+- **Registry**: Adicionado campo `Model` à struct `RuntimeSession` com serialização JSON e persistência em `runtimes.json`.
+- **Launcher**: Propagado `opts.Model` para o `RuntimeSession` registrado para que o modelo ativo seja observável e recuperável em tempo de execução.
+- **Checkpoint**: Adicionado campo `SourceModel` à struct `WorkCheckpoint` (bump de `SchemaVersion` de 2 para 3). `CaptureWorkCheckpoint` agora captura o modelo ativo do runtime de origem. `FormatKickoffPrompt` inclui `Previous Model: <model>` para visibilidade em contexto cross-provider.
+- **Account Handoff (mesmo provider)**: `PerformAccountHandoff` agora captura `source.Model` e passa para `launcher.LaunchOptions.Model` ao iniciar a sessão na nova conta. O modelo é preservado 100% de forma transparente.
+- **Context Handoff (cross-provider)**: `PerformContextHandoff` agora avalia e resolve o modelo via `ResolveTargetModel()`. Se o provider de destino suportar a flag `--model` (validado via `ApplyLaunchConfiguration`), o modelo é transferido; se não suportar (ex: Cursor), faz fallback silencioso para o padrão do provider de destino.
+- **Driver**: Adicionado suporte explícito de modelo para `agy` no `ApplyLaunchConfiguration` (a flag `--model` do AGY agora é mapeada diretamente, alinhado com Codex, Claude, Gemini e OpenCode).
+- **Testes**: Adicionados `TestRuntimeSessionModelPersistence`, `TestResolveTargetModel`, `TestWorkCheckpointModelPersistenceAndPrompt` e atualizados os testes de driver e handoff.
+- **Gates**: Testes unitários de `driver`, `handoff`, `registry`, `launcher` e `nexus` passando; `make build` concluído com sucesso.
+
+## 2026-09-02 — Banner de atenção não bloqueante
+
+- Corrigido o layout do Workspace OS: cabeçalho e banner agora formam uma área
+  automática acima da área de trabalho, preservando a linha flexível para os
+  painéis e a barra inferior. O aviso não ocupa mais toda a altura disponível.
+- O banner foi reduzido a uma faixa compacta, responsiva e truncada, com
+  controles do design system e texto sanitizado antes da apresentação.
+- O detector deixou de tratar a dica padrão do terminal `? for shortcuts` como
+  uma pergunta; há teste de regressão específico.
+- Gates: `go test ./...`, `go vet ./...`, typecheck, lint, 111 testes web,
+  `git diff --check` e `make build` passaram. Binário instalado: beta.10.
+
+## 2026-09-02 — Centro de notificações transitórias
+
+- Eventos informativos (conclusão e erro) agora usam `InAppNotificationCenter`,
+  um componente próprio de toasts no canto inferior do dashboard.
+- Perguntas e aprovações permanecem exclusivamente no banner de
+  intermediação, pois exigem uma ação do usuário.
+- As notificações não participam da grade do Workspace, expiram após sete
+  segundos, podem ser descartadas e oferecem atalho para o terminal afetado.
+
+## 2026-09-02 — Visual de quota no CLI e dashboard
+
+`nexus usage` foi normalizado como tabela por grupo, com colunas de 5h/semanal,
+reset e disponibilidade. A superfície Web de recursos ganhou linhas de quota em
+grid responsivo, quebra segura e status por grupo para evitar encavalamento.
+
 ## 2026-09-02 — AGY credential isolation correction
 
 - AGY was launching each profile with a different `HOME`, but logs showed the
@@ -758,6 +819,11 @@ Linux runtime fully verified. Windows/macOS build-verified only (conditional lim
 - `bun run build`: Web bundle compiled in ~180ms.
 - `make build`: Nexus binary `v0.5.0-beta.4` compiled and installed.
 ## 2026-09-02 — Uso por modelo e resets explícitos
+
+O fluxo de sessão Web foi reforçado: o backend informa expiração/idle timeout,
+o frontend agenda rotação antes do vencimento e invalida a interface ao receber
+401. A tela de sessão expirada agora orienta como localizar o Bootstrap ou
+reiniciar `nexus web` para obter um novo link.
 
 O comando `nexus usage` deixou de exibir somente o bottleneck de 5 horas. A
 tabela agora lista cada grupo de modelo e suas janelas (5h e semanal), com o

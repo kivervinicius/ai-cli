@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { RuntimeSession, ProfileInfo } from '../types';
 import { api } from '../api';
 import { X, ArrowRightLeft } from 'lucide-react';
@@ -17,10 +16,9 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const { t } = useTranslation();
   const runtimeProvider = runtime.provider_id || runtime.provider || '';
   const runtimeProfile = runtime.profile_id || runtime.profile || '';
-  const availableProfiles = (profiles || []).filter(
+  const availableProfiles = profiles.filter(
     (p) => p.provider === runtimeProvider && p.name !== runtimeProfile
   );
   const [selectedProfile, setSelectedProfile] = useState<string>(
@@ -52,10 +50,10 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
           <div className="flex items-center space-x-2">
             <ArrowRightLeft className="w-5 h-5 text-sky-400" />
             <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider font-mono">
-              {t('handoffModal.title')}
+              Account Handoff
             </h3>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white" aria-label={t('common.closeDialog')}>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -66,17 +64,17 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
             <div className="mt-1"><span className="text-slate-500">Runtime:</span> {runtime.runtime_id}</div>
           </div>
           <p className="text-[11px] text-slate-400">
-            {t('handoffModal.desc')}
+            Switches active execution to another account while resuming the exact same conversation thread.
           </p>
         </div>
 
         {availableProfiles.length === 0 ? (
           <div className="p-4 bg-amber-950/40 border border-amber-800/60 rounded text-amber-300 text-xs font-mono">
-            {t('handoffModal.noOtherProfile')}
+            No alternative profiles found for provider {runtimeProvider}. Add more accounts via <code>nexus add {runtimeProvider}</code>.
           </div>
         ) : (
           <div className="space-y-2">
-            <label className="text-xs font-mono text-slate-400">{t('handoffModal.targetProfile')}</label>
+            <label className="text-xs font-mono text-slate-400">Target Profile:</label>
             <select
               value={selectedProfile}
               onChange={(e) => setSelectedProfile(e.target.value)}
@@ -102,14 +100,14 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
             onClick={onClose}
             className="px-3 py-1.5 rounded text-xs font-medium text-slate-400 hover:text-white"
           >
-            {t('common.cancel', 'Cancel')}
+            Cancel
           </button>
           <button
             disabled={loading || availableProfiles.length === 0}
             onClick={handleHandoff}
             className="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white rounded text-xs font-semibold shadow-md shadow-sky-900/30 transition"
           >
-            {loading ? t('handoffModal.executing') : t('handoffModal.execute')}
+            {loading ? 'Performing Handoff...' : 'Execute Handoff'}
           </button>
         </div>
       </div>

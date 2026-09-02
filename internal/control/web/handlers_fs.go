@@ -68,6 +68,21 @@ type FSInspectResponse struct {
 	Tech          []string `json:"tech"`
 }
 
+func expandHomePath(path string) string {
+	if path == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+		return path
+	}
+	if strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, strings.TrimPrefix(path, "~/"))
+		}
+	}
+	return path
+}
+
 // detectTech inspects the files in a directory and returns detected technologies/frameworks.
 func detectTech(dir string) []string {
 	tech := make([]string, 0)
@@ -156,60 +171,6 @@ func redactGitRemote(remote string) string {
 	return parsed.String()
 }
 
-// filesystemRoot returns the root of the volume containing path using the
-// current OS filepath semantics ("/" on Unix, e.g. "C:\\" on Windows).
-func filesystemRoot(path string) string {
-	abs, err := filepath.Abs(filepath.Clean(path))
-	if err != nil {
-		return string(os.PathSeparator)
-	}
-	volume := filepath.VolumeName(abs)
-	root := volume + string(os.PathSeparator)
-	return filepath.Clean(root)
-}
-
-func buildBreadcrumbs(absPath string) []string {
-	clean := filepath.Clean(absPath)
-	reversed := make([]string, 0, 8)
-	for {
-		reversed = append(reversed, clean)
-		parent := filepath.Dir(clean)
-		if parent == clean {
-			break
-		}
-		clean = parent
-	}
-	for left, right := 0, len(reversed)-1; left < right; left, right = left+1, right-1 {
-		reversed[left], reversed[right] = reversed[right], reversed[left]
-	}
-	return reversed
-}
-
-func defaultScanRoots(home, cwd string) []string {
-	roots := make([]string, 0, 8)
-	appendUnique := func(path string) {
-		path = strings.TrimSpace(path)
-		if path == "" {
-			return
-		}
-		clean := filepath.Clean(path)
-		for _, existing := range roots {
-			if existing == clean {
-				return
-			}
-		}
-		roots = append(roots, clean)
-	}
-	appendUnique(cwd)
-	if home != "" {
-		appendUnique(home)
-		for _, name := range []string{"projetos", "projects", "workspace", "dev", "src", "Desktop", "Documents"} {
-			appendUnique(filepath.Join(home, name))
-		}
-	}
-	return roots
-}
-
 // getOSBookmarks returns convenient OS bookmark paths.
 func getOSBookmarks() []FSBookmark {
 	var bookmarks []FSBookmark
@@ -239,14 +200,13 @@ func getOSBookmarks() []FSBookmark {
 		}
 	}
 
-	rootBase := homeDir
-	if rootBase == "" {
-		rootBase, _ = os.Getwd()
+	// Root /projetos if exists on host
+	if _, err := os.Stat("/projetos"); err == nil {
+		bookmarks = append(bookmarks, FSBookmark{Label: "/projetos", Path: "/projetos", Icon: "folder"})
 	}
-	if rootBase != "" {
-		root := filesystemRoot(rootBase)
-		bookmarks = append(bookmarks, FSBookmark{Label: "Filesystem Root", Path: root, Icon: "root"})
-	}
+
+	// Root filesystem
+	bookmarks = append(bookmarks, FSBookmark{Label: "Root (/)", Path: "/", Icon: "root"})
 
 	return bookmarks
 }
@@ -270,15 +230,13 @@ func (h *NexusHandler) handleFSBrowse(w http.ResponseWriter, r *http.Request) {
 		} else if home, err := os.UserHomeDir(); err == nil {
 			targetPath = home
 		} else {
-			targetPath = os.TempDir()
+			targetPath = "/"
 		}
 	}
 
 	// Clean and normalize target path
 	if strings.HasPrefix(targetPath, "~") {
-		if home, err := os.UserHomeDir(); err == nil {
-			targetPath = filepath.Join(home, strings.TrimPrefix(targetPath, "~"))
-		}
+		targetPath = expandHomePath(targetPath)
 	}
 
 	absPath, err := filepath.Abs(filepath.Clean(targetPath))
@@ -288,25 +246,6 @@ func (h *NexusHandler) handleFSBrowse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	info, err := os.Stat(absPath)
-	if err != nil {
-		// If requested path does not exist, fallback to CWD or Home directory
-		if wd, wdErr := os.Getwd(); wdErr == nil {
-			if wdInfo, sErr := os.Stat(wd); sErr == nil && wdInfo.IsDir() {
-				absPath = wd
-				info = wdInfo
-				err = nil
-			}
-		}
-		if err != nil {
-			if home, hErr := os.UserHomeDir(); hErr == nil {
-				if homeInfo, sErr := os.Stat(home); sErr == nil && homeInfo.IsDir() {
-					absPath = home
-					info = homeInfo
-					err = nil
-				}
-			}
-		}
-	}
 	if err != nil {
 		writeError(w, http.StatusNotFound, "path not found: "+err.Error())
 		return
@@ -380,9 +319,21 @@ func (h *NexusHandler) handleFSBrowse(w http.ResponseWriter, r *http.Request) {
 		parent = ""
 	}
 
-	// Build breadcrumbs from filepath parents so Windows drive roots and Unix
-	// roots are both represented with native absolute paths.
-	breadcrumbs := buildBreadcrumbs(absPath)
+	// Build breadcrumbs
+	cleanParts := strings.Split(filepath.ToSlash(absPath), "/")
+	var breadcrumbs []string
+	curr := ""
+	for _, p := range cleanParts {
+		if p == "" {
+			if curr == "" {
+				curr = "/"
+				breadcrumbs = append(breadcrumbs, "/")
+			}
+			continue
+		}
+		curr = filepath.Join(curr, p)
+		breadcrumbs = append(breadcrumbs, curr)
+	}
 
 	resp := FSBrowseResponse{
 		CurrentPath: absPath,
@@ -416,9 +367,7 @@ func (h *NexusHandler) handleFSInspect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if strings.HasPrefix(targetPath, "~") {
-		if home, err := os.UserHomeDir(); err == nil {
-			targetPath = filepath.Join(home, strings.TrimPrefix(targetPath, "~"))
-		}
+		targetPath = expandHomePath(targetPath)
 	}
 
 	absPath, err := filepath.Abs(filepath.Clean(targetPath))
@@ -490,17 +439,24 @@ func (h *NexusHandler) handleFSScan(w http.ResponseWriter, r *http.Request) {
 	customRoot := r.URL.Query().Get("root")
 	if customRoot != "" {
 		if strings.HasPrefix(customRoot, "~") {
-			if home, err := os.UserHomeDir(); err == nil {
-				customRoot = filepath.Join(home, strings.TrimPrefix(customRoot, "~"))
-			}
+			customRoot = expandHomePath(customRoot)
 		}
 		if abs, err := filepath.Abs(filepath.Clean(customRoot)); err == nil {
 			scanRoots = append(scanRoots, abs)
 		}
 	} else {
 		home, _ := os.UserHomeDir()
-		cwd, _ := os.Getwd()
-		scanRoots = defaultScanRoots(home, cwd)
+		if home != "" {
+			scanRoots = append(scanRoots, home)
+			scanRoots = append(scanRoots, filepath.Join(home, "projetos"))
+			scanRoots = append(scanRoots, filepath.Join(home, "workspace"))
+			scanRoots = append(scanRoots, filepath.Join(home, "dev"))
+			scanRoots = append(scanRoots, filepath.Join(home, "src"))
+			scanRoots = append(scanRoots, filepath.Join(home, "Desktop"))
+		}
+		if _, err := os.Stat("/projetos"); err == nil {
+			scanRoots = append(scanRoots, "/projetos")
+		}
 	}
 
 	var discovered []FSScanResult
@@ -590,9 +546,7 @@ func (h *NexusHandler) handleFSMkdir(w http.ResponseWriter, r *http.Request) {
 
 	targetPath := body.Path
 	if strings.HasPrefix(targetPath, "~") {
-		if home, err := os.UserHomeDir(); err == nil {
-			targetPath = filepath.Join(home, strings.TrimPrefix(targetPath, "~"))
-		}
+		targetPath = expandHomePath(targetPath)
 	}
 
 	absPath, err := filepath.Abs(filepath.Clean(targetPath))

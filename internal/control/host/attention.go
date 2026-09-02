@@ -17,7 +17,6 @@ var (
 
 	// Question / Input Needed Patterns
 	questionPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)\?\s+for\s+sh`),
 		regexp.MustCompile(`(?i)\[[yY]/[nN]\]|\([yY]/[nN]\)`),
 		regexp.MustCompile(`(?i)do you want to proceed\?`),
 		regexp.MustCompile(`(?i)por favor,?\s*revise o plano`),
@@ -73,19 +72,6 @@ type AttentionDetector struct {
 	lastTitle    string
 	lastUpdateAt time.Time
 	onAttention  func(reason, context, dynamicTitle string, state registry.RuntimeState)
-}
-
-// AcknowledgeInput starts a fresh detection window after the user answers a
-// prompt. Without this reset, the old prompt remains in the sliding buffer
-// and can be reported again when the provider emits unrelated output.
-func (d *AttentionDetector) AcknowledgeInput() {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.buffer.Reset()
-	d.lastState = registry.StateRunning
-	d.lastReason = ""
-	d.lastTitle = ""
-	d.lastUpdateAt = time.Time{}
 }
 
 // NewAttentionDetector creates an attention detector for a session.

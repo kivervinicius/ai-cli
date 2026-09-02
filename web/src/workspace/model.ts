@@ -2,11 +2,11 @@ export type WorkspaceDirection = 'horizontal' | 'vertical';
 
 export interface WorkspaceSurface {
   id: string;
-  /** Stable visual identity. `id` remains as a compatibility alias. */
+  /** Stable visual identity; id remains the compatibility identifier. */
   viewId?: string;
-  /** Pre-v2 identifier retained so live runtime events can address migrated views. */
+  /** Previous identifier retained for migration/addressing compatibility. */
   legacyId?: string;
-  /** Stable semantic identity used to focus an existing view instead of duplicating it. */
+  /** Stable semantic identity used to avoid duplicate logical Views. */
   logicalKey?: string;
   type: string;
   title: string;
@@ -17,7 +17,6 @@ export interface WorkspaceSurface {
   closable?: boolean;
   data?: Record<string, string>;
 }
-
 export interface WorkspaceStack {
   kind: 'stack';
   id: string;
@@ -39,43 +38,44 @@ export type WorkspaceNode = WorkspaceStack | WorkspaceSplit;
 export interface WorkspaceModel {
   version: 2;
   root: WorkspaceNode;
-  focusedStackId: string;
   maximizedSurfaceId?: string;
-  maximizedViewId?: string;
 }
 
 let idCounter = 0;
 const nextId = (prefix: string) => `${prefix}_${Date.now().toString(36)}_${(++idCounter).toString(36)}`;
 
-export function createStack(surface: WorkspaceSurface): WorkspaceStack {
-  const normalized = normalizeSurface(surface);
-  return { kind: 'stack', id: nextId('stack'), tabs: [normalized], activeId: normalized.viewId! };
+export function surfaceViewId(surface: WorkspaceSurface): string {
+  return surface.viewId || surface.id;
 }
 
-export function createWorkspace(surface: WorkspaceSurface): WorkspaceModel {
-  const stack = createStack(surface);
-  return { version: 2, root: stack, focusedStackId: stack.id };
+export function surfaceLogicalKey(surface: WorkspaceSurface): string {
+  return surface.logicalKey || surface.id;
 }
 
-export function createEmptyStack(): WorkspaceStack {
-  return { kind: 'stack', id: nextId('stack'), tabs: [], activeId: '' };
+export function isSurfaceMatch(surface: WorkspaceSurface, target: string): boolean {
+  return surface.id === target || surface.viewId === target || surface.legacyId === target || surface.logicalKey === target;
 }
 
 export function normalizeSurface(surface: WorkspaceSurface): WorkspaceSurface {
-  const viewId = surface.viewId || surface.id;
-  return { ...surface, id: viewId, viewId, legacyId: surface.legacyId || (surface.viewId && surface.viewId !== surface.id ? surface.id : undefined), logicalKey: surface.logicalKey || surface.id, closable: surface.closable ?? true };
+  return {
+    ...surface,
+    viewId: surface.viewId || surface.id,
+    logicalKey: surface.logicalKey || surface.id,
+    closable: surface.closable ?? true,
+  };
 }
 
-export function surfaceViewId(surface: WorkspaceSurface): string { return surface.viewId || surface.id; }
-export function surfaceLogicalKey(surface: WorkspaceSurface): string { return surface.logicalKey || surface.id; }
+export function createStack(surface: WorkspaceSurface): WorkspaceStack {
+  const normalized = normalizeSurface(surface);
+  return { kind: 'stack', id: nextId('stack'), tabs: [normalized], activeId: normalized.id };
+}
+
+export function createWorkspace(surface: WorkspaceSurface): WorkspaceModel {
+  return { version: 2, root: createStack(surface) };
+}
 
 export function clampRatio(ratio: number): number {
   return Math.min(0.8, Math.max(0.2, Number.isFinite(ratio) ? ratio : 0.5));
-}
-
-export function isSurfaceMatch(surface: WorkspaceSurface, targetId: string): boolean {
-  if (!targetId) return false;
-  return surface.id === targetId || surface.viewId === targetId || surface.legacyId === targetId || surface.logicalKey === targetId;
 }
 
 export function findStackContaining(node: WorkspaceNode, surfaceId: string): WorkspaceStack | null {
@@ -112,42 +112,35 @@ function replaceStack(node: WorkspaceNode, stackId: string, next: WorkspaceNode)
 export function setActiveSurface(model: WorkspaceModel, surfaceId: string): WorkspaceModel {
   const root = updateNode(model.root, (node) => {
     if (node.kind !== 'stack') return node;
-    const match = node.tabs.find((tab) => isSurfaceMatch(tab, surfaceId));
-    if (!match) return node;
-    return { ...node, activeId: match.id };
+    const found = node.tabs.find((tab) => isSurfaceMatch(tab, surfaceId));
+    if (!found) return node;
+    return { ...node, activeId: found.id };
   });
-  const stack = findStackContaining(root, surfaceId);
-  return { ...model, root, focusedStackId: stack?.id ?? model.focusedStackId };
+  return { ...model, root };
 }
 
 export function openSurface(model: WorkspaceModel, surface: WorkspaceSurface, targetStackId?: string): WorkspaceModel {
   const normalized = normalizeSurface(surface);
-  const existing = listSurfaces(model.root).find((candidate) =>
-    isSurfaceMatch(candidate, normalized.id) ||
-    Boolean(normalized.logicalKey && surfaceLogicalKey(candidate) === surfaceLogicalKey(normalized))
-  );
+  const existing = listSurfaces(model.root).find((candidate) => isSurfaceMatch(candidate, normalized.id) || surfaceLogicalKey(candidate) === surfaceLogicalKey(normalized));
   if (existing) return setActiveSurface(model, existing.id);
   const stacks = listStacks(model.root);
-  const target = (targetStackId && findStackById(model.root, targetStackId)) || findStackById(model.root, model.focusedStackId) || stacks[0];
-  if (!target) return createWorkspace(normalized);
+  const target = (targetStackId && findStackById(model.root, targetStackId)) || stacks[0];
+  if (!target) return createWorkspace(surface);
   const nextStack: WorkspaceStack = {
     ...target,
     tabs: [...target.tabs, normalized],
     activeId: normalized.id,
   };
-  return { ...model, root: replaceStack(model.root, target.id, nextStack), focusedStackId: target.id };
+  return { ...model, root: replaceStack(model.root, target.id, nextStack) };
 }
 
 function removeSurface(node: WorkspaceNode, surfaceId: string): { node: WorkspaceNode | null; removed?: WorkspaceSurface } {
   if (node.kind === 'stack') {
-    const removedIndex = node.tabs.findIndex((tab) => isSurfaceMatch(tab, surfaceId));
-    if (removedIndex === -1) return { node };
-    const removed = node.tabs[removedIndex];
-    if (removed.closable === false) return { node };
-    const tabs = node.tabs.filter((_, idx) => idx !== removedIndex);
+    const removed = node.tabs.find((tab) => isSurfaceMatch(tab, surfaceId));
+    if (!removed || removed.closable === false) return { node };
+    const tabs = node.tabs.filter((tab) => !isSurfaceMatch(tab, surfaceId));
     if (tabs.length === 0) return { node: null, removed };
-    const wasActive = isSurfaceMatch(removed, node.activeId);
-    const activeId = wasActive ? (tabs[Math.max(0, removedIndex - 1)]?.id ?? tabs[0].id) : node.activeId;
+    const activeId = node.activeId === surfaceId ? tabs[Math.max(0, node.tabs.findIndex((tab) => isSurfaceMatch(tab, surfaceId)) - 1)]?.id ?? tabs[0].id : node.activeId;
     return { node: { ...node, tabs, activeId }, removed };
   }
   const first = removeSurface(node.first, surfaceId);
@@ -170,7 +163,6 @@ export function closeSurface(model: WorkspaceModel, surfaceId: string): Workspac
     ...model,
     root: result.node,
     maximizedSurfaceId: model.maximizedSurfaceId === surfaceId ? undefined : model.maximizedSurfaceId,
-    maximizedViewId: model.maximizedViewId === surfaceId ? undefined : model.maximizedViewId,
   };
 }
 
@@ -183,7 +175,7 @@ export function splitWithSurface(
 ): WorkspaceModel {
   const source = findStackContaining(model.root, relativeSurfaceId) ?? listStacks(model.root)[0];
   if (!source) return createWorkspace(surface);
-  if (findStackContaining(model.root, surface.id)) return model;
+  if (listSurfaces(model.root).some((candidate) => candidate.id === surface.id)) return setActiveSurface(model, surface.logicalKey || surface.id);
   const newStack = createStack(surface);
   const split: WorkspaceSplit = {
     kind: 'split',
@@ -196,18 +188,10 @@ export function splitWithSurface(
   return { ...model, root: replaceStack(model.root, source.id, split) };
 }
 
-export function splitEmpty(model: WorkspaceModel, relativeSurfaceId: string, direction: WorkspaceDirection, before = false): WorkspaceModel {
-  const source = findStackContaining(model.root, relativeSurfaceId) ?? findStackById(model.root, model.focusedStackId);
-  if (!source) return model;
-  const empty = createEmptyStack();
-  const split: WorkspaceSplit = { kind: 'split', id: nextId('split'), direction, ratio: 0.5, first: before ? empty : source, second: before ? source : empty };
-  return { ...model, root: replaceStack(model.root, source.id, split), focusedStackId: empty.id };
-}
-
 export function moveSurface(model: WorkspaceModel, surfaceId: string, targetStackId: string): WorkspaceModel {
   const source = findStackContaining(model.root, surfaceId);
   const target = findStackById(model.root, targetStackId);
-  const surface = source?.tabs.find((tab) => tab.id === surfaceId);
+  const surface = source?.tabs.find((tab) => isSurfaceMatch(tab, surfaceId));
   if (!surface || !target || source?.id === target.id) return setActiveSurface(model, surfaceId);
   const removed = removeSurface(model.root, surfaceId);
   if (!removed.node) return model;
@@ -223,7 +207,7 @@ export function setSplitRatio(model: WorkspaceModel, splitId: string, ratio: num
 }
 
 export function toggleMaximize(model: WorkspaceModel, surfaceId: string): WorkspaceModel {
-  return { ...model, maximizedSurfaceId: model.maximizedSurfaceId === surfaceId ? undefined : surfaceId, maximizedViewId: model.maximizedViewId === surfaceId ? undefined : surfaceId };
+  return { ...model, maximizedSurfaceId: model.maximizedSurfaceId === surfaceId ? undefined : surfaceId };
 }
 
 export function updateSurface(
@@ -233,7 +217,7 @@ export function updateSurface(
 ): WorkspaceModel {
   const root = updateNode(model.root, (node) => {
     if (node.kind !== 'stack') return node;
-    const tabIdx = node.tabs.findIndex((tab) => tab.id === surfaceId || tab.legacyId === surfaceId || tab.logicalKey === surfaceId);
+    const tabIdx = node.tabs.findIndex((tab) => isSurfaceMatch(tab, surfaceId));
     if (tabIdx === -1) return node;
     const nextTabs = [...node.tabs];
     nextTabs[tabIdx] = { ...nextTabs[tabIdx], ...patch };

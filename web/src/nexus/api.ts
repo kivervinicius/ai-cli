@@ -1,7 +1,6 @@
 /* Nexus product API client (projects, agents, layouts, config). */
 
 import { Project, Agent, AgentDetail, RuntimeSession, AgentConfig, ConfigImpact } from '../types';
-import type { AutonomyContract } from '../types';
 
 export class NexusAPIError<TPayload = unknown> extends Error {
   readonly status: number;
@@ -29,6 +28,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
   const res = await fetch(path, { ...options, headers });
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('nexus:session-expired'));
     const errBody = await res.json().catch(() => ({ error: res.statusText }));
     const message = typeof errBody?.error === 'string' ? errBody.error : `HTTP ${res.status}`;
     throw new NexusAPIError(res.status, errBody, message);
@@ -45,6 +45,8 @@ export const nexus = {
     request<Project>(`/api/v1/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteProject: (id: string) => request<{ status: string }>(`/api/v1/projects/${id}`, { method: 'DELETE' }),
   getLayout: (projectId: string) => request<{ layout: string }>(`/api/v1/projects/${projectId}/layout`),
+  getContextReadiness: (projectId: string) => request<import('../types').ContextReadiness>(`/api/v1/projects/${projectId}/context`),
+  prepareContext: (projectId: string) => request<import('../types').ContextReadiness>(`/api/v1/projects/${projectId}/context/prepare`, { method: 'POST', body: '{}' }),
   saveLayout: (projectId: string, layout: string) =>
     request<{ status: string }>(`/api/v1/projects/${projectId}/layout`, {
       method: 'PUT',
@@ -68,6 +70,13 @@ export const nexus = {
     request<{ status: string }>(`/api/v1/agents/${id}/stop`, { method: 'POST', body: '{}' }),
   recoverAgent: (id: string) =>
     request<{ runtime: RuntimeSession }>(`/api/v1/agents/${id}/recover`, { method: 'POST', body: '{}' }),
+  askAgent: (id: string, prompt: string, startIfNeeded = false) =>
+    request<{ agent_id: string; runtime_id: string; started: boolean; accepted: boolean }>(`/api/v1/agents/${id}/ask`, {
+      method: 'POST',
+      body: JSON.stringify({ prompt, start_if_needed: startIfNeeded }),
+    }),
+  startProjectShell: (projectId: string) =>
+    request<{ runtime: RuntimeSession }>(`/api/v1/projects/${projectId}/shell`, { method: 'POST', body: '{}' }),
 
   // Agent config (Gate 3)
   getAgentConfig: (id: string) =>
@@ -144,6 +153,7 @@ export const nexus = {
       maestro_version: string;
       error?: string;
     }>('/api/v1/system/update', { method: 'POST', body: '{}' }),
+
   // OS Filesystem & Desktop Launchers
   browseFS: (path?: string) =>
     request<import('../types').FSBrowseResult>(
@@ -227,20 +237,17 @@ export const nexus = {
       method: 'POST',
       body: JSON.stringify({ package_id: packageId, phase_id: phaseId }),
     }),
-  runPlan: (planId: string, options?: { agentId?: string; contract?: AutonomyContract; autonomous?: boolean; approvedRevision?: number }) =>
+  runPlan: (planId: string, planRevision: number, agentId?: string, maxRetries?: number) =>
     request<import('../types').MissionRun>(`/api/v1/plans/${planId}/run`, {
       method: 'POST',
-      body: JSON.stringify({
-        agent_id: options?.agentId,
-        contract: options?.contract,
-        autonomous: options?.autonomous ?? true,
-        approved_revision: options?.approvedRevision,
-      }),
+      body: JSON.stringify({ agent_id: agentId, plan_revision: planRevision, max_retries: maxRetries, autonomous: true }),
     }),
   getRuns: () =>
     request<import('../types').MissionRun[]>('/api/v1/runs'),
   getRun: (runId: string) =>
     request<import('../types').MissionRun>(`/api/v1/runs/${runId}`),
+  getRunEvidence: (runId: string) =>
+    request<import('../types').FlowRunEvidence>(`/api/v1/runs/${runId}/evidence`),
   stepRun: (runId: string) =>
     request<{ run: import('../types').MissionRun; completed: boolean }>(`/api/v1/runs/${runId}/step`, { method: 'POST' }),
   pauseRun: (runId: string, reason?: string) =>
@@ -255,18 +262,10 @@ export const nexus = {
     request<import('../types').MissionRun>(`/api/v1/runs/${runId}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   getSchedules: (projectId: string) =>
     request<import('../types').MissionSchedule[]>(`/api/v1/schedules?project_id=${encodeURIComponent(projectId)}`),
-  schedulePlan: (planId: string, mode: 'AT' | 'AFTER_RUN' | 'WHEN_RESOURCES', options?: { scheduledFor?: string; afterRunId?: string; agentId?: string; contract?: AutonomyContract; approvedRevision?: number }) =>
+  schedulePlan: (planId: string, mode: 'AT' | 'AFTER_RUN' | 'WHEN_RESOURCES', options?: { scheduledFor?: string; afterRunId?: string; agentId?: string }) =>
     request<import('../types').MissionSchedule>('/api/v1/schedules', {
       method: 'POST',
-      body: JSON.stringify({
-        plan_id: planId,
-        mode,
-        scheduled_for: options?.scheduledFor,
-        after_run_id: options?.afterRunId,
-        agent_id: options?.agentId,
-        contract: options?.contract,
-        approved_revision: options?.approvedRevision,
-      }),
+      body: JSON.stringify({ plan_id: planId, mode, scheduled_for: options?.scheduledFor, after_run_id: options?.afterRunId, agent_id: options?.agentId }),
     }),
   cancelSchedule: (scheduleId: string) =>
     request<{ canceled: boolean }>('/api/v1/schedules', { method: 'POST', body: JSON.stringify({ cancel_id: scheduleId }) }),

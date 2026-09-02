@@ -3,7 +3,6 @@ import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { Shield, ShieldAlert, XSquare, Pencil, Check } from 'lucide-react';
 import { pushNotifications } from '../notifications/PushNotificationManager';
-import { frameString, parseTerminalFrame } from '../nexus/terminalProtocol';
 
 interface TerminalPaneProps {
   runtimeId: string;
@@ -53,22 +52,6 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         foreground: '#e2e8f0',
         cursor: '#38bdf8',
         selectionBackground: 'rgba(56, 189, 248, 0.3)',
-        black: '#0b0f14',
-        red: '#ff7b7b',
-        green: '#51cf9a',
-        yellow: '#f3bd67',
-        blue: '#62b4ff',
-        magenta: '#bba5ff',
-        cyan: '#65d6e7',
-        white: '#e6e9ef',
-        brightBlack: '#626c82',
-        brightRed: '#ff9b9b',
-        brightGreen: '#8ae6bd',
-        brightYellow: '#ffd58f',
-        brightBlue: '#9acbff',
-        brightMagenta: '#d6c7ff',
-        brightCyan: '#a0eef5',
-        brightWhite: '#ffffff',
       },
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       fontSize: 13,
@@ -80,7 +63,17 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(containerRef.current);
-    fitAddon.fit();
+
+    const safeFit = () => {
+      try {
+        if (containerRef.current && containerRef.current.clientWidth > 0 && containerRef.current.clientHeight > 0) {
+          fitAddon.fit();
+        }
+      } catch {
+        // Ignore fit measurement errors when dimensions are transiently undefined
+      }
+    };
+    safeFit();
 
     termRef.current = term;
     fitAddonRef.current = fitAddon;
@@ -93,43 +86,40 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
 
     ws.onopen = () => {
       setErrorMsg('');
-      fitAddon.fit();
+      safeFit();
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
       }
     };
 
     ws.onmessage = (event) => {
-      const frame = parseTerminalFrame(event.data);
-      if (frame.kind === 'output') {
-        term.write(frame.data);
-      } else if (frame.kind === 'protocol-error') {
-        console.error(`Terminal protocol error: ${frame.message}`);
-        setErrorMsg('Terminal protocol error');
-      } else {
-        const msg = frame.payload;
-        if (frame.type === 'lease') {
-          setRole(frameString(msg, 'role') === 'CONTROL' ? 'CONTROL' : 'VIEW_ONLY');
-        } else if (frame.type === 'title' && frameString(msg, 'data')) {
-          const data = frameString(msg, 'data')!;
-          setCustomTitle(data);
-          if (onUpdateTitle) onUpdateTitle(runtimeId, data);
-        } else if (frame.type === 'attention') {
-          const dynamicTitle = frameString(msg, 'dynamic_title');
-          if (dynamicTitle) {
-            setCustomTitle(dynamicTitle);
-            if (onUpdateTitle) onUpdateTitle(runtimeId, dynamicTitle);
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'output' && msg.data) {
+          term.write(msg.data);
+        } else if (msg.type === 'lease') {
+          setRole(msg.role === 'CONTROL' ? 'CONTROL' : 'VIEW_ONLY');
+        } else if (msg.type === 'title' && msg.data) {
+          setCustomTitle(msg.data);
+          if (onUpdateTitle) onUpdateTitle(runtimeId, msg.data);
+        } else if (msg.type === 'attention') {
+          if (msg.dynamic_title) {
+            setCustomTitle(msg.dynamic_title);
+            if (onUpdateTitle) onUpdateTitle(runtimeId, msg.dynamic_title);
           }
           pushNotifications.sendPush({
             runtimeId,
-            projectName: frameString(msg, 'project_name'),
-            reason: frameString(msg, 'attention_reason') || 'QUESTION',
-            context: frameString(msg, 'context') || frameString(msg, 'summary') || 'Atenção necessária no terminal',
-            dynamicTitle,
+            projectName: msg.project_name,
+            reason: msg.attention_reason || 'QUESTION',
+            context: msg.context || msg.summary || 'Atenção necessária no terminal',
+            dynamicTitle: msg.dynamic_title,
           });
-        } else if (frame.type === 'error') {
-          setErrorMsg(frameString(msg, 'data') || 'Terminal error');
+        } else if (msg.type === 'error') {
+          setErrorMsg(msg.data);
         }
+      } catch {
+        // Raw bytes fallback
+        term.write(event.data);
       }
     };
 
@@ -167,17 +157,14 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       }
     });
 
-    const handleWindowResize = () => fitAddon.fit();
-    const resizeObserver = new ResizeObserver(() => {
-      window.requestAnimationFrame(handleWindowResize);
-    });
-    resizeObserver.observe(containerRef.current);
+    const handleWindowResize = () => {
+      safeFit();
+    };
     window.addEventListener('resize', handleWindowResize);
 
     return () => {
       dataListener.dispose();
       resizeListener.dispose();
-      resizeObserver.disconnect();
       window.removeEventListener('resize', handleWindowResize);
       ws.close();
       term.dispose();
@@ -197,7 +184,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   };
 
   return (
-    <div className="nx-agent-terminal">
+    <div className="flex flex-col h-full bg-[#090d16] border border-slate-800 rounded-lg overflow-hidden shadow-xl">
       {/* Terminal Toolbar */}
       <div className="flex items-center justify-between px-3 py-2 bg-slate-900 border-b border-slate-800 text-xs font-mono select-none">
         <div className="flex items-center space-x-2">
@@ -284,7 +271,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       </div>
 
       {/* xterm container */}
-      <div className="nx-agent-terminal__xterm" ref={containerRef} />
+      <div className="flex-1 w-full p-2 overflow-hidden" ref={containerRef} />
     </div>
   );
 };

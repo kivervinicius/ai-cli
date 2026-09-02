@@ -84,27 +84,27 @@ export const BranchSwitcherModal: React.FC<BranchSwitcherModalProps> = ({
     <Dialog
       open={open}
       onClose={onClose}
-      title={`${t('git.switchBranch')} · ${project.name}`}
+      title={`${t('git.switchBranch', 'Alternar Branch Git')} · ${project.name}`}
     >
       <div className="nx-branch-switcher">
         {/* Current status bar */}
         <div className="nx-branch-status-row">
           <div className="nx-branch-current">
             <GitBranch size={14} className="nx-accent-icon" />
-            <span>{t('git.currentBranch')}:</span>
+            <span>{t('git.currentBranch', 'Branch atual')}:</span>
             <strong>{currentBranch}</strong>
           </div>
           {data && (
             <Badge tone={data.is_clean ? 'success' : 'warning'}>
               {data.is_clean
-                ? t('git.cleanTree')
-                : t('git.dirtyTree', { count: data.modified_count })}
+                ? t('git.cleanTree', '● Árvore limpa')
+                : t('git.dirtyTree', `● ${data.modified_count} alterações`)}
             </Badge>
           )}
         </div>
 
         {error && (
-          <InlineAlert tone="danger" title={t('git.error')}>
+          <InlineAlert tone="danger" title={t('git.error', 'Erro no Git')}>
             {error}
           </InlineAlert>
         )}
@@ -120,16 +120,16 @@ export const BranchSwitcherModal: React.FC<BranchSwitcherModalProps> = ({
           <SearchInput
             value={search}
             onChange={setSearch}
-            placeholder={t('git.searchBranches')}
+            placeholder={t('git.searchBranches', 'Filtrar ou buscar branches...')}
             autoFocus
           />
           <Button
             size="sm"
             tone={showCreate ? 'brand' : 'default'}
             onClick={() => setShowCreate(!showCreate)}
-            title={t('git.newBranch')}
+            title={t('git.newBranch', 'Criar nova branch')}
           >
-            <Plus size={13} /> {t('git.newBranchShort')}
+            <Plus size={13} /> {t('git.newBranchShort', 'Nova')}
           </Button>
           <Button
             size="sm"
@@ -145,7 +145,7 @@ export const BranchSwitcherModal: React.FC<BranchSwitcherModalProps> = ({
         {showCreate && (
           <div className="nx-branch-create-box">
             <label className="nx-field-label">
-              <span>{t('git.createAndCheckout')}</span>
+              <span>{t('git.createAndCheckout', 'Criar e alternar para nova branch:')}</span>
               <div className="nx-branch-create-input-group">
                 <Input
                   value={newBranchName}
@@ -160,7 +160,7 @@ export const BranchSwitcherModal: React.FC<BranchSwitcherModalProps> = ({
                   disabled={!newBranchName.trim() || switching}
                   onClick={() => handleCheckout(newBranchName, true)}
                 >
-                  {switching ? <Spinner label="" /> : t('git.create')}
+                  {switching ? <Spinner label="" /> : t('git.create', 'Criar')}
                 </Button>
               </div>
             </label>
@@ -171,18 +171,18 @@ export const BranchSwitcherModal: React.FC<BranchSwitcherModalProps> = ({
         <div className="nx-branch-list-container">
           {loading && !data ? (
             <div className="nx-branch-loading">
-              <Spinner label={t('git.loadingBranches')} />
+              <Spinner label={t('git.loadingBranches', 'Carregando branches...')} />
             </div>
           ) : filtered.length === 0 ? (
             <div className="nx-branch-empty">
-              <p>{t('git.noBranchesFound')}</p>
+              <p>{t('git.noBranchesFound', 'Nenhuma branch encontrada com esse filtro.')}</p>
               {search.trim() && !allBranches.includes(search.trim()) && (
                 <Button
                   size="sm"
                   tone="brand"
                   onClick={() => handleCheckout(search.trim(), true)}
                 >
-                  <Plus size={12} /> {t('git.createBranchNamed', { name: search.trim() })}
+                  <Plus size={12} /> {t('git.createBranchNamed', `Criar branch "${search.trim()}"`)}
                 </Button>
               )}
             </div>
@@ -206,7 +206,7 @@ export const BranchSwitcherModal: React.FC<BranchSwitcherModalProps> = ({
                       </div>
                       {isActive && (
                         <span className="nx-branch-active-badge">
-                          <Check size={12} /> {t('git.active')}
+                          <Check size={12} /> {t('git.active', 'Ativa')}
                         </span>
                       )}
                     </button>
@@ -221,13 +221,13 @@ export const BranchSwitcherModal: React.FC<BranchSwitcherModalProps> = ({
         {data && data.remote_branches && data.remote_branches.length > 0 && (
           <div className="nx-branch-footer-info">
             <small className="nx-muted-copy">
-              {t('git.remotesDetected', { count: data.remote_branches.length })}
+              {t('git.remotesDetected', `${data.remote_branches.length} branches remotas detectadas no Git origin.`)}
             </small>
           </div>
         )}
 
         <div className="nx-dialog-actions">
-          <Button onClick={onClose}>{t('common.closeDialog')}</Button>
+          <Button onClick={onClose}>{t('common.closeDialog', 'Fechar')}</Button>
         </div>
       </div>
     </Dialog>

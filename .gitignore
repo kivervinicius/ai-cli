@@ -26,6 +26,7 @@ history.jsonl
 *jetski*
 .env
 .env.*
+.superpowers/*
 
 # Local Profile and Storage Dirs
 profiles/

@@ -6,9 +6,11 @@
     "web:build": "env -u NODE_OPTIONS npm --prefix web run build",
     "web:test": "env -u NODE_OPTIONS npm --prefix web test",
     "web:typecheck": "env -u NODE_OPTIONS npm --prefix web run typecheck",
-    "web:dev": "nexus web --listen 0.0.0.0 --port 3000",
+    "web:dev": "nexus web --listen 127.0.0.1 --port 3000",
+    "dev": "nexus web --listen 127.0.0.1 --port 3000",
     "build": "make build",
     "test": "make test",
-    "release": "make release-local"
+    "release": "make release-local",
+    "release:beta": "node scripts/release-beta.mjs"
   }
 }

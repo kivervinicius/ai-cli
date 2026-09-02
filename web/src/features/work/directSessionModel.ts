@@ -10,7 +10,7 @@ const providerLabel = (provider: string) => provider.trim().replace(/(^|[-_\s])\
 
 export function buildDirectAgentName(prompt: string, provider: string): string {
   const label = providerLabel(provider || 'AI');
-  const cleaned = prompt.trim().replace(/\s+/g, ' ');
+  const cleaned = (prompt || '').trim().replace(/\s+/g, ' ');
   if (!cleaned) return `${label} · Direct Session`;
   const words = cleaned.split(' ');
   const short = words.slice(0, 3).join(' ');

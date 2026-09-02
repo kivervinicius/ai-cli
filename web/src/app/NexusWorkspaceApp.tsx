@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { initSession } from '../api';
-import { resolveSessionState, type BrowserSessionState } from './sessionModel';
+import { api, initSession, rotateSession, type BrowserSession } from '../api';
 import { setNexusCSRF, nexus } from '../nexus/api';
 import { Spinner } from '../design-system';
 import { ThemeProvider } from '../design-system';
 import { WorkspaceProvider, useWorkspace } from '../workspace/WorkspaceProvider';
+import { WorkspacePresentationProvider } from '../workspace/WorkspacePresentationProvider';
 import { WorkspaceRenderer } from '../workspace/WorkspaceRenderer';
 import { createWorkspace, type WorkspaceSurface } from '../workspace/model';
 import { serializeWorkspace } from '../workspace/state';
@@ -17,11 +17,11 @@ import { WelcomeModal } from './modals/WelcomeModal';
 import { MaestroControlModal } from './modals/MaestroControlModal';
 import { NexusShell } from './NexusShell';
 import { WorkspaceSurfaceHost } from './WorkspaceSurfaceHost';
-import { agentConfigSurface, agentTerminalSurface, projectSurface } from './surfaces';
+import { agentConfigSurface, agentTerminalSurface, flowRunSurface, projectShellSurface, projectSurface } from './surfaces';
 import { agentForRuntime, terminalSurfaceIDForRuntime } from './runtimeAgentMapping';
 import { resolveProjectSelection } from './projectSelection';
 import { useNexusData } from './useNexusData';
-import type { Agent, Project } from '../types';
+import type { Agent, MissionRun, Project } from '../types';
 import { useTranslation } from 'react-i18next';
 
 const selectedProjectKey = 'iapro:nexus:selected-project:v1';
@@ -29,16 +29,38 @@ const tourKey = 'iapro:nexus:tour-complete:v1';
 
 export const NexusWorkspaceApp: React.FC<{ popoutSurface?: WorkspaceSurface }> = ({ popoutSurface }) => {
   const { t } = useTranslation();
-  const [sessionState, setSessionState] = useState<BrowserSessionState>('loading');
+  const [sessionReady, setSessionReady] = useState(false);
+  const [authenticated, setAuthenticated] = useState(true);
 
   useEffect(() => {
-    initSession().then((session) => {
-      if (session.csrf_token) setNexusCSRF(session.csrf_token);
-      setSessionState(resolveSessionState(session));
-    });
+    let rotationTimer: ReturnType<typeof window.setTimeout> | undefined;
+    const scheduleRotation = (session: BrowserSession) => {
+      if (!session.expires_at) return;
+      const expiresAt = Date.parse(session.expires_at);
+      if (!Number.isFinite(expiresAt)) return;
+      const delay = Math.max(30_000, expiresAt - Date.now() - 30 * 60 * 1000);
+      rotationTimer = window.setTimeout(async () => {
+        const rotated = await rotateSession();
+        setAuthenticated(rotated.authenticated);
+        if (rotated.authenticated) scheduleRotation(rotated);
+      }, delay);
+    };
+    const onExpired = () => setAuthenticated(false);
+    window.addEventListener('nexus:session-expired', onExpired);
+    initSession()
+      .then((session) => {
+        setAuthenticated(session.authenticated);
+        if (session.csrf_token) setNexusCSRF(session.csrf_token);
+        if (session.authenticated) scheduleRotation(session);
+      })
+      .finally(() => setSessionReady(true));
+    return () => {
+      window.removeEventListener('nexus:session-expired', onExpired);
+      if (rotationTimer) window.clearTimeout(rotationTimer);
+    };
   }, []);
 
-  if (sessionState === 'loading') {
+  if (!sessionReady) {
     return (
       <div className="nx-app-loading">
         <Spinner label={t('app.starting')} />
@@ -46,14 +68,65 @@ export const NexusWorkspaceApp: React.FC<{ popoutSurface?: WorkspaceSurface }> =
     );
   }
 
-  if (sessionState === 'unauthenticated') {
+  if (!authenticated) {
     return (
-      <div className="nx-app-loading" role="alert">
-        <div>
-          <strong>Nexus session is not authenticated.</strong>
-          <p>Open Nexus again from the local launcher/bootstrap URL to establish a new browser session.</p>
+      <ThemeProvider>
+        <div className="nx-app-unauthorized" style={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px',
+          background: 'var(--color-background, #080a0f)',
+          color: 'var(--color-text, #f8fafc)',
+          textAlign: 'center',
+          fontFamily: 'system-ui, -apple-system, sans-serif'
+        }}>
+          <div style={{
+            maxWidth: '460px',
+            background: 'var(--color-surface, #10141e)',
+            border: '1px solid var(--color-border, #1e293b)',
+            borderRadius: '12px',
+            padding: '32px',
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)'
+          }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '50%',
+              background: 'rgba(56, 189, 248, 0.1)',
+              color: '#38bdf8',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px',
+              fontSize: '20px',
+              fontWeight: 700
+            }}>N</div>
+            <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Sessão Expirada ou Não Autenticada</h2>
+            <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: 1.5, marginBottom: '24px' }}>
+              O servidor Nexus foi reiniciado ou a sessão anterior expirou. No terminal que iniciou o Nexus, copie o novo link de <strong>Bootstrap</strong>. Se o link não estiver mais disponível, encerre o servidor com <code>Ctrl+C</code> e execute <code>nexus web</code> novamente; depois abra a URL exibida.
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              style={{
+                background: '#38bdf8',
+                color: '#090d16',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '10px 20px',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              Recarregar Aplicação
+            </button>
+          </div>
         </div>
-      </div>
+      </ThemeProvider>
     );
   }
 
@@ -109,13 +182,21 @@ const NexusWorkspaceSession: React.FC<{ popoutSurface?: WorkspaceSurface }> = ({
       projectId={selected.id}
       initialLayout={initial}
       saveLayout={popoutSurface ? undefined : (next) => nexus.saveLayout(selected.id, next)}
+      onSurfaceClosed={async (surface) => {
+        if (surface.type === 'project-shell' && surface.data?.runtimeId) {
+          await api.stopRuntime(surface.data.runtimeId).catch(() => undefined);
+          await data.refreshGlobal().catch(() => undefined);
+        }
+      }}
     >
-      <WorkspaceCoordinator
-        project={selected}
-        setProject={(project) => setSelectedId(project.id)}
-        data={data}
-        popout={Boolean(popoutSurface)}
-      />
+      <WorkspacePresentationProvider projectId={selected.id}>
+        <WorkspaceCoordinator
+          project={selected}
+          setProject={(project) => setSelectedId(project.id)}
+          data={data}
+          popout={Boolean(popoutSurface)}
+        />
+      </WorkspacePresentationProvider>
     </WorkspaceProvider>
   );
 };
@@ -133,11 +214,35 @@ const WorkspaceCoordinator: React.FC<{
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [maestroControlOpen, setMaestroControlOpen] = useState(false);
   const [tour, setTour] = useState(false);
+  const [shellError, setShellError] = useState('');
+  const [flowRuns, setFlowRuns] = useState<MissionRun[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    void nexus.getRuns()
+      .then((runs) => {
+        if (!mounted) return;
+        const active = runs.filter((run) => !['COMPLETED_VERIFIED', 'CANCELED_BY_USER', 'FAILED_BUDGET_EXCEEDED'].includes(run.state));
+        setFlowRuns(active);
+      })
+      .catch(() => mounted && setFlowRuns([]));
+    return () => { mounted = false; };
+  }, [project.id, palette]);
 
   const open = (surface: WorkspaceSurface) => workspace.open(surface);
   const openKind = (kind: string) => open(projectSurface(project.id, kind as any));
   const terminal = (agent: Agent) => open(agentTerminalSurface(agent.id, agent.name));
   const config = (agent: Agent) => open(agentConfigSurface(agent.id, agent.name));
+  const shell = async () => {
+    setShellError('');
+    try {
+      const result = await nexus.startProjectShell(project.id);
+      open(projectShellSurface(project.id, result.runtime.runtime_id, result.runtime.title || 'Project Shell'));
+      await data.refreshGlobal().catch(() => undefined);
+    } catch (error) {
+      setShellError(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   const popoutSurface = (surface: WorkspaceSurface) => {
     const encoded = encodeURIComponent(
@@ -150,8 +255,10 @@ const WorkspaceCoordinator: React.FC<{
     () => [
       { id: 'projects', label: t('commands.open', { name: t('projectManager.desktopsTitle') }), group: t('commands.project'), keywords: ['workspace', 'desktops', 'hub'], run: () => openKind('projects') },
       { id: 'overview', label: t('commands.open', { name: t('nav.overview') }), group: t('commands.project'), keywords: ['home'], run: () => openKind('overview') },
-      { id: 'work', label: t('commands.open', { name: t('nav.work') }), group: t('commands.project'), keywords: ['prompt', 'intelligence', 'goal'], run: () => openKind('work') },
-      { id: 'plan', label: t('commands.open', { name: t('nav.missions') }), group: t('commands.project'), keywords: ['mission', 'workplan', 'tasks'], run: () => openKind('missions') },
+      { id: 'project-shell', label: 'New Project Shell', group: t('commands.project'), keywords: ['shell', 'terminal', 'bash', 'powershell'], run: () => void shell() },
+      { id: 'new-ai-session', label: 'New AI Session', group: t('commands.project'), keywords: ['agent', 'session', 'direct', 'create'], run: () => { openKind('work'); window.dispatchEvent(new CustomEvent('nexus:new-ai-session')); } },
+      { id: 'work', label: 'Open Composer', group: t('commands.project'), keywords: ['composer', 'prompt', 'goal', 'plan'], run: () => openKind('work') },
+      { id: 'plan', label: 'Open Flow Runs', group: t('commands.project'), keywords: ['flow', 'mission', 'workplan', 'tasks'], run: () => openKind('missions') },
       { id: 'agents', label: t('commands.open', { name: t('nav.agents') }), group: t('commands.project'), keywords: ['fleet', 'workers'], run: () => openKind('agents') },
       { id: 'resources', label: t('commands.open', { name: t('nav.resources') }), group: 'Nexus', keywords: ['quota', 'provider', 'accounts'], run: () => openKind('resources') },
       { id: 'maestro', label: t('commands.open', { name: 'Maestro' }), group: 'Nexus', keywords: ['skills', 'process', 'verification'], run: () => openKind('maestro') },
@@ -161,6 +268,13 @@ const WorkspaceCoordinator: React.FC<{
       { id: 'settings', label: t('commands.open', { name: t('nav.settings') }), group: 'Nexus', keywords: ['theme', 'accessibility'], run: () => openKind('settings') },
       { id: 'runtime', label: t('commands.open', { name: t('nav.runtimes') }), group: t('commands.advanced'), keywords: ['runtime', 'legacy'], run: () => openKind('legacy-runtimes') },
       { id: 'providers', label: t('commands.open', { name: t('nav.providers') }), group: t('commands.advanced'), keywords: ['provider'], run: () => openKind('legacy-providers') },
+      ...flowRuns.map((run) => ({
+        id: `flow-run-${run.id}`,
+        label: `Flow Run · ${run.id.slice(-6)}`,
+        group: t('commands.project'),
+        keywords: ['flow', 'run', 'mission', run.state],
+        run: () => open(flowRunSurface(run.id, `Flow Run · ${run.id.slice(-6)}`)),
+      })),
       ...data.agents.flatMap((agent) => [
         { id: `terminal-${agent.id}`, label: t('commands.open', { name: `${agent.name} terminal` }), group: t('nav.agents'), keywords: ['terminal', agent.role], run: () => terminal(agent) },
         { id: `config-${agent.id}`, label: t('commands.configure', { name: agent.name }), group: t('nav.agents'), keywords: ['settings', agent.role], run: () => config(agent) },
@@ -168,7 +282,7 @@ const WorkspaceCoordinator: React.FC<{
       { id: 'welcome', label: t('welcome.title'), group: t('commands.help'), keywords: ['guide', 'help', 'onboarding'], run: () => setWelcomeOpen(true) },
       { id: 'tour', label: t('commands.tour'), group: t('commands.help'), keywords: ['help', 'onboarding'], run: () => setTour(true) },
     ],
-    [project.id, data.agents, t, i18n.language]
+    [project.id, data.agents, flowRuns, t, i18n.language]
   );
 
   // Global Keyboard Shortcuts (Ctrl+K = Palette, Ctrl+P = Project Manager surface)
@@ -287,6 +401,7 @@ const WorkspaceCoordinator: React.FC<{
         onSettings={() => openKind('settings')}
         onFocusRuntime={handleFocusRuntime}
       >
+        {shellError && <div className="nx-workspace-global-error" role="alert">{shellError}</div>}
         {renderer}
       </NexusShell>
 

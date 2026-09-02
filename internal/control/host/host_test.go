@@ -10,19 +10,7 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
-	"github.com/kivervinicius/ai-cli/internal/testutil/fakeagent"
 )
-
-func TestFakeAgentProcess(t *testing.T) {
-	if os.Getenv("NEXUS_FAKE_AGENT") != "1" {
-		return
-	}
-	fakeagent.Run(os.Stdin, os.Stdout)
-}
-
-func testAgentBinary() string { return os.Args[0] }
-func testAgentArgs() []string { return []string{"-test.run=^TestFakeAgentProcess$"} }
-func testAgentEnv() []string  { return append(os.Environ(), "NEXUS_FAKE_AGENT=1") }
 
 func TestMain(m *testing.M) {
 	testDir, err := os.MkdirTemp("", "ai-control-host-test-*")
@@ -112,9 +100,9 @@ func TestSessionHostLifecycle(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  testAgentBinary(),
-		Args:    testAgentArgs(),
-		Env:     testAgentEnv(),
+		Binary:  "cat",
+		Args:    []string{},
+		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
 	if err != nil {
@@ -165,9 +153,9 @@ func TestSessionHost_CmdInputNoDeadlock(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  testAgentBinary(),
-		Args:    testAgentArgs(),
-		Env:     testAgentEnv(),
+		Binary:  "cat",
+		Args:    []string{},
+		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
 	if err != nil {
@@ -217,9 +205,9 @@ func TestSessionHost_SlowObserverDoesNotBlockWriter(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  testAgentBinary(),
-		Args:    testAgentArgs(),
-		Env:     testAgentEnv(),
+		Binary:  "cat",
+		Args:    []string{},
+		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
 	if err != nil {
@@ -291,9 +279,9 @@ func TestSessionHost_ListenerFailureTerminatesChild(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  testAgentBinary(),
-		Args:    testAgentArgs(),
-		Env:     testAgentEnv(),
+		Binary:  "cat",
+		Args:    []string{},
+		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
 	if err != nil {
@@ -334,9 +322,9 @@ func TestSessionHost_ExplicitLeaseAcquireRelease(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  testAgentBinary(),
-		Args:    testAgentArgs(),
-		Env:     testAgentEnv(),
+		Binary:  "cat",
+		Args:    []string{},
+		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
 	if err != nil {
@@ -400,9 +388,9 @@ func TestSessionHost_RejectsIncompatibleProtocolVersion(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  testAgentBinary(),
-		Args:    testAgentArgs(),
-		Env:     testAgentEnv(),
+		Binary:  "cat",
+		Args:    []string{},
+		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
 	if err != nil {
@@ -444,4 +432,31 @@ func TestSessionHost_RejectsIncompatibleProtocolVersion(t *testing.T) {
 	if resp.Error != "ERROR_PROTOCOL_VERSION" {
 		t.Fatalf("expected ERROR_PROTOCOL_VERSION, got %q", resp.Error)
 	}
+}
+
+func TestSessionHost_SubmitPromptBypassesSlashRouterWithoutStealingWriterLease(t *testing.T) {
+	runtimeID := "rt-submit-prompt-test"
+	sess := registry.RuntimeSession{RuntimeID: runtimeID, ProviderID: "test", ProfileID: "default", Workspace: os.TempDir(), State: registry.StateStarting, ControlLevel: registry.ControlLevelTerminal}
+	sh, err := NewSessionHost(Config{Session: sess, Binary: "cat", Env: os.Environ(), Cwd: os.TempDir()})
+	if err != nil { t.Fatalf("failed to create SessionHost: %v", err) }
+	if err := sh.Start(); err != nil { t.Fatalf("failed to start SessionHost: %v", err) }
+	defer sh.Stop()
+	time.Sleep(100 * time.Millisecond)
+
+	writer, err := protocol.NewClient(runtimeID)
+	if err != nil { t.Fatalf("writer connect: %v", err) }
+	defer writer.Close()
+	if _, err := writer.Send(protocol.CmdAttach, nil); err != nil { t.Fatalf("attach writer: %v", err) }
+	_ = writer.ClearDeadline()
+
+	submitter, err := protocol.NewClient(runtimeID)
+	if err != nil { t.Fatalf("submitter connect: %v", err) }
+	defer submitter.Close()
+	if err := submitter.SubmitPrompt("/ai status should reach provider literally"); err != nil { t.Fatalf("SubmitPrompt: %v", err) }
+
+	_ = writer.RawConn().SetReadDeadline(time.Now().Add(2 * time.Second))
+	buf := make([]byte, 2048)
+	n, err := writer.RawConn().Read(buf)
+	if err != nil { t.Fatalf("read submitted prompt echo: %v", err) }
+	if !strings.Contains(string(buf[:n]), "/ai status should reach provider literally") { t.Fatalf("prompt was intercepted or lost, got %q", string(buf[:n])) }
 }

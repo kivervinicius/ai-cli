@@ -7,15 +7,18 @@ import (
 )
 
 type stubProvider struct {
-	analysis *IntentAnalysis
-	unknowns []AmbiguityItem
-	outline  []WorkPackageOutline
-	err      error
+	analysis        *IntentAnalysis
+	unknowns        []AmbiguityItem
+	outline         []WorkPackageOutline
+	err             error
+	analyzeContext  map[string]any
+	generateContext map[string]any
 }
 
 func (s *stubProvider) Name() string                   { return "stub" }
 func (s *stubProvider) Available(context.Context) bool { return s.err == nil }
-func (s *stubProvider) AnalyzeIntent(context.Context, string, map[string]any) (*IntentAnalysis, error) {
+func (s *stubProvider) AnalyzeIntent(_ context.Context, _ string, contextData map[string]any) (*IntentAnalysis, error) {
+	s.analyzeContext = contextData
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -27,7 +30,8 @@ func (s *stubProvider) EvaluateAmbiguities(context.Context, *IntentAnalysis) ([]
 	}
 	return s.unknowns, nil
 }
-func (s *stubProvider) GeneratePlanOutline(context.Context, *IntentAnalysis, map[string]string) ([]WorkPackageOutline, error) {
+func (s *stubProvider) GeneratePlanOutline(_ context.Context, _ *IntentAnalysis, _ map[string]string, contextData map[string]any) ([]WorkPackageOutline, error) {
+	s.generateContext = contextData
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -102,5 +106,24 @@ func TestNexusEngine_CompilePromptDoesNotRequireProvider(t *testing.T) {
 	}
 	if res.EstimatedTokens <= 0 {
 		t.Errorf("expected positive token estimate, got %d", res.EstimatedTokens)
+	}
+}
+
+func TestNexusEnginePassesBoundedContextToAnalyzeAndPlan(t *testing.T) {
+	provider := &stubProvider{analysis: &IntentAnalysis{Intent: "ship", Scope: "project"}, outline: []WorkPackageOutline{{Title: "Build", Goal: "ship"}}}
+	contextData := map[string]any{"project_context": map[string]any{"branch": "main", "head": "abc"}}
+	engine := NewNexusEngine(provider).WithContextData(contextData)
+	intent, _, err := engine.Analyze(context.Background(), "ship", "project-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider.analyzeContext["project_id"] != "project-1" || provider.analyzeContext["project_context"] == nil {
+		t.Fatalf("analysis context missing: %#v", provider.analyzeContext)
+	}
+	if _, err := engine.GeneratePlan(context.Background(), intent, nil); err != nil {
+		t.Fatal(err)
+	}
+	if provider.generateContext["project_context"] == nil {
+		t.Fatalf("plan generation context missing: %#v", provider.generateContext)
 	}
 }

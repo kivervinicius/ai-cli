@@ -1,5 +1,3 @@
 @import "tailwindcss";
 @import "xterm/css/xterm.css";
 @import "./app/workspace-os.css";
-@import "./app/attention-layout.css";
-@import "./features/work/plan-builder.css";

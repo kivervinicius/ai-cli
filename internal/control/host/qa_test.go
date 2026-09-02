@@ -24,9 +24,9 @@ func TestQA_RapidAttachDetachSpam(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  testAgentBinary(),
-		Args:    testAgentArgs(),
-		Env:     testAgentEnv(),
+		Binary:  "cat",
+		Args:    []string{},
+		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
 	if err != nil {
@@ -87,9 +87,9 @@ func TestQA_TwoWritersLeaseHandover(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  testAgentBinary(),
-		Args:    testAgentArgs(),
-		Env:     testAgentEnv(),
+		Binary:  "cat",
+		Args:    []string{},
+		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
 	if err != nil {
@@ -158,9 +158,9 @@ func TestQA_LargeThroughputStreaming(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  testAgentBinary(),
-		Args:    testAgentArgs(),
-		Env:     testAgentEnv(),
+		Binary:  "cat",
+		Args:    []string{},
+		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
 	if err != nil {

@@ -18,6 +18,7 @@ const (
 	CmdDetach          CommandType = "detach"
 	CmdResize          CommandType = "resize"
 	CmdInput           CommandType = "input"
+	CmdSubmitPrompt    CommandType = "submit_prompt"
 	CmdStop            CommandType = "stop"
 	CmdTerminate       CommandType = "terminate"
 	CmdHandoff         CommandType = "handoff"
@@ -59,6 +60,13 @@ type ResizePayload struct {
 // InputPayload contains raw terminal input bytes.
 type InputPayload struct {
 	Data string `json:"data"` // Base64 or plain string
+}
+
+// SubmitPromptPayload is a high-level prompt for an existing supervised runtime.
+// Unlike CmdInput it does not participate in the interactive single-writer lease
+// and is forwarded literally, including a leading slash.
+type SubmitPromptPayload struct {
+	Prompt string `json:"prompt"`
 }
 
 // SlashPayload contains an intercepted slash command.

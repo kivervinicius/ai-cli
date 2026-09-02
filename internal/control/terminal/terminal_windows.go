@@ -88,16 +88,15 @@ type processInformation struct {
 }
 
 type windowsBackend struct {
-	mu          sync.Mutex
-	cmd         *exec.Cmd
-	inPipe      io.WriteCloser
-	rPipe       io.ReadCloser
-	hProcess    uintptr
-	pid         int
-	hPC         uintptr
-	isConPTY    bool
-	mechanism   string
-	processDone chan struct{}
+	mu        sync.Mutex
+	cmd       *exec.Cmd
+	inPipe    io.WriteCloser
+	rPipe     io.ReadCloser
+	hProcess  uintptr
+	pid       int
+	hPC       uintptr
+	isConPTY  bool
+	mechanism string
 }
 
 func newPlatformBackend() Backend {
@@ -267,36 +266,13 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 	b.hPC = hPC
 	b.isConPTY = true
 	b.mechanism = "ConPTY (CreatePseudoConsole)"
-	b.processDone = make(chan struct{})
 
 	// exec.Cmd must not try to manage the child itself on Windows.
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	cmd.Process = &os.Process{Pid: b.pid}
-	go b.monitorProcess()
 	return nil
-}
-
-// monitorProcess closes the ConPTY output transport as soon as the child exits.
-// A Read on the pipe is otherwise allowed to block forever, even though the
-// process handle has already become signalled.
-func (b *windowsBackend) monitorProcess() {
-	b.mu.Lock()
-	h := b.hProcess
-	done := b.processDone
-	b.mu.Unlock()
-	if h == 0 || done == nil {
-		return
-	}
-	_, _, _ = procWaitForSingleObject.Call(h, ^uintptr(0))
-	b.mu.Lock()
-	if b.rPipe != nil {
-		_ = b.rPipe.Close()
-		b.rPipe = nil
-	}
-	b.mu.Unlock()
-	close(done)
 }
 
 func (b *windowsBackend) Read(p []byte) (int, error) {
@@ -374,6 +350,12 @@ func (b *windowsBackend) Wait() error {
 		return nil
 	}
 	_, _, _ = procWaitForSingleObject.Call(h, ^uintptr(0)) // INFINITE
+	b.mu.Lock()
+	if b.rPipe != nil {
+		_ = b.rPipe.Close()
+		b.rPipe = nil
+	}
+	b.mu.Unlock()
 	var code uint32
 	_, _, _ = procGetExitCodeProcess.Call(h, uintptr(unsafe.Pointer(&code)))
 	if code == stillActive {

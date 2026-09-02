@@ -1,6 +1,36 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## Tabela TUI de uso — 2026-09-02
+
+`nexus usage` usa a tabela navegável do Charm Bubbles. O filtro cobre
+identidade e grupo de modelo; há teste unitário para ambas as buscas.
+
+## Banner de atenção — 2026-09-02
+
+O banner de intermediação não participa mais da linha expansível da grade do
+Workspace OS. Ele é exibido como uma faixa compacta sob o cabeçalho, com
+truncamento, controles padronizados e quebra responsiva. A heurística ignora
+`? for shortcuts`, evitando o aviso falso visto no terminal.
+
+Validação: `go test ./...`, `go vet ./...`, `yarn --cwd web typecheck`,
+`yarn --cwd web lint`, `yarn --cwd web test` (31 arquivos/111 testes),
+`git diff --check` e `make build` — todos PASS.
+
+## Notificações transitórias — 2026-09-02
+
+`TASK_COMPLETED` e `ERROR` são convertidos em toasts próprios, enquanto
+`QUESTION` e `APPROVAL` continuam no componente de resposta. O modelo possui
+cobertura para conclusão e exclusão de eventos interativos.
+
 ## Uso/quota — 2026-09-02
+
+O fluxo de sessão Web mantém rotação automática antes da expiração absoluta,
+propaga novo CSRF e orienta a recuperação via novo Bootstrap quando a sessão
+expira. Testes Go e frontend passaram.
+
+CLI e dashboard de recursos foram verificados com tabela/grid por modelo,
+layout responsivo e status independente por grupo. Typecheck, lint, 31 arquivos
+de testes (111 testes), `make build` e `git diff --check` passaram.
 
 `nexus usage` agora preserva a capacidade por grupo de modelo e por janela,
 exibindo percentual restante e reset 5h/semanal. A validação passou em

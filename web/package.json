@@ -3,9 +3,9 @@
   "version": "0.4.0",
   "type": "module",
   "scripts": {
-    "typecheck": "bun x --no-install tsc --noEmit",
-    "lint": "bun x --no-install eslint src",
-    "test": "bun x --no-install vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run",
     "build:css": "node node_modules/@tailwindcss/cli/dist/index.mjs -i src/index.css -o dist/bundle.css --minify",
     "build:js": "node scripts/build.mjs",
     "build": "node scripts/build.mjs"
@@ -17,13 +17,13 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-i18next": "^17.0.12",
+    "sonner": "^2.0.8",
     "xterm": "^5.3.0",
     "xterm-addon-fit": "^0.8.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
     "@tailwindcss/cli": "^4.3.3",
-    "esbuild": "^0.28.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "eslint": "^9.17.0",

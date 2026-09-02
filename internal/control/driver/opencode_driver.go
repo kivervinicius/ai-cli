@@ -9,9 +9,7 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/control/terminal"
-	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
-	"github.com/kivervinicius/ai-cli/internal/core/security"
 	"github.com/kivervinicius/ai-cli/internal/runtime"
 )
 
@@ -119,8 +117,6 @@ func (d *OpenCodeDriver) EffectiveCaps(ctx context.Context, p model.Profile) Eff
 			Mechanism:       "opencode serve / opencode run",
 			Tested:          true,
 		},
-		AutonomousCoding: CapabilityEvidence{Status: CapabilitySupported, ProviderVersion: version, Mechanism: "opencode run --auto", Tested: true},
-		ReadOnlyReview:   CapabilityEvidence{Status: CapabilityUnsupported, ProviderVersion: version, Reason: "no verified read-only autonomous review mode", Tested: true},
 		SlashControl: CapabilityEvidence{
 			Status:    CapabilitySupported,
 			Mechanism: "Universal /ai slash command router",
@@ -140,15 +136,10 @@ func (d *OpenCodeDriver) BuildCommand(ctx context.Context, p model.Profile, extr
 		return "", nil, nil, err
 	}
 
-	home, err := config.ProfileHome("opencode", p.Name)
+	home, err := bootstrapProfile("opencode", p)
 	if err != nil {
 		return "", nil, nil, err
 	}
-	_ = os.MkdirAll(home, 0700)
-
-	cfgObj, _ := config.LoadConfig()
-	_ = security.ApplyIsolation(home, security.GetPolicy(cfgObj.IsolationPreset))
-
 	env := runtime.EnvSet(os.Environ(), map[string]string{
 		"HOME":          home,
 		"XDG_DATA_HOME": filepath.Join(home, ".local", "share"),
@@ -177,24 +168,4 @@ func (d *OpenCodeDriver) BuildResumeArgs(ctx context.Context, p model.Profile, p
 
 func (d *OpenCodeDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error) {
 	return []string{"run", kickoffPrompt}, nil
-}
-
-func (d *OpenCodeDriver) BuildAutonomousArgs(ctx context.Context, p model.Profile, kickoffPrompt string, mode AutonomousMode, policy AutonomousPolicy) ([]string, error) {
-	if mode == AutonomousReview {
-		return nil, fmt.Errorf("opencode has no verified read-only autonomous review mode")
-	}
-	if mode != AutonomousCoding {
-		return nil, fmt.Errorf("unsupported autonomous mode %q", mode)
-	}
-	if !policy.AllowToolAutoApproval {
-		return nil, fmt.Errorf("opencode autonomous coding requires explicit tool auto approval")
-	}
-	args, err := d.BuildKickoffArgs(ctx, p, kickoffPrompt)
-	if err != nil {
-		return nil, err
-	}
-	if len(args) > 0 && args[0] == "run" {
-		return append([]string{"run", "--auto"}, args[1:]...), nil
-	}
-	return append([]string{"--auto"}, args...), nil
 }

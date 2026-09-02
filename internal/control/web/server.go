@@ -39,9 +39,6 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	if opts.Host == "" {
 		opts.Host = "127.0.0.1"
 	}
-	// Port 0 is the standard net.Listen request for an ephemeral test/in-process
-	// port. The CLI supplies DefaultPort explicitly; only invalid negative ports
-	// fall back to the product default here.
 	if opts.Port < 0 || opts.Port > 65535 {
 		opts.Port = DefaultPort
 	}
@@ -158,6 +155,11 @@ func NewServer(opts ServerOptions) (*Server, error) {
 
 		// 2. Serve static SPA assets
 		if fileServer != nil {
+			// Disable client caching for index.html, bundle.js, bundle.css during development/live use
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+
 			// If file exists serve it, otherwise serve index.html (SPA routing)
 			f, err := distFS.Open(strings.TrimPrefix(r.URL.Path, "/"))
 			if err == nil {
@@ -185,6 +187,61 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	return s, nil
 }
 
+func (s *Server) handleSessionRotate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	old := s.auth.AuthenticateRequest(r)
+	if old == nil {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	next, err := s.auth.RotateSession(old.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to rotate session")
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: next.ID, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
+	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "csrf_token": next.CSRFToken, "expires_at": next.ExpiresAt, "idle_timeout": int(sessionIdleTTL.Seconds())})
+}
+
+func (s *Server) handleSessionLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	sess := s.auth.AuthenticateRequest(r)
+	if sess == nil {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	s.auth.RevokeSession(sess.ID)
+	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: -1, Expires: time.Unix(1, 0)})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func projectSubroute(path string) string {
+	switch {
+	case strings.HasSuffix(path, "/layout"):
+		return "layout"
+	case strings.HasSuffix(path, "/agents"):
+		return "agents"
+	case strings.HasSuffix(path, "/missions"):
+		return "missions"
+	case strings.HasSuffix(path, "/plans"):
+		return "plans"
+	case strings.HasSuffix(path, "/open-os"):
+		return "open-os"
+	case strings.HasSuffix(path, "/git/branches"):
+		return "git-branches"
+	case strings.HasSuffix(path, "/git/checkout"):
+		return "git-checkout"
+	default:
+		return "detail"
+	}
+}
+
 // withSecurityHeaders applies defense-in-depth HTTP security headers to every
 // response, including CSP, MIME sniffing prevention and framing protection.
 func (s *Server) withSecurityHeaders(next http.Handler) http.Handler {
@@ -207,57 +264,6 @@ func (s *Server) withSecurityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Frame-Options", "DENY")
 		next.ServeHTTP(w, r)
 	})
-}
-
-func (s *Server) handleSessionRotate(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	old := s.auth.AuthenticateRequest(r)
-	if old == nil {
-		writeError(w, http.StatusUnauthorized, "authentication required")
-		return
-	}
-	next, err := s.auth.RotateSession(old.ID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to rotate session")
-		return
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookieName,
-		Value:    next.ID,
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
-	})
-	writeJSON(w, http.StatusOK, map[string]any{
-		"authenticated": true,
-		"csrf_token":    next.CSRFToken,
-	})
-}
-
-func (s *Server) handleSessionLogout(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	sess := s.auth.AuthenticateRequest(r)
-	if sess == nil {
-		writeError(w, http.StatusUnauthorized, "authentication required")
-		return
-	}
-	s.auth.RevokeSession(sess.ID)
-	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookieName,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   -1,
-		Expires:  time.Unix(1, 0),
-	})
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) routeRuntime(w http.ResponseWriter, r *http.Request) {
@@ -287,27 +293,6 @@ func (s *Server) routeRuntime(w http.ResponseWriter, r *http.Request) {
 	s.authMiddleware(s.api.handleRuntimeDetail)(w, r)
 }
 
-func projectSubroute(path string) string {
-	switch {
-	case strings.HasSuffix(path, "/layout"):
-		return "layout"
-	case strings.HasSuffix(path, "/agents"):
-		return "agents"
-	case strings.HasSuffix(path, "/missions"):
-		return "missions"
-	case strings.HasSuffix(path, "/plans"):
-		return "plans"
-	case strings.HasSuffix(path, "/open-os"):
-		return "open-os"
-	case strings.HasSuffix(path, "/git/branches"):
-		return "git-branches"
-	case strings.HasSuffix(path, "/git/checkout"):
-		return "git-checkout"
-	default:
-		return "detail"
-	}
-}
-
 // routeProject dispatches project detail, layout, and agents sub-routes.
 func (s *Server) routeProject(h *NexusHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -328,28 +313,28 @@ func (s *Server) routeProject(h *NexusHandler) http.HandlerFunc {
 				return
 			}
 		}
-		switch projectSubroute(r.URL.Path) {
-		case "layout":
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/layout"):
 			h.handleProjectLayout(w, r)
-		case "agents":
+		case strings.HasSuffix(r.URL.Path, "/agents"):
 			if r.Method == http.MethodGet {
 				h.handleAgentsList(w, r)
 			} else {
 				h.handleAgentCreate(w, r)
 			}
-		case "missions":
-			if r.Method == http.MethodGet {
-				h.handleMissionsList(w, r)
-			} else {
-				h.handleMissionCreate(w, r)
-			}
-		case "plans":
+		case strings.HasSuffix(r.URL.Path, "/plans"):
 			h.handleProjectPlans(w, r)
-		case "open-os":
+		case strings.HasSuffix(r.URL.Path, "/context/prepare"):
+			h.handleProjectContextPrepare(w, r)
+		case strings.HasSuffix(r.URL.Path, "/context"):
+			h.handleProjectContext(w, r)
+		case strings.HasSuffix(r.URL.Path, "/shell"):
+			h.handleProjectShell(w, r)
+		case strings.HasSuffix(r.URL.Path, "/open-os"):
 			h.handleProjectOpenOS(w, r)
-		case "git-branches":
+		case strings.HasSuffix(r.URL.Path, "/git/branches"):
 			h.handleProjectGitBranches(w, r)
-		case "git-checkout":
+		case strings.HasSuffix(r.URL.Path, "/git/checkout"):
 			h.handleProjectGitCheckout(w, r)
 		default:
 			h.handleProjectDetail(w, r)
@@ -460,6 +445,9 @@ func (s *Server) routeAgent(h *NexusHandler) http.HandlerFunc {
 				return
 			case "recover":
 				h.handleAgentRecover(w, r)
+				return
+			case "ask":
+				h.handleAgentAsk(w, r)
 				return
 			case "config":
 				if len(parts) >= 3 {

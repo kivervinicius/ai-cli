@@ -10,6 +10,8 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/ids"
 )
 
+var ErrDispatchOutcomeUnknown = errors.New("provider dispatch outcome is unknown")
+
 // MissionRunner is a deterministic, durable state machine. Provider-specific
 // work is delegated to PackageExecutor and every transition is persisted.
 type MissionRunner struct {
@@ -60,23 +62,25 @@ func (r *MissionRunner) StartMissionRun(ctx context.Context, plan PlanSpec, work
 			state = StateReady
 		}
 		assignedAgent := spec.AgentAllocation
-		// Parallel work must not implicitly share one persistent Agent/worktree.
-		// An explicit package allocation is respected; otherwise allocation is
-		// deferred to the PackageExecutor so each package can receive isolation.
-		if assignedAgent == "" && spec.ParallelGroup == "" {
+		// Legacy packages without an explicit Flow assignment retain the old
+		// default-Agent fallback. CREATE/AUTO stay unassigned until allocation so
+		// explicit approval cannot accidentally reuse one Agent/worktree.
+		if assignedAgent == "" && spec.AssignmentStrategy == "" && spec.ParallelGroup == "" {
 			assignedAgent = defaultAgentID
 		}
 		run.PackageRuns = append(run.PackageRuns, PackageRun{
 			ID: "pkgrun_" + ids.NewRuntimeID(), PackageID: spec.ID, PhaseID: spec.PhaseID, Title: spec.Title, Goal: spec.Goal,
 			Priority: spec.Priority, Role: spec.Role, TaskRequirements: spec.TaskRequirements, Dependencies: append([]string(nil), spec.Dependencies...), ParallelGroup: spec.ParallelGroup,
-			AcceptanceCriteria: append([]string(nil), spec.AcceptanceCriteria...), State: state, Attempt: 1,
+			AssignmentStrategy: spec.AssignmentStrategy, ResourcePolicy: spec.ResourcePolicy, Provider: spec.Provider, Profile: spec.Profile,
+			MaestroSkills: append([]string(nil), spec.MaestroSkills...), RelevantPaths: append([]string(nil), spec.RelevantPaths...),
+			AcceptanceCriteria: append([]string(nil), spec.AcceptanceCriteria...), VerificationRequirements: append([]string(nil), spec.VerificationRequirements...), State: state, Attempt: 1,
 			AssignedAgent: assignedAgent, StartedAt: now,
 		})
 	}
 	if err := validateDependencyGraph(run.PackageRuns); err != nil {
 		return nil, err
 	}
-	if err := r.repo.SaveRun(ctx, run); err != nil {
+	if err := r.saveRun(ctx, run); err != nil {
 		return nil, err
 	}
 	return run, nil
@@ -101,6 +105,7 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 	if err != nil {
 		return nil, false, err
 	}
+	r.hydrateEvidence(ctx, run)
 	leaseToken := run.LeaseToken
 	defer func() { _ = r.repo.ReleaseLease(context.Background(), runID, r.owner, leaseToken) }()
 
@@ -148,7 +153,7 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 	if run.TotalIterations > run.Contract.MaxTotalIterations {
 		run.State = StateFailedBudgetExceeded
 		run.UpdatedAt = time.Now().UTC()
-		_ = r.repo.SaveRun(ctx, run)
+		_ = r.saveRun(ctx, run)
 		return run, false, fmt.Errorf("mission iteration budget exceeded (%d/%d)", run.TotalIterations, run.Contract.MaxTotalIterations)
 	}
 	refreshDependencyStates(run)
@@ -160,7 +165,7 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 	if pkg == nil {
 		run.State = StateBlockedNeedsUser
 		run.UpdatedAt = time.Now().UTC()
-		_ = r.repo.SaveRun(ctx, run)
+		_ = r.saveRun(ctx, run)
 		return run, false, fmt.Errorf("no runnable package; dependency graph is blocked")
 	}
 	run.CurrentPkgIndex = packageIndex(run, pkg.PackageID)
@@ -186,6 +191,9 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 		pkg.AssignedAgent, pkg.Workspace = allocation.AgentID, allocation.Workspace
 		pkg.State = StateCompiling
 	case StateCompiling:
+		if capsuleErr := r.ensureContextCapsule(opCtx, run, pkg); capsuleErr != nil {
+			return r.packageFailureFrom(ctx, run, pkg, StateCompiling, fmt.Errorf("prepare context capsule: %w", capsuleErr))
+		}
 		artifact, compileErr := r.executor.Compile(opCtx, run, pkg)
 		if compileErr != nil {
 			return r.packageFailureFrom(ctx, run, pkg, StateCompiling, fmt.Errorf("compile package prompt: %w", compileErr))
@@ -199,35 +207,45 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 		if pkg.ParallelGroup != "" {
 			if err := r.executeParallelGroup(opCtx, run, pkg.ParallelGroup); err != nil {
 				run.UpdatedAt = time.Now().UTC()
-				_ = r.repo.SaveRun(ctx, run)
+				_ = r.saveRun(ctx, run)
 				return run, false, err
 			}
 		} else {
 			if err := r.executeOne(opCtx, run, pkg); err != nil {
+				if errors.Is(err, ErrDispatchOutcomeUnknown) {
+					run.State = StateBlockedNeedsUser
+					run.UpdatedAt = time.Now().UTC()
+					_ = r.saveRun(ctx, run)
+					return run, false, err
+				}
 				if terminalErr := r.markRemediation(run, pkg, StateCompiling, err.Error()); terminalErr != nil {
 					run.UpdatedAt = time.Now().UTC()
-					_ = r.repo.SaveRun(ctx, run)
+					_ = r.saveRun(ctx, run)
 					return run, false, terminalErr
 				}
 			}
 		}
 	case StateTesting:
-		if run.Contract.RequireVerification && len(run.Contract.VerificationCommands) == 0 {
+		verificationCommands := run.Contract.VerificationCommands
+		if len(pkg.VerificationRequirements) > 0 {
+			verificationCommands = pkg.VerificationRequirements
+		}
+		if run.Contract.RequireVerification && len(verificationCommands) == 0 {
 			if terminalErr := r.markRemediation(run, pkg, StateCompiling, "Verification is required but no verification commands are configured."); terminalErr != nil {
 				run.UpdatedAt = time.Now().UTC()
-				_ = r.repo.SaveRun(ctx, run)
+				_ = r.saveRun(ctx, run)
 				return run, false, terminalErr
 			}
 			break
 		}
-		results := r.verifier.RunVerification(opCtx, pkg.Workspace, run.Contract.VerificationCommands)
+		results := r.verifier.RunVerification(opCtx, pkg.Workspace, verificationCommands)
 		pkg.Verifications = append(pkg.Verifications, results...)
 		if verificationPassed(results, run.Contract.RequireVerification) {
 			pkg.State = StateReviewing
 		} else {
 			if terminalErr := r.markRemediation(run, pkg, StateCompiling, verificationFailureContext(results)); terminalErr != nil {
 				run.UpdatedAt = time.Now().UTC()
-				_ = r.repo.SaveRun(ctx, run)
+				_ = r.saveRun(ctx, run)
 				return run, false, terminalErr
 			}
 		}
@@ -236,7 +254,7 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 		if reviewErr != nil {
 			if terminalErr := r.markRemediation(run, pkg, StateReviewing, "Independent review failed: "+reviewErr.Error()); terminalErr != nil {
 				run.UpdatedAt = time.Now().UTC()
-				_ = r.repo.SaveRun(ctx, run)
+				_ = r.saveRun(ctx, run)
 				return run, false, terminalErr
 			}
 			break
@@ -249,41 +267,16 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 		}
 		pkg.Verdicts = append(pkg.Verdicts, verdict)
 		if verdict.Approved {
-			pkg.State = StateVerifying
-		} else {
-			if terminalErr := r.markRemediation(run, pkg, StateCompiling, reviewFailureContext(verdict)); terminalErr != nil {
-				run.UpdatedAt = time.Now().UTC()
-				_ = r.repo.SaveRun(ctx, run)
-				return run, false, terminalErr
-			}
-		}
-	case StateVerifying:
-		if run.Contract.RequireVerification && len(run.Contract.VerificationCommands) == 0 {
-			pkg.State = StateFailed
-			run.State = StateFailedVerification
-			run.UpdatedAt = time.Now().UTC()
-			_ = r.repo.SaveRun(ctx, run)
-			return run, false, fmt.Errorf("final verification required but no verification commands are configured")
-		}
-		results := r.verifier.RunVerification(opCtx, pkg.Workspace, run.Contract.VerificationCommands)
-		pkg.Verifications = append(pkg.Verifications, results...)
-		if verificationPassed(results, run.Contract.RequireVerification) {
 			pkg.State = StateVerified
 			now := time.Now().UTC()
 			pkg.FinishedAt = &now
 			pkg.RemediationContext = ""
-			pkg.ErrorMessage = ""
-		} else if !run.Contract.AutoRemediate {
-			pkg.State = StateFailed
-			pkg.ErrorMessage = verificationFailureContext(results)
-			run.State = StateFailedVerification
-			run.UpdatedAt = time.Now().UTC()
-			_ = r.repo.SaveRun(ctx, run)
-			return run, false, fmt.Errorf("final verification failed: %s", pkg.ErrorMessage)
-		} else if terminalErr := r.markRemediation(run, pkg, StateCompiling, verificationFailureContext(results)); terminalErr != nil {
-			run.UpdatedAt = time.Now().UTC()
-			_ = r.repo.SaveRun(ctx, run)
-			return run, false, terminalErr
+		} else {
+			if terminalErr := r.markRemediation(run, pkg, StateCompiling, reviewFailureContext(verdict)); terminalErr != nil {
+				run.UpdatedAt = time.Now().UTC()
+				_ = r.saveRun(ctx, run)
+				return run, false, terminalErr
+			}
 		}
 	case StateRemediating:
 		canRetry, reason := r.retry.ShouldRetry(pkg, run.Contract)
@@ -296,10 +289,11 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 				run.State = StateFailedNoProgress
 			}
 			run.UpdatedAt = time.Now().UTC()
-			_ = r.repo.SaveRun(ctx, run)
+			_ = r.saveRun(ctx, run)
 			return run, false, fmt.Errorf("package %s failed: %s", pkg.PackageID, reason)
 		}
 		pkg.Attempt++
+		resetDispatch(pkg)
 		next := pkg.RetryFrom
 		if next == "" || next == StateRemediating {
 			next = StateExecuting
@@ -319,7 +313,7 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 	default:
 	}
 	run.UpdatedAt = time.Now().UTC()
-	if err := r.repo.SaveRun(ctx, run); err != nil {
+	if err := r.saveRun(ctx, run); err != nil {
 		return run, false, err
 	}
 	return run, false, nil
@@ -328,11 +322,11 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 func (r *MissionRunner) packageFailureFrom(ctx context.Context, run *MissionRun, pkg *PackageRun, retryFrom State, err error) (*MissionRun, bool, error) {
 	if terminalErr := r.markRemediation(run, pkg, retryFrom, err.Error()); terminalErr != nil {
 		run.UpdatedAt = time.Now().UTC()
-		_ = r.repo.SaveRun(ctx, run)
+		_ = r.saveRun(ctx, run)
 		return run, false, terminalErr
 	}
 	run.UpdatedAt = time.Now().UTC()
-	_ = r.repo.SaveRun(ctx, run)
+	_ = r.saveRun(ctx, run)
 	return run, false, err
 }
 
@@ -368,51 +362,54 @@ func (r *MissionRunner) completeRun(ctx context.Context, run *MissionRun) (*Miss
 	run.State = StateCompletedVerified
 	run.CompletedAt = &now
 	run.UpdatedAt = now
-	if err := r.repo.SaveRun(ctx, run); err != nil {
+	if err := r.saveRun(ctx, run); err != nil {
 		return run, false, err
 	}
 	return run, true, nil
 }
 
 func (r *MissionRunner) PauseRun(ctx context.Context, runID, reason string) (*MissionRun, error) {
-	run, err := r.repo.GetRun(ctx, runID)
+	run, err := r.repo.AcquireLease(ctx, runID, r.owner, r.leaseTTL)
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = r.repo.ReleaseLease(context.Background(), runID, r.owner, run.LeaseToken) }()
 	if isTerminalRunState(run.State) {
 		return nil, fmt.Errorf("cannot pause terminal mission run %s", run.State)
 	}
 	run.State = StatePaused
 	run.PausedReason = reason
 	run.UpdatedAt = time.Now().UTC()
-	if err := r.repo.SaveRun(ctx, run); err != nil {
+	if err := r.saveRun(ctx, run); err != nil {
 		return nil, err
 	}
 	return run, nil
 }
 
 func (r *MissionRunner) ResumeRun(ctx context.Context, runID string) (*MissionRun, error) {
-	run, err := r.repo.GetRun(ctx, runID)
+	run, err := r.repo.AcquireLease(ctx, runID, r.owner, r.leaseTTL)
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = r.repo.ReleaseLease(context.Background(), runID, r.owner, run.LeaseToken) }()
 	if run.State != StatePaused && run.State != StateBlockedNeedsUser {
 		return nil, fmt.Errorf("mission run %s cannot resume from %s", runID, run.State)
 	}
 	run.State = StateExecuting
 	run.PausedReason = ""
 	run.UpdatedAt = time.Now().UTC()
-	if err := r.repo.SaveRun(ctx, run); err != nil {
+	if err := r.saveRun(ctx, run); err != nil {
 		return nil, err
 	}
 	return run, nil
 }
 
 func (r *MissionRunner) CancelRun(ctx context.Context, runID, reason string) (*MissionRun, error) {
-	run, err := r.repo.GetRun(ctx, runID)
+	run, err := r.repo.AcquireLease(ctx, runID, r.owner, r.leaseTTL)
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = r.repo.ReleaseLease(context.Background(), runID, r.owner, run.LeaseToken) }()
 	if isTerminalRunState(run.State) {
 		return run, nil
 	}
@@ -421,7 +418,7 @@ func (r *MissionRunner) CancelRun(ctx context.Context, runID, reason string) (*M
 	run.PausedReason = reason
 	run.CompletedAt = &now
 	run.UpdatedAt = now
-	if err := r.repo.SaveRun(ctx, run); err != nil {
+	if err := r.saveRun(ctx, run); err != nil {
 		return nil, err
 	}
 	return run, nil
@@ -437,25 +434,6 @@ func (r *MissionRunner) RunToTerminal(ctx context.Context, runID string) (*Missi
 		}
 		run, done, stepErr := r.ExecuteNextStep(ctx, runID)
 		if run == nil {
-			if errors.Is(stepErr, ErrLeaseHeld) {
-				delay := r.leaseTTL / 3
-				if delay < 10*time.Millisecond {
-					delay = 10 * time.Millisecond
-				}
-				if delay > time.Second {
-					delay = time.Second
-				}
-				timer := time.NewTimer(delay)
-				select {
-				case <-ctx.Done():
-					if !timer.Stop() {
-						<-timer.C
-					}
-					return nil, ctx.Err()
-				case <-timer.C:
-					continue
-				}
-			}
 			return nil, stepErr
 		}
 		if done || run.State == StateCompletedVerified {
@@ -475,15 +453,49 @@ func (r *MissionRunner) RunToTerminal(ctx context.Context, runID string) (*Missi
 	}
 }
 
+func (r *MissionRunner) beginDispatch(ctx context.Context, run *MissionRun, pkg *PackageRun) error {
+	if pkg.DispatchState == DispatchIntent && pkg.DispatchID != "" {
+		return fmt.Errorf("%w: package %s has unresolved dispatch %s; refusing duplicate provider execution", ErrDispatchOutcomeUnknown, pkg.PackageID, pkg.DispatchID)
+	}
+	now := time.Now().UTC()
+	pkg.DispatchID = "dispatch_" + ids.NewRuntimeID()
+	pkg.DispatchState = DispatchIntent
+	pkg.DispatchStartedAt = &now
+	pkg.DispatchFinishedAt = nil
+	return r.saveRun(ctx, run)
+}
+
+func finishDispatch(pkg *PackageRun, state DispatchState) {
+	now := time.Now().UTC()
+	pkg.DispatchState = state
+	pkg.DispatchFinishedAt = &now
+}
+
+func resetDispatch(pkg *PackageRun) {
+	pkg.DispatchID = ""
+	pkg.DispatchState = DispatchNone
+	pkg.DispatchStartedAt = nil
+	pkg.DispatchFinishedAt = nil
+	pkg.AssignedRuntime = ""
+}
+
 func (r *MissionRunner) executeOne(ctx context.Context, run *MissionRun, pkg *PackageRun) error {
+	if err := r.beginDispatch(ctx, run, pkg); err != nil {
+		run.State = StateBlockedNeedsUser
+		pkg.ErrorMessage = err.Error()
+		return err
+	}
 	outcome, err := r.executor.Execute(ctx, run, pkg, pkg.CompiledPrompt)
 	if err != nil {
+		finishDispatch(pkg, DispatchFailed)
 		return fmt.Errorf("Execution failed: %w", err)
 	}
 	if outcome.RuntimeID == "" {
+		finishDispatch(pkg, DispatchFailed)
 		return fmt.Errorf("executor returned no runtime evidence")
 	}
 	pkg.AssignedRuntime = outcome.RuntimeID
+	finishDispatch(pkg, DispatchCompleted)
 	pkg.ErrorMessage = ""
 	pkg.State = StateTesting
 	return nil
@@ -507,6 +519,23 @@ func (r *MissionRunner) executeParallelGroup(ctx context.Context, run *MissionRu
 	if len(indexes) == 0 {
 		return nil
 	}
+	// Persist every dispatch intent before launching any provider goroutine.
+	for _, idx := range indexes {
+		pkg := &run.PackageRuns[idx]
+		if pkg.DispatchState == DispatchIntent && pkg.DispatchID != "" {
+			run.State = StateBlockedNeedsUser
+			pkg.ErrorMessage = fmt.Sprintf("package %s has unresolved dispatch %s; refusing duplicate provider execution", pkg.PackageID, pkg.DispatchID)
+			return fmt.Errorf("%w: %s", ErrDispatchOutcomeUnknown, pkg.ErrorMessage)
+		}
+		now := time.Now().UTC()
+		pkg.DispatchID = "dispatch_" + ids.NewRuntimeID()
+		pkg.DispatchState = DispatchIntent
+		pkg.DispatchStartedAt = &now
+		pkg.DispatchFinishedAt = nil
+	}
+	if err := r.saveRun(ctx, run); err != nil {
+		return err
+	}
 	type result struct {
 		index   int
 		outcome ExecutionResult
@@ -515,9 +544,11 @@ func (r *MissionRunner) executeParallelGroup(ctx context.Context, run *MissionRu
 	results := make(chan result, len(indexes))
 	for _, idx := range indexes {
 		idx := idx
-		pkg := &run.PackageRuns[idx]
+		runCopy := *run
+		runCopy.PackageRuns = append([]PackageRun(nil), run.PackageRuns...)
 		go func() {
-			outcome, err := r.executor.Execute(ctx, run, pkg, pkg.CompiledPrompt)
+			pkg := &runCopy.PackageRuns[idx]
+			outcome, err := r.executor.Execute(ctx, &runCopy, pkg, pkg.CompiledPrompt)
 			results <- result{index: idx, outcome: outcome, err: err}
 		}()
 	}
@@ -526,18 +557,21 @@ func (r *MissionRunner) executeParallelGroup(ctx context.Context, run *MissionRu
 		res := <-results
 		pkg := &run.PackageRuns[res.index]
 		if res.err != nil {
+			finishDispatch(pkg, DispatchFailed)
 			if err := r.markRemediation(run, pkg, StateCompiling, "Execution failed: "+res.err.Error()); err != nil && firstErr == nil {
 				firstErr = err
 			}
 			continue
 		}
 		if res.outcome.RuntimeID == "" {
+			finishDispatch(pkg, DispatchFailed)
 			if err := r.markRemediation(run, pkg, StateCompiling, "executor returned no runtime evidence"); err != nil && firstErr == nil {
 				firstErr = err
 			}
 			continue
 		}
 		pkg.AssignedRuntime = res.outcome.RuntimeID
+		finishDispatch(pkg, DispatchCompleted)
 		pkg.ErrorMessage = ""
 		pkg.State = StateTesting
 	}
@@ -649,10 +683,8 @@ func packageStageRank(state State) int {
 		return 4
 	case StateReviewing:
 		return 5
-	case StateVerifying:
-		return 6
 	case StateRemediating:
-		return 7
+		return 6
 	default:
 		return 100
 	}

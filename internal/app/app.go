@@ -439,7 +439,7 @@ func usage() {
   %s login / logout <p> <name>    Run provider official login/logout flow
   %s use <provider> <name>        Set default active profile for provider
   %s status [provider[:profile]]  Display profile health, plan and account status
-  %s usage [provider] [--json]    Display real-time quota metrics & cache freshness
+  %s usage [provider] [--json]    Searchable quota table; use --json for integrations
   %s inspect <provider> <name>    Inspect profile configuration details
 
   %s sessions [search] [--json]   Universal session index across all providers
@@ -808,38 +808,27 @@ func usageCmd(args []string) error {
 		fmt.Println(string(b))
 		return nil
 	}
+	return usageTableCmd(ps)
+}
 
-	fmt.Printf("%-8s %-20s %-28s %-14s %-16s %-24s %-24s %s\n", "PROVIDER", "PROFILE", "ACCOUNT", "PLAN", "MODEL GROUP", "5H (RESET)", "SEMANAL (RESET)", "STATUS")
+func usageTableCmd(ps []model.Profile) error {
+	rows := make([]tui.UsageTableRow, 0, len(ps)*2)
 	for _, p := range ps {
 		acc := profile.GetAccountInfo(p.Provider, p.Name)
-		email := acc.Email
-		if email == "" {
-			email = "(unauthenticated)"
-		}
-		if len(email) > 22 {
-			email = email[:20] + ".."
-		}
 		qv := profile.GetQuotaView(p.Provider, p.Name, acc.Plan, acc.Email)
-		if len(qv.ModelGroups) == 0 {
-			fmt.Printf("%-8s %-20s %-28s %-14s %-16s %-24s %-24s %s\n", p.Provider, p.Name, email, acc.Plan, "-", "-", "-", "UNKNOWN")
-			continue
-		}
-		for i, group := range qv.ModelGroups {
-			fiveHour := quotaWindowDisplay(group.Windows, "5h")
-			weekly := quotaWindowDisplay(group.Windows, "weekly")
+		for _, group := range qv.ModelGroups {
+			fiveHour, weekly := quotaWindowDisplay(group.Windows, "5h"), quotaWindowDisplay(group.Windows, "weekly")
 			if fiveHour == "-" && weekly == "-" {
 				continue
 			}
-			status := quotaGroupStatus(group, qv.Status)
-			if i > 0 {
-				// Keep the table readable while making it clear these rows belong
-				// to the same profile/account.
-				p.Provider, p.Name, email = "", "", ""
-			}
-			fmt.Printf("%-8s %-20s %-28s %-14s %-16s %-24s %-24s %s\n", p.Provider, p.Name, email, acc.Plan, group.Name, fiveHour, weekly, status)
+			rows = append(rows, tui.UsageTableRow{Provider: p.Provider, Profile: p.Name, Account: acc.Email, Plan: acc.Plan, Group: group.Name, FiveHour: fiveHour, Weekly: weekly, Status: quotaGroupStatus(group, qv.Status)})
 		}
 	}
-	return nil
+	if len(rows) == 0 {
+		fmt.Println("Nenhuma quota disponível para exibir.")
+		return nil
+	}
+	return tui.RunUsageTable(rows)
 }
 
 func quotaWindowDisplay(windows []quota.Window, kind string) string {
@@ -898,20 +887,12 @@ func sessionsCmd(args []string) error {
 		fmt.Println("No sessions found.")
 		return nil
 	}
-
-	fmt.Printf("%-10s %-36s %-32s %s\n", "PROVIDER", "SESSION ID", "TITLE", "WORKSPACE")
+	rows := make([]tui.DataTableRow, 0, len(convs))
 	for _, c := range convs {
-		title := c.Title
-		if len(title) > 30 {
-			title = title[:28] + ".."
-		}
-		ws := c.Workspace
-		if len(ws) > 30 {
-			ws = ws[:28] + ".."
-		}
-		fmt.Printf("%-10s %-36s %-32s %s\n", c.Provider, c.ID, title, ws)
+		values := []string{c.Provider, c.ID, c.Title, c.Workspace}
+		rows = append(rows, tui.DataTableRow{Values: values, SearchText: strings.Join(values, " ")})
 	}
-	return nil
+	return tui.RunDataTable(tui.DataTableOptions{Title: "Nexus · Sessões recentes", FilterPlaceholder: "filtrar por provedor, sessão, título ou workspace", Columns: []tui.DataTableColumn{{Title: "PROVEDOR", Width: 12}, {Title: "SESSÃO", Width: 28}, {Title: "TÍTULO", Width: 30}, {Title: "WORKSPACE", Width: 38}}, Rows: rows})
 }
 
 func workspacesCmd(args []string) error {

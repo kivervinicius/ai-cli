@@ -37,6 +37,7 @@ type RuntimeSession struct {
 	ProviderID        string            `json:"provider_id"`
 	ProfileID         string            `json:"profile_id"`
 	ProviderSessionID string            `json:"provider_session_id,omitempty"`
+	Model             string            `json:"model,omitempty"`
 	Workspace         string            `json:"workspace"`
 	PID               int               `json:"pid"`
 	HostPID           int               `json:"host_pid,omitempty"`

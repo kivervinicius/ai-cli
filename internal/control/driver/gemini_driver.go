@@ -113,8 +113,6 @@ func (d *GeminiDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effec
 			Mechanism:       "gemini -p / non-interactive",
 			Tested:          true,
 		},
-		AutonomousCoding: CapabilityEvidence{Status: CapabilitySupported, ProviderVersion: version, Mechanism: "gemini -p with explicit approval policy", Tested: true},
-		ReadOnlyReview:   CapabilityEvidence{Status: CapabilitySupported, ProviderVersion: version, Mechanism: "gemini --approval-mode=plan", Tested: true},
 		SlashControl: CapabilityEvidence{
 			Status:    CapabilitySupported,
 			Mechanism: "Universal /ai slash command router",
@@ -170,22 +168,4 @@ func (d *GeminiDriver) BuildResumeArgs(ctx context.Context, p model.Profile, pro
 
 func (d *GeminiDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error) {
 	return []string{"-p", kickoffPrompt}, nil
-}
-
-func (d *GeminiDriver) BuildAutonomousArgs(ctx context.Context, p model.Profile, kickoffPrompt string, mode AutonomousMode, policy AutonomousPolicy) ([]string, error) {
-	args, err := d.BuildKickoffArgs(ctx, p, kickoffPrompt)
-	if err != nil {
-		return nil, err
-	}
-	switch mode {
-	case AutonomousReview:
-		return append(args, "--approval-mode=plan", "--output-format", "text"), nil
-	case AutonomousCoding:
-		if !policy.AllowToolAutoApproval {
-			return nil, fmt.Errorf("gemini autonomous coding requires explicit tool auto approval")
-		}
-		return append(args, "--approval-mode=yolo", "--output-format", "text"), nil
-	default:
-		return nil, fmt.Errorf("unsupported autonomous mode %q", mode)
-	}
 }

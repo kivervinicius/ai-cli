@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { RuntimeSession } from '../types';
 import { TerminalPane } from './TerminalPane';
 import { Columns2, Square, Grid2X2 } from 'lucide-react';
-import { normalizeOpenRuntimeIds, visibleTerminalRuntimes, type TerminalSplitMode } from './terminalViewModel';
 
 interface TerminalViewProps {
   runtimes: RuntimeSession[];
@@ -18,27 +16,25 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   onSelectRuntime,
   onUpdateTitle,
 }) => {
-  const { t } = useTranslation();
-  const [splitMode, setSplitMode] = useState<TerminalSplitMode>('single');
+  const [splitMode, setSplitMode] = useState<'single' | 'split-h' | 'grid'>('single');
   const [openIds, setOpenIds] = useState<string[]>(() => {
     if (activeRuntimeId) return [activeRuntimeId];
     if (runtimes.length > 0) return [runtimes[0].runtime_id];
     return [];
   });
 
-  // Reconcile views with live sessions and focus the selected session once.
+  // Ensure activeRuntimeId is tracked in openIds
   React.useEffect(() => {
-    setOpenIds((prev) => {
-      const next = normalizeOpenRuntimeIds(prev, runtimes, activeRuntimeId);
-      return next.length === prev.length && next.every((id, index) => id === prev[index]) ? prev : next;
-    });
-  }, [activeRuntimeId, runtimes]);
+    if (activeRuntimeId && !openIds.includes(activeRuntimeId)) {
+      setOpenIds((prev) => [...prev, activeRuntimeId]);
+    }
+  }, [activeRuntimeId]);
 
   if (runtimes.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-slate-500 font-mono text-xs">
-        <p>{t('terminalView.empty')}</p>
-        <p className="mt-1 text-[11px] text-slate-600">{t('terminalView.emptyHint')}</p>
+        <p>No active supervised runtimes.</p>
+        <p className="mt-1 text-[11px] text-slate-600">Start an agent runtime from Dashboard to open terminal.</p>
       </div>
     );
   }
@@ -53,8 +49,18 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     });
   };
 
-  const currentId = activeRuntimeId || openIds[0] || runtimes[0].runtime_id;
-  const renderSessions = visibleTerminalRuntimes(runtimes, openIds, currentId, splitMode);
+  // Determine which runtimes to render based on split mode
+  const currentId = activeRuntimeId || (openIds.length > 0 ? openIds[0] : runtimes[0].runtime_id);
+  const activeSession = runtimes.find((r) => r.runtime_id === currentId);
+
+  let renderSessions: RuntimeSession[] = [];
+  if (splitMode === 'single') {
+    if (activeSession) renderSessions = [activeSession];
+  } else if (splitMode === 'split-h') {
+    renderSessions = runtimes.slice(0, 2);
+  } else if (splitMode === 'grid') {
+    renderSessions = runtimes.slice(0, 4);
+  }
 
   return (
     <div className="flex flex-col h-full space-y-2">
@@ -81,13 +87,13 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
                 }`}
               >
                 {isWaiting ? (
-                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" title={t('terminalView.stateWaiting')}></span>
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" title="Aguardando resposta"></span>
                 ) : isApproval ? (
-                  <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse" title={t('terminalView.stateApproval')}></span>
+                  <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse" title="Aprovação necessária"></span>
                 ) : isDone ? (
-                  <span className="w-2 h-2 rounded-full bg-emerald-400" title={t('terminalView.stateDone')}></span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" title="Tarefa concluída"></span>
                 ) : (
-                  <span className="w-2 h-2 rounded-full bg-sky-400" title={t('terminalView.stateRunning')}></span>
+                  <span className="w-2 h-2 rounded-full bg-sky-400" title="Em execução"></span>
                 )}
                 <span className="font-sans font-medium">{title}</span>
                 <span className="text-slate-500 text-[10px]">[{r.runtime_id}]</span>

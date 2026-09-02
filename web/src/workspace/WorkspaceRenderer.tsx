@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Columns2, ExternalLink, GripVertical, Maximize2, Minimize2, Rows2, X } from 'lucide-react';
+import { Columns2, ExternalLink, GripVertical, Maximize2, Minimize2, Minus, Rows2, X } from 'lucide-react';
 import { IconButton } from '../design-system';
-import { findStackContaining, isSurfaceMatch, listStacks, type WorkspaceNode, type WorkspaceSplit, type WorkspaceStack, type WorkspaceSurface } from './model';
+import { findStackContaining, listStacks, listSurfaces, surfaceViewId, type WorkspaceNode, type WorkspaceSplit, type WorkspaceStack, type WorkspaceSurface } from './model';
 import { useWorkspace } from './WorkspaceProvider';
+import { useWorkspacePresentation } from './WorkspacePresentationProvider';
 import { useTranslation } from 'react-i18next';
 
 function useCompactViewport(): boolean {
@@ -21,7 +22,20 @@ export const WorkspaceRenderer: React.FC<{
   popoutSurface?: (surface: WorkspaceSurface) => void;
 }> = ({ renderSurface, popoutSurface }) => {
   const workspace = useWorkspace();
+  const presentation = useWorkspacePresentation();
   const compact = useCompactViewport();
+  const surfaces = useMemo(() => listSurfaces(workspace.model.root), [workspace.model.root]);
+  const surfaceSignature = surfaces.map(surfaceViewId).join('|');
+  const windowSignature = Object.keys(presentation.state.windows).sort().join('|');
+
+  useEffect(() => {
+    if (surfaceSignature !== windowSignature) presentation.sync(surfaces);
+  }, [surfaceSignature, windowSignature, surfaces, presentation]);
+
+  if (!compact && presentation.state.mode === 'DESKTOP') {
+    return <DesktopWorkspace surfaces={surfaces} renderSurface={renderSurface} />;
+  }
+
   const maximized = workspace.model.maximizedSurfaceId;
   const maximizedStack = maximized ? findStackContaining(workspace.model.root, maximized) : null;
 
@@ -74,12 +88,9 @@ const WorkspaceSplitView: React.FC<{ split: WorkspaceSplit; renderSurface: (surf
 
 const WorkspaceStackView: React.FC<{ stack: WorkspaceStack; renderSurface: (surface: WorkspaceSurface) => React.ReactNode; popoutSurface?: (surface: WorkspaceSurface) => void }> = ({ stack, renderSurface, popoutSurface }) => {
   const { t } = useTranslation();
-  const { activate, close, move, splitEmpty, maximize, model } = useWorkspace();
+  const { activate, close, move, split, maximize, model } = useWorkspace();
   const [draggedSurface, setDraggedSurface] = useState<string | null>(null);
-  const active = useMemo(
-    () => stack.tabs.find((tab) => isSurfaceMatch(tab, stack.activeId)) ?? stack.tabs[0],
-    [stack.tabs, stack.activeId]
-  );
+  const active = useMemo(() => stack.tabs.find((tab) => tab.id === stack.activeId) ?? stack.tabs[0], [stack]);
   const canClose = active?.closable !== false;
   const legacyTitleKeys: Record<string, string> = { overview: 'nav.overview', work: 'nav.work', missions: 'nav.missions', agents: 'nav.agents', maestro: 'nav.maestro', sessions: 'nav.sessions', settings: 'nav.settings', resources: 'nav.resources', 'legacy-runtimes': 'nav.runtimes', 'legacy-providers': 'nav.providers', 'legacy-events': 'nav.events' };
   const displayTitle = (surface: WorkspaceSurface) => {
@@ -93,73 +104,69 @@ const WorkspaceStackView: React.FC<{ stack: WorkspaceStack; renderSurface: (surf
   }}>
     <header className="nx-workspace-stack__tabs">
       <div className="nx-workspace-tabs" role="tablist" aria-label={t('shell.openSurfaces')}>
-        {stack.tabs.map((surface) => {
-          const isActive = isSurfaceMatch(surface, stack.activeId);
-          return (
-            <button
-              draggable
-              key={surface.id}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              data-active={isActive ? 'true' : 'false'}
-              className="nx-workspace-tab"
-              onDragStart={(event) => {
-                setDraggedSurface(surface.id);
-                event.dataTransfer.setData('application/x-nexus-surface', surface.id);
-                event.dataTransfer.effectAllowed = 'move';
-              }}
-              onClick={() => activate(surface.id)}
-            >
-              <span>{displayTitle(surface)}</span>
-              {surface.closable !== false && (
-                <span
-                  className="nx-workspace-tab__close"
-                  role="button"
-                  aria-label={t("workspace.closeNamed", { name: displayTitle(surface) })}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    close(surface.id);
-                  }}
-                >
-                  <X size={11} />
-                </span>
-              )}
-            </button>
-          );
-        })}
+        {stack.tabs.map((surface) => <button draggable key={surface.id} type="button" role="tab" aria-selected={stack.activeId === surface.id} data-active={stack.activeId === surface.id ? 'true' : 'false'} className="nx-workspace-tab" onDragStart={(event) => { setDraggedSurface(surface.id); event.dataTransfer.setData('application/x-nexus-surface', surface.id); event.dataTransfer.effectAllowed = 'move'; }} onClick={() => activate(surface.id)}><span>{displayTitle(surface)}</span>{surface.closable !== false && <span className="nx-workspace-tab__close" role="button" aria-label={t("workspace.closeNamed", { name: displayTitle(surface) })} onClick={(event) => { event.stopPropagation(); close(surface.id); }}><X size={11} /></span>}</button>)}
       </div>
       {active && <div className="nx-workspace-stack__actions">
-        <IconButton label={t('workspace.splitRight')} onClick={() => splitEmpty(active.id, 'horizontal')}><Columns2 size={13} /></IconButton>
-        <IconButton label={t('workspace.splitDown')} onClick={() => splitEmpty(active.id, 'vertical')}><Rows2 size={13} /></IconButton>
+        <IconButton label={t('workspace.splitRight')} onClick={() => split(active.id, { ...active, id: `${active.id}:clone:${Date.now()}`, title: `${active.title} copy`, titleKey: 'workspace.copy', titleParams: { name: displayTitle(active) } }, 'horizontal')}><Columns2 size={13} /></IconButton>
+        <IconButton label={t('workspace.splitDown')} onClick={() => split(active.id, { ...active, id: `${active.id}:clone:${Date.now()}`, title: `${active.title} copy`, titleKey: 'workspace.copy', titleParams: { name: displayTitle(active) } }, 'vertical')}><Rows2 size={13} /></IconButton>
         {popoutSurface && <IconButton label={t('workspace.popout')} onClick={() => popoutSurface(active)}><ExternalLink size={13} /></IconButton>}
         <IconButton label={t(model.maximizedSurfaceId === active.id ? 'workspace.restore' : 'workspace.maximize')} onClick={() => maximize(active.id)}>{model.maximizedSurfaceId === active.id ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</IconButton>
         {canClose && <IconButton label={t('workspace.close')} onClick={() => close(active.id)}><X size={13} /></IconButton>}
       </div>}
     </header>
     <div className="nx-workspace-stack__body">
-      {stack.tabs.map((surface) => {
-        const isActive = isSurfaceMatch(surface, stack.activeId);
-        return (
-          <div
-            key={surface.id}
-            role="tabpanel"
-            aria-hidden={!isActive}
-            data-active={isActive ? 'true' : 'false'}
-            className="nx-workspace-panel"
-            style={{
-              display: isActive ? 'flex' : 'none',
-              flexDirection: 'column',
-              width: '100%',
-              height: '100%',
-              position: 'absolute',
-              inset: 0,
-            }}
-          >
-            {renderSurface(surface)}
-          </div>
-        );
-      })}
+      {stack.tabs.map((surface) => <div key={surface.id} role="tabpanel" aria-hidden={stack.activeId !== surface.id} data-active={stack.activeId === surface.id ? 'true' : 'false'} className="nx-workspace-panel">{renderSurface(surface)}</div>)}
     </div>
   </section>;
+};
+
+
+const DesktopWorkspace: React.FC<{
+  surfaces: WorkspaceSurface[];
+  renderSurface: (surface: WorkspaceSurface) => React.ReactNode;
+}> = ({ surfaces, renderSurface }) => {
+  const workspace = useWorkspace();
+  const presentation = useWorkspacePresentation();
+  const windows = surfaces
+    .map((surface) => ({ surface, win: presentation.state.windows[surfaceViewId(surface)] }))
+    .filter((item) => Boolean(item.win))
+    .sort((a, b) => (a.win?.zIndex ?? 0) - (b.win?.zIndex ?? 0));
+
+  return <div className="nx-desktop-workspace" data-tour="workspace" data-presentation="desktop">
+    {windows.map(({ surface, win }) => {
+      if (!win || win.minimized) return null;
+      const viewId = surfaceViewId(surface);
+      const style: React.CSSProperties = win.maximized
+        ? { inset: 8, zIndex: win.zIndex }
+        : { left: win.x, top: win.y, width: win.width, height: win.height, zIndex: win.zIndex };
+      return <section key={viewId} className="nx-desktop-window" data-view-id={viewId} data-maximized={win.maximized ? 'true' : 'false'} style={style} onPointerDown={() => presentation.focus(viewId)}>
+        <header className="nx-desktop-window__titlebar" onPointerDown={(event) => {
+          if (win.maximized) return;
+          event.preventDefault();
+          const startX = event.clientX; const startY = event.clientY; const originX = win.x; const originY = win.y;
+          const onMove = (move: PointerEvent) => presentation.move(viewId, originX + move.clientX - startX, originY + move.clientY - startY);
+          const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+          window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true });
+        }}>
+          <div className="nx-desktop-window__title"><strong>{surface.title}</strong>{surface.subtitle && <small>{surface.subtitle}</small>}</div>
+          <div className="nx-desktop-window__actions">
+            <IconButton label={`Minimize ${surface.title}`} onClick={() => presentation.minimize(viewId)}><Minus size={13} /></IconButton>
+            <IconButton label={win.maximized ? `Restore ${surface.title}` : `Maximize ${surface.title}`} onClick={() => presentation.maximize(viewId)}>{win.maximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</IconButton>
+            {surface.closable !== false && <IconButton label={`Close ${surface.title}`} onClick={() => workspace.close(viewId)}><X size={13} /></IconButton>}
+          </div>
+        </header>
+        <div className="nx-desktop-window__body">{renderSurface(surface)}</div>
+        {!win.maximized && <div className="nx-desktop-window__resizer" onPointerDown={(event) => {
+          event.preventDefault(); event.stopPropagation();
+          const startX = event.clientX; const startY = event.clientY; const originWidth = win.width; const originHeight = win.height;
+          const onMove = (move: PointerEvent) => presentation.resize(viewId, originWidth + move.clientX - startX, originHeight + move.clientY - startY);
+          const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+          window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true });
+        }} />}
+      </section>;
+    })}
+    <div className="nx-desktop-dock" aria-label="Minimized workspace views">
+      {windows.filter(({ win }) => win?.minimized).map(({ surface }) => { const viewId = surfaceViewId(surface); return <button type="button" key={viewId} onClick={() => { presentation.minimize(viewId); presentation.focus(viewId); }}>{surface.title}</button>; })}
+    </div>
+  </div>;
 };

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -31,50 +32,62 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 		return runner.AllocationResult{}, err
 	}
 
+	strategy := strings.ToUpper(strings.TrimSpace(pkg.AssignmentStrategy))
 	var agent store.Agent
-	if strings.TrimSpace(pkg.AssignedAgent) != "" {
+	switch strategy {
+	case "": // legacy WorkPlan behavior
+		if strings.TrimSpace(pkg.AssignedAgent) != "" {
+			agent, err = st.GetAgent(pkg.AssignedAgent, run.ProjectID)
+		} else {
+			agent, err = createMissionAgent(st, run.ProjectID, pkg, "Mission · ")
+		}
+	case string(FlowAssignmentExisting):
+		if strings.TrimSpace(pkg.AssignedAgent) == "" {
+			return runner.AllocationResult{}, fmt.Errorf("EXISTING Flow Step %s has no AgentID", pkg.PackageID)
+		}
+		if agentReservedInRun(run, pkg.AssignedAgent, pkg.PackageID) {
+			return runner.AllocationResult{}, fmt.Errorf("agent %s is already assigned to another active Flow Step", pkg.AssignedAgent)
+		}
 		agent, err = st.GetAgent(pkg.AssignedAgent, run.ProjectID)
-		if err != nil {
-			return runner.AllocationResult{}, fmt.Errorf("assigned agent %s is unavailable: %w", pkg.AssignedAgent, err)
+	case string(FlowAssignmentCreate):
+		agent, err = createMissionAgent(st, run.ProjectID, pkg, "Flow · ")
+	case string(FlowAssignmentAuto):
+		agent, err = e.selectReusableFlowAgent(st, run, pkg)
+		if err == store.ErrNotFound {
+			agent, err = createMissionAgent(st, run.ProjectID, pkg, "Auto · ")
 		}
-	} else {
-		name := strings.TrimSpace(pkg.Title)
-		if name == "" {
-			name = pkg.PackageID
-		}
-		agent, err = st.CreateAgent(store.Agent{
-			ProjectID: run.ProjectID,
-			Name:      "Mission · " + name,
-			Role:      defaultRole(pkg.Role, "implementer"),
-		})
-		if err != nil {
-			return runner.AllocationResult{}, fmt.Errorf("create persistent mission agent: %w", err)
-		}
+	default:
+		return runner.AllocationResult{}, fmt.Errorf("unsupported Flow assignment strategy %q", pkg.AssignmentStrategy)
+	}
+	if err != nil {
+		return runner.AllocationResult{}, fmt.Errorf("allocate persistent Agent: %w", err)
 	}
 
 	req := missionTaskRequirements(pkg)
+	policy := flowResourcePolicy(pkg.ResourcePolicy)
+	req.ProjectPolicy = string(policy)
+	if strings.TrimSpace(pkg.Provider) != "" {
+		req.PreferProvider = strings.TrimSpace(pkg.Provider)
+	}
 	accounts, err := e.n.ListResources()
 	if err != nil {
 		return runner.AllocationResult{}, err
 	}
+	accounts = filterFlowResourceAccounts(accounts, pkg.Provider, pkg.Profile)
 	if len(accounts) == 0 {
-		return runner.AllocationResult{}, fmt.Errorf("no configured provider profiles are available for autonomous execution")
+		return runner.AllocationResult{}, fmt.Errorf("no configured provider profiles satisfy Flow Step %s resource restrictions", pkg.PackageID)
 	}
 
 	current, _ := currentAgentConfig(st, agent)
-	selected, keepCurrent := selectCurrentResource(accounts, current, req)
+	selected, keepCurrent := selectCurrentResource(accounts, current, req, policy)
 	if !keepCurrent {
-		recommendation := RecommendResources(accounts, req, PolicyBalanced)
+		recommendation := RecommendResources(accounts, req, policy)
 		if recommendation.Recommended == nil {
-			return runner.AllocationResult{}, fmt.Errorf("no provider/profile satisfies mission requirements: %s", recommendation.Explanation)
+			return runner.AllocationResult{}, fmt.Errorf("no provider/profile satisfies Flow Step %s requirements: %s", pkg.PackageID, recommendation.Explanation)
 		}
 		selected = recommendation.Recommended.Account
 	}
-
-	current.Provider = selected.Provider
-	current.Profile = selected.Profile
-	// Autonomous implementers always use a dedicated worktree unless the user
-	// explicitly pinned a workspace in the Agent configuration.
+	current.Provider, current.Profile = selected.Provider, selected.Profile
 	if strings.TrimSpace(current.Workspace) == "" {
 		current.Isolation = "worktree"
 	}
@@ -93,7 +106,110 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 	return runner.AllocationResult{AgentID: agent.ID, Workspace: workspace}, nil
 }
 
+func createMissionAgent(st *store.Store, projectID string, pkg *runner.PackageRun, prefix string) (store.Agent, error) {
+	name := strings.TrimSpace(pkg.Title)
+	if name == "" {
+		name = pkg.PackageID
+	}
+	return st.CreateAgent(store.Agent{ProjectID: projectID, Name: prefix + name, Role: defaultRole(pkg.Role, "implementer")})
+}
+
+func (e *nexusPackageExecutor) selectReusableFlowAgent(st *store.Store, run *runner.MissionRun, pkg *runner.PackageRun) (store.Agent, error) {
+	agents, err := st.ListAgents(run.ProjectID)
+	if err != nil {
+		return store.Agent{}, err
+	}
+	reserved := reservedAgentsInRun(run, pkg.PackageID)
+	role := strings.TrimSpace(pkg.Role)
+	eligible := make([]store.Agent, 0, len(agents))
+	for _, candidate := range agents {
+		if candidate.Role == "reviewer" && role != "reviewer" {
+			continue
+		}
+		if candidate.Status != store.AgentStopped && candidate.Status != store.AgentRecoverable {
+			continue
+		}
+		if _, used := reserved[candidate.ID]; used {
+			continue
+		}
+		eligible = append(eligible, candidate)
+	}
+	sort.SliceStable(eligible, func(i, j int) bool {
+		iMatch, jMatch := role != "" && eligible[i].Role == role, role != "" && eligible[j].Role == role
+		if iMatch != jMatch {
+			return iMatch
+		}
+		return eligible[i].ID < eligible[j].ID
+	})
+	if len(eligible) == 0 {
+		return store.Agent{}, store.ErrNotFound
+	}
+	return eligible[0], nil
+}
+
+func reservedAgentsInRun(run *runner.MissionRun, exceptPackageID string) map[string]struct{} {
+	reserved := make(map[string]struct{})
+	if run == nil {
+		return reserved
+	}
+	for _, pkg := range run.PackageRuns {
+		if pkg.PackageID == exceptPackageID {
+			continue
+		}
+		if pkg.AssignedAgent == "" {
+			continue
+		}
+		switch pkg.State {
+		case runner.StatePending, runner.StateVerified, runner.StateFailed, runner.StateCanceledByUser:
+			continue
+		default:
+			reserved[pkg.AssignedAgent] = struct{}{}
+		}
+	}
+	return reserved
+}
+
+func agentReservedInRun(run *runner.MissionRun, agentID, exceptPackageID string) bool {
+	reserved := reservedAgentsInRun(run, exceptPackageID)
+	_, ok := reserved[agentID]
+	return ok
+}
+
+func flowResourcePolicy(raw string) SchedulerPolicy {
+	switch SchedulerPolicy(strings.ToUpper(strings.TrimSpace(raw))) {
+	case PolicyPreserveQuota:
+		return PolicyPreserveQuota
+	case PolicyPreferProvider:
+		return PolicyPreferProvider
+	case PolicyManual:
+		return PolicyManual
+	default:
+		return PolicyBalanced
+	}
+}
+
+func filterFlowResourceAccounts(accounts []ProviderAccount, provider, profile string) []ProviderAccount {
+	provider, profile = strings.TrimSpace(provider), strings.TrimSpace(profile)
+	if provider == "" && profile == "" {
+		return accounts
+	}
+	out := make([]ProviderAccount, 0, len(accounts))
+	for _, account := range accounts {
+		if provider != "" && account.Provider != provider {
+			continue
+		}
+		if profile != "" && account.Profile != profile {
+			continue
+		}
+		out = append(out, account)
+	}
+	return out
+}
+
 func (e *nexusPackageExecutor) Compile(ctx context.Context, run *runner.MissionRun, pkg *runner.PackageRun) (runner.PromptArtifact, error) {
+	if pkg.ContextCapsule == nil {
+		return runner.PromptArtifact{}, runner.ErrMissingContextCapsule
+	}
 	snapshot, err := e.n.loadMissionSnapshot(run)
 	if err != nil {
 		return runner.PromptArtifact{}, err
@@ -108,6 +224,18 @@ func (e *nexusPackageExecutor) Compile(ctx context.Context, run *runner.MissionR
 	}
 	if len(compiled.AcceptanceGates) > 0 {
 		content += "\n\n## Acceptance gates\n- " + strings.Join(compiled.AcceptanceGates, "\n- ")
+	}
+	if len(pkg.RelevantPaths) > 0 {
+		content += "\n\n## Relevant paths\n- " + strings.Join(pkg.RelevantPaths, "\n- ")
+	}
+	if len(pkg.VerificationRequirements) > 0 {
+		content += "\n\n## Step verification requirements\n- " + strings.Join(pkg.VerificationRequirements, "\n- ")
+	}
+	// The typed ContextCapsule is persisted by MissionRunner before Compile.
+	// Render only its bounded durable refs and WorkReceipts; never raw provider
+	// output/transcripts. This is the actual provider handoff boundary.
+	if capsule := strings.TrimSpace(runner.RenderContextCapsule(pkg.ContextCapsule)); capsule != "" {
+		content += "\n\n" + capsule
 	}
 	if strings.TrimSpace(pkg.RemediationContext) != "" {
 		content += "\n\n## Remediation evidence from the previous attempt\n" + strings.TrimSpace(pkg.RemediationContext) +
@@ -139,15 +267,6 @@ func autonomyPromptBoundaries(contract runner.AutonomyContract) string {
 	}
 	if !contract.AllowDeploy {
 		rules = append(rules, "Do not deploy, publish releases, or modify external production systems.")
-	}
-	if !contract.AllowExternalNetwork {
-		rules = append(rules, "Do not use external-network tools from the implementation workspace; work only with local repository resources and the already-authorized AI provider transport.")
-	}
-	if !contract.AllowSecretAccess {
-		rules = append(rules, "Do not read secret managers, credentials, tokens, keychains, or unrelated authentication material.")
-	}
-	if !contract.AllowPaidServices {
-		rules = append(rules, "Do not create or mutate paid cloud/services or execute actions that can incur new external charges.")
 	}
 	if len(contract.AllowedFilePatterns) > 0 {
 		rules = append(rules, "Only modify files matching: "+strings.Join(contract.AllowedFilePatterns, ", "))
@@ -232,11 +351,18 @@ func (e *nexusPackageExecutor) ensureReviewerAgent(ctx context.Context, st *stor
 		}
 	}
 
-	req := TaskRequirements{TaskKind: "review", Role: "reviewer", RequiredCapabilities: []string{"headless", "submit_prompt", "read_only_review"}}
+	req := TaskRequirements{TaskKind: "review", Role: "reviewer", RequiredCapabilities: []string{"headless", "submit_prompt"}}
 	accounts, err := e.n.ListResources()
 	if err != nil {
 		return store.Agent{}, err
 	}
+	reviewAccounts := make([]ProviderAccount, 0, len(accounts))
+	for _, account := range accounts {
+		if supportsSafeHeadlessReview(account.Provider) {
+			reviewAccounts = append(reviewAccounts, account)
+		}
+	}
+	accounts = reviewAccounts
 
 	// Independence means a distinct Agent identity and, whenever possible, a
 	// distinct provider/profile from the implementer. Do not accidentally reward
@@ -278,11 +404,20 @@ func (e *nexusPackageExecutor) ensureReviewerAgent(ctx context.Context, st *stor
 	return reviewer, nil
 }
 
+func supportsSafeHeadlessReview(provider string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "claude", "gemini", "cursor":
+		return true
+	default:
+		return false
+	}
+}
+
 func missionTaskRequirements(pkg *runner.PackageRun) TaskRequirements {
 	req := TaskRequirements{
 		TaskKind:             "coding",
 		Role:                 defaultRole(pkg.Role, "implementer"),
-		RequiredCapabilities: []string{"headless", "submit_prompt", "autonomous_coding"},
+		RequiredCapabilities: []string{"headless", "submit_prompt"},
 	}
 	if strings.TrimSpace(pkg.TaskRequirements) != "" {
 		var explicit TaskRequirements
@@ -297,8 +432,6 @@ func missionTaskRequirements(pkg *runner.PackageRun) TaskRequirements {
 			req.PreferProvider = explicit.PreferProvider
 			req.AgentPreference = explicit.AgentPreference
 			req.ProjectPolicy = explicit.ProjectPolicy
-			req.ProviderLock = explicit.ProviderLock
-			req.ProfileLock = explicit.ProfileLock
 			req.RequiredCapabilities = mergeRequiredCapabilities(req.RequiredCapabilities, explicit.RequiredCapabilities)
 		}
 	}
@@ -319,7 +452,7 @@ func mergeRequiredCapabilities(base, extra []string) []string {
 	return out
 }
 
-func selectCurrentResource(accounts []ProviderAccount, cfg AgentConfig, req TaskRequirements) (ProviderAccount, bool) {
+func selectCurrentResource(accounts []ProviderAccount, cfg AgentConfig, req TaskRequirements, policy SchedulerPolicy) (ProviderAccount, bool) {
 	if cfg.Provider == "" || cfg.Profile == "" {
 		return ProviderAccount{}, false
 	}
@@ -327,7 +460,7 @@ func selectCurrentResource(accounts []ProviderAccount, cfg AgentConfig, req Task
 		if account.Provider != cfg.Provider || account.Profile != cfg.Profile {
 			continue
 		}
-		candidate := evaluateCandidate(account, req, PolicyBalanced)
+		candidate := evaluateCandidate(account, req, policy)
 		return account, candidate.Eligible
 	}
 	return ProviderAccount{}, false

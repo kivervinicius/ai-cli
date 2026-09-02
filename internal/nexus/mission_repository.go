@@ -140,3 +140,66 @@ func isLeaseError(err error) bool {
 	msg := err.Error()
 	return msg == "mission run lease held" || msg == "mission run lease fencing mismatch"
 }
+
+func (r *storeRunRepository) SaveContextCapsule(_ context.Context, capsule *runner.ContextCapsule) error {
+	if capsule == nil {
+		return fmt.Errorf("context capsule is required")
+	}
+	if existing, err := r.st.GetFlowContextCapsule(capsule.RunID, capsule.Step.ID); err == nil && existing.ID != "" {
+		capsule.ID = existing.ID
+	} else if err != nil && !store.IsFlowEvidenceNotFound(err) {
+		return err
+	}
+	payload, err := json.Marshal(capsule)
+	if err != nil {
+		return err
+	}
+	record, err := r.st.UpsertFlowContextCapsule(store.FlowContextCapsuleRecord{ID: capsule.ID, RunID: capsule.RunID, StepID: capsule.Step.ID, FlowRevision: capsule.FlowRevision, ContentJSON: string(payload), CreatedAt: capsule.CreatedAt})
+	if err != nil {
+		return err
+	}
+	capsule.ID = record.ID
+	return nil
+}
+func (r *storeRunRepository) GetContextCapsule(_ context.Context, runID, stepID string) (*runner.ContextCapsule, error) {
+	record, err := r.st.GetFlowContextCapsule(runID, stepID)
+	if err != nil {
+		return nil, err
+	}
+	var capsule runner.ContextCapsule
+	if err := json.Unmarshal([]byte(record.ContentJSON), &capsule); err != nil {
+		return nil, fmt.Errorf("decode context capsule: %w", err)
+	}
+	return &capsule, nil
+}
+func (r *storeRunRepository) SaveWorkReceipt(_ context.Context, receipt *runner.WorkReceipt) error {
+	if receipt == nil {
+		return fmt.Errorf("work receipt is required")
+	}
+	if existing, err := r.st.GetFlowWorkReceipt(receipt.RunID, receipt.StepID); err == nil && existing.ID != "" {
+		receipt.ID = existing.ID
+	} else if err != nil && !store.IsFlowEvidenceNotFound(err) {
+		return err
+	}
+	payload, err := json.Marshal(receipt)
+	if err != nil {
+		return err
+	}
+	record, err := r.st.UpsertFlowWorkReceipt(store.FlowWorkReceiptRecord{ID: receipt.ID, RunID: receipt.RunID, StepID: receipt.StepID, Status: receipt.Status, ContentJSON: string(payload), CreatedAt: receipt.CompletedAt})
+	if err != nil {
+		return err
+	}
+	receipt.ID = record.ID
+	return nil
+}
+func (r *storeRunRepository) GetWorkReceipt(_ context.Context, runID, stepID string) (*runner.WorkReceipt, error) {
+	record, err := r.st.GetFlowWorkReceipt(runID, stepID)
+	if err != nil {
+		return nil, err
+	}
+	var receipt runner.WorkReceipt
+	if err := json.Unmarshal([]byte(record.ContentJSON), &receipt); err != nil {
+		return nil, fmt.Errorf("decode work receipt: %w", err)
+	}
+	return &receipt, nil
+}

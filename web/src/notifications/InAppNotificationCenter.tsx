@@ -1,0 +1,64 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { CheckCircle2, Terminal, XCircle } from 'lucide-react';
+import type { RuntimeSession } from '../types';
+import { sanitizeAttentionText } from '../components/attentionText';
+import { IconButton } from '../design-system';
+import { notificationFromRuntime, type InAppNotification } from './inAppNotificationModel';
+
+const DISMISS_AFTER_MS = 7_000;
+
+export const InAppNotificationCenter: React.FC<{
+  runtimes: RuntimeSession[];
+  onFocusRuntime: (runtimeId: string) => void;
+}> = ({ runtimes, onFocusRuntime }) => {
+  const [notifications, setNotifications] = useState<InAppNotification[]>([]);
+  const observed = useRef(new Set<string>());
+  const initialized = useRef(false);
+
+  useEffect(() => {
+    const next = runtimes
+      .map(notificationFromRuntime)
+      .filter((notification): notification is InAppNotification => notification !== null);
+
+    if (!initialized.current) {
+      next.forEach((notification) => observed.current.add(notification.id));
+      initialized.current = true;
+      return;
+    }
+
+    const fresh = next.filter((notification) => !observed.current.has(notification.id));
+    if (fresh.length === 0) return;
+    fresh.forEach((notification) => observed.current.add(notification.id));
+    setNotifications((current) => [...fresh, ...current].slice(0, 3));
+  }, [runtimes]);
+
+  useEffect(() => {
+    if (notifications.length === 0) return;
+    const timer = window.setTimeout(() => setNotifications((current) => current.slice(0, -1)), DISMISS_AFTER_MS);
+    return () => window.clearTimeout(timer);
+  }, [notifications]);
+
+  const dismiss = (id: string) => setNotifications((current) => current.filter((notification) => notification.id !== id));
+
+  if (notifications.length === 0) return null;
+
+  return (
+    <section className="nx-notification-center" aria-label="Notificações recentes" aria-live="polite">
+      {notifications.map((notification) => (
+        <article className="nx-notification-toast" data-tone={notification.tone} key={notification.id} role="status">
+          {notification.tone === 'success' ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
+          <div className="nx-notification-toast__body">
+            <strong>{notification.title}</strong>
+            <span>{sanitizeAttentionText(notification.projectName, 'Projeto')} · {sanitizeAttentionText(notification.message, 'Sem detalhes adicionais.')}</span>
+          </div>
+          <IconButton label="Abrir terminal" onClick={() => onFocusRuntime(notification.runtimeId)}>
+            <Terminal size={15} />
+          </IconButton>
+          <IconButton label="Fechar notificação" onClick={() => dismiss(notification.id)}>
+            <XCircle size={15} />
+          </IconButton>
+        </article>
+      ))}
+    </section>
+  );
+};

@@ -8,7 +8,8 @@ import {
   openSurface,
   setActiveSurface,
   splitWithSurface,
-  updateSurface,
+  surfaceLogicalKey,
+  surfaceViewId,
   type WorkspaceSurface,
 } from './model';
 
@@ -22,29 +23,6 @@ describe('workspace model', () => {
     const stack = findStackContaining(ws.root, 'terminal:a');
     expect(stack?.tabs.map((tab) => tab.id)).toEqual(['home', 'terminal:a']);
     expect(stack?.activeId).toBe('terminal:a');
-  });
-
-  it('deduplicates by logical key while allowing separate visual views', () => {
-    let ws = createWorkspace({ ...surface('session-view-1'), logicalKey: 'session:1' });
-    ws = openSurface(ws, { ...surface('session-view-2'), logicalKey: 'session:1' });
-    expect(ws.root.kind).toBe('stack');
-    if (ws.root.kind !== 'stack') return;
-    expect(ws.root.tabs).toHaveLength(1);
-    expect(ws.root.activeId).toBe('session-view-1');
-  });
-
-  it('accepts legacy runtime event identifiers for v2 views', () => {
-    const ws = createWorkspace({ id: 'agent:a:terminal', viewId: 'view:agent:a:terminal', logicalKey: 'session:a', type: 'terminal', title: 'A' });
-    const updated = updateSurface(ws, 'agent:a:terminal', { title: 'Updated' });
-    expect(updated.root.kind === 'stack' && updated.root.tabs[0].title).toBe('Updated');
-  });
-
-  it('opens new empty focused pane for a split', async () => {
-    const { splitEmpty, listStacks } = await import('./model');
-    const ws = splitEmpty(createWorkspace(surface('home')), 'home', 'horizontal');
-    expect(listStacks(ws.root)).toHaveLength(2);
-    expect(ws.focusedStackId).toBe(listStacks(ws.root)[1].id);
-    expect(listStacks(ws.root)[1].tabs).toHaveLength(0);
   });
 
   it('splits an existing stack with a new surface', () => {
@@ -82,6 +60,22 @@ describe('workspace model', () => {
     let ws = openSurface(createWorkspace(surface('home')), surface('plan'));
     ws = setActiveSurface(ws, 'home');
     expect(findStackContaining(ws.root, 'home')?.activeId).toBe('home');
+  });
+
+  it('uses logical identity to focus an existing view instead of duplicating it', () => {
+    let ws = createWorkspace({ ...surface('overview-1'), logicalKey: 'project:p1:overview', viewId: 'view:overview' });
+    ws = openSurface(ws, { ...surface('overview-2'), logicalKey: 'project:p1:overview', viewId: 'view:overview-new' });
+    const stack = findStackContaining(ws.root, 'view:overview');
+    expect(stack?.tabs).toHaveLength(1);
+    expect(surfaceLogicalKey(stack!.tabs[0])).toBe('project:p1:overview');
+    expect(surfaceViewId(stack!.tabs[0])).toBe('view:overview');
+  });
+
+  it('finds a migrated surface by legacy id and stable view id', () => {
+    const ws = createWorkspace({ id: 'legacy-agent', viewId: 'view:agent:1', logicalKey: 'agent:1:terminal', type: 'terminal', title: 'Agent' });
+    expect(findStackContaining(ws.root, 'legacy-agent')).not.toBeNull();
+    expect(findStackContaining(ws.root, 'view:agent:1')).not.toBeNull();
+    expect(findStackContaining(ws.root, 'agent:1:terminal')).not.toBeNull();
   });
 
   it('clamps split ratios to usable bounds', () => {

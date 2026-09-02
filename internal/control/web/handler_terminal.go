@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -54,15 +55,17 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 	}
 	defer ws.Close()
 
+	var wsMu sync.Mutex
+	safeWriteJSON := func(v any) error {
+		wsMu.Lock()
+		defer wsMu.Unlock()
+		return ws.WriteJSON(v)
+	}
+
 	broker := DefaultBroker()
 	hasRuntime := runtimeID != ""
-	role, socketWriter := broker.Attach(agentID, ws, hasRuntime)
-	safeWriteJSON := socketWriter.WriteJSON
+	role := broker.Attach(agentID, ws, hasRuntime, &wsMu)
 	defer broker.Detach(agentID, ws)
-	_ = safeWriteJSON(TerminalMessage{
-		Type: "lease",
-		Role: role,
-	})
 
 	// Connect to runtime SessionHost via local IPC
 	client, err := protocol.NewClient(runtimeID)
@@ -95,9 +98,16 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 	// broker. The command is deliberately sent over this connection *after*
 	// Attach so SessionHost can bind the lease to the exact streaming client,
 	// not to an unrelated RPC connection.
+	effectiveRole := role
 	if role == "CONTROL" {
-		_ = sendAttachedCommand(rawConn, protocol.CmdLeaseAcquire, nil)
+		if err := sendAttachedCommand(rawConn, protocol.CmdLeaseAcquire, nil); err != nil {
+			effectiveRole = "VIEW_ONLY"
+		}
 	}
+	_ = safeWriteJSON(TerminalMessage{
+		Type: "lease",
+		Role: effectiveRole,
+	})
 
 	if ch := DefaultBroker().WatchRuntimeChanged(agentID); ch != nil {
 		go func() {

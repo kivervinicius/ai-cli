@@ -27,6 +27,9 @@ func FormatKickoffPrompt(cp WorkCheckpoint) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("=== IAPro Nexus Context Handoff (from %s:%s) ===\n", strings.ToUpper(cp.SourceProvider), cp.SourceProfile))
 	sb.WriteString(fmt.Sprintf("Workspace: %s\n", cp.Workspace))
+	if cp.SourceModel != "" {
+		sb.WriteString(fmt.Sprintf("Previous Model: %s\n", cp.SourceModel))
+	}
 	if cp.GitBranch != "" {
 		sb.WriteString(fmt.Sprintf("Active Git Branch: %s\n", cp.GitBranch))
 	}
@@ -91,7 +94,7 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 	}
 
 	// 3. Capture Safe Work Checkpoint
-	cp := CaptureWorkCheckpoint(source.Workspace, source.RuntimeID, source.ProviderID, source.ProfileID, source.ProviderSessionID, "")
+	cp := CaptureWorkCheckpoint(source.Workspace, source.RuntimeID, source.ProviderID, source.ProfileID, source.ProviderSessionID, source.Model, "")
 	if _, err := SaveCheckpoint(cp); err != nil {
 		return nil, fmt.Errorf("context handoff aborted: failed to persist work checkpoint: %w", err)
 	}
@@ -109,6 +112,9 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 		return nil, fmt.Errorf("failed to construct kickoff arguments: %w", err)
 	}
 
+	// 4b. Resolve model for target provider
+	targetModel := ResolveTargetModel(source.Model, source.ProviderID, targetProvider)
+
 	// 5. Launch Target Supervised Runtime FIRST via unified launcher (persistent host)
 	newRuntimeID := fmt.Sprintf("%s-continue-%s", targetProvider, ids.NewRuntimeID())
 	lineageID := fmt.Sprintf("lin-ctx-%s", ids.NewRuntimeID())
@@ -119,6 +125,7 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 		ProfileID:  targetProfile,
 		Workspace:  source.Workspace,
 		Args:       extraArgs,
+		Model:      targetModel,
 		Standalone: false,
 	})
 	if err != nil {
@@ -161,4 +168,22 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 	))
 
 	return newSession, nil
+}
+
+// ResolveTargetModel determines whether the source model can be safely used on the target provider.
+// If both providers are identical, the model is preserved unconditionally.
+// If providers differ, we test whether the target provider's driver supports model overrides
+// via ApplyLaunchConfiguration dry-run. If unsupported, returns "" to fall back cleanly to target default.
+func ResolveTargetModel(sourceModel, sourceProvider, targetProvider string) string {
+	sourceModel = strings.TrimSpace(sourceModel)
+	if sourceModel == "" {
+		return ""
+	}
+	if strings.EqualFold(sourceProvider, targetProvider) {
+		return sourceModel
+	}
+	if _, err := driver.ApplyLaunchConfiguration(targetProvider, sourceModel, nil, nil); err != nil {
+		return ""
+	}
+	return sourceModel
 }

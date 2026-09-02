@@ -114,7 +114,7 @@ func PerformAccountHandoff(ctx context.Context, sourceRuntimeID, targetSpec stri
 	tx.State = HandoffTargetValidated
 
 	// 6. Capture work checkpoint
-	tx.Checkpoint = CaptureWorkCheckpoint(source.Workspace, source.RuntimeID, source.ProviderID, source.ProfileID, source.ProviderSessionID, "")
+	tx.Checkpoint = CaptureWorkCheckpoint(source.Workspace, source.RuntimeID, source.ProviderID, source.ProfileID, source.ProviderSessionID, source.Model, "")
 	if _, err := SaveCheckpoint(tx.Checkpoint); err != nil {
 		tx.State = HandoffFailedSafe
 		return nil, fmt.Errorf("account handoff aborted: failed to persist mandatory work checkpoint: %w (FAILED_SAFE)", err)
@@ -157,6 +157,7 @@ func PerformAccountHandoff(ctx context.Context, sourceRuntimeID, targetSpec stri
 		ProviderSessionID: source.ProviderSessionID,
 		Workspace:         source.Workspace,
 		Args:              resumeArgs,
+		Model:             source.Model,
 		Standalone:        false,
 	})
 	if err != nil {

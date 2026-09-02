@@ -88,8 +88,6 @@ func (d *FakeDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effecti
 			Status: CapabilitySupported,
 			Tested: true,
 		},
-		AutonomousCoding: CapabilityEvidence{Status: CapabilitySupported, Tested: true},
-		ReadOnlyReview:   CapabilityEvidence{Status: CapabilitySupported, Tested: true},
 		SlashControl: CapabilityEvidence{
 			Status: CapabilitySupported,
 			Tested: true,
@@ -128,8 +126,4 @@ func (d *FakeDriver) BuildResumeArgs(ctx context.Context, p model.Profile, provi
 
 func (d *FakeDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error) {
 	return []string{kickoffPrompt}, nil
-}
-
-func (d *FakeDriver) BuildAutonomousArgs(ctx context.Context, p model.Profile, kickoffPrompt string, mode AutonomousMode, policy AutonomousPolicy) ([]string, error) {
-	return d.BuildKickoffArgs(ctx, p, kickoffPrompt)
 }

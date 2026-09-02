@@ -75,12 +75,14 @@ const healthTone = (health: string) =>
   health === 'healthy' ? 'success' : health === 'degraded' ? 'warning' : health === 'unhealthy' ? 'danger' : 'default';
 
 const QuotaBar: React.FC<{ w: QuotaWindow }> = ({ w }) => (
-  <span className="nx-resource-account__quota">
+  <span className="nx-resource-account__quota-row">
     <span className="nx-resource-account__quota-label">{w.label}</span>
     <Progress value={w.remaining} label={`${Math.round(w.remaining)}%`} />
     {w.reset_desc && <span className="nx-resource-account__quota-reset">{w.reset_desc}</span>}
   </span>
 );
+
+const groupAvailable = (group: QuotaModelGroup) => group.windows.some((w) => w.kind !== 'unknown' && w.remaining > 0);
 
 export const ResourcePicker: React.FC<Props> = ({ agentId, preferProvider, onSelected }) => {
   const { t } = useTranslation();
@@ -140,13 +142,7 @@ export const ResourcePicker: React.FC<Props> = ({ agentId, preferProvider, onSel
                   <Badge>{account.profile}</Badge>
                   <Badge tone={healthTone(account.health)}>{translateStatus(account.health)}</Badge>
                   <Badge tone={account.available ? 'success' : 'danger'}>
-                    {account.available
-                      ? translateStatus('AVAILABLE')
-                      : account.avail_reasons?.rate_limited
-                      ? translateStatus('RATE_LIMITED')
-                      : account.avail_reasons?.exhausted_windows
-                      ? translateStatus('QUOTA_EXHAUSTED')
-                      : translateStatus('UNAVAILABLE')}
+                    {account.available ? 'DISPONIVEL' : account.avail_reasons?.rate_limited ? 'RATE LIMITED' : account.avail_reasons?.exhausted_windows ? 'QUOTA ESGOTADA' : 'INDISPONIVEL'}
                   </Badge>
                   {account.is_default && <Badge>{t('common.default')}</Badge>}
                   {selected && <Badge><Check size={12} /> {t('common.selected')}</Badge>}
@@ -156,9 +152,12 @@ export const ResourcePicker: React.FC<Props> = ({ agentId, preferProvider, onSel
                     qv!.model_groups.map((group, gi) => (
                       <span key={gi} className="nx-resource-account__group">
                         {multiGroups && group.name && (
-                          <span className="nx-resource-account__group-name">{group.name}</span>
+                          <span className="nx-resource-account__group-heading">
+                            <span className="nx-resource-account__group-name">{group.name}</span>
+                            <Badge tone={groupAvailable(group) ? 'success' : 'danger'}>{groupAvailable(group) ? 'DISPONIVEL' : 'INDISPONIVEL'}</Badge>
+                          </span>
                         )}
-                        {(group.windows || []).map((w) => (
+                        {group.windows.map((w) => (
                           <QuotaBar key={w.kind} w={w} />
                         ))}
                       </span>

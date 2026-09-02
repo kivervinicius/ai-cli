@@ -8,7 +8,6 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/control/ids"
 	"github.com/kivervinicius/ai-cli/internal/nexus/intelligence"
-	"github.com/kivervinicius/ai-cli/internal/nexus/plangraph"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 
 	"sort"
@@ -25,54 +24,25 @@ func (n *Nexus) CreateWorkPlan(ctx context.Context, projectID, title, descriptio
 		return nil, fmt.Errorf("plan title is required")
 	}
 
-	normalized, err := normalizeAndValidatePlanPhases(phases)
-	if err != nil {
-		return nil, fmt.Errorf("invalid work plan: %w", err)
-	}
 	plan := store.WorkPlan{
 		ProjectID:       projectID,
 		Title:           title,
 		Description:     description,
-		Phases:          normalized,
+		Phases:          phases,
 		StructuredFacts: facts,
+	}
+	for pi := range plan.Phases {
+		if plan.Phases[pi].ID == "" {
+			plan.Phases[pi].ID = "phase_" + ids.NewRuntimeID()
+		}
+		for wi := range plan.Phases[pi].Packages {
+			if plan.Phases[pi].Packages[wi].ID == "" {
+				plan.Phases[pi].Packages[wi].ID = "pkg_" + ids.NewRuntimeID()
+			}
+		}
 	}
 
 	return st.CreateWorkPlan(plan)
-}
-
-func normalizeAndValidatePlanPhases(phases []store.PlanPhase) ([]store.PlanPhase, error) {
-	normalized := make([]store.PlanPhase, len(phases))
-	nodes := make([]plangraph.Node, 0)
-	for pi, phase := range phases {
-		normalized[pi] = phase
-		if strings.TrimSpace(normalized[pi].ID) == "" {
-			normalized[pi].ID = "phase_" + ids.NewRuntimeID()
-		}
-		normalized[pi].Packages = append([]store.WorkPackage(nil), phase.Packages...)
-		for wi := range normalized[pi].Packages {
-			pkg := &normalized[pi].Packages[wi]
-			if strings.TrimSpace(pkg.ID) == "" {
-				pkg.ID = "pkg_" + ids.NewRuntimeID()
-			}
-			pkg.Dependencies = append([]string(nil), pkg.Dependencies...)
-			nodes = append(nodes, plangraph.Node{ID: pkg.ID, Title: pkg.Title, Dependencies: pkg.Dependencies})
-		}
-	}
-	graph, err := plangraph.NormalizeAndValidate(nodes)
-	if err != nil {
-		return nil, err
-	}
-	depsByID := make(map[string][]string, len(graph))
-	for _, node := range graph {
-		depsByID[node.ID] = append([]string(nil), node.Dependencies...)
-	}
-	for pi := range normalized {
-		for wi := range normalized[pi].Packages {
-			pkg := &normalized[pi].Packages[wi]
-			pkg.Dependencies = depsByID[pkg.ID]
-		}
-	}
-	return normalized, nil
 }
 
 // GetWorkPlan fetches a plan by ID.
@@ -99,20 +69,6 @@ func (n *Nexus) UpdateWorkPlan(ctx context.Context, plan store.WorkPlan, changeS
 	if err != nil {
 		return nil, nil, err
 	}
-	existing, err := st.GetWorkPlan(plan.ID)
-	if err != nil {
-		return nil, nil, err
-	}
-	// Identity and ownership are server-authoritative. A client editing a plan
-	// cannot move it to another project or rewrite immutable creation metadata.
-	plan.ProjectID = existing.ProjectID
-	plan.MissionID = existing.MissionID
-	plan.CreatedAt = existing.CreatedAt
-	normalized, err := normalizeAndValidatePlanPhases(plan.Phases)
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid work plan: %w", err)
-	}
-	plan.Phases = normalized
 	return st.UpdateWorkPlan(plan, changeSummary)
 }
 
@@ -176,7 +132,7 @@ func (n *Nexus) compilePackagePromptFromPlan(ctx context.Context, plan *store.Wo
 
 	// Maestro remains the sole authority for skill IDs. Explicit gates are part
 	// of the approved contract and must never be silently dropped.
-	validatedSkills, err := n.validateMaestroGatesStrict(ctx, targetPkg.MaestroGates)
+	validatedSkills, err := n.validateMaestroGatesStrict(ctx, uniqueStrings(append(append([]string(nil), targetPkg.MaestroGates...), targetPkg.MaestroSkills...)))
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +183,7 @@ func compilePackagePromptFromExecutionSnapshot(ctx context.Context, plan *store.
 		for i := range ph.Packages {
 			pkg := &ph.Packages[i]
 			if pkg.ID == packageID {
-				return compileTargetPackagePrompt(ctx, plan, pkg, append([]string(nil), pkg.MaestroGates...))
+				return compileTargetPackagePrompt(ctx, plan, pkg, uniqueStrings(append(append([]string(nil), pkg.MaestroGates...), pkg.MaestroSkills...)))
 			}
 		}
 	}
@@ -255,11 +211,15 @@ func (e *ClarificationRequiredError) Error() string {
 // GeneratePlanFromIntent uses a real configured Nexus Intelligence provider.
 // It persists BLOCKING ambiguities and never falls back to fabricated packages.
 func (n *Nexus) GeneratePlanFromIntent(ctx context.Context, projectID, goal string) (*store.WorkPlan, error) {
+	contextData, err := n.ComposerContextData(projectID)
+	if err != nil {
+		return nil, err
+	}
 	provider, err := n.ConfiguredIntelligenceProvider(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
-	engine := intelligence.NewNexusEngine(provider)
+	engine := intelligence.NewNexusEngine(provider).WithContextData(contextData)
 	intent, unknowns, err := engine.Analyze(ctx, goal, projectID)
 	if err != nil {
 		return nil, err
@@ -361,11 +321,15 @@ func (n *Nexus) ResolveClarificationAndGeneratePlan(ctx context.Context, id stri
 	if err != nil {
 		return nil, nil, err
 	}
+	contextData, err := n.ComposerContextData(checkpoint.ProjectID)
+	if err != nil {
+		return nil, checkpoint, err
+	}
 	provider, err := n.ConfiguredIntelligenceProvider(ctx, checkpoint.ProjectID)
 	if err != nil {
 		return nil, checkpoint, err
 	}
-	engine := intelligence.NewNexusEngine(provider)
+	engine := intelligence.NewNexusEngine(provider).WithContextData(contextData)
 	state := &intelligence.ClarificationState{Unknowns: checkpoint.Unknowns, StructuredFacts: checkpoint.Facts}
 	for key, answer := range answers {
 		if strings.TrimSpace(answer) != "" {

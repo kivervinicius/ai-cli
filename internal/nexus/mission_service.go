@@ -47,7 +47,9 @@ func planToRunnerSpec(plan *store.WorkPlan, snapshotID string) (runner.PlanSpec,
 				ID: pkg.ID, PhaseID: phase.ID, Title: pkg.Title, Goal: pkg.Goal, Priority: pkg.Priority,
 				Dependencies: append([]string(nil), pkg.Dependencies...), ParallelGroup: pkg.ParallelGroup,
 				Role: pkg.Role, TaskRequirements: pkg.TaskRequirements, AgentAllocation: pkg.AgentAllocation,
-				AcceptanceCriteria: append([]string(nil), pkg.AcceptanceCriteria...),
+				AssignmentStrategy: pkg.AssignmentStrategy, ResourcePolicy: pkg.ResourcePolicy, Provider: pkg.Provider, Profile: pkg.Profile,
+				MaestroSkills: append([]string(nil), pkg.MaestroSkills...), RelevantPaths: append([]string(nil), pkg.RelevantPaths...),
+				AcceptanceCriteria: append([]string(nil), pkg.AcceptanceCriteria...), VerificationRequirements: append([]string(nil), pkg.VerificationRequirements...),
 			})
 		}
 	}
@@ -58,17 +60,62 @@ func planToRunnerSpec(plan *store.WorkPlan, snapshotID string) (runner.PlanSpec,
 }
 
 func freezePlanForExecution(ctx context.Context, n *Nexus, plan store.WorkPlan) (store.WorkPlan, error) {
+	if err := validateFlowExecutionContract(plan); err != nil {
+		return store.WorkPlan{}, err
+	}
 	for pi := range plan.Phases {
 		for wi := range plan.Phases[pi].Packages {
-			gates := plan.Phases[pi].Packages[wi].MaestroGates
-			validated, err := n.validateMaestroGatesStrict(ctx, gates)
+			pkg := &plan.Phases[pi].Packages[wi]
+			requested := uniqueStrings(append(append([]string(nil), pkg.MaestroGates...), pkg.MaestroSkills...))
+			validated, err := n.validateMaestroGatesStrict(ctx, requested)
 			if err != nil {
-				return store.WorkPlan{}, fmt.Errorf("freeze Maestro gates for package %s: %w", plan.Phases[pi].Packages[wi].ID, err)
+				return store.WorkPlan{}, fmt.Errorf("freeze Maestro skills for package %s: %w", pkg.ID, err)
 			}
-			plan.Phases[pi].Packages[wi].MaestroGates = validated
+			// The immutable execution snapshot carries one validated skill set in
+			// both fields so legacy prompt compilation and the Flow façade agree.
+			pkg.MaestroGates = append([]string(nil), validated...)
+			pkg.MaestroSkills = append([]string(nil), validated...)
 		}
 	}
 	return plan, nil
+}
+
+func validateFlowExecutionContract(plan store.WorkPlan) error {
+	if err := ValidateFlowDAG(FlowFromWorkPlan(plan)); err != nil {
+		return fmt.Errorf("invalid Flow DAG: %w", err)
+	}
+	for _, phase := range plan.Phases {
+		for _, pkg := range phase.Packages {
+			strategy := strings.ToUpper(strings.TrimSpace(pkg.AssignmentStrategy))
+			switch strategy {
+			case "": // legacy WorkPlan compatibility
+			case string(FlowAssignmentExisting):
+				if strings.TrimSpace(pkg.AgentAllocation) == "" {
+					return fmt.Errorf("Flow Step %s uses EXISTING assignment without AgentID", pkg.ID)
+				}
+			case string(FlowAssignmentCreate):
+				if strings.TrimSpace(pkg.AgentAllocation) != "" {
+					return fmt.Errorf("Flow Step %s uses CREATE assignment with an existing AgentID", pkg.ID)
+				}
+			case string(FlowAssignmentAuto):
+				if strings.TrimSpace(pkg.AgentAllocation) != "" {
+					return fmt.Errorf("Flow Step %s uses AUTO assignment with a fixed AgentID", pkg.ID)
+				}
+			default:
+				return fmt.Errorf("Flow Step %s has unsupported assignment strategy %q", pkg.ID, pkg.AssignmentStrategy)
+			}
+			policy := strings.ToUpper(strings.TrimSpace(pkg.ResourcePolicy))
+			switch policy {
+			case "", string(PolicyBalanced), string(PolicyPreserveQuota), string(PolicyPreferProvider), string(PolicyManual):
+			default:
+				return fmt.Errorf("Flow Step %s has unsupported resource policy %q", pkg.ID, pkg.ResourcePolicy)
+			}
+			if policy == string(PolicyManual) && strings.TrimSpace(pkg.Provider) == "" && strings.TrimSpace(pkg.Profile) == "" {
+				return fmt.Errorf("Flow Step %s MANUAL resource policy requires provider and/or profile restriction", pkg.ID)
+			}
+		}
+	}
+	return nil
 }
 
 func (n *Nexus) validateMaestroGatesStrict(ctx context.Context, gates []string) ([]string, error) {
@@ -99,58 +146,17 @@ func (n *Nexus) StartMissionRun(ctx context.Context, planID, defaultAgentID stri
 	if err != nil {
 		return nil, err
 	}
-	return n.startMissionRunAtRevision(ctx, plan, plan.CurrentRevision, defaultAgentID, contract, autonomous)
-}
-
-// StartMissionRunApproved starts the exact WorkPlan revision the user approved.
-// It rejects a stale UI approval if the current plan revision changed between
-// rendering and the Run action.
-func (n *Nexus) StartMissionRunApproved(ctx context.Context, planID string, approvedRevision int, defaultAgentID string, contract runner.AutonomyContract, autonomous bool) (*runner.MissionRun, error) {
-	st, err := n.OpenProject()
-	if err != nil {
-		return nil, err
-	}
-	plan, err := st.GetWorkPlan(planID)
-	if err != nil {
-		return nil, err
-	}
-	if approvedRevision <= 0 {
-		return nil, fmt.Errorf("approved_revision is required")
-	}
-	if plan.CurrentRevision != approvedRevision {
-		return nil, fmt.Errorf("work plan changed after approval: approved revision %d, current revision %d; review and approve the latest plan", approvedRevision, plan.CurrentRevision)
-	}
-	return n.startMissionRunAtRevision(ctx, plan, approvedRevision, defaultAgentID, contract, autonomous)
-}
-
-// startMissionRunAtRevision loads the immutable revision snapshot and never
-// substitutes the mutable current WorkPlan. Scheduled Missions use this path.
-func (n *Nexus) startMissionRunAtRevision(ctx context.Context, currentPlan *store.WorkPlan, revisionNumber int, defaultAgentID string, contract runner.AutonomyContract, autonomous bool) (*runner.MissionRun, error) {
-	st, err := n.OpenProject()
-	if err != nil {
-		return nil, err
-	}
-	if currentPlan == nil {
-		return nil, fmt.Errorf("work plan is required")
-	}
-	revision, err := st.GetPlanRevision(currentPlan.ID, revisionNumber)
-	if err != nil {
-		return nil, fmt.Errorf("resolve immutable plan revision %d: %w", revisionNumber, err)
-	}
-	var plan store.WorkPlan
-	if err := json.Unmarshal([]byte(revision.SnapshotJSON), &plan); err != nil {
-		return nil, fmt.Errorf("decode immutable plan revision %d: %w", revisionNumber, err)
-	}
-	if plan.ID != currentPlan.ID || plan.ProjectID != currentPlan.ProjectID || plan.CurrentRevision != revisionNumber {
-		return nil, fmt.Errorf("immutable plan revision %d identity mismatch", revisionNumber)
-	}
 	project, err := st.GetProject(plan.ProjectID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve mission project: %w", err)
 	}
+	revision, err := st.GetPlanRevision(plan.ID, plan.CurrentRevision)
+	if err != nil {
+		return nil, fmt.Errorf("resolve immutable plan revision %d: %w", plan.CurrentRevision, err)
+	}
 
 	contract = normalizeAutonomyContract(contract, project.CanonicalPath)
-	frozenPlan, err := freezePlanForExecution(ctx, n, plan)
+	frozenPlan, err := freezePlanForExecution(ctx, n, *plan)
 	if err != nil {
 		return nil, err
 	}
@@ -176,6 +182,61 @@ func (n *Nexus) startMissionRunAtRevision(ctx context.Context, currentPlan *stor
 	return run, nil
 }
 
+func (n *Nexus) StartMissionRunApproved(ctx context.Context, planID string, approvedRevision int, defaultAgentID string, contract runner.AutonomyContract, autonomous bool) (*runner.MissionRun, error) {
+	st, err := n.OpenProject()
+	if err != nil {
+		return nil, err
+	}
+	plan, err := st.GetWorkPlan(planID)
+	if err != nil {
+		return nil, err
+	}
+	if plan.CurrentRevision != approvedRevision {
+		return nil, fmt.Errorf("approved plan revision %d is stale; current is %d", approvedRevision, plan.CurrentRevision)
+	}
+	return n.startMissionRunAtRevision(ctx, plan, approvedRevision, defaultAgentID, contract, autonomous)
+}
+
+func (n *Nexus) startMissionRunAtRevision(ctx context.Context, plan *store.WorkPlan, revision int, defaultAgentID string, contract runner.AutonomyContract, autonomous bool) (*runner.MissionRun, error) {
+	st, err := n.OpenProject()
+	if err != nil {
+		return nil, err
+	}
+	project, err := st.GetProject(plan.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	rev, err := st.GetPlanRevision(plan.ID, revision)
+	if err != nil {
+		return nil, err
+	}
+	var frozen store.WorkPlan
+	if err := json.Unmarshal([]byte(rev.SnapshotJSON), &frozen); err != nil {
+		return nil, err
+	}
+	contract = normalizeAutonomyContract(contract, project.CanonicalPath)
+	env, err := json.Marshal(missionExecutionSnapshot{Plan: frozen, Contract: contract})
+	if err != nil {
+		return nil, err
+	}
+	snapshot, err := st.CreateExecutionSnapshot(plan.ID, rev.ID, string(env))
+	if err != nil {
+		return nil, err
+	}
+	spec, err := planToRunnerSpec(&frozen, snapshot.ID)
+	if err != nil {
+		return nil, err
+	}
+	run, err := n.Runner().StartMissionRun(ctx, spec, project.CanonicalPath, contract, defaultAgentID)
+	if err != nil {
+		return nil, err
+	}
+	if autonomous {
+		n.StartMissionWorker(run.ID)
+	}
+	return run, nil
+}
+
 func normalizeAutonomyContract(contract runner.AutonomyContract, workspace string) runner.AutonomyContract {
 	defaults := runner.DefaultAutonomyContract()
 	if contract.MaxRetries <= 0 {
@@ -183,9 +244,6 @@ func normalizeAutonomyContract(contract runner.AutonomyContract, workspace strin
 	}
 	if contract.MaxTotalIterations <= 0 {
 		contract.MaxTotalIterations = defaults.MaxTotalIterations
-	}
-	if contract.MaxNoProgress <= 0 {
-		contract.MaxNoProgress = defaults.MaxNoProgress
 	}
 	if contract.PackageTimeoutSeconds <= 0 {
 		contract.PackageTimeoutSeconds = defaults.PackageTimeoutSeconds
@@ -384,18 +442,9 @@ func (n *Nexus) TakeControlMissionRun(ctx context.Context, runID, reason string)
 	if err != nil {
 		return nil, err
 	}
-	pkg := runner.ManualControlPackage(run)
-	if pkg == nil || pkg.AssignedAgent == "" {
+	agentID := runner.ManualControlAgentID(run)
+	if agentID == "" {
 		return run, nil
-	}
-	agentID := pkg.AssignedAgent
-	workspace := pkg.Workspace
-	if strings.TrimSpace(workspace) == "" {
-		workspace = run.Workspace
-	}
-	beforeFingerprint, err := workspaceFingerprint(ctx, workspace)
-	if err != nil {
-		return nil, fmt.Errorf("capture takeover checkpoint: %w", err)
 	}
 	st, err := n.OpenProject()
 	if err != nil {
@@ -415,10 +464,6 @@ func (n *Nexus) TakeControlMissionRun(ctx context.Context, runID, reason string)
 	if _, err := n.StartAgent(ctx, agentID, cfg.Provider, cfg.Profile); err != nil {
 		return nil, fmt.Errorf("start interactive takeover runtime: %w", err)
 	}
-	if _, err := n.Runner().BeginManualIntervention(ctx, runID, agentID, pkg.PackageID, workspace, beforeFingerprint, reason); err != nil {
-		_ = n.StopAgent(context.Background(), agentID)
-		return nil, fmt.Errorf("persist takeover checkpoint: %w", err)
-	}
 	return n.Runner().GetRun(ctx, runID)
 }
 
@@ -430,50 +475,32 @@ func (n *Nexus) ReturnMissionRun(ctx context.Context, runID string) (*runner.Mis
 	if err != nil {
 		return nil, err
 	}
-	pkg := runner.ManualControlPackage(run)
-	if pkg == nil || pkg.AssignedAgent == "" {
-		return nil, fmt.Errorf("mission run has no active manual-control package")
-	}
-	agentID := pkg.AssignedAgent
-	var active *runner.ManualIntervention
-	for i := len(run.ManualInterventions) - 1; i >= 0; i-- {
-		entry := &run.ManualInterventions[i]
-		if entry.AgentID == agentID && entry.PackageID == pkg.PackageID && entry.CompletedAt == nil {
-			active = entry
-			break
+	agentID := runner.ManualControlAgentID(run)
+	if agentID != "" {
+		if err := n.StopAgent(ctx, agentID); err != nil {
+			return nil, fmt.Errorf("stop interactive takeover runtime: %w", err)
 		}
 	}
-	if active == nil {
-		return nil, fmt.Errorf("manual takeover checkpoint is missing for package %s", pkg.PackageID)
-	}
-	if err := n.StopAgent(ctx, agentID); err != nil {
-		return nil, fmt.Errorf("stop interactive takeover runtime: %w", err)
-	}
-	workspace := active.Workspace
-	if strings.TrimSpace(workspace) == "" {
-		workspace = pkg.Workspace
-	}
-	if strings.TrimSpace(workspace) == "" {
-		workspace = run.Workspace
-	}
-	changed, guardErr := autonomyguard.GitChangedPaths(ctx, workspace)
-	if guardErr != nil {
-		return nil, fmt.Errorf("capture manual takeover changes: %w", guardErr)
-	}
 	if len(run.Contract.AllowedFilePatterns) > 0 {
-		if _, snapErr := n.loadMissionSnapshot(run); snapErr != nil {
+		snapshot, snapErr := n.loadMissionSnapshot(run)
+		if snapErr != nil {
 			return nil, snapErr
+		}
+		_ = snapshot // Contract is already bound to run; loading proves immutable snapshot still exists.
+		pkgWorkspace := run.Workspace
+		for i := range run.PackageRuns {
+			if run.PackageRuns[i].AssignedAgent == agentID && run.PackageRuns[i].Workspace != "" {
+				pkgWorkspace = run.PackageRuns[i].Workspace
+				break
+			}
+		}
+		changed, guardErr := autonomyguard.GitChangedPaths(ctx, pkgWorkspace)
+		if guardErr != nil {
+			return nil, fmt.Errorf("validate manual takeover changes: %w", guardErr)
 		}
 		if guardErr := autonomyguard.ValidateAllowedChanges(changed, run.Contract.AllowedFilePatterns); guardErr != nil {
 			return nil, fmt.Errorf("manual takeover violates autonomy contract: %w", guardErr)
 		}
-	}
-	afterFingerprint, err := workspaceFingerprint(ctx, workspace)
-	if err != nil {
-		return nil, fmt.Errorf("capture return checkpoint: %w", err)
-	}
-	if _, err := n.Runner().CompleteManualIntervention(ctx, runID, active.ID, afterFingerprint, changed); err != nil {
-		return nil, fmt.Errorf("persist return-to-mission checkpoint: %w", err)
 	}
 	return n.ResumeMissionRun(ctx, runID)
 }

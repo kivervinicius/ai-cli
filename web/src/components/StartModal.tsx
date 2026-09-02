@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { ProviderInfo, ProfileInfo, RuntimeSession, Workspace } from '../types';
 import { api } from '../api';
 import { X, Play, FolderGit2 } from 'lucide-react';
@@ -21,18 +20,17 @@ export const StartModal: React.FC<StartModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const { t } = useTranslation();
-  const installedProviders = (providers || []).filter((p) => p.installed);
+  const installedProviders = providers.filter((p) => p.installed);
   const [selectedProvider, setSelectedProvider] = useState<string>(
     installedProviders.length > 0 ? installedProviders[0].id : 'agy'
   );
 
-  const availableProfiles = (profiles || []).filter((p) => p.provider === selectedProvider);
+  const availableProfiles = profiles.filter((p) => p.provider === selectedProvider);
   const [selectedProfile, setSelectedProfile] = useState<string>(
     availableProfiles.length > 0 ? availableProfiles[0].name : 'default'
   );
 
-  const [selectedWorkspace, setSelectedWorkspace] = useState<string>(workspace || ((workspaces && workspaces.length > 0) ? workspaces[0].path : ''));
+  const [selectedWorkspace, setSelectedWorkspace] = useState<string>(workspace || (workspaces.length > 0 ? workspaces[0].path : ''));
   const [isCustomWorkspace, setIsCustomWorkspace] = useState(false);
   const [customWorkspace, setCustomWorkspace] = useState('');
   const [sessionTitle, setSessionTitle] = useState('');
@@ -42,7 +40,7 @@ export const StartModal: React.FC<StartModalProps> = ({
 
   const handleProviderChange = (prov: string) => {
     setSelectedProvider(prov);
-    const profs = (profiles || []).filter((p) => p.provider === prov);
+    const profs = profiles.filter((p) => p.provider === prov);
     setSelectedProfile(profs.length > 0 ? profs[0].name : 'default');
   };
 
@@ -60,7 +58,7 @@ export const StartModal: React.FC<StartModalProps> = ({
     setError('');
     const targetWs = isCustomWorkspace ? customWorkspace.trim() : selectedWorkspace;
     if (!targetWs) {
-      setError(t('startModal.emptyWorkspaceError'));
+      setError('Workspace path cannot be empty');
       setLoading(false);
       return;
     }
@@ -89,10 +87,10 @@ export const StartModal: React.FC<StartModalProps> = ({
           <div className="flex items-center space-x-2">
             <Play className="w-4 h-4 text-sky-400 fill-current" />
             <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
-              {t('startModal.title')}
+              Launch Agent Runtime
             </h3>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white" aria-label={t('common.closeDialog')}>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -102,19 +100,19 @@ export const StartModal: React.FC<StartModalProps> = ({
           <div>
             <label className="text-slate-400 flex items-center space-x-1.5">
               <FolderGit2 className="w-3.5 h-3.5 text-sky-400" />
-              <span>{t('startModal.targetWorkspace')}</span>
+              <span>Target Project / Workspace:</span>
             </label>
             <select
               value={isCustomWorkspace ? '__custom__' : selectedWorkspace}
               onChange={(e) => handleWorkspaceSelect(e.target.value)}
               className="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-100 focus:outline-none focus:border-sky-500"
             >
-              {(workspaces || []).map((ws) => (
+              {workspaces.map((ws) => (
                 <option key={ws.path} value={ws.path}>
                   {ws.name} ({ws.path})
                 </option>
               ))}
-              <option value="__custom__">{t('startModal.customPath')}</option>
+              <option value="__custom__">+ Enter Custom Path...</option>
             </select>
             {isCustomWorkspace && (
               <input
@@ -130,10 +128,10 @@ export const StartModal: React.FC<StartModalProps> = ({
 
           {/* Session Title / Goal */}
           <div>
-            <label className="text-slate-400">{t('startModal.sessionTitle')}</label>
+            <label className="text-slate-400">Session Title / Objective (Optional):</label>
             <input
               type="text"
-              placeholder={t('startModal.sessionTitlePlaceholder')}
+              placeholder="e.g. Refactor Auth, Debug Database..."
               value={sessionTitle}
               onChange={(e) => setSessionTitle(e.target.value)}
               className="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
@@ -142,7 +140,7 @@ export const StartModal: React.FC<StartModalProps> = ({
 
           {/* Coding Provider */}
           <div>
-            <label className="text-slate-400">{t('startModal.codingProvider')}</label>
+            <label className="text-slate-400">Coding Provider:</label>
             <select
               value={selectedProvider}
               onChange={(e) => handleProviderChange(e.target.value)}
@@ -158,7 +156,7 @@ export const StartModal: React.FC<StartModalProps> = ({
 
           {/* Profile / Account */}
           <div>
-            <label className="text-slate-400">{t('startModal.profileAccount')}</label>
+            <label className="text-slate-400">Profile / Account:</label>
             <select
               value={selectedProfile}
               onChange={(e) => setSelectedProfile(e.target.value)}
@@ -188,7 +186,7 @@ export const StartModal: React.FC<StartModalProps> = ({
             onClick={onClose}
             className="px-3 py-1.5 rounded text-xs font-medium text-slate-400 hover:text-white"
           >
-            {t('common.cancel', 'Cancel')}
+            Cancel
           </button>
           <button
             disabled={loading || installedProviders.length === 0}
@@ -196,7 +194,7 @@ export const StartModal: React.FC<StartModalProps> = ({
             className="px-4 py-1.5 iapro-gradient-bg hover:opacity-95 disabled:opacity-50 text-white rounded text-xs font-semibold shadow-md shadow-purple-950/40 iapro-glow-sm transition flex items-center space-x-1.5"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
-            <span>{loading ? t('startModal.starting') : t('startModal.startRuntime')}</span>
+            <span>{loading ? 'Starting...' : 'Start Runtime'}</span>
           </button>
         </div>
       </div>

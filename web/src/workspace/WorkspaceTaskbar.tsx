@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FolderGit2, GitBranch, Wifi, BrainCircuit, AlertTriangle } from 'lucide-react';
+import { FolderGit2, GitBranch, Wifi, BrainCircuit, AlertTriangle, PanelsTopLeft, AppWindow } from 'lucide-react';
 import { nexus } from '../nexus/api';
 import { BranchSwitcherModal } from '../features/projects/BranchSwitcherModal';
 import type { Agent, Project } from '../types';
+import { useWorkspacePresentation } from './WorkspacePresentationProvider';
 
 export const WorkspaceTaskbar: React.FC<{
   project?: Project;
   agents?: Agent[];
 }> = ({ project, agents = [] }) => {
   const { t } = useTranslation();
+  const presentation = useWorkspacePresentation();
   const [branchModalOpen, setBranchModalOpen] = useState(false);
   const [currentBranch, setCurrentBranch] = useState<string>('');
   const [sysInfo, setSysInfo] = useState<{
@@ -83,8 +85,12 @@ export const WorkspaceTaskbar: React.FC<{
         )}
       </div>
 
-      {/* Right: Versions & Connection */}
+      {/* Right: Presentation, Versions & Connection */}
       <div className="nx-statusbar-right">
+        <div className="nx-presentation-toggle" role="group" aria-label="Workspace presentation">
+          <button type="button" data-active={presentation.state.mode === 'TABS' ? 'true' : 'false'} onClick={() => presentation.setMode('TABS')} title="Tabs / splits"><PanelsTopLeft size={11} /><span>Tabs</span></button>
+          <button type="button" data-active={presentation.state.mode === 'DESKTOP' ? 'true' : 'false'} onClick={() => presentation.setMode('DESKTOP')} title="Desktop windows"><AppWindow size={11} /><span>Desktop</span></button>
+        </div>
         <span className="nx-statusbar-item nx-statusbar-version" title="Nexus Core">
           <strong>Nexus</strong> v{sysInfo?.nexus_version || 'unknown'}
         </span>

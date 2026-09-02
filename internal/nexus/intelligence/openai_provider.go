@@ -83,11 +83,16 @@ func (p *OpenAIIntelligenceProvider) AnalyzeIntent(ctx context.Context, input st
   "assumptions": ["assumption 1"]
 }`
 
+	userContent, _ := json.Marshal(map[string]any{
+		"objective":       input,
+		"project_context": contextData,
+	})
+
 	body := map[string]any{
 		"model": p.Model,
 		"messages": []map[string]string{
 			{"role": "system", "content": sysPrompt},
-			{"role": "user", "content": input},
+			{"role": "user", "content": string(userContent)},
 		},
 		"temperature":     0.2,
 		"response_format": map[string]string{"type": "json_object"},
@@ -152,7 +157,7 @@ Output ONLY valid JSON matching:
 	return wrapper.Unknowns, nil
 }
 
-func (p *OpenAIIntelligenceProvider) GeneratePlanOutline(ctx context.Context, intent *IntentAnalysis, facts map[string]string) ([]WorkPackageOutline, error) {
+func (p *OpenAIIntelligenceProvider) GeneratePlanOutline(ctx context.Context, intent *IntentAnalysis, facts map[string]string, contextData map[string]any) ([]WorkPackageOutline, error) {
 	if !p.Available(ctx) {
 		return nil, ErrIntelligenceUnavailable
 	}
@@ -177,6 +182,7 @@ Output ONLY valid JSON matching:
 	userContent := map[string]any{
 		"intent":          intent,
 		"confirmed_facts": facts,
+		"project_context": contextData,
 	}
 	userBytes, _ := json.Marshal(userContent)
 

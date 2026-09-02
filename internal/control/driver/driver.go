@@ -40,8 +40,6 @@ type EffectiveCapabilities struct {
 	Approvals        CapabilityEvidence    `json:"approvals"`
 	NativeUIAttach   CapabilityEvidence    `json:"native_ui_attach"`
 	Headless         CapabilityEvidence    `json:"headless"`
-	AutonomousCoding CapabilityEvidence    `json:"autonomous_coding"`
-	ReadOnlyReview   CapabilityEvidence    `json:"read_only_review"`
 	SlashControl     CapabilityEvidence    `json:"slash_control"`
 	ControlLevel     registry.ControlLevel `json:"control_level"`
 }
@@ -60,8 +58,6 @@ type ControlCapabilities struct {
 	Approvals        bool                  `json:"approvals"`
 	NativeUIAttach   bool                  `json:"native_ui_attach"`
 	Headless         bool                  `json:"headless"`
-	AutonomousCoding bool                  `json:"autonomous_coding"`
-	ReadOnlyReview   bool                  `json:"read_only_review"`
 	SlashControl     bool                  `json:"slash_control"`
 	ControlLevel     registry.ControlLevel `json:"control_level"`
 }
@@ -81,24 +77,9 @@ func (ec EffectiveCapabilities) ToBooleanCaps() ControlCapabilities {
 		Approvals:        ec.Approvals.Status == CapabilitySupported,
 		NativeUIAttach:   ec.NativeUIAttach.Status == CapabilitySupported,
 		Headless:         ec.Headless.Status == CapabilitySupported,
-		AutonomousCoding: ec.AutonomousCoding.Status == CapabilitySupported,
-		ReadOnlyReview:   ec.ReadOnlyReview.Status == CapabilitySupported,
 		SlashControl:     ec.SlashControl.Status == CapabilitySupported,
 		ControlLevel:     ec.ControlLevel,
 	}
-}
-
-type AutonomousMode string
-
-const (
-	AutonomousCoding AutonomousMode = "CODING"
-	AutonomousReview AutonomousMode = "REVIEW"
-)
-
-// AutonomousPolicy contains only user-approved permissions that a provider
-// driver may translate into provider-specific non-interactive CLI flags.
-type AutonomousPolicy struct {
-	AllowToolAutoApproval bool
 }
 
 // ControlDriver defines the interface for creating supervised runtime configurations for a provider.
@@ -111,5 +92,4 @@ type ControlDriver interface {
 	CanResume(ctx context.Context, p model.Profile, providerSessionID string) (bool, string)
 	BuildResumeArgs(ctx context.Context, p model.Profile, providerSessionID string) ([]string, error)
 	BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error)
-	BuildAutonomousArgs(ctx context.Context, p model.Profile, kickoffPrompt string, mode AutonomousMode, policy AutonomousPolicy) ([]string, error)
 }

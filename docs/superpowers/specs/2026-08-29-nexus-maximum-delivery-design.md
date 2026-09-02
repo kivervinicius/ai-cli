@@ -1,3 +1,5 @@
+> **Supersession notice (2026-09-01):** Product-language and UX conflicts in this historical spec are superseded by `docs/superpowers/specs/2026-09-01-nexus-canonical-product-contract.md`. Backend preservation rules and non-conflicting architecture remain valid.
+
 # IAPro Nexus Maximum Delivery Design
 
 ## Product intent

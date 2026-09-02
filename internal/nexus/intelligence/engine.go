@@ -10,10 +10,11 @@ import (
 
 // NexusEngine implements the high-level IntelligenceEngine interface.
 type NexusEngine struct {
-	provider IntelligenceProvider
+	provider    IntelligenceProvider
+	contextData map[string]any
 }
 
-// ErrIntelligenceUnavailable is returned when an assisted/planned operation is requested without a real provider.
+// ErrIntelligenceUnavailable is returned when Composer analysis/planning is requested without a real provider.
 var ErrIntelligenceUnavailable = errors.New("nexus intelligence unavailable")
 
 // NewNexusEngine creates an engine wrapping the explicitly configured provider.
@@ -23,11 +24,35 @@ func NewNexusEngine(p IntelligenceProvider) *NexusEngine {
 	return &NexusEngine{provider: p}
 }
 
+// WithContextData binds a bounded project context envelope to subsequent
+// analysis and plan-generation calls. The engine does not read the repository
+// itself and therefore cannot accidentally expand the context surface.
+func (e *NexusEngine) WithContextData(data map[string]any) *NexusEngine {
+	if e == nil {
+		return e
+	}
+	copyData := make(map[string]any, len(data))
+	for key, value := range data {
+		copyData[key] = value
+	}
+	e.contextData = copyData
+	return e
+}
+
+func (e *NexusEngine) mergedContext(projectID string) map[string]any {
+	merged := make(map[string]any, len(e.contextData)+1)
+	for key, value := range e.contextData {
+		merged[key] = value
+	}
+	merged["project_id"] = projectID
+	return merged
+}
+
 func (e *NexusEngine) Analyze(ctx context.Context, goal string, projectID string) (*IntentAnalysis, []AmbiguityItem, error) {
 	if e.provider == nil || !e.provider.Available(ctx) {
 		return nil, nil, ErrIntelligenceUnavailable
 	}
-	intent, err := e.provider.AnalyzeIntent(ctx, goal, map[string]any{"project_id": projectID})
+	intent, err := e.provider.AnalyzeIntent(ctx, goal, e.mergedContext(projectID))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -44,7 +69,7 @@ func (e *NexusEngine) GeneratePlan(ctx context.Context, intent *IntentAnalysis, 
 	if e.provider == nil || !e.provider.Available(ctx) {
 		return nil, ErrIntelligenceUnavailable
 	}
-	packages, err := e.provider.GeneratePlanOutline(ctx, intent, facts)
+	packages, err := e.provider.GeneratePlanOutline(ctx, intent, facts, e.contextData)
 	if err != nil {
 		return nil, err
 	}
