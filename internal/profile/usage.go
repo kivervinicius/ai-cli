@@ -3,6 +3,7 @@ package profile
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/core/model"
@@ -39,7 +40,7 @@ type QuotaDetails struct {
 func GetUsageSnapshot(providerName, name string) model.UsageSnapshot {
 	qEng := quota.NewEngine(5 * time.Minute)
 	snap, found := qEng.GetCachedUsage(providerName, name)
-	if !found || snap.Status == model.UsageUnknown {
+	if !found || !qEng.Trustworthy(snap) || snap.Status == model.UsageUnknown {
 		ctx := context.Background()
 		p := model.Profile{Provider: providerName, Name: name}
 		switch providerName {
@@ -141,6 +142,14 @@ func GetQuotaDetails(providerName, name, plan, email string) QuotaDetails {
 // This is the preferred entry point for quota display and scoring.
 func GetQuotaView(providerName, name, plan, email string) quota.QuotaView {
 	snap := GetUsageSnapshot(providerName, name)
+	// A cached quota can outlive an account switch. Do not show or score data
+	// whose recorded identity differs from the profile's authenticated email.
+	if snapshotAccount := strings.TrimSpace(snap.Account); snapshotAccount != "" && strings.TrimSpace(email) != "" && !strings.EqualFold(snapshotAccount, strings.TrimSpace(email)) {
+		snap.Status = model.UsageUnknown
+		snap.Source = model.SourceNone
+		snap.Windows = nil
+		snap.Error = fmt.Sprintf("quota belongs to %s, profile is authenticated as %s", snapshotAccount, strings.TrimSpace(email))
+	}
 
 	// Apply default model names when the adapter didn't set one.
 	if snap.ModelName == "" {

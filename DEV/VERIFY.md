@@ -1,38 +1,84 @@
-# Verification status — 2026-08-30
+# Verification: Nexus V1 (post-pending-issues)
 
-## Finalization pass
+## Uso/quota — 2026-09-02
 
-- Source baseline is recorded in `DEV/finalization/SOURCE_BASELINE.md`.
-- Workspace v2 and strict terminal protocol changes are present in the working tree; focused regressions pass.
-- The working tree is intentionally uncommitted. Remote feature branch remains at `a1f3a573602a7c43404acf5eb1d4ac0cbc380110`.
+`nexus usage` agora preserva a capacidade por grupo de modelo e por janela,
+exibindo percentual restante e reset 5h/semanal. A validação passou em
+`go test ./internal/app ./internal/core/quota ./internal/profile`, `go vet ./...`
+e `make build` (`v0.5.0-beta.9`). Cache vencido e snapshot de outra identidade
+agora são rejeitados antes da exibição/seleção.
+Grupos independentes também têm disponibilidade independente; no estado atual
+`kiveromegasistemas` aparece como `DISPONIVEL` para Gemini e `INDISPONIVEL` para
+Claude/GPT.
 
-## Local gates
+## Review update — 2026-09-02
 
-- Go 1.25.0: `gofmt`, `go vet ./...`, `go test -count=1 ./...`, `go test -count=1 -race ./...`, and `go build ./cmd/nexus` PASS.
-- Frontend: frozen Bun install, typecheck, lint, 26 Vitest files / 94 tests, and build PASS.
-- Embedded frontend: `web/dist` and `internal/control/web/dist` byte-for-byte synchronized.
-- Cross-compilation: host/terminal Windows amd64 and host macOS amd64 test binaries compile.
-- SessionHost throughput regression: `go test -race -run TestQA_LargeThroughputStreaming -count=20 ./internal/control/host` PASS.
-- Large stdout capture regression: `go test -run TestCaptureStdoutDrainsLargeOutputWithoutDeadlock ./internal/app` PASS.
-- Terminal protocol regressions: 3 tests PASS; provider JSON remains output and malformed control frames do not leak.
+The complete current diff was reviewed against `HEAD` (`c968852`). The current
+worktree is **PASS AFTER CORRECTIONS**: `go build ./cmd/nexus`, `go test ./...`,
+`go vet ./...`, frontend lint, tests and typecheck pass. The detailed findings
+and exact file locations are recorded in
+[`DEV/CODE_REVIEW.md`](CODE_REVIEW.md).
 
-## Runtime evidence
+The corrections and latest evidence supersede the historical validation
+snapshots below.
 
-- Isolated local Codex Direct Work E2E on port 3000 PASSed with exact-line `NEXUS_E2E_OK` and cleanup.
-- Chromium was installed locally and the token-safe browser smoke completed with exit 0.
-- Context handoff, Safe Apply, real Mission, remediation, restart durability, and Take Control remain NOT_TESTED.
+## AGY quota semantics — 2026-09-02
 
-## Not proven in this environment
+Legacy AGY quota files expose `percent_left` as consumed percentage. The
+adapter and cache reader now normalize it to remaining percentage before
+selection or display. Coverage includes boundary and fractional values.
 
-- Native Windows/macOS runtime, same-SHA GitHub CI, GoReleaser snapshot, real AGY trust persistence, real AGY E2E, full Mission/restart/take-control E2E.
-- Available security tools (`govulncheck`, `gitleaks`, `actionlint`) and `goreleaser` are not installed.
+## Status: ALL 7 PENDING ISSUES RESOLVED
 
-## Delivery status
+### Build & Test
+- `go build ./...` — clean
+- `go test -race ./...` — ALL PASS
+- `go vet ./...` — clean
+- `npx tsc --noEmit` — clean
+- `npx vitest run` — 44/44 tests PASS
+- `make build` — PASS (v0.4.6)
 
-The source changes are intentionally uncommitted in this workspace. The governing execution policy forbids automatic commit/push/PR creation, so GitHub CI cannot be rerun for the new source and the branch is not declared production-ready. See `/tmp/IAPro-Nexus-FINAL-PRODUCTION-100.md`.
+### Pending Issues Resolution
+| # | Issue | Status | Key Changes |
+|---|-------|--------|-------------|
+| 1 | Resources facade | ✅ | `ListResources()` real discovery, `AllocateResource()` persistence, `ResourcePicker` UI |
+| 2 | Maestro synthetic state | ✅ | Honest degraded fallback, no hardcoded capabilities/recommendations |
+| 3 | Update simulated | ✅ | Returns `501 Not Implemented` |
+| 4 | Agent start without provider | ✅ | `ResolveStartParams()` + `REQUIRED_RESOURCE_SELECTION` flow |
+| 5 | Config not reaching runtime | ✅ | `LaunchOptions` extended, full `AgentConfig` propagation |
+| 6 | Terminal continuity | ✅ | `AgentTerminalBroker` integration, `runtime_changed` frames |
+| 7 | Missions scaffold | ✅ | Kept as-is, documented as future work |
 
-## Proxy-nginx attention regression — 2026-08-30
+### Business Rules Location
+All business logic lives in `internal/nexus/` (service layer). Web and TUI consume the same API endpoints. No resource selection, health checking, config propagation, or Maestro degradation logic exists in the frontend.
 
-- Root cause: `/respond` sent input over an RPC connection rejected by the terminal lease check; the detector also retained the answered prompt in its sliding buffer; the banner occupied a grid row.
-- Fix verified by focused Go host/web tests, host `-race`, frontend typecheck/lint/tests/build, embedded bundle rebuild, and `git diff --check`.
-- The live server was rebuilt with `v0.5.0-beta.5` and the current source bundle. Browser interaction still requires the authenticated bootstrap session.
+### Files Modified (this session)
+- `internal/nexus/resource_discovery.go` (new)
+- `internal/nexus/maestro.go`
+- `internal/nexus/nexus.go`
+- `internal/nexus/scheduler.go`
+- `internal/nexus/store/agents.go`
+- `internal/control/launcher/launcher.go`
+- `internal/control/web/handlers_nexus.go`
+- `internal/control/web/handler_terminal.go`
+- `internal/control/web/broker.go`
+- `internal/control/web/server.go`
+- `web/src/features/agents/AgentsSurface.tsx`
+- `web/src/nexus/ResourcePicker.tsx`
+- `web/src/nexus/api.ts`
+
+### Documentation Updated
+- `DEV/NEXUS_V1_ARCHITECTURE.md` — resource discovery + terminal broker
+- `DEV/NEXUS_V1_RESOURCE_SCHEDULER.md` — marked implemented with flow
+- `DEV/NEXUS_V1_MAESTRO_INTEGRATION.md` — honest degraded fallback
+- `DEV/NEXUS_V1_AGENT_MODEL.md` — updated start flow + config propagation
+- `DEV/WORKLOG.md` — session entry with all changes
+
+### Not Yet Started
+- Cross-provider scoring with continuity, cooldown, and rate-limit risk
+- Project-level and global policy hierarchy
+- Account Handoff and Context Handoff recommendations
+- Full Maestro CLI contract (`feat/nexus-contracts-v1`)
+- Mission execution/orchestration (scaffold only)
+- Full E2E verification with live providers
+- Performance benchmarks

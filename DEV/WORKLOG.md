@@ -1,52 +1,60 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
-## Date: 2026-08-30 (Tab Panel Display Render Fix & Hydration Race Prevention)
-- **Tab Panel Visibility & Display (`WorkspaceRenderer.tsx` & `workspace-os.css`)**: Replaced `visibility: hidden` with strict `display: none` (inactive) and `display: flex; flex-direction: column` (active) on `.nx-workspace-panel`. Added inline style verification so newly opened tabs (e.g. *Work / Iniciar Trabalho*) immediately show their full body content without layer collisions.
-- **Hydration Race Condition Fix (`WorkspaceProvider.tsx`)**: Removed `initialLayout` and `fallback` from the hydration `useEffect` dependency array, preventing late asynchronous API calls (`getProject`) from overwriting user-initiated tab openings with stale layouts.
-- **Verification**: `tsc` (0 errors), Vitest (26 files / 94 tests PASS), and web bundle rebuilt (`dist/bundle.js`).
+## 2026-09-02 — AGY credential isolation correction
 
-- **Tab Activation & Visibility Fix (`model.ts` & `WorkspaceRenderer.tsx`)**: Introduced `isSurfaceMatch` to handle comparisons across `id`, `viewId`, `legacyId`, and `logicalKey`. Resolved tab activation mismatch where panels remained `visibility: hidden` due to strict ID comparisons after migration.
-- **Per-Stack Tab Normalization (`state.ts`)**: Scoped deduplication Set per-stack in `normalizeWorkspace` so split layouts preserve independent tabs while cleaning up duplicates within the same stack.
-- **Verification**: `tsc` (0 errors), Vitest (26 files / 94 tests PASS), and web bundle built (`dist/bundle.js`).
+- AGY was launching each profile with a different `HOME`, but logs showed the
+  same desktop Secret Service keyring being reused (`effective: keyring`), so
+  `agy:kiveromegasistemas` authenticated as `kivervinicius@gmail.com`.
+- AGY launches now create a private D-Bus session and start only the
+  `gnome-keyring-daemon` Secret Service component per invocation/profile.
+- Browser OAuth keeps the host D-Bus address only for the browser helper; the
+  provider process remains on the isolated bus. Supervised and direct launches
+  use the same wrapper.
+- Existing profiles must perform `nexus login agy <profile>` once inside the
+  new isolated session to populate that profile's keyring.
 
-- **JSON Policy Cleansing (`formatResourcePolicy`)**: Resolved `{}` literal outputs rendered across Overview, Project Manager (Grid & List), and Resource Intelligence cards when SQLite stored empty JSON policies. Formatted to localized labels ("Balanceada", "Desempenho", "Econômica").
-- **Human-Readable Continuity & Isolation Labels**: Added `translateContinuityStatus` and `translateIsolation` in `i18n` with support for `en`, `pt-BR`, and `es`, eliminating raw technical enum leaks such as `LIVE_SAME_RUNTIME` and raw `developer` workspace labels.
-- **Tab Deduplication & Logical Key Alignment (`WorkspaceProvider.tsx` & `state.ts`)**: Standardized `defaultSurface(projectId)` to use `project:${projectId}:overview` logical keys and added automatic normalization deduplication to prevent duplicate "Visão Geral" tabs.
-- **Topbar Version Pill Wrap Fix**: Fixed `.nx-topbar-version-pill` breaking across two lines by adding `white-space: nowrap; flex-shrink: 0;`.
-- **Branding & Logo Polish**: Enhanced `.nx-brand-mark-img` with refined app-icon presentation (border radius, subtle lighting, border, padding, and hover elevation).
-- **Resource Intelligence / Quota UI Polish**: Re-architected `.nx-resource-account` cards with hover elevation, model group dividers, and clear progress quotas with percentages.
-- **Verification**: `tsc` (0 errors), `eslint` (0 warnings), Vitest (26 test files / 94 tests PASS), and web bundle successfully built.
+## 2026-09-02 — Correção de quota legada do AGY
 
-- **Design Tokens Enhancement (`workspace-os.css`)**: Added `--nx-shadow-sm`, `--nx-shadow-md`, `--nx-shadow-lg`, `--nx-shadow-glow`, `--nx-transition-fast`, `--nx-transition-normal`, and `--nx-transition-slow` design tokens for both Dark and Light themes.
-- **Header & Navigation Refinement**: Upgraded `.nx-topbar` with backdrop blur, increased element spacing (16px gap), improved command trigger hover, and smooth animated brand mark on hover.
-- **Metric & Overview Cards Elevation**: Added subtle card elevation, hover translation (`translateY(-1px)` / `translateY(-2px)`), glow styling on icons, typography hierarchy enhancements on numbers (22px bold), and rounded agent mini list items with smooth transition states.
-- **Action Buttons & Form Controls**: Added brand gradient backgrounds to primary buttons with glow box-shadow, tactile active states, improved default/secondary button visibility, and smoother focus transitions on inputs.
-- **Workspace Tabs & Windowing**: Refined workspace stack headers with 10px radius, smoother tab bottom indicators, visible hover close buttons, and enhanced splitter indicators with accent glow.
-- **OS Statusbar Zone Dividers**: Added subtle zone dividers and backdrop blur to `.nx-workspace-statusbar` with interactive branch button borders.
-- **Verification**: `tsc` (0 errors), `eslint` (0 warnings), unit tests (26 test files / 94 tests PASS), and web production bundle rebuilt (`dist/bundle.js` 830.1kb).
+- Corrigida a interpretação de `quota.json` do AGY: `percent_left` é consumo,
+  então o Nexus agora calcula `remaining = 100 - consumed`.
+- A conversão foi aplicada ao adapter AGY e ao cache legado compartilhado,
+  mantendo snapshots normalizados do Codex inalterados.
+- Adicionados testes para 0%, 90,15%, 100% e valores fora do intervalo.
+- Gates: `go test ./...`, `go vet ./...`, build e `git diff --check` passaram.
 
-## Date: 2026-08-30 (Directory Browser & PlanBuilder Null-Safety Bugfixes)
-- **DirectoryBrowserModal & FS Browse**: Fixed empty modal issue by adding graceful fallback to CWD/Home in `handlers_fs.go` and `DirectoryBrowserModal.tsx`, robust bookmark/breadcrumb defaults, and explicit error card with retry button.
-- **PlanBuilderSurface & ProjectManagerSurface Null-Safety**: Fixed unhandled `null.slice` and `.toLowerCase()` on `revisions`, `schedules`, `recentRuns`, and `project` search/sort fields.
-- **Concurrent Provider Detection**: Parallelized driver detection in `handlers_api.go` (`handleProviders`) with `sync.WaitGroup` to eliminate sequential multi-second blocking on global data refreshes.
-- **Verification**: `tsc` (0 errors), `eslint` (0 warnings), unit tests (76/76 PASS), end-to-end Playwright modal and workspace traversal tests PASS with 0 console errors.
+## 2026-09-02 — Complete current-diff code review
 
-## Date: 2026-08-30 (cross-platform validation)
-- Reproduced and corrected the Windows-dependent provider JSON assertion: it now validates JSON schema and provider presence without requiring installed CLIs.
-- Replaced host test reliance on Unix `cat` with the cross-platform `fakeagent` test binary.
-- Moved SessionHost terminal writes outside the state mutex and synchronized stream-reader shutdown to prevent detector callback deadlocks/races.
-- Added ConPTY process-exit monitoring so output reads unblock when the child exits.
-- Verified Go/frontend full gates, 20x host throughput race regression, and Windows/macOS cross-compilation.
-- Installed Chromium outside the repository and reran the token-safe browser smoke; production Mission/remote CI gates remain blocked/not tested.
+- Reviewed the full worktree diff against `HEAD` (`c968852`), including Go,
+  frontend, build/release scripts, embedded bundles, tests and documentation.
+- Result: **REQUEST CHANGES**. Critical findings include removed autonomy
+  network/secret/paid-service guards and ignored CSPRNG errors during bootstrap
+  authentication. High-severity findings include broken Go/test and TypeScript
+  gates, WebSocket writer concurrency, terminal mutex-held I/O, transport
+  draining regressions, stale frontend risk in `make build`, and removed
+  session routes.
+- Evidence: `go build ./cmd/nexus` PASS; `go test ./...`, `go vet ./...` and
+  `yarn --cwd web typecheck` FAIL; frontend lint/tests and `git diff --check`
+  PASS. Full report: [`DEV/CODE_REVIEW.md`](CODE_REVIEW.md).
 
-## Date: 2026-08-30
-- Added autonomous local E2E startup to `scripts/nexus-e2e-local.go`: temporary Git/data isolation, token-safe bootstrap capture, explicit `NOT_AUTHENTICATED` classification, cleanup, and Agent identity verification after refresh/reconnect.
-- Added `scripts/nexus-browser-smoke.sh`, regression tests, and updated `DEV/validation` reports.
-- Verification: Go tests/race/vet/build and frontend frozen install/typecheck/lint/test/build all PASS. Compiled real Codex E2E passed with exact-line `NEXUS_E2E_OK`; browser remains skipped because managed Chromium is unavailable.
+## 2026-09-02 — Review findings corrected
 
-## Date: 2026-08-30 (bugfix)
-- **Fix: `Cannot read properties of null (reading 'slice')`** — backend can return `null` for `name` on `Project` and `Agent` objects despite TypeScript type declaring `string`. All avatar-initial expressions (`name.slice(0,2).toUpperCase()`) guarded with `(name || '').slice(0,2).toUpperCase()` across 6 files: `NexusShell.tsx`, `ProjectRail.tsx`, `ProjectManagerSurface.tsx` (card + list), `ProjectScanModal.tsx`, `ProjectOverviewSurface.tsx`, `AgentsSurface.tsx`.
-- Verification: tsc 0 errors, ESLint 0 warnings, Vitest 76/76, bundle rebuilt (808.6kb).
+- Restored fail-closed autonomy permissions and CSPRNG handling, including
+  network/secret/paid-service tool guards and bootstrap-token atomicity.
+- Restored session rotate/logout routes, immutable mission-revision APIs,
+  contract patching, runtime completion validation and lease semantics.
+- Added serialized WebSocket writes, aligned frontend autonomy types/imports,
+  and restored frontend compilation as a prerequisite of `make build`.
+- Final gates: `go test ./...`, `go vet ./...`, frontend typecheck/lint/tests,
+  bundle synchronization and `git diff --check` all PASS.
+
+## Date: 2026-09-01 / 2026-09-02
+- **Web Terminal & UI Safety Fixes (`web/src/`, `internal/control/web/server.go`)**:
+  - **Auto-Start Agent Runtime (`AgentTerminal.tsx`)**: Resolvido erro HTTP 404 em conexões WebSocket para `/api/v1/agents/{id}/terminal` garantindo a inicialização automática do runtime do agente (`nexus.startAgent(agentId)`) antes da abertura do socket.
+  - **Null Safety em Strings e Nomes (`AgentsSurface.tsx`, `ProjectOverviewSurface.tsx`, `ProjectManagerSurface.tsx`, `ProjectRail.tsx`, `directSessionModel.ts`, `WorkSurface.tsx`, `PlanBuilderSurface.tsx`, `NexusShell.tsx`, `ProjectScanModal.tsx`, `WorkspaceSurfaceHost.tsx`)**: Blindagem completa contra `TypeError: Cannot read properties of null (reading 'slice')` protegendo todas as invocações de `.slice(...)` em arrays e strings (`agents`, `revisions`, `schedules`, `head`, `run.id`, etc.) com fallbacks defensivos `(x || []).slice(...)` e `(s || '').slice(...)`.
+  - **Proteção de Viewport do xterm (`TerminalPane.tsx`, `AgentTerminal.tsx`)**: Prevenido erro `TypeError: Cannot read properties of undefined (reading 'dimensions')` validando que `clientWidth > 0` e `clientHeight > 0` antes de invocar `fitAddon.fit()`.
+  - **Cache-Busting em Static Assets (`server.go`)**: Injetados headers HTTP `Cache-Control: no-cache, no-store, must-revalidate` e `Pragma: no-cache` na entrega dos assets SPA estáticos (`bundle.js`, `bundle.css`, `index.html`), impedindo que o navegador sirva bundles antigos em cache após novos deploys.
+  - **Tratamento Amigável de Sessão Não-Autenticada (`NexusWorkspaceApp.tsx`)**: Caso o backend seja reiniciado e o cookie de sessão fique desatualizado (HTTP 401), a aplicação agora exibe tela limpa de orientação para reconexão/recarga em vez de falhas em cascata no console.
+  - **Validação e Build**: 100% dos 111 testes unitários passando em vitest (`npm test`), build estático gerado com sucesso e binário `nexus` recompilado com bundle atualizado.
 
 ## Date: 2026-08-29
 - **Git Branch Switching & Management in Project Settings and Taskbar (`BranchSwitcherModal.tsx`, `WorkspaceTaskbar.tsx`, `ProjectManagerSurface.tsx`)**:
@@ -749,23 +757,23 @@ Linux runtime fully verified. Windows/macOS build-verified only (conditional lim
 - `npx eslint .`: 0 errors, 0 warnings.
 - `bun run build`: Web bundle compiled in ~180ms.
 - `make build`: Nexus binary `v0.5.0-beta.4` compiled and installed.
+## 2026-09-02 — Uso por modelo e resets explícitos
 
-## 2026-08-29 — Maximum Delivery blocks 1–5 + deep review
+O comando `nexus usage` deixou de exibir somente o bottleneck de 5 horas. A
+tabela agora lista cada grupo de modelo e suas janelas (5h e semanal), com o
+percentual restante e a descrição de reset reportada pela fonte. Quando a
+fonte não informa o reset, o CLI mostra `reset desconhecido` em vez de inferir
+um horário.
 
-- Closed Mission Runner/durability/Take Control/WorkPlan/E2E contract gaps on `feat/nexus-maximum-delivery`.
-- Added durable execution evidence, lease concurrency hardening, WorkPlan DAG/revision protection, session rotation/logout, project Mission routing and real-provider local E2E harness.
-- Revalidated frontend: 22 files / 76 tests, TypeScript, ESLint and build PASS in sandbox.
-- Deep review verdict: `CONDITIONAL_GO` candidate. Production `GO` remains gated by Go 1.25 full vet/test/race, real SQLite/WebSocket dependencies, physical Windows/macOS runtime and a real authenticated-provider smoke.
-- See `DEV/NEXUS_MAXIMUM_DELIVERY_*.md` for evidence and release conditions.
-# 2026-08-30 — Final production pass
+Também foi corrigido o caminho de leitura: snapshots vencidos não são mais
+aceitos silenciosamente e quotas com identidade registrada diferente do
+e-mail autenticado são descartadas como `UNKNOWN`.
 
-- Change: captured source baseline; fixed stdout capture deadlock in the app test harness; implemented WorkspaceModel v2 with focused stack, semantic `logicalKey`/`viewId`, v1 migration, project-scoped v2 storage and hydration-gated persistence; changed UI split to create an empty pane; added strict terminal frame parsing and regressions.
-- Why: source still declared Workspace v1 and control output capture could block on a full pipe; terminal JSON fallback could leak control frames or drop legitimate provider JSON.
-- Verification: focused Go tests, full `go vet`, `go test -count=1 ./...`, `go test -race ./...`, build, Windows/macOS focused cross-compiles, frozen Bun install, frontend typecheck/lint/94 tests/build, focused security race tests, `git diff --check`; all passed. `diff -qr web/dist internal/control/web/dist` is the embedded sync check.
-- Next: run native Windows/macOS CI and real-provider/browser/automation E2E; install or execute release/security tools; review and authorize commit/push if desired.
+A disponibilidade agora é calculada por grupo de modelo: AGY pode manter
+Gemini disponível mesmo quando o grupo Claude/GPT está esgotado. A tabela CLI
+foi normalizada para uma linha por grupo, com 5h, semanal, reset e status.
 
-## 2026-08-30 — Proxy-nginx attention prompt fix
-
-- Reproduced from the authenticated frontend screenshot: the global attention banner was inserted as a layout row above the Workspace and the AGY response action used a short-lived RPC connection that the host rejected because the browser lease belonged to another connection.
-- Fixed external runtime responses, reset stale attention-detector prompt history after accepted input, cleared the published attention state, and changed the banner to a non-layout-blocking floating surface.
-- Verification: focused host/web tests PASS; host `-race` PASS; frontend typecheck/lint/94 tests/build PASS; embedded bundle rebuilt; `git diff --check` PASS. No commit or push performed.
+### Verificação
+- `go test ./internal/app ./internal/core/quota ./internal/profile`: PASS
+- `go vet ./...`: PASS
+- `make build`: PASS — `v0.5.0-beta.9`, instalado em `/home/desenvolvedor/.local/bin/nexus`

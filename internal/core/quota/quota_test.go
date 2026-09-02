@@ -121,3 +121,15 @@ func TestQuotaViewBottleneckUnknownWithoutWindowsIsZero(t *testing.T) {
 		t.Fatalf("unknown quota without windows must not imply 100%% remaining, got %.1f %q", remaining, kind)
 	}
 }
+
+func TestLegacyAGYQuotaInvertsConsumedPercent(t *testing.T) {
+	if got := legacyAGYRemaining(100); got != 0 {
+		t.Fatalf("100%% consumed must be 0%% remaining, got %v", got)
+	}
+	if got := legacyAGYRemaining(90.15); got < 9.84 || got > 9.86 {
+		t.Fatalf("90.15%% consumed must be about 9.85%% remaining, got %v", got)
+	}
+	if got := legacyAGYRemaining(0); got != 100 {
+		t.Fatalf("0%% consumed must be 100%% remaining, got %v", got)
+	}
+}

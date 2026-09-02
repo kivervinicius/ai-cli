@@ -36,6 +36,19 @@ func NewEngine(ttl time.Duration) *Engine {
 	return &Engine{ttl: ttl}
 }
 
+// Trustworthy reports whether a cached snapshot has an attributable,
+// sufficiently recent observation. A cache file alone is not evidence.
+func (e *Engine) Trustworthy(snap model.UsageSnapshot) bool {
+	if snap.Source == "" || snap.Source == model.SourceNone || snap.FetchedAt.IsZero() || len(snap.Windows) == 0 {
+		return false
+	}
+	if snap.Status != model.UsageLive && snap.Status != model.UsageCached && snap.Status != model.UsageEstimated {
+		return false
+	}
+	age := time.Since(snap.FetchedAt)
+	return age >= -time.Minute && age <= e.ttl
+}
+
 // GetCachedUsage returns the cached snapshot for a profile without triggering external requests.
 func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapshot, bool) {
 	cacheMu.RLock()
@@ -72,6 +85,8 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 
 	if snap.Status == "" || len(snap.Windows) == 0 {
 		var leg struct {
+			Account   string `json:"account"`
+			Email     string `json:"email"`
 			ModelName string `json:"model_name"`
 			Plan      string `json:"plan"`
 			FiveHour  struct {
@@ -96,10 +111,10 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 			} `json:"claude_weekly"`
 		}
 		if json.Unmarshal(data, &leg) == nil && (leg.FiveHour.PercentLeft > 0 || leg.Weekly.PercentLeft > 0 || leg.FiveHour.ResetTime != "" || leg.Weekly.ResetTime != "" || leg.FiveHour.ResetsIn != "" || leg.Weekly.ResetsIn != "" || leg.ClaudeFiveHour.PercentLeft > 0 || leg.ClaudeWeekly.PercentLeft > 0) {
-			p5h := leg.FiveHour.PercentLeft
-			u5h := 100.0 - p5h
-			pWk := leg.Weekly.PercentLeft
-			uWk := 100.0 - pWk
+			p5h := legacyAGYRemaining(leg.FiveHour.PercentLeft)
+			u5h := legacyAGYUsed(leg.FiveHour.PercentLeft)
+			pWk := legacyAGYRemaining(leg.Weekly.PercentLeft)
+			uWk := legacyAGYUsed(leg.Weekly.PercentLeft)
 			r5h := leg.FiveHour.ResetTime
 			if r5h == "" {
 				r5h = leg.FiveHour.ResetsIn
@@ -127,8 +142,8 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 			}
 
 			if leg.ClaudeFiveHour.PercentLeft > 0 || leg.ClaudeFiveHour.ResetsIn != "" || leg.ClaudeFiveHour.ResetTime != "" {
-				pC5h := leg.ClaudeFiveHour.PercentLeft
-				uC5h := 100.0 - pC5h
+				pC5h := legacyAGYRemaining(leg.ClaudeFiveHour.PercentLeft)
+				uC5h := legacyAGYUsed(leg.ClaudeFiveHour.PercentLeft)
 				rC5h := leg.ClaudeFiveHour.ResetTime
 				if rC5h == "" {
 					rC5h = leg.ClaudeFiveHour.ResetsIn
@@ -143,8 +158,8 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 			}
 
 			if leg.ClaudeWeekly.PercentLeft > 0 || leg.ClaudeWeekly.ResetsIn != "" || leg.ClaudeWeekly.ResetTime != "" {
-				pCWk := leg.ClaudeWeekly.PercentLeft
-				uCWk := 100.0 - pCWk
+				pCWk := legacyAGYRemaining(leg.ClaudeWeekly.PercentLeft)
+				uCWk := legacyAGYUsed(leg.ClaudeWeekly.PercentLeft)
 				rCWk := leg.ClaudeWeekly.ResetTime
 				if rCWk == "" {
 					rCWk = leg.ClaudeWeekly.ResetsIn
@@ -161,6 +176,7 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 			snap = model.UsageSnapshot{
 				ProviderID: provider,
 				ProfileID:  profileName,
+				Account:    firstNonEmpty(leg.Account, leg.Email),
 				Status:     model.UsageCached,
 				Source:     model.SourceLocalFiles,
 				ModelName:  leg.ModelName,
@@ -185,10 +201,46 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 	return snap, true
 }
 
+func legacyAGYRemaining(consumed float64) float64 {
+	if consumed < 0 {
+		consumed = 0
+	}
+	if consumed > 100 {
+		consumed = 100
+	}
+	return 100 - consumed
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+func legacyAGYUsed(consumed float64) float64 {
+	if consumed < 0 {
+		return 0
+	}
+	if consumed > 100 {
+		return 100
+	}
+	return consumed
+}
+
 // SaveUsage persists a usage snapshot to the profile directory.
 func (e *Engine) SaveUsage(snap model.UsageSnapshot) error {
 	cacheMu.Lock()
 	defer cacheMu.Unlock()
+	if snap.FetchedAt.IsZero() {
+		snap.FetchedAt = time.Now().UTC()
+	}
+	if snap.Source == "" || snap.Source == model.SourceNone {
+		// Preserve compatibility with older callers while recording an explicit
+		// observation origin for future trust decisions.
+		snap.Source = model.SourceObservation
+	}
 
 	root, err := config.ProfileRoot(snap.ProviderID, snap.ProfileID)
 	if err != nil {

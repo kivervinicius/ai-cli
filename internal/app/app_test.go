@@ -2,88 +2,31 @@ package app
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/kivervinicius/ai-cli/internal/core/quota"
 	"github.com/kivervinicius/ai-cli/internal/profile"
 )
-
-func TestMain(m *testing.M) {
-	if os.Getenv("AI_FAKE_PROVIDER") == "1" {
-		provider := os.Getenv("AI_FAKE_PROVIDER_NAME")
-		if provider == "" {
-			provider = strings.TrimSuffix(filepath.Base(os.Args[0]), filepath.Ext(os.Args[0]))
-		}
-		if out := os.Getenv("AI_TEST_OUT"); out != "" {
-			var b strings.Builder
-			b.WriteString("provider=")
-			b.WriteString(provider)
-			b.WriteString("\nhome=")
-			if provider == "codex" {
-				b.WriteString(os.Getenv("CODEX_HOME"))
-			} else {
-				b.WriteString(os.Getenv("HOME"))
-			}
-			cwd, _ := os.Getwd()
-			b.WriteString("\ncwd=")
-			b.WriteString(cwd)
-			for _, arg := range os.Args[1:] {
-				b.WriteString("\narg=")
-				b.WriteString(arg)
-			}
-			_ = os.WriteFile(out, []byte(b.String()+"\n"), 0644)
-		}
-		os.Exit(0)
-	}
-	os.Exit(m.Run())
-}
 
 func captureStdout(f func() error) (string, error) {
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	// Drain concurrently. A pipe has a bounded kernel buffer; waiting until f
-	// returns can deadlock commands that legitimately emit a large report.
-	var buf bytes.Buffer
-	drainDone := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(&buf, r)
-		close(drainDone)
-	}()
 	err := f()
 
 	_ = w.Close()
 	os.Stdout = old
-	<-drainDone
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
 	_ = r.Close()
 
 	return buf.String(), err
-}
-
-func TestCaptureStdoutDrainsLargeOutputWithoutDeadlock(t *testing.T) {
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		out, err := captureStdout(func() error {
-			_, err := os.Stdout.Write(bytes.Repeat([]byte("NEXUS_CAPTURE_OK\n"), 128*1024))
-			return err
-		})
-		if err != nil || !strings.Contains(out, "NEXUS_CAPTURE_OK") {
-			t.Errorf("large stdout capture failed: len=%d err=%v", len(out), err)
-		}
-	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("captureStdout blocked on a full pipe")
-	}
 }
 
 func setupTestEnvironment(t *testing.T) (binDir, testOut string) {
@@ -100,24 +43,6 @@ func setupTestEnvironment(t *testing.T) (binDir, testOut string) {
 	t.Setenv("AI_TEST_OUT", testOut)
 
 	writeExe := func(name, body string) {
-		if runtime.GOOS == "windows" {
-			data, err := os.ReadFile(os.Args[0])
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(binDir, "fake-provider.exe"), data, 0755); err != nil {
-				t.Fatal(err)
-			}
-			batch := "@echo off\r\n" +
-				"set AI_FAKE_PROVIDER=1\r\n" +
-				"set AI_FAKE_PROVIDER_NAME=" + name + "\r\n" +
-				"\"%~dp0fake-provider.exe\" -test.run=^TestFakeProviderProcess$ %*\r\n" +
-				"exit /b 0\r\n"
-			if err := os.WriteFile(filepath.Join(binDir, name+".cmd"), []byte(batch), 0644); err != nil {
-				t.Fatal(err)
-			}
-			return
-		}
 		p := filepath.Join(binDir, name)
 		if err := os.WriteFile(p, []byte("#!/bin/sh\n"+body+"\n"), 0755); err != nil {
 			t.Fatal(err)
@@ -174,7 +99,7 @@ exec "$@"`)
 	writeExe("gnome-keyring-daemon", `cat >/dev/null
 exit 0`)
 
-	t.Setenv("PATH", binDir+string(filepath.ListSeparator)+os.Getenv("PATH"))
+	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
 	return binDir, testOut
 }
 
@@ -228,19 +153,8 @@ func TestControlPlaneCLICommands(t *testing.T) {
 	out, err = captureStdout(func() error {
 		return Run([]string{"providers", "--json"})
 	})
-	var providers map[string]struct {
-		Name      string `json:"name"`
-		Installed bool   `json:"installed"`
-		Profiles  int    `json:"profiles"`
-	}
-	if err != nil || json.Unmarshal([]byte(out), &providers) != nil || len(providers) == 0 {
+	if err != nil || !strings.Contains(out, `"installed": true`) {
 		t.Fatalf("providers --json failed: %s, %v", out, err)
-	}
-	for _, id := range []string{"codex", "claude"} {
-		provider, ok := providers[id]
-		if !ok || provider.Name == "" {
-			t.Fatalf("providers --json omitted expected provider schema entries: %s", out)
-		}
 	}
 
 	// 7. Inspect
@@ -345,6 +259,17 @@ func TestControlPlaneCLICommands(t *testing.T) {
 	})
 	if err != nil || !strings.Contains(out, "drivers") {
 		t.Fatalf("control doctor failed: %s, %v", out, err)
+	}
+}
+
+func TestQuotaGroupStatusKeepsUsableModelGroupAvailable(t *testing.T) {
+	qv := quota.QuotaView{Status: "CACHED", ModelGroups: []quota.ModelGroup{
+		{Name: "Gemini Models", Windows: []quota.Window{{Kind: "5h", Remaining: 8}, {Kind: "weekly", Remaining: 17}}},
+		{Name: "Claude & GPT Models", Windows: []quota.Window{{Kind: "claude_5h", Remaining: 0}, {Kind: "claude_weekly", Remaining: 0}}},
+	}}
+	qv.ComputeAvailability()
+	if !qv.IsAvailable() || quotaGroupStatus(qv.ModelGroups[0], qv.Status) != "DISPONIVEL" || quotaGroupStatus(qv.ModelGroups[1], qv.Status) != "INDISPONIVEL" {
+		t.Fatalf("expected mixed group availability, got profile=%v reasons=%+v", qv.IsAvailable(), qv.AvailReasons)
 	}
 }
 

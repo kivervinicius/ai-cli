@@ -119,19 +119,21 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 
 	// Set isolated environment
 	envOverrides := map[string]string{
-		"HOME":                   home,
-		"XDG_CONFIG_HOME":        filepath.Join(home, ".config"),
-		"XDG_CACHE_HOME":         filepath.Join(home, ".cache"),
-		"XDG_DATA_HOME":          filepath.Join(home, ".local", "share"),
-		"XDG_STATE_HOME":         filepath.Join(home, ".local", "state"),
-		"PATH":                   runtime.EnhancedPATH(internalBin, filepath.Dir(bin)),
-		"BROWSER":                filepath.Join(internalBin, "ai-browser"),
-		"PYTHON_KEYRING_BACKEND": "keyring.backends.null.Keyring",
+		"HOME":                             home,
+		"XDG_CONFIG_HOME":                  filepath.Join(home, ".config"),
+		"XDG_CACHE_HOME":                   filepath.Join(home, ".cache"),
+		"XDG_DATA_HOME":                    filepath.Join(home, ".local", "share"),
+		"XDG_STATE_HOME":                   filepath.Join(home, ".local", "state"),
+		"PATH":                             runtime.EnhancedPATH(internalBin, filepath.Dir(bin)),
+		"BROWSER":                          filepath.Join(internalBin, "ai-browser"),
+		"AI_HOST_DBUS_SESSION_BUS_ADDRESS": os.Getenv("DBUS_SESSION_BUS_ADDRESS"),
+		"PYTHON_KEYRING_BACKEND":           "keyring.backends.null.Keyring",
 	}
 
 	env := runtime.EnvSet(os.Environ(), envOverrides, "DBUS_SESSION_BUS_ADDRESS", "GNOME_KEYRING_CONTROL", "GNOME_KEYRING_PID")
 
-	return runtime.RunInteractive(bin, args, env, cwd)
+	wrappedBin, wrappedArgs := runtime.WrapWithIsolatedSecretService(bin, args)
+	return runtime.RunInteractive(wrappedBin, wrappedArgs, env, cwd)
 }
 
 func (a *Adapter) Login(ctx context.Context, p model.Profile) error {
@@ -302,6 +304,8 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 		}
 
 		var leg struct {
+			Account   string `json:"account"`
+			Email     string `json:"email"`
 			ModelName string `json:"model_name"`
 			FiveHour  struct {
 				PercentLeft float64 `json:"percent_left"`
@@ -321,10 +325,10 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 			} `json:"claude_weekly"`
 		}
 		if json.Unmarshal(data, &leg) == nil && (leg.FiveHour.PercentLeft > 0 || leg.Weekly.PercentLeft > 0 || leg.FiveHour.ResetsIn != "" || leg.ClaudeFiveHour.PercentLeft > 0 || leg.ClaudeWeekly.PercentLeft > 0) {
-			p5h := leg.FiveHour.PercentLeft
-			u5h := 100.0 - p5h
-			pWk := leg.Weekly.PercentLeft
-			uWk := 100.0 - pWk
+			p5h := agyRemaining(leg.FiveHour.PercentLeft)
+			u5h := agyUsed(leg.FiveHour.PercentLeft)
+			pWk := agyRemaining(leg.Weekly.PercentLeft)
+			uWk := agyUsed(leg.Weekly.PercentLeft)
 
 			windows := []model.UsageWindow{
 				{
@@ -344,8 +348,8 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 			}
 
 			if leg.ClaudeFiveHour.PercentLeft > 0 || leg.ClaudeFiveHour.ResetsIn != "" {
-				pC5h := leg.ClaudeFiveHour.PercentLeft
-				uC5h := 100.0 - pC5h
+				pC5h := agyRemaining(leg.ClaudeFiveHour.PercentLeft)
+				uC5h := agyUsed(leg.ClaudeFiveHour.PercentLeft)
 				windows = append(windows, model.UsageWindow{
 					Kind:             "claude_5h",
 					Group:            "claude_gpt",
@@ -356,8 +360,8 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 			}
 
 			if leg.ClaudeWeekly.PercentLeft > 0 || leg.ClaudeWeekly.ResetsIn != "" {
-				pCWk := leg.ClaudeWeekly.PercentLeft
-				uCWk := 100.0 - pCWk
+				pCWk := agyRemaining(leg.ClaudeWeekly.PercentLeft)
+				uCWk := agyUsed(leg.ClaudeWeekly.PercentLeft)
 				windows = append(windows, model.UsageWindow{
 					Kind:             "claude_weekly",
 					Group:            "claude_gpt",
@@ -370,6 +374,7 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 			return model.UsageSnapshot{
 				ProviderID: string(a.ID()),
 				ProfileID:  p.Name,
+				Account:    firstNonEmpty(leg.Account, leg.Email),
 				Status:     model.UsageCached,
 				Source:     model.SourceLocalFiles,
 				ModelName:  leg.ModelName,
@@ -380,6 +385,36 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 	}
 
 	return snap
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+// AGY's legacy quota.json calls the consumed percentage percent_left. The
+// normalized Nexus model stores the actual percentage remaining.
+func agyRemaining(consumed float64) float64 {
+	if consumed < 0 {
+		consumed = 0
+	}
+	if consumed > 100 {
+		consumed = 100
+	}
+	return 100 - consumed
+}
+func agyUsed(consumed float64) float64 {
+	if consumed < 0 {
+		return 0
+	}
+	if consumed > 100 {
+		return 100
+	}
+	return consumed
 }
 
 func (a *Adapter) ListConversations(ctx context.Context, p model.Profile, workspace string) ([]model.Session, error) {

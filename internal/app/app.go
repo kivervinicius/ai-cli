@@ -809,7 +809,7 @@ func usageCmd(args []string) error {
 		return nil
 	}
 
-	fmt.Printf("%-10s %-16s %-24s %-16s %-28s %s\n", "PROVIDER", "PROFILE", "ACCOUNT", "PLAN", "CAPACITY / 5H", "STATUS")
+	fmt.Printf("%-8s %-20s %-28s %-14s %-16s %-24s %-24s %s\n", "PROVIDER", "PROFILE", "ACCOUNT", "PLAN", "MODEL GROUP", "5H (RESET)", "SEMANAL (RESET)", "STATUS")
 	for _, p := range ps {
 		acc := profile.GetAccountInfo(p.Provider, p.Name)
 		email := acc.Email
@@ -820,12 +820,55 @@ func usageCmd(args []string) error {
 			email = email[:20] + ".."
 		}
 		qv := profile.GetQuotaView(p.Provider, p.Name, acc.Plan, acc.Email)
-		bottleneck, _ := qv.Bottleneck()
-		bar := quota.RenderBarWithPercent(bottleneck, qv.Status, 10)
-		fmt.Printf("%-10s %-16s %-24s %-16s %-28s %s\n",
-			p.Provider, p.Name, email, acc.Plan, bar, qv.Status)
+		if len(qv.ModelGroups) == 0 {
+			fmt.Printf("%-8s %-20s %-28s %-14s %-16s %-24s %-24s %s\n", p.Provider, p.Name, email, acc.Plan, "-", "-", "-", "UNKNOWN")
+			continue
+		}
+		for i, group := range qv.ModelGroups {
+			fiveHour := quotaWindowDisplay(group.Windows, "5h")
+			weekly := quotaWindowDisplay(group.Windows, "weekly")
+			if fiveHour == "-" && weekly == "-" {
+				continue
+			}
+			status := quotaGroupStatus(group, qv.Status)
+			if i > 0 {
+				// Keep the table readable while making it clear these rows belong
+				// to the same profile/account.
+				p.Provider, p.Name, email = "", "", ""
+			}
+			fmt.Printf("%-8s %-20s %-28s %-14s %-16s %-24s %-24s %s\n", p.Provider, p.Name, email, acc.Plan, group.Name, fiveHour, weekly, status)
+		}
 	}
 	return nil
+}
+
+func quotaWindowDisplay(windows []quota.Window, kind string) string {
+	for _, window := range windows {
+		matches := kind == "5h" && (window.Kind == "5h" || window.Kind == "daily" || window.Kind == "claude_5h" || window.Kind == "claude_five_hour")
+		if kind == "weekly" {
+			matches = window.Kind == "weekly" || window.Kind == "claude_weekly"
+		}
+		if matches {
+			reset := strings.TrimSpace(window.ResetDesc)
+			if reset == "" {
+				reset = "desconhecido"
+			}
+			return fmt.Sprintf("%2.0f%% / %s", window.Remaining, reset)
+		}
+	}
+	return "-"
+}
+
+func quotaGroupStatus(group quota.ModelGroup, snapshotStatus string) string {
+	if snapshotStatus == string(model.UsageUnknown) || snapshotStatus == string(model.UsageError) {
+		return "UNKNOWN"
+	}
+	for _, window := range group.Windows {
+		if window.Kind != "unknown" && window.Remaining <= 0 {
+			return "INDISPONIVEL"
+		}
+	}
+	return "DISPONIVEL"
 }
 
 func sessionsCmd(args []string) error {

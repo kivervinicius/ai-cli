@@ -144,20 +144,27 @@ func (qv *QuotaView) ComputeAvailability() {
 		// not that it's exhausted. The scheduler penalizes this in scoring.
 	}
 
-	// Scan ALL windows across ALL groups for exhausted quotas (0% = hard filter).
-	// Skip "unknown" kind — it's a placeholder for missing data, not a real quota.
+	// Model groups are independent capacity pools (for example Gemini versus
+	// Claude/GPT in AGY). A depleted group must not block another usable group.
+	// The profile is unavailable only when every real group is exhausted.
+	usableGroup := false
 	for _, g := range qv.ModelGroups {
+		groupExhausted := false
 		for _, w := range g.Windows {
 			if w.Kind == "unknown" {
 				continue
 			}
 			if w.Remaining <= 0.0 {
 				exhausted = append(exhausted, w.Kind)
+				groupExhausted = true
 			}
+		}
+		if !groupExhausted {
+			usableGroup = true
 		}
 	}
 
-	if len(exhausted) > 0 {
+	if !usableGroup && len(exhausted) > 0 {
 		qv.Available = false
 		qv.AvailReasons.ExhaustedWindows = exhausted
 		return
