@@ -2,6 +2,7 @@ package quota
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -133,3 +134,48 @@ func TestLegacyAGYQuotaInvertsConsumedPercent(t *testing.T) {
 		t.Fatalf("0%% consumed must be 100%% remaining, got %v", got)
 	}
 }
+
+func TestCodexLegacyQuotaPreservesRemainingAndGroup(t *testing.T) {
+	dataDir := t.TempDir()
+	cfgDir := t.TempDir()
+	t.Setenv("AI_CLI_DATA_DIR", dataDir)
+	t.Setenv("AI_CLI_CONFIG_DIR", cfgDir)
+
+	engine := NewEngine(5 * time.Minute)
+
+	// Create a profile root for codex:testprof
+	profDir := dataDir + "/profiles/codex/testprof"
+	if err := os.MkdirAll(profDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Legacy quota JSON with 70% left
+	content := `{
+		"provider": "codex",
+		"profile_name": "testprof",
+		"five_hour": { "percent_left": 70, "reset_time": "resets 17:34" },
+		"weekly": { "percent_left": 95, "reset_time": "resets 12:34 on 3 Sep" }
+	}`
+	if err := os.WriteFile(profDir+"/quota.json", []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	snap, found := engine.GetCachedUsage("codex", "testprof")
+	if !found {
+		t.Fatalf("expected cached usage found")
+	}
+	if len(snap.Windows) != 2 {
+		t.Fatalf("expected 2 windows, got %d", len(snap.Windows))
+	}
+	// For Codex, 70% left should remain 70%, NOT 30%
+	if snap.Windows[0].RemainingPercent == nil || *snap.Windows[0].RemainingPercent != 70 {
+		t.Fatalf("expected remaining 70%%, got %v", snap.Windows[0].RemainingPercent)
+	}
+	if snap.Windows[0].Group != "claude_gpt" {
+		t.Fatalf("expected group claude_gpt, got %s", snap.Windows[0].Group)
+	}
+	if snap.Windows[1].RemainingPercent == nil || *snap.Windows[1].RemainingPercent != 95 {
+		t.Fatalf("expected remaining 95%%, got %v", snap.Windows[1].RemainingPercent)
+	}
+}
+

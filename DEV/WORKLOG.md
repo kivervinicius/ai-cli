@@ -1,5 +1,31 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-02 — Isolamento Estrito do Control Directory do gnome-keyring-daemon
+
+- **Diagnóstico**: O `dbus-daemon` da sessão privada gerava mensagens de erro `Failed to activate service 'org.freedesktop.secrets': timed out` durante a execução do `agy`. O motivo era que o comando anterior `gnome-keyring-daemon --start` tentava conectar ao socket de controle padrão `/run/user/1000/keyring` (pertencente à sessão do host desktop), não assumindo o barramento privado e forçando o `dbus-daemon` a disparar auto-ativação até estourar o timeout padrão de 25 segundos.
+- **Implementação**:
+  - Em [`internal/runtime/runtime.go`](file:///projetos/tools/IAPro-Nexus-Workspace-OS-Handoff-2026-08-29/ai-manager/internal/runtime/runtime.go) (`WrapWithIsolatedSecretService`), o script agora provisiona um diretório temporário exclusivo via `mktemp -d /tmp/nexus-kr-XXXXXX`, passa `--control-directory="$TMPDIR"` e `GNOME_KEYRING_CONTROL="$TMPDIR"`, executando com `--daemonize`.
+  - Com isso, o `gnome-keyring-daemon` assume de forma limpa e imediata o nome `org.freedesktop.secrets` no D-Bus isolado, respondendo a pings e requisições sem qualquer timeout ou interferência no chaveiro do host.
+- **Gates**: Testes unitários passando e binário `nexus` atualizado em `/home/desenvolvedor/.local/bin/nexus`.
+
+## 2026-09-02 — Alinhamento de Quotas do Codex com /status dos Rollouts
+
+- **Diagnóstico**: Identificou-se que os valores de `nexus usage` para perfis do Codex não refletiam os dados reais do comando `/status` interno do Codex por três razões:
+  1. Inversão matemática indevida herdada do AGY (`legacyAGYRemaining(100 - consumed)` que invertia incorretamente percentuais já expressos como restante).
+  2. Classificação errônea do grupo de cota do Codex como `Gemini Models` em vez de `Claude & GPT Models`.
+  3. Ausência de leitura dos arquivos reais de rollout (`rollout-*.jsonl`) do Codex, onde o status de rate limit (`primary` de 5h e `secondary` semanal com `used_percent` e Unix epoch timestamp `resets_at`) é persistido dinamicamente pelo Codex.
+- **Implementação**:
+  - `internal/core/quota/quota.go`: No `GetCachedUsage`, contornado o cálculo de inversão do AGY quando `provider == "codex"`, preservando o percentual restante original e mapeando o grupo primário para `"claude_gpt"`.
+  - `internal/core/provider/adapters/codex/codex.go`:
+    - Adicionado método `getUsageFromRollouts(ctx, p)` que busca e decodifica as mensagens de eventos `token_count` nos rollouts mais recentes em sessões locais do perfil ou da home do host com validação de match de e-mail / conta.
+    - Implementada função `formatCodexResetTime(epochSec)` que formata horários no mesmo padrão do `/status` (`resets HH:MM` ou `resets HH:MM on D Mon`).
+    - Todos os limites de janela do Codex agora reportam explicitamente `Group: "claude_gpt"` para renderização correta sob "Claude & GPT Models".
+- **Testes & Gates**:
+  - Adicionado `TestCodexLegacyQuotaPreservesRemainingAndGroup` em `internal/core/quota/quota_test.go`.
+  - Adicionado `TestCodexAdapterGetUsageFromRollout` e `TestFormatCodexResetTime` em `internal/core/provider/adapters/codex/usage_test.go`.
+  - Suíte completa de testes (`go test -v ./...`) executada e aprovada sem regressões.
+  - Binário `nexus` compilado em `/home/desenvolvedor/.local/bin/nexus` e validado com execução interativa do `nexus usage`.
+
 ## 2026-09-02 — Notificações de atenção no padrão Untitled UI com Sonner
 
 - Refatorada a arquitetura de atenção do terminal para adotar a biblioteca externa `sonner` combinada com o design system do [Untitled UI (Notifications)](https://www.untitledui.com/react/components/notifications).

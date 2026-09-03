@@ -111,10 +111,21 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 			} `json:"claude_weekly"`
 		}
 		if json.Unmarshal(data, &leg) == nil && (leg.FiveHour.PercentLeft > 0 || leg.Weekly.PercentLeft > 0 || leg.FiveHour.ResetTime != "" || leg.Weekly.ResetTime != "" || leg.FiveHour.ResetsIn != "" || leg.Weekly.ResetsIn != "" || leg.ClaudeFiveHour.PercentLeft > 0 || leg.ClaudeWeekly.PercentLeft > 0) {
-			p5h := legacyAGYRemaining(leg.FiveHour.PercentLeft)
-			u5h := legacyAGYUsed(leg.FiveHour.PercentLeft)
-			pWk := legacyAGYRemaining(leg.Weekly.PercentLeft)
-			uWk := legacyAGYUsed(leg.Weekly.PercentLeft)
+			var p5h, u5h, pWk, uWk float64
+			primaryGroup := "gemini"
+			if provider == "codex" {
+				// For Codex, percent_left is the remaining percentage directly from Codex
+				p5h = leg.FiveHour.PercentLeft
+				u5h = 100.0 - p5h
+				pWk = leg.Weekly.PercentLeft
+				uWk = 100.0 - pWk
+				primaryGroup = "claude_gpt"
+			} else {
+				p5h = legacyAGYRemaining(leg.FiveHour.PercentLeft)
+				u5h = legacyAGYUsed(leg.FiveHour.PercentLeft)
+				pWk = legacyAGYRemaining(leg.Weekly.PercentLeft)
+				uWk = legacyAGYUsed(leg.Weekly.PercentLeft)
+			}
 			r5h := leg.FiveHour.ResetTime
 			if r5h == "" {
 				r5h = leg.FiveHour.ResetsIn
@@ -127,14 +138,14 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 			windows := []model.UsageWindow{
 				{
 					Kind:             "5h",
-					Group:            "gemini",
+					Group:            primaryGroup,
 					RemainingPercent: &p5h,
 					UsedPercent:      &u5h,
 					ResetDescription: r5h,
 				},
 				{
 					Kind:             "weekly",
-					Group:            "gemini",
+					Group:            primaryGroup,
 					RemainingPercent: &pWk,
 					UsedPercent:      &uWk,
 					ResetDescription: rWk,

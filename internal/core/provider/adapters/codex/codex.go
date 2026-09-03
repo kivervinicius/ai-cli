@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -243,6 +245,11 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 		FetchedAt:  time.Now(),
 	}
 
+	// 1. Try to read live rate limits from recent session rollouts
+	if rollSnap, ok := a.getUsageFromRollouts(ctx, p); ok {
+		return rollSnap
+	}
+
 	root, _ := config.ProfileRoot(string(a.ID()), p.Name)
 	home, _ := config.ProfileHome(string(a.ID()), p.Name)
 
@@ -292,12 +299,14 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 				Windows: []model.UsageWindow{
 					{
 						Kind:             "5h",
+						Group:            "claude_gpt",
 						RemainingPercent: &p5h,
 						UsedPercent:      &u5h,
 						ResetDescription: leg.FiveHour.ResetTime,
 					},
 					{
 						Kind:             "weekly",
+						Group:            "claude_gpt",
 						RemainingPercent: &pWk,
 						UsedPercent:      &uWk,
 						ResetDescription: leg.Weekly.ResetTime,
@@ -308,6 +317,214 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 	}
 
 	return snap
+}
+
+func (a *Adapter) getUsageFromRollouts(ctx context.Context, p model.Profile) (model.UsageSnapshot, bool) {
+	info := a.InspectAuth(ctx, p)
+	targetEmail := strings.TrimSpace(info.Email)
+
+	dirs := []string{}
+	if h, err := config.ProfileHome(string(a.ID()), p.Name); err == nil {
+		dirs = append(dirs, filepath.Join(h, "sessions"), filepath.Join(h, ".codex", "sessions"))
+	}
+	if targetEmail != "" {
+		if hostHome := security.FindHostHome(); hostHome != "" {
+			dirs = append(dirs, filepath.Join(hostHome, ".codex", "sessions"))
+		}
+	}
+
+	type fileInfo struct {
+		path    string
+		modTime time.Time
+	}
+	var rolloutFiles []fileInfo
+
+	for _, dir := range dirs {
+		realDir, err := filepath.EvalSymlinks(dir)
+		if err != nil {
+			realDir = dir
+		}
+		if _, err := os.Stat(realDir); err != nil {
+			continue
+		}
+		_ = filepath.Walk(realDir, func(path string, fi os.FileInfo, err error) error {
+			if err != nil || fi == nil || fi.IsDir() {
+				return nil
+			}
+			if strings.HasPrefix(fi.Name(), "rollout-") && strings.HasSuffix(fi.Name(), ".jsonl") {
+				rolloutFiles = append(rolloutFiles, fileInfo{path: path, modTime: fi.ModTime()})
+			}
+			return nil
+		})
+	}
+
+	if len(rolloutFiles) == 0 {
+		return model.UsageSnapshot{}, false
+	}
+
+	sort.Slice(rolloutFiles, func(i, j int) bool {
+		return rolloutFiles[i].modTime.After(rolloutFiles[j].modTime)
+	})
+
+	maxCheck := 30
+	if len(rolloutFiles) < maxCheck {
+		maxCheck = len(rolloutFiles)
+	}
+
+	for _, rf := range rolloutFiles[:maxCheck] {
+		f, err := os.Open(rf.path)
+		if err != nil {
+			continue
+		}
+
+		var lastRateLimit struct {
+			Primary *struct {
+				UsedPercent   float64 `json:"used_percent"`
+				WindowMinutes int     `json:"window_minutes"`
+				ResetsAt      int64   `json:"resets_at"`
+			} `json:"primary"`
+			Secondary *struct {
+				UsedPercent   float64 `json:"used_percent"`
+				WindowMinutes int     `json:"window_minutes"`
+				ResetsAt      int64   `json:"resets_at"`
+			} `json:"secondary"`
+		}
+		var detectedModel string
+		matchedAccount := false
+
+		scanner := bufio.NewScanner(f)
+		buf := make([]byte, 1024*1024)
+		scanner.Buffer(buf, 10*1024*1024)
+
+		for scanner.Scan() {
+			line := scanner.Bytes()
+			if len(line) == 0 {
+				continue
+			}
+
+			// Check account match if email is present
+			if targetEmail != "" && !matchedAccount && strings.Contains(string(line), targetEmail) {
+				matchedAccount = true
+			}
+
+			if strings.Contains(string(line), `"token_count"`) {
+				var ev struct {
+					Type    string `json:"type"`
+					Payload struct {
+						Type       string `json:"type"`
+						RateLimits struct {
+							Primary *struct {
+								UsedPercent   float64 `json:"used_percent"`
+								WindowMinutes int     `json:"window_minutes"`
+								ResetsAt      int64   `json:"resets_at"`
+							} `json:"primary"`
+							Secondary *struct {
+								UsedPercent   float64 `json:"used_percent"`
+								WindowMinutes int     `json:"window_minutes"`
+								ResetsAt      int64   `json:"resets_at"`
+							} `json:"secondary"`
+						} `json:"rate_limits"`
+					} `json:"payload"`
+				}
+				if json.Unmarshal(line, &ev) == nil && ev.Type == "event_msg" && ev.Payload.Type == "token_count" {
+					if ev.Payload.RateLimits.Primary != nil {
+						lastRateLimit.Primary = ev.Payload.RateLimits.Primary
+					}
+					if ev.Payload.RateLimits.Secondary != nil {
+						lastRateLimit.Secondary = ev.Payload.RateLimits.Secondary
+					}
+				}
+			}
+
+			if detectedModel == "" && strings.Contains(string(line), `"thread_settings_applied"`) {
+				var ts struct {
+					Payload struct {
+						Type           string `json:"type"`
+						ThreadSettings struct {
+							Model string `json:"model"`
+						} `json:"thread_settings"`
+					} `json:"payload"`
+				}
+				if json.Unmarshal(line, &ts) == nil && ts.Payload.ThreadSettings.Model != "" {
+					detectedModel = ts.Payload.ThreadSettings.Model
+				}
+			}
+		}
+		f.Close()
+
+		// Account matching:
+		// 1. If targetEmail was found in the rollout, it matches.
+		// 2. If the rollout file is located in or references the profile's home directory / profile name, it matches.
+		// 3. If targetEmail is set, and this file is from a shared host directory without matching email/profile, skip it.
+		isProfilePath := strings.Contains(rf.path, p.Name)
+		if !isProfilePath && (targetEmail == "" || !matchedAccount) {
+			continue
+		}
+
+		if lastRateLimit.Primary != nil {
+			pRem := 100.0 - lastRateLimit.Primary.UsedPercent
+			if pRem < 0 {
+				pRem = 0
+			}
+			pUsed := lastRateLimit.Primary.UsedPercent
+			r5h := formatCodexResetTime(lastRateLimit.Primary.ResetsAt)
+
+			windows := []model.UsageWindow{
+				{
+					Kind:             "5h",
+					Group:            "claude_gpt",
+					RemainingPercent: &pRem,
+					UsedPercent:      &pUsed,
+					ResetDescription: r5h,
+				},
+			}
+
+			if lastRateLimit.Secondary != nil {
+				sRem := 100.0 - lastRateLimit.Secondary.UsedPercent
+				if sRem < 0 {
+					sRem = 0
+				}
+				sUsed := lastRateLimit.Secondary.UsedPercent
+				rWk := formatCodexResetTime(lastRateLimit.Secondary.ResetsAt)
+				windows = append(windows, model.UsageWindow{
+					Kind:             "weekly",
+					Group:            "claude_gpt",
+					RemainingPercent: &sRem,
+					UsedPercent:      &sUsed,
+					ResetDescription: rWk,
+				})
+			}
+
+			if detectedModel == "" {
+				detectedModel = "gpt-5.6-terra"
+			}
+
+			return model.UsageSnapshot{
+				ProviderID: string(a.ID()),
+				ProfileID:  p.Name,
+				Account:    targetEmail,
+				Status:     model.UsageLive,
+				Source:     model.SourceObservation,
+				ModelName:  detectedModel,
+				FetchedAt:  rf.modTime,
+				Windows:    windows,
+			}, true
+		}
+	}
+
+	return model.UsageSnapshot{}, false
+}
+
+func formatCodexResetTime(epochSec int64) string {
+	if epochSec <= 0 {
+		return "Quota available"
+	}
+	t := time.Unix(epochSec, 0)
+	now := time.Now()
+	if t.Year() == now.Year() && t.YearDay() == now.YearDay() {
+		return fmt.Sprintf("resets %s", t.Format("15:04"))
+	}
+	return fmt.Sprintf("resets %s on %d %s", t.Format("15:04"), t.Day(), t.Format("Jan"))
 }
 
 func (a *Adapter) ListConversations(ctx context.Context, p model.Profile, workspace string) ([]model.Session, error) {

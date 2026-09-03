@@ -35,7 +35,7 @@ func WrapWithIsolatedSecretService(bin string, args []string) (string, []string)
 	if err != nil {
 		return dbus, append([]string{"--", bin}, args...)
 	}
-	script := `eval "$("$1" --start --components=secrets 2>/dev/null)"; shift; exec "$@"`
+	script := `TMPDIR="$(mktemp -d /tmp/nexus-kr-XXXXXX)"; trap "rm -rf \"$TMPDIR\"" EXIT INT TERM; GNOME_KEYRING_CONTROL="$TMPDIR" "$1" --daemonize --components=secrets --control-directory="$TMPDIR" >/dev/null 2>&1; shift; exec "$@"`
 	wrapped := []string{"--", "/bin/sh", "-c", script, "nexus-agy-keyring", keyring, bin}
 	wrapped = append(wrapped, args...)
 	return dbus, wrapped
