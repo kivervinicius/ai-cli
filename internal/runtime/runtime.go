@@ -18,6 +18,27 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 )
 
+const isolatedSecretServiceScript = `TMPDIR=$(mktemp -d /tmp/nexus-kr-XXXXXX) || exit 1
+trap 'rm -rf "$TMPDIR"' EXIT INT TERM
+export GNOME_KEYRING_CONTROL="$TMPDIR"
+daemon="$1"
+shift
+"$daemon" --daemonize --components=secrets --control-directory="$TMPDIR" >/dev/null 2>&1 || true
+exec "$@"`
+
+func alreadyIsolatedSecretServiceArgv(args []string) bool {
+	if len(args) >= 4 && args[0] == "--" && args[1] == "/bin/sh" && args[2] == "-c" {
+		return true
+	}
+	if len(args) >= 2 && args[0] == "--" {
+		base := filepath.Base(args[1])
+		if base != "sh" && base != "dbus-run-session" && args[1] != "--" {
+			return true
+		}
+	}
+	return false
+}
+
 // WrapWithIsolatedSecretService runs a provider inside a private D-Bus session
 // and starts only the Secret Service component of gnome-keyring there. This is
 // used by AGY so profiles cannot silently reuse the desktop user's keyring.
@@ -31,12 +52,14 @@ func WrapWithIsolatedSecretService(bin string, args []string) (string, []string)
 	if err != nil {
 		return bin, args
 	}
+	if alreadyIsolatedSecretServiceArgv(args) {
+		return dbus, args
+	}
 	keyring, err := LookPath("gnome-keyring-daemon")
 	if err != nil {
 		return dbus, append([]string{"--", bin}, args...)
 	}
-	script := `TMPDIR="$(mktemp -d /tmp/nexus-kr-XXXXXX)"; trap "rm -rf \"$TMPDIR\"" EXIT INT TERM; GNOME_KEYRING_CONTROL="$TMPDIR" "$1" --daemonize --components=secrets --control-directory="$TMPDIR" >/dev/null 2>&1; shift; exec "$@"`
-	wrapped := []string{"--", "/bin/sh", "-c", script, "nexus-agy-keyring", keyring, bin}
+	wrapped := []string{"--", "/bin/sh", "-c", isolatedSecretServiceScript, "nexus-agy-keyring", keyring, bin}
 	wrapped = append(wrapped, args...)
 	return dbus, wrapped
 }
@@ -180,7 +203,12 @@ func EnvSet(base []string, overrides map[string]string, unset ...string) []strin
 // RunInteractive executes an external CLI in full interactive TTY passthrough mode.
 func RunInteractive(bin string, args []string, env []string, cwd string) (model.Failure, error) {
 	cmd := exec.Command(bin, args...)
-	cmd.Env = env
+	// Some embedded/browser terminals expose TERM=dumb even though the child
+	// still has an interactive stdin. Modern provider CLIs interpret that value
+	// as an unsafe non-TUI terminal and stop for a confirmation prompt whose
+	// input cannot be rendered correctly. Give the interactive child a real
+	// terminal type while preserving all other caller-provided environment.
+	cmd.Env = NormalizeInteractiveEnv(env)
 	cmd.Dir = cwd
 	cmd.Stdin = os.Stdin
 
@@ -215,6 +243,20 @@ func RunInteractive(bin string, args []string, env []string, cwd string) (model.
 	}
 
 	return model.Failure{Kind: model.FailureNone}, nil
+}
+
+// NormalizeInteractiveEnv prevents provider TUIs from entering their
+// TERM=dumb safety prompt when Nexus is itself running inside an interactive
+// PTY exposed by the web terminal or a wrapper shell.
+func NormalizeInteractiveEnv(env []string) []string {
+	for i, entry := range env {
+		if entry == "TERM=dumb" {
+			copyEnv := append([]string(nil), env...)
+			copyEnv[i] = "TERM=xterm-256color"
+			return copyEnv
+		}
+	}
+	return env
 }
 
 // RunCommandCapture executes a command non-interactively and captures its combined stdout and stderr.

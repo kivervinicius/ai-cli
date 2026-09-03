@@ -147,7 +147,7 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 			return nil, fmt.Errorf("failed to start SessionHost: %w", err)
 		}
 	} else {
-		if err := createLaunchEnvelope(opts.RuntimeID, extraArgs); err != nil {
+		if err := createLaunchEnvelope(opts.RuntimeID, configuredArgs); err != nil {
 			_ = l.reg.UpdateState(opts.RuntimeID, registry.StateFailed)
 			return nil, fmt.Errorf("failed to create private launch envelope: %w", err)
 		}

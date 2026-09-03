@@ -43,7 +43,7 @@ func TestHeadlessPromptArgsMatchSupportedProviderCLIs(t *testing.T) {
 		provider string
 		want0    string
 	}{
-		{"claude", "-p"}, {"agy", "-p"}, {"gemini", "-p"}, {"cursor", "-p"}, {"opencode", "run"},
+		{"claude", "-p"}, {"agy", "-p"}, {"gemini", "-p"}, {"cursor", "-p"}, {"opencode", "run"}, {"codex", "exec"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.provider, func(t *testing.T) {
@@ -55,9 +55,6 @@ func TestHeadlessPromptArgsMatchSupportedProviderCLIs(t *testing.T) {
 				t.Fatalf("unexpected args %#v", args)
 			}
 		})
-	}
-	if _, err := HeadlessPromptArgs("codex", "hello"); err == nil {
-		t.Fatal("codex must not be used as CLI intelligence while headless/submit_prompt is not SUPPORTED")
 	}
 }
 

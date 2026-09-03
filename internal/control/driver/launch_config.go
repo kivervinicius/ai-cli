@@ -46,6 +46,9 @@ func ApplyLaunchConfiguration(provider, model string, options map[string]any, ba
 				return nil, fmt.Errorf("provider option extra_args: %w", err)
 			}
 			args = append(args, extra...)
+		case "mode":
+			// UI-only Safe/Plan/YOLO marker. Flags live in extra_args.
+			continue
 		default:
 			return nil, fmt.Errorf("provider option %q is not supported by the supervised launcher", key)
 		}

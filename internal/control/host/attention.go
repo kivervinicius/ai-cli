@@ -94,22 +94,22 @@ func ExtractOSCTitle(raw string) string {
 
 // AttentionDetector monitors stream chunks for a runtime session and emits dynamic updates.
 type AttentionDetector struct {
-	mu           sync.Mutex
-	runtimeID    string
-	providerID   string
-	profileID    string
-	workspace    string
-	projectID    string
-	projectName  string
-	buffer       strings.Builder
-	lastState    registry.RuntimeState
-	lastReason   string
-	lastKind     string
-	lastPrompt   string
-	lastTitle    string
+	mu              sync.Mutex
+	runtimeID       string
+	providerID      string
+	profileID       string
+	workspace       string
+	projectID       string
+	projectName     string
+	buffer          strings.Builder
+	lastState       registry.RuntimeState
+	lastReason      string
+	lastKind        string
+	lastPrompt      string
+	lastTitle       string
 	lastFingerprint string
-	lastUpdateAt time.Time
-	onAttention  func(reason, context, dynamicTitle string, state registry.RuntimeState)
+	lastUpdateAt    time.Time
+	onAttention     func(reason, context, dynamicTitle string, state registry.RuntimeState)
 }
 
 // NewAttentionDetector creates an attention detector for a session.
@@ -292,13 +292,13 @@ func (d *AttentionDetector) ProcessChunk(chunk []byte) {
 		))
 		_ = notify.Default().Notify(notify.Payload{
 			Title: "Nexus · " + d.projectName,
-			Body:  attentionCtx,
+			Body:  formatDesktopAttentionBody(promptKind, attentionCtx),
 			Tag:   fingerprint,
 		})
 	} else if kind == AttentionError && fingerprint != "" && fingerprint != prevFingerprint {
 		_ = notify.Default().Notify(notify.Payload{
 			Title: "Nexus · " + d.projectName,
-			Body:  attentionCtx,
+			Body:  "Erro no terminal: " + attentionCtx + " — Abra o Nexus para revisar.",
 			Tag:   fingerprint,
 		})
 	} else if reason == "TASK_COMPLETED" {
@@ -540,6 +540,21 @@ func attentionFingerprint(runtimeID, promptKind, context string) string {
 	norm := strings.ToLower(strings.Join(strings.Fields(context), " "))
 	sum := sha256.Sum256([]byte(runtimeID + "|" + promptKind + "|" + norm))
 	return hex.EncodeToString(sum[:8])
+}
+
+func formatDesktopAttentionBody(promptKind, context string) string {
+	ctx := strings.Join(strings.Fields(strings.TrimSpace(context)), " ")
+	if ctx == "" {
+		return ""
+	}
+	lead := "Um agente espera sua resposta"
+	switch promptKind {
+	case PromptKindYN:
+		lead = "Um agente pede confirmação (Sim/Não)"
+	case PromptKindChoice:
+		lead = "Um agente pede uma escolha"
+	}
+	return lead + ": " + ctx + " — Abra o Nexus e responda no terminal."
 }
 
 // stripANSIKeepNewlines removes CSI/OSC chrome but keeps line breaks so the

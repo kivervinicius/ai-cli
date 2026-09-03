@@ -95,6 +95,22 @@ export interface ProviderAccount {
   rate_limited: boolean;
   health: string;
   last_checked: string;
+  avail_reasons?: {
+    exhausted_windows?: string[];
+    rate_limited?: boolean;
+    unknown_quota?: boolean;
+    auth_required?: boolean;
+    all_ok?: boolean;
+  };
+  quota_view?: {
+    status?: string;
+    plan?: string;
+    account?: string;
+    model_groups?: Array<{
+      name?: string;
+      windows?: Array<{ kind?: string; label?: string; remaining?: number; reset_desc?: string; status?: string }>;
+    }>;
+  };
 }
 
 export interface EventRecord {

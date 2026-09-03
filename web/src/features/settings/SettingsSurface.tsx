@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Accessibility, ArrowUpCircle, MonitorCog, Palette, RefreshCw, RotateCcw, Sparkles } from 'lucide-react';
+import { Accessibility, ArrowUpCircle, Bell, MonitorCog, Palette, RefreshCw, RotateCcw, Sparkles, Volume2 } from 'lucide-react';
 import { Badge, Button, Card, InlineAlert, Input, Segmented, Switch } from '../../design-system';
 import { useTheme, type ThemeAccent, type ThemeDensity, type ThemeScheme } from '../../design-system';
 import { useWorkspace } from '../../workspace/WorkspaceProvider';
@@ -7,20 +7,56 @@ import { nexus } from '../../nexus/api';
 import type { IntelligenceMode, IntelligenceStatus, ProviderAccount } from '../../types';
 import { useTranslation } from 'react-i18next';
 import { normalizeLanguage, supportedLanguages, type SupportedLanguage } from '../../i18n';
+import { asArray } from '../../lib/safeArray';
+import { intelligenceCLIProfiles } from './intelligenceProfiles';
+import { IntelligenceProviderCombo } from './IntelligenceProviderCombo';
+import {
+  loadNotificationPrefs,
+  saveNotificationPrefs,
+  type NotificationPrefs,
+} from '../../notifications/notificationPrefs';
+import { pushNotifications } from '../../notifications/PushNotificationManager';
 
 export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) => {
   const theme = useTheme();
   const { t, i18n } = useTranslation();
   const workspace = useWorkspace();
-  const [updateInfo, setUpdateInfo] = useState<{ nexus_version: string; maestro_version: string; maestro_available: boolean } | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<{
+    nexus_version: string;
+    maestro_version: string;
+    maestro_latest_version?: string;
+    maestro_available: boolean;
+    update_available?: boolean;
+  } | null>(null);
   const [updating, setUpdating] = useState(false);
   const [updateSuccess, setUpdateSuccess] = useState(false);
   const [updateError, setUpdateError] = useState('');
+  const [updateResult, setUpdateResult] = useState<{
+    maestro_updated: boolean;
+    maestro_version: string;
+    nexus_version: string;
+    error?: string;
+  } | null>(null);
   const [intelligence, setIntelligence] = useState<IntelligenceStatus | null>(null);
   const [intelligenceDraft, setIntelligenceDraft] = useState<IntelligenceStatus>({ mode: 'OFF', available: false });
   const [intelligenceResources, setIntelligenceResources] = useState<ProviderAccount[]>([]);
   const [intelligenceSaving, setIntelligenceSaving] = useState(false);
   const [intelligenceError, setIntelligenceError] = useState('');
+  const [notifyPrefs, setNotifyPrefs] = useState<NotificationPrefs>(() => loadNotificationPrefs());
+
+  const updateNotifyPrefs = (patch: Partial<NotificationPrefs>) => {
+    setNotifyPrefs((current) => {
+      const next = { ...current, ...patch };
+      saveNotificationPrefs(next);
+      window.dispatchEvent(new CustomEvent('nexus:notification-prefs'));
+      if (patch.notificationsEnabled === true) {
+        void pushNotifications.requestPermission().then((perm) => {
+          if (perm === 'granted') pushNotifications.confirmEnabled();
+        });
+      }
+      return next;
+    });
+  };
 
   const checkUpdates = async () => {
     try {
@@ -39,7 +75,7 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
       const [status, resources] = await Promise.all([nexus.getIntelligence(), nexus.listResources()]);
       setIntelligence(status);
       setIntelligenceDraft(status);
-      setIntelligenceResources(resources.accounts || []);
+      setIntelligenceResources(asArray(resources.accounts));
     } catch (error) {
       setIntelligenceError(error instanceof Error ? error.message : String(error));
     }
@@ -53,12 +89,14 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
   const handleUpdate = async () => {
     setUpdating(true);
     setUpdateSuccess(false);
+    setUpdateError('');
+    setUpdateResult(null);
     try {
       const res = await nexus.performSystemUpdate();
-      if (res.nexus_updated || res.maestro_updated) {
-        setUpdateSuccess(true);
-        void checkUpdates();
-      }
+      setUpdateResult(res);
+      setUpdateSuccess(true);
+      window.dispatchEvent(new CustomEvent('nexus:system-updates'));
+      void checkUpdates();
     } catch (error) {
       setUpdateError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -66,13 +104,10 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
     }
   };
 
-  const cliResources = useMemo(() => intelligenceResources.filter((account) =>
-    account.available && account.authenticated &&
-    account.capabilities?.headless === 'SUPPORTED' &&
-    account.capabilities?.submit_prompt === 'SUPPORTED'
-  ), [intelligenceResources]);
-
-  const selectedCLI = `${intelligenceDraft.provider || ''}:${intelligenceDraft.profile || ''}`;
+  const cliResources = useMemo(
+    () => intelligenceCLIProfiles(intelligenceResources, intelligenceDraft),
+    [intelligenceResources, intelligenceDraft.provider, intelligenceDraft.profile]
+  );
 
   const saveIntelligence = async () => {
     setIntelligenceSaving(true);
@@ -167,6 +202,32 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
 
         <Card className="nx-settings-card">
           <div className="nx-settings-card__title">
+            <Bell size={17} />
+            <div>
+              <strong>{t('settings.notifications', 'Notificações')}</strong>
+              <small>{t('settings.notificationsDescription', 'Avisos in-app e do navegador quando um agente pergunta ou conclui. Título e marcadores nas janelas continuam ativos.')}</small>
+            </div>
+          </div>
+          <Switch
+            checked={notifyPrefs.notificationsEnabled}
+            onChange={(checked) => updateNotifyPrefs({ notificationsEnabled: checked })}
+            label={t('settings.notificationsToggle', 'Notificações')}
+            description={t('settings.notificationsToggleDescription', 'Toasts e push do navegador (com a aba em segundo plano).')}
+          />
+          <Switch
+            checked={notifyPrefs.soundEnabled}
+            onChange={(checked) => updateNotifyPrefs({ soundEnabled: checked })}
+            label={t('settings.soundToggle', 'Som')}
+            description={t('settings.soundToggleDescription', 'Beep curto ao receber atenção. Independente das notificações visuais.')}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--nx-muted)', fontSize: 12 }}>
+            <Volume2 size={14} />
+            <span>{t('settings.notificationsDefault', 'Ambos ligados por padrão.')}</span>
+          </div>
+        </Card>
+
+        <Card className="nx-settings-card">
+          <div className="nx-settings-card__title">
             <Sparkles size={17} />
             <div><strong>{t('language.title')}</strong><small>{t('language.description')}</small></div>
           </div>
@@ -178,7 +239,7 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
             <Sparkles size={17} />
             <div>
               <strong>Nexus Intelligence</strong>
-              <small>Optional semantic planning. Direct AI work remains available when Intelligence is OFF.</small>
+              <small>Planejamento semântico para Composer e Flow. O trabalho direto em terminais continua sem isso.</small>
             </div>
           </div>
           <Segmented
@@ -192,21 +253,20 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
             ]}
           />
           {intelligenceDraft.mode === 'CLI' && (
-            <label style={{ display: 'grid', gap: 6 }}>
-              <span>Provider profile</span>
-              <select
-                value={selectedCLI}
-                onChange={(event) => {
-                  const account = cliResources.find((item) => `${item.provider}:${item.profile}` === event.target.value);
-                  setIntelligenceDraft((prev) => ({ ...prev, provider: account?.provider || '', profile: account?.profile || '' }));
-                }}
-              >
-                <option value="">Choose a verified headless profile…</option>
-                {cliResources.map((account) => (
-                  <option key={account.id} value={`${account.provider}:${account.profile}`}>{account.display_name || account.provider} · {account.profile}</option>
-                ))}
-              </select>
-            </label>
+            <IntelligenceProviderCombo
+              accounts={cliResources}
+              provider={intelligenceDraft.provider}
+              profile={intelligenceDraft.profile}
+              model={intelligenceDraft.model}
+              onChange={(next) =>
+                setIntelligenceDraft((prev) => ({
+                  ...prev,
+                  provider: next.provider,
+                  profile: next.profile,
+                  model: next.model ?? prev.model,
+                }))
+              }
+            />
           )}
           {intelligenceDraft.mode === 'OPENAI_COMPATIBLE' && (
             <>
@@ -216,11 +276,11 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
             </>
           )}
           {intelligenceDraft.mode !== 'OFF' && (
-            <Input value={intelligenceDraft.model || ''} onChange={(value) => setIntelligenceDraft((prev) => ({ ...prev, model: value }))} placeholder="Model override (optional)" />
+            <Input value={intelligenceDraft.model || ''} onChange={(value) => setIntelligenceDraft((prev) => ({ ...prev, model: value }))} placeholder="Modelo (sobrescrever o padrão)" />
           )}
           {intelligence && (
-            <InlineAlert tone={intelligence.available ? 'success' : intelligence.mode === 'OFF' ? 'info' : 'warning'} title={intelligence.available ? 'Intelligence provider ready' : intelligence.mode === 'OFF' ? 'Intelligence is optional' : 'Provider not ready'}>
-              {intelligence.error || (intelligence.mode === 'OFF' ? 'Direct sessions and manual WorkPlans continue to work normally.' : `${intelligence.provider || 'Provider'} ${intelligence.profile || ''}`)}
+            <InlineAlert tone={intelligence.available ? 'success' : intelligence.mode === 'OFF' ? 'info' : 'warning'} title={intelligence.available ? 'Provedor de Intelligence pronto' : intelligence.mode === 'OFF' ? 'Intelligence desligada' : 'Provedor não pronto'}>
+              {intelligence.error || (intelligence.mode === 'OFF' ? 'Sessões diretas e WorkPlans manuais continuam funcionando.' : `${intelligence.provider || 'Provider'} ${intelligence.profile || ''}`)}
             </InlineAlert>
           )}
           {intelligenceError && <InlineAlert tone="danger" title="Intelligence configuration error">{intelligenceError}</InlineAlert>}
@@ -249,12 +309,19 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
                   v{updateInfo.maestro_version}
                 </Badge>
               </div>
+              {updateInfo.update_available && updateInfo.maestro_latest_version && (
+                <small>{t('maestroControl.latest')}: v{updateInfo.maestro_latest_version}</small>
+              )}
             </div>
           )}
           {updateError && <InlineAlert tone="danger" title="Update status unavailable">{updateError}</InlineAlert>}
-          {updateSuccess && (
-            <InlineAlert tone="success" title={t('settings.updated')}>
-              {t('settings.upToDate')}
+          {updateSuccess && updateResult && (
+            <InlineAlert tone={updateResult.maestro_updated ? 'success' : 'info'} title={t('maestroControl.updateResult')}>
+              {updateResult.maestro_updated
+                ? t('maestroControl.updateMaestroDone', { version: updateResult.maestro_version })
+                : t('maestroControl.updateMaestroSame', { version: updateResult.maestro_version })}
+              {' '}
+              {t('maestroControl.nexusBinaryNote', { version: updateResult.nexus_version })}
             </InlineAlert>
           )}
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>

@@ -1070,7 +1070,7 @@ func doctorCmd(args []string) error {
 		}
 		fmt.Printf("✓ Maestro status: AVAILABLE (v%s, mode: %s)\n", ver, mStatus.Mode)
 		if mStatus.Capabilities != nil && len(mStatus.Capabilities.Skills) > 0 {
-			fmt.Printf("  • Integrated skills: %s\n", strings.Join(mStatus.Capabilities.Skills, ", "))
+			fmt.Printf("  • Integrated skills: %s\n", strings.Join(mStatus.Capabilities.SkillIDs(), ", "))
 		}
 	} else {
 		fmt.Printf("⚠ Maestro status: DEGRADED (%s)\n", mStatus.Error)

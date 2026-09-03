@@ -9,8 +9,6 @@ import {
   GitBranch,
   Bot,
   Activity,
-  ShieldCheck,
-  BrainCircuit,
   Settings,
   ArrowRight,
   Trash2,
@@ -66,7 +64,6 @@ export const ProjectManagerSurface: React.FC<{
   // Project configuration state
   const [cfgName, setCfgName] = useState('');
   const [cfgBranch, setCfgBranch] = useState('');
-  const [cfgMaestro, setCfgMaestro] = useState<'OFF' | 'ASSIST' | 'ORCHESTRATE'>('ASSIST');
   const [cfgIsolation, setCfgIsolation] = useState('project');
   const [cfgPolicy, setCfgPolicy] = useState('BALANCED');
   const [cfgBusy, setCfgBusy] = useState(false);
@@ -104,7 +101,6 @@ export const ProjectManagerSurface: React.FC<{
     setConfigProject(p);
     setCfgName(p.name);
     setCfgBranch(p.default_branch || 'main');
-    setCfgMaestro(p.maestro_mode || 'ASSIST');
     setCfgIsolation(p.default_isolation || 'project');
     setCfgPolicy(p.resource_policy || 'BALANCED');
     setCfgSuccess(false);
@@ -151,7 +147,6 @@ export const ProjectManagerSurface: React.FC<{
       const updated = await nexus.updateProject(configProject.id, {
         name: cfgName.trim() || configProject.name,
         default_branch: cfgBranch.trim() || 'main',
-        maestro_mode: cfgMaestro,
         default_isolation: cfgIsolation,
         resource_policy: cfgPolicy,
       });
@@ -255,11 +250,11 @@ export const ProjectManagerSurface: React.FC<{
 
         <Card className="nx-metric-card">
           <span className="nx-metric-card__icon">
-            <ShieldCheck size={18} />
+            <Layers size={18} />
           </span>
           <div>
-            <strong>{selectedProject.maestro_mode || 'ASSIST'}</strong>
-            <span>{t('overview.maestroMode')}</span>
+            <strong>{selectedProject.default_isolation || 'project'}</strong>
+            <span>{t('projectManager.isolation')}</span>
           </div>
         </Card>
       </div>
@@ -354,10 +349,6 @@ export const ProjectManagerSurface: React.FC<{
 
                 <div className="nx-desktop-card__tags">
                   <span className="nx-tag-pill">
-                    <BrainCircuit size={11} />
-                    Maestro: {proj.maestro_mode || 'ASSIST'}
-                  </span>
-                  <span className="nx-tag-pill">
                     <Zap size={11} />
                     {proj.resource_policy || 'BALANCED'}
                   </span>
@@ -430,7 +421,6 @@ export const ProjectManagerSurface: React.FC<{
               <tr>
                 <th>{t('projectManager.desktopsTitle')}</th>
                 <th>{t('projectManager.branch')}</th>
-                <th>Maestro</th>
                 <th>{t('projectManager.resourcePolicy')}</th>
                 <th>OS</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
@@ -460,11 +450,6 @@ export const ProjectManagerSurface: React.FC<{
                       <span className="nx-desktop-branch">
                         <GitBranch size={11} /> {proj.default_branch || 'main'}
                       </span>
-                    </td>
-                    <td>
-                      <Badge tone={proj.maestro_mode === 'OFF' ? 'default' : 'brand'}>
-                        {proj.maestro_mode || 'ASSIST'}
-                      </Badge>
                     </td>
                     <td>
                       <span className="nx-tag-pill">{proj.resource_policy || 'BALANCED'}</span>
@@ -641,20 +626,6 @@ export const ProjectManagerSurface: React.FC<{
                 </Button>
               </div>
             </div>
-
-            <label>
-              {t('overview.maestroMode')}
-              <Segmented
-                options={[
-                  { value: 'ASSIST', label: 'ASSIST' },
-                  { value: 'ORCHESTRATE', label: 'ORCHESTRATE' },
-                  { value: 'OFF', label: 'OFF' },
-                ]}
-                value={cfgMaestro}
-                onChange={(v) => setCfgMaestro(v as any)}
-                ariaLabel={t('overview.maestroMode')}
-              />
-            </label>
 
             <label>
               {t('projectManager.resourcePolicy')}

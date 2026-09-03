@@ -6,6 +6,26 @@ import (
 	"os/exec"
 )
 
+// prepareInteractiveCommand keeps provider TUIs from treating Nexus's
+// browser PTY as a non-interactive terminal when the parent exported
+// TERM=dumb. A real PTY is allocated by the backend immediately afterward.
+func prepareInteractiveCommand(cmd *exec.Cmd) {
+	if cmd == nil {
+		return
+	}
+	env := cmd.Env
+	if env == nil {
+		env = os.Environ()
+	}
+	for i, entry := range env {
+		if entry == "TERM=dumb" {
+			cmd.Env = append([]string(nil), env...)
+			cmd.Env[i] = "TERM=xterm-256color"
+			return
+		}
+	}
+}
+
 // Backend abstracts platform-specific terminal emulation (Unix PTY, Windows ConPTY).
 type Backend interface {
 	io.Reader

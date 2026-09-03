@@ -430,8 +430,13 @@ func (s *Server) routeAgent(h *NexusHandler) http.HandlerFunc {
 			runtimeID := strings.TrimSpace(r.URL.Query().Get("runtime_id"))
 			if runtimeID != "" {
 				if _, ok := registry.DefaultRegistry().Get(runtimeID); !ok {
-					writeError(w, http.StatusNotFound, "runtime not found: "+runtimeID)
-					return
+					// Fallback: check if the agent has a fresher live runtime generation
+					if freshID, err := h.resolveAgentRuntimeID(agentID); err == nil && freshID != "" {
+						runtimeID = freshID
+					} else {
+						writeError(w, http.StatusNotFound, "runtime not found: "+runtimeID)
+						return
+					}
 				}
 			} else {
 				var err error

@@ -94,6 +94,16 @@ describe('direct Agent and Project Shell API routes', () => {
     expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/agents/agt-1/ask');
     const init = fetchMock.mock.calls[0][1] as RequestInit;
     expect(JSON.parse(String(init.body))).toEqual({ prompt: 'fix the tests', start_if_needed: false });
+
+    // With skills
+    await nexusApi.askAgent('agt-1', 'fix the tests', true, ['skill-sec']);
+    const init2 = fetchMock.mock.calls[1][1] as RequestInit;
+    expect(JSON.parse(String(init2.body))).toEqual({
+      prompt: 'fix the tests',
+      start_if_needed: true,
+      skill_ids: ['skill-sec'],
+      scope: 'NEXT_PROMPT',
+    });
   });
 
   it('starts an independent Project Shell through the project endpoint', async () => {

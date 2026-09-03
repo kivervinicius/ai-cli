@@ -28,13 +28,31 @@ const (
 	MaestroOrchestrate MaestroMode = "ORCHESTRATE"
 )
 
+// MaestroSkillDesc describes a single canonical skill provided by Maestro.
+type MaestroSkillDesc struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
 // MaestroCapability describes what the Maestro instance supports.
 type MaestroCapability struct {
-	Version   string   `json:"version"`
-	Modes     []string `json:"modes"`     // supported modes
-	Skills    []string `json:"skills"`    // available skill IDs
-	Gates     []string `json:"gates"`     // available gate types
-	Processes []string `json:"processes"` // available process types
+	Version   string             `json:"version"`
+	Modes     []string           `json:"modes"`     // supported modes
+	Skills    []MaestroSkillDesc `json:"skills"`    // available skills
+	Gates     []string           `json:"gates"`     // available gate types
+	Processes []string           `json:"processes"` // available process types
+}
+
+func (mc *MaestroCapability) SkillIDs() []string {
+	if mc == nil {
+		return nil
+	}
+	ids := make([]string, len(mc.Skills))
+	for i, s := range mc.Skills {
+		ids[i] = s.ID
+	}
+	return ids
 }
 
 // AdviceRequest is the structured request sent to Maestro for recommendations.
@@ -220,37 +238,55 @@ func (c *MaestroClient) queryCapabilities() (*MaestroCapability, error) {
 
 	// 3. Read dynamic skills and gates from .orquestrador directory
 	orqDir := findOrquestradorDir()
-	var skills []string
+	var skillDescs []MaestroSkillDesc
 	if orqDir != "" {
 		manifestPath := filepath.Join(orqDir, "SKILLS_MANIFEST.json")
 		if data, err := os.ReadFile(manifestPath); err == nil {
 			var parsed struct {
-				Skills map[string]any `json:"skills"`
+				Skills map[string]struct {
+					Name        string `json:"name"`
+					Description string `json:"description"`
+				} `json:"skills"`
 			}
 			if err := json.Unmarshal(data, &parsed); err == nil && len(parsed.Skills) > 0 {
-				for s := range parsed.Skills {
-					skills = append(skills, s)
+				for s, meta := range parsed.Skills {
+					name := meta.Name
+					if name == "" {
+						name = s
+					}
+					skillDescs = append(skillDescs, MaestroSkillDesc{
+						ID:          s,
+						Name:        name,
+						Description: meta.Description,
+					})
 				}
 			}
 		}
-		if len(skills) == 0 {
+		if len(skillDescs) == 0 {
 			// Fallback: list skills folder
 			skillsDir := filepath.Join(orqDir, "skills")
 			if entries, err := os.ReadDir(skillsDir); err == nil {
 				for _, entry := range entries {
 					if entry.IsDir() {
-						skills = append(skills, entry.Name())
+						id := entry.Name()
+						skillDescs = append(skillDescs, MaestroSkillDesc{
+							ID:          id,
+							Name:        id,
+							Description: "",
+						})
 					}
 				}
 			}
 		}
 	}
 
-	sort.Strings(skills)
+	sort.Slice(skillDescs, func(i, j int) bool {
+		return skillDescs[i].ID < skillDescs[j].ID
+	})
 	return &MaestroCapability{
 		Version: version,
 		Modes:   []string{"OFF", "ASSIST", "ORCHESTRATE"},
-		Skills:  skills,
+		Skills:  skillDescs,
 		// Gates and processes are intentionally empty unless the Maestro binary
 		// reports them through capabilities --json. Nexus never invents them.
 		Gates:     []string{},
@@ -266,7 +302,7 @@ func (c *MaestroClient) Status() MaestroStatus {
 // ListSkills returns all available Maestro skill names.
 func (c *MaestroClient) ListSkills(ctx context.Context) ([]string, error) {
 	if c.status.Capabilities != nil {
-		return c.status.Capabilities.Skills, nil
+		return c.status.Capabilities.SkillIDs(), nil
 	}
 	return nil, nil
 }

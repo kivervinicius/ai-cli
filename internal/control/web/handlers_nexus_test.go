@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kivervinicius/ai-cli/internal/nexus"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
 
@@ -403,5 +404,44 @@ func TestResourceAllocationRejectsAutomaticPolicy(t *testing.T) {
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusBadRequest {
 		t.Fatalf("manual allocation endpoint must reject automatic policy, got %d", response.StatusCode)
+	}
+}
+
+func TestSystemUpdateReturnsJSONNot501(t *testing.T) {
+	prev := performSystemUpdate
+	performSystemUpdate = func() nexus.UpdateResult {
+		return nexus.UpdateResult{
+			NexusUpdated:   false,
+			NexusVersion:   "0.5.0-test",
+			MaestroUpdated: true,
+			MaestroVersion: "0.1.11",
+			Error:          "Nexus binary update was not performed",
+		}
+	}
+	t.Cleanup(func() { performSystemUpdate = prev })
+
+	client, srv, csrf := csrfClient(t)
+	req, _ := http.NewRequest(http.MethodPost, srv.URL()+"/api/v1/system/update", bytes.NewBufferString(`{}`))
+	req.Header.Set("X-CSRF-Token", csrf)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var result nexus.UpdateResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.MaestroVersion != "0.1.11" {
+		t.Fatalf("maestro version: %+v", result)
+	}
+	if result.NexusUpdated {
+		t.Fatal("must not claim Nexus binary updated")
+	}
+	if result.Error == "" {
+		t.Fatal("expected honest nexus binary note")
 	}
 }

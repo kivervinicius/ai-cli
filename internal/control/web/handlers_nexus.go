@@ -184,7 +184,17 @@ func (h *NexusHandler) handleProjectContextPrepare(w http.ResponseWriter, r *htt
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	readiness, err := h.nexus.PrepareContext(projectIDFromPath(r.URL.Path))
+	var body struct {
+		CreateContext bool `json:"create_context"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	var readiness *nexus.ContextReadiness
+	var err error
+	if body.CreateContext {
+		readiness, err = h.nexus.PrepareContextWithBootstrap(projectIDFromPath(r.URL.Path))
+	} else {
+		readiness, err = h.nexus.PrepareContext(projectIDFromPath(r.URL.Path))
+	}
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
@@ -412,18 +422,40 @@ func (h *NexusHandler) handleAgentAsk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Prompt        string `json:"prompt"`
-		StartIfNeeded bool   `json:"start_if_needed"`
+		Prompt        string   `json:"prompt"`
+		SkillIDs      []string `json:"skill_ids,omitempty"`
+		Scope         string   `json:"scope,omitempty"`
+		StartIfNeeded bool     `json:"start_if_needed"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Prompt) == "" {
 		writeError(w, http.StatusBadRequest, "prompt is required")
 		return
 	}
-	result, err := h.nexus.AskAgent(r.Context(), id, body.Prompt, body.StartIfNeeded)
+
+	client := nexus.NewMaestroClient()
+	compiled, err := nexus.CompileAgentPrompt(body.Prompt, body.SkillIDs, client)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	result, err := h.nexus.AskAgent(r.Context(), id, compiled.CompiledPrompt, body.StartIfNeeded)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
+
+	// Persist immutable prompt audit receipt
+	if st, stErr := h.nexus.OpenProject(); stErr == nil && result.RuntimeID != "" {
+		_, _ = st.RecordAgentPromptReceipt(store.AgentPromptReceipt{
+			AgentID:    id,
+			RuntimeID:  result.RuntimeID,
+			SkillIDs:   compiled.ValidatedSkills,
+			PromptHash: compiled.PromptHash,
+			Source:     "terminal_ask",
+		})
+	}
+
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -725,13 +757,16 @@ func (h *NexusHandler) handleSystemUpdates(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// handleSystemUpdate POST /api/v1/system/update — triggers update routine for Nexus & Maestro.
+// performSystemUpdate is the Maestro library updater. Tests stub this to avoid npm.
+var performSystemUpdate = nexus.PerformSystemUpdate
+
+// handleSystemUpdate POST /api/v1/system/update — updates the Maestro library.
 func (h *NexusHandler) handleSystemUpdate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	writeError(w, http.StatusNotImplemented, "system update not yet implemented")
+	writeJSON(w, http.StatusOK, performSystemUpdate())
 }
 
 // handleMissionsList GET /api/v1/projects/{id}/missions — list missions for a project.

@@ -47,7 +47,7 @@ export const nexus = {
   deleteProject: (id: string) => request<{ status: string }>(`/api/v1/projects/${id}`, { method: 'DELETE' }),
   getLayout: (projectId: string) => request<{ layout: string }>(`/api/v1/projects/${projectId}/layout`),
   getContextReadiness: (projectId: string) => request<import('../types').ContextReadiness>(`/api/v1/projects/${projectId}/context`),
-  prepareContext: (projectId: string) => request<import('../types').ContextReadiness>(`/api/v1/projects/${projectId}/context/prepare`, { method: 'POST', body: '{}' }),
+  prepareContext: (projectId: string, createContext = false) => request<import('../types').ContextReadiness>(`/api/v1/projects/${projectId}/context/prepare`, { method: 'POST', body: JSON.stringify({ create_context: createContext }) }),
   saveLayout: (projectId: string, layout: string) =>
     request<{ status: string }>(`/api/v1/projects/${projectId}/layout`, {
       method: 'PUT',
@@ -71,11 +71,17 @@ export const nexus = {
     request<{ status: string }>(`/api/v1/agents/${id}/stop`, { method: 'POST', body: '{}' }),
   recoverAgent: (id: string) =>
     request<{ runtime: RuntimeSession }>(`/api/v1/agents/${id}/recover`, { method: 'POST', body: '{}' }),
-  askAgent: (id: string, prompt: string, startIfNeeded = false) =>
-    request<{ agent_id: string; runtime_id: string; started: boolean; accepted: boolean }>(`/api/v1/agents/${id}/ask`, {
+  askAgent: (id: string, prompt: string, startIfNeeded = false, skillIds?: string[]) => {
+    const body: Record<string, any> = { prompt, start_if_needed: startIfNeeded };
+    if (skillIds && skillIds.length > 0) {
+      body.skill_ids = skillIds;
+      body.scope = 'NEXT_PROMPT';
+    }
+    return request<{ agent_id: string; runtime_id: string; started: boolean; accepted: boolean }>(`/api/v1/agents/${id}/ask`, {
       method: 'POST',
-      body: JSON.stringify({ prompt, start_if_needed: startIfNeeded }),
-    }),
+      body: JSON.stringify(body),
+    });
+  },
   startProjectShell: (projectId: string) =>
     request<{ runtime: RuntimeSession }>(`/api/v1/projects/${projectId}/shell`, { method: 'POST', body: '{}' }),
 

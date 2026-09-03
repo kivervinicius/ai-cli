@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, initSession, rotateSession, type BrowserSession } from '../api';
 import { setNexusCSRF, nexus } from '../nexus/api';
 import { Spinner } from '../design-system';
@@ -6,7 +6,7 @@ import { ThemeProvider } from '../design-system';
 import { WorkspaceProvider, useWorkspace } from '../workspace/WorkspaceProvider';
 import { WorkspacePresentationProvider } from '../workspace/WorkspacePresentationProvider';
 import { WorkspaceRenderer } from '../workspace/WorkspaceRenderer';
-import { createWorkspace, type WorkspaceSurface } from '../workspace/model';
+import { createWorkspace, isSurfaceMatch, listStacks, listSurfaces, type WorkspaceSurface } from '../workspace/model';
 import { serializeWorkspace } from '../workspace/state';
 import { ProjectRail } from '../features/projects/ProjectRail';
 import { ProjectHub } from '../features/projects/ProjectHub';
@@ -15,16 +15,24 @@ import type { NexusCommand } from './commands/registry';
 import { ProductTour } from './tour/ProductTour';
 import { WelcomeModal } from './modals/WelcomeModal';
 import { MaestroControlModal } from './modals/MaestroControlModal';
+import { NewAgentModal } from '../features/agents/NewAgentModal';
 import { NexusShell } from './NexusShell';
 import { WorkspaceSurfaceHost } from './WorkspaceSurfaceHost';
 import { agentConfigSurface, agentTerminalSurface, flowRunSurface, projectShellSurface, projectSurface } from './surfaces';
-import { agentForRuntime, terminalSurfaceIDForRuntime } from './runtimeAgentMapping';
-import { buildDocumentTitle } from './documentTitle';
+import { attentionFingerprintOf, buildDocumentTitle, isHonestNeedsUser } from './documentTitle';
 import { planFocusAttention, type RadarRuntimeItem } from './attentionRadarModel';
 import { resolveProjectSelection } from './projectSelection';
 import { useNexusData } from './useNexusData';
 import type { Agent, MissionRun, Project } from '../types';
 import { useTranslation } from 'react-i18next';
+import { shouldMarkUnread, surfaceTitleFromAgent } from '../workspace/surfaceAttention';
+import { pushNotifications } from '../notifications/PushNotificationManager';
+import {
+  loadNotificationPrefs,
+  playAttentionSound,
+} from '../notifications/notificationPrefs';
+import { formatAttentionPushBody } from '../notifications/attentionPushCopy';
+import { TerminalActionDialog } from '../nexus/TerminalActionDialog';
 
 const selectedProjectKey = 'iapro:nexus:selected-project:v1';
 const tourKey = 'iapro:nexus:tour-complete:v1';
@@ -185,12 +193,6 @@ const NexusWorkspaceSession: React.FC<{ popoutSurface?: WorkspaceSurface }> = ({
       projectId={selected.id}
       initialLayout={initial}
       saveLayout={popoutSurface ? undefined : (next) => nexus.saveLayout(selected.id, next)}
-      onSurfaceClosed={async (surface) => {
-        if (surface.type === 'project-shell' && surface.data?.runtimeId) {
-          await api.stopRuntime(surface.data.runtimeId).catch(() => undefined);
-          await data.refreshGlobal().catch(() => undefined);
-        }
-      }}
     >
       <WorkspacePresentationProvider projectId={selected.id}>
         <WorkspaceCoordinator
@@ -216,9 +218,13 @@ const WorkspaceCoordinator: React.FC<{
   const [palette, setPalette] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [maestroControlOpen, setMaestroControlOpen] = useState(false);
+  const [newAgentOpen, setNewAgentOpen] = useState(false);
   const [tour, setTour] = useState(false);
   const [shellError, setShellError] = useState('');
   const [flowRuns, setFlowRuns] = useState<MissionRun[]>([]);
+  const [closeTarget, setCloseTarget] = useState<WorkspaceSurface | null>(null);
+  const [closingSurface, setClosingSurface] = useState(false);
+  const shellInFlight = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -233,19 +239,62 @@ const WorkspaceCoordinator: React.FC<{
   }, [project.id, palette]);
 
   const open = (surface: WorkspaceSurface) => workspace.open(surface);
+  const requestCloseSurface = (surface: WorkspaceSurface) => setCloseTarget(surface);
+  const closeConfirmed = async (stopRuntime: boolean) => {
+    if (!closeTarget || closingSurface) return;
+    setClosingSurface(true);
+    try {
+      if (stopRuntime && closeTarget.type === 'project-shell' && closeTarget.data?.runtimeId) {
+        await api.stopRuntime(closeTarget.data.runtimeId);
+        await data.refreshGlobal().catch(() => undefined);
+      } else if (stopRuntime && closeTarget.type === 'terminal' && closeTarget.data?.agentId) {
+        await nexus.stopAgent(closeTarget.data.agentId);
+        await data.refreshGlobal().catch(() => undefined);
+      }
+      workspace.close(closeTarget.id);
+      setCloseTarget(null);
+    } finally {
+      setClosingSurface(false);
+    }
+  };
   const openKind = (kind: string) => open(projectSurface(project.id, kind as any));
+  const openNewAISession = () => {
+    openKind('work');
+    // The Work surface owns the launcher. Queue the event until React has
+    // mounted that surface; dispatching synchronously loses it on first open.
+    window.setTimeout(() => window.dispatchEvent(new CustomEvent('nexus:new-ai-session')), 0);
+  };
   const terminal = (agent: Agent) => open(agentTerminalSurface(agent.id, agent.name));
   const config = (agent: Agent) => open(agentConfigSurface(agent.id, agent.name));
-  const shell = async () => {
+  const shell = useCallback(async () => {
+    if (shellInFlight.current) return;
+    shellInFlight.current = true;
     setShellError('');
     try {
       const result = await nexus.startProjectShell(project.id);
-      open(projectShellSurface(project.id, result.runtime.runtime_id, result.runtime.title || 'Project Shell'));
+      workspace.open(
+        projectShellSurface(project.id, result.runtime.runtime_id, result.runtime.title || 'Terminal')
+      );
       await data.refreshGlobal().catch(() => undefined);
     } catch (error) {
       setShellError(error instanceof Error ? error.message : String(error));
+    } finally {
+      shellInFlight.current = false;
     }
-  };
+  }, [project.id, workspace, data]);
+
+  useEffect(() => {
+    const handleNewAgentEvent = () => setNewAgentOpen(true);
+    const handleProjectShellEvent = () => {
+      void shell();
+    };
+    window.addEventListener('nexus:new-agent', handleNewAgentEvent);
+    window.addEventListener('nexus:project-shell', handleProjectShellEvent);
+    return () => {
+      window.removeEventListener('nexus:new-agent', handleNewAgentEvent);
+      window.removeEventListener('nexus:project-shell', handleProjectShellEvent);
+    };
+  }, [shell]);
 
   const popoutSurface = (surface: WorkspaceSurface) => {
     const encoded = encodeURIComponent(
@@ -258,18 +307,17 @@ const WorkspaceCoordinator: React.FC<{
     () => [
       { id: 'projects', label: t('commands.open', { name: t('projectManager.desktopsTitle') }), group: t('commands.project'), keywords: ['workspace', 'desktops', 'hub'], run: () => openKind('projects') },
       { id: 'overview', label: t('commands.open', { name: t('nav.overview') }), group: t('commands.project'), keywords: ['home'], run: () => openKind('overview') },
-      { id: 'new-ai-session', label: 'New AI Session', group: t('commands.project'), keywords: ['agent', 'session', 'direct', 'create', 'terminal'], run: () => { openKind('work'); window.dispatchEvent(new CustomEvent('nexus:new-ai-session')); } },
-      { id: 'project-shell', label: 'New Project Shell', group: t('commands.project'), keywords: ['shell', 'terminal', 'bash', 'powershell'], run: () => void shell() },
+      { id: 'new-ai-session', label: 'New AI Session', group: t('commands.project'), keywords: ['agent', 'session', 'direct', 'create', 'terminal'], run: openNewAISession },
+      { id: 'project-shell', label: 'New Terminal', group: t('commands.project'), keywords: ['shell', 'terminal', 'bash', 'powershell'], run: () => void shell() },
       { id: 'agents', label: t('commands.open', { name: t('nav.agents') }), group: t('commands.project'), keywords: ['fleet', 'workers', 'terminals'], run: () => openKind('agents') },
       ...data.agents.flatMap((agent) => [
         { id: `terminal-${agent.id}`, label: t('commands.open', { name: `${agent.name} terminal` }), group: t('nav.agents'), keywords: ['terminal', agent.role], run: () => terminal(agent) },
         { id: `config-${agent.id}`, label: t('commands.configure', { name: agent.name }), group: t('nav.agents'), keywords: ['settings', agent.role], run: () => config(agent) },
       ]),
-      { id: 'work', label: 'Open Composer (optional)', group: t('commands.project'), keywords: ['composer', 'prompt', 'goal', 'plan'], run: () => openKind('work') },
-      { id: 'plan', label: 'Open Flow Runs (optional)', group: t('commands.project'), keywords: ['flow', 'mission', 'workplan', 'tasks'], run: () => openKind('missions') },
+      { id: 'work', label: 'Open Composer', group: t('commands.project'), keywords: ['composer', 'prompt', 'goal', 'plan'], run: () => openKind('work') },
+      { id: 'plan', label: 'Open Flow Runs history', group: t('commands.project'), keywords: ['flow', 'mission', 'history', 'runs'], run: () => openKind('missions') },
       { id: 'resources', label: t('commands.open', { name: t('nav.resources') }), group: 'Nexus', keywords: ['quota', 'provider', 'accounts'], run: () => openKind('resources') },
-      { id: 'maestro', label: t('commands.open', { name: 'Maestro method' }), group: 'Nexus', keywords: ['skills', 'process', 'verification', 'community'], run: () => openKind('maestro') },
-      { id: 'maestro-control', label: t('maestroControl.title'), group: 'Nexus', keywords: ['assist', 'autonomous', 'mode'], run: () => setMaestroControlOpen(true) },
+      { id: 'maestro-control', label: t('maestroControl.title'), group: 'Nexus', keywords: ['skills', 'gates', 'update', 'library'], run: () => setMaestroControlOpen(true) },
       { id: 'project-manager', label: t('projectManager.title'), group: t('commands.project'), keywords: ['switch', 'create', 'workspace'], run: () => openKind('projects') },
       { id: 'sessions', label: t('commands.open', { name: t('nav.sessions') }), group: t('commands.project'), keywords: ['resume', 'continuity'], run: () => openKind('sessions') },
       { id: 'settings', label: t('commands.open', { name: t('nav.settings') }), group: 'Nexus', keywords: ['theme', 'accessibility'], run: () => openKind('settings') },
@@ -304,14 +352,6 @@ const WorkspaceCoordinator: React.FC<{
     return () => window.removeEventListener('keydown', onKey);
   }, [project.id]);
 
-  useEffect(() => {
-    const onShell = () => {
-      void shell();
-    };
-    window.addEventListener('nexus:project-shell', onShell);
-    return () => window.removeEventListener('nexus:project-shell', onShell);
-  }, [project.id]);
-
   const handleProjectUpdated = (updated: Project) => {
     data.setProjects((cur) => cur.map((p) => (p.id === updated.id ? updated : p)));
     if (project.id === updated.id) {
@@ -341,10 +381,12 @@ const WorkspaceCoordinator: React.FC<{
           }}
           onProjectUpdated={handleProjectUpdated}
           openSurface={open}
+          closeSurface={workspace.close}
           onTour={() => setWelcomeOpen(true)}
         />
       )}
       popoutSurface={popoutSurface}
+      onRequestClose={requestCloseSurface}
     />
   );
 
@@ -361,6 +403,11 @@ const WorkspaceCoordinator: React.FC<{
         data.setProjects((current) => [created, ...current]);
         setProject(created);
       }}
+      agents={data.agents}
+      onOpenAgent={(agent) => terminal(agent)}
+      onNewAgent={() => setNewAgentOpen(true)}
+      onNewAISession={openNewAISession}
+      onProjectShell={() => { void shell(); }}
       onOpenGlobal={(kind) => {
         if (kind === 'overview') openKind('overview');
         else openKind(kind);
@@ -368,7 +415,7 @@ const WorkspaceCoordinator: React.FC<{
     />
   );
 
-  const handleFocusAttention = (item: RadarRuntimeItem | { runtimeId: string }) => {
+  const handleFocusAttention = (item: RadarRuntimeItem | { runtimeId: string; projectId?: string; agentId?: string }) => {
     const runtimeId = item.runtimeId;
     const runtime = data.runtimes.find((entry) => entry.runtime_id === runtimeId);
     const projectId = 'projectId' in item && item.projectId ? item.projectId : runtime?.project_id;
@@ -383,36 +430,184 @@ const WorkspaceCoordinator: React.FC<{
       { currentProjectId: project.id, runtime, agentName }
     );
 
-    for (const action of actions) {
-      if (action.type === 'switch-project') {
-        const next = data.projects.find((entry) => entry.id === action.projectId);
-        if (next) setProject(next);
-      } else if (action.type === 'open-agent-terminal') {
-        open(agentTerminalSurface(action.agentId, action.title, '', action.runtimeId || ''));
-      } else if (action.type === 'open-project-shell') {
-        open(projectShellSurface(action.projectId, action.runtimeId, action.title));
-      } else if (action.type === 'refresh-agents') {
-        void data.refreshAgents(action.projectId).catch(() => undefined);
+    const switchAction = actions.find((action) => action.type === 'switch-project');
+    const openActions = actions.filter((action) => action.type !== 'switch-project');
+
+    const runOpen = () => {
+      for (const action of openActions) {
+        if (action.type === 'open-agent-terminal') {
+          open(agentTerminalSurface(action.agentId, action.title, '', action.runtimeId || ''));
+        } else if (action.type === 'open-project-shell') {
+          open(projectShellSurface(action.projectId, action.runtimeId, action.title));
+        } else if (action.type === 'refresh-agents') {
+          void data.refreshAgents(action.projectId).catch(() => undefined);
+        }
+      }
+    };
+
+    if (switchAction && switchAction.type === 'switch-project') {
+      const next = data.projects.find((entry) => entry.id === switchAction.projectId);
+      if (next) {
+        setProject(next);
+        window.setTimeout(runOpen, 0);
+        return;
       }
     }
+    runOpen();
   };
 
   const handleFocusRuntime = (runtimeId: string) => {
     handleFocusAttention({ runtimeId });
   };
 
-  // Sync dynamic titles & attention icons to workspace surfaces and browser document.title
+  const notifiedFingerprints = useRef<Set<string>>(new Set());
+  const prefsRef = useRef(loadNotificationPrefs());
+
   useEffect(() => {
-    data.runtimes.forEach((r) => {
-      if (r.dynamic_title) {
-        const matchingAgent = agentForRuntime(r, data.agents);
-        const surfaceId = terminalSurfaceIDForRuntime(r);
-        if (matchingAgent && surfaceId) workspace.updateSurface(surfaceId, { title: r.dynamic_title });
+    const refreshPrefs = () => {
+      prefsRef.current = loadNotificationPrefs();
+    };
+    window.addEventListener('nexus:notification-prefs', refreshPrefs);
+    return () => window.removeEventListener('nexus:notification-prefs', refreshPrefs);
+  }, []);
+
+  // Keep agent name stable, append short status suffix, and sync attention markers.
+  useEffect(() => {
+    const allSurfaces = listSurfaces(workspace.model.root);
+    const stacks = listStacks(workspace.model.root);
+    const focusedIds = new Set(stacks.map((stack) => stack.activeId));
+
+    data.agents.forEach((agent) => {
+      const surfaceId = `agent:${agent.id}:terminal`;
+      const runtime = data.runtimes.find((r) => r.agent_id === agent.id);
+      const surface = allSurfaces.find((s) => isSurfaceMatch(s, surfaceId));
+      if (!surface) return;
+
+      const next = surfaceTitleFromAgent(agent.name, runtime);
+      const focused = focusedIds.has(surface.id);
+      const previousFingerprint = surface.data?.attentionFingerprint || '';
+      const previousUnread = surface.data?.unreadAttention === 'true';
+      let unread = previousUnread;
+      if (focused) {
+        unread = false;
+      } else if (
+        shouldMarkUnread({
+          previousFingerprint,
+          nextFingerprint: next.fingerprint,
+          hasAttention: next.hasAttention,
+          surfaceFocused: focused,
+          attentionKind: next.attentionKind,
+        })
+      ) {
+        unread = true;
+      } else if (!next.hasAttention) {
+        unread = false;
+      }
+
+      const providerLabel = runtime
+        ? `${runtime.provider_id || runtime.provider || 'claude'}${
+            runtime.profile_id && runtime.profile_id !== 'default' ? `:${runtime.profile_id}` : ''
+          }`
+        : '';
+
+      const needsUpdate =
+        surface.title !== next.title ||
+        surface.data?.hasAttention !== (next.hasAttention ? 'true' : 'false') ||
+        surface.data?.unreadAttention !== (unread ? 'true' : 'false') ||
+        surface.data?.attentionKind !== next.attentionKind ||
+        surface.data?.statusSuffix !== next.statusSuffix ||
+        surface.data?.attentionFingerprint !== next.fingerprint ||
+        surface.data?.providerLabel !== providerLabel ||
+        surface.data?.agentName !== agent.name;
+
+      if (needsUpdate) {
+        workspace.updateSurface(surface.id, {
+          title: next.title,
+          data: {
+            ...surface.data,
+            agentName: agent.name,
+            hasAttention: next.hasAttention ? 'true' : 'false',
+            unreadAttention: unread ? 'true' : 'false',
+            attentionKind: next.attentionKind,
+            statusSuffix: next.statusSuffix,
+            attentionFingerprint: next.fingerprint,
+            providerLabel,
+          },
+        });
       }
     });
 
     document.title = buildDocumentTitle(project.name, data.runtimes);
-  }, [data.runtimes, data.agents, project.name, project.id]);
+  }, [data.runtimes, data.agents, project.name, project.id, workspace.model.root]);
+
+  // Global attention watcher (cross-project): toast/push/sound without requiring a mounted WS.
+  useEffect(() => {
+    const prefs = prefsRef.current;
+    if (!prefs.notificationsEnabled && !prefs.soundEnabled) return;
+
+    const stacks = listStacks(workspace.model.root);
+    const focusedIds = new Set(stacks.map((stack) => stack.activeId));
+    const allSurfaces = listSurfaces(workspace.model.root);
+
+    for (const runtime of data.runtimes) {
+      const reason = runtime.attention_reason;
+      if (reason !== 'QUESTION' && reason !== 'APPROVAL' && reason !== 'TASK_COMPLETED' && reason !== 'ERROR') {
+        continue;
+      }
+      if (reason === 'QUESTION' || reason === 'APPROVAL') {
+        if (!isHonestNeedsUser(runtime)) continue;
+      }
+      const fingerprint = attentionFingerprintOf(runtime);
+      if (!fingerprint || notifiedFingerprints.current.has(fingerprint)) continue;
+
+      const agentSurface = allSurfaces.find(
+        (surface) => surface.type === 'terminal' && surface.data?.agentId && surface.data.agentId === runtime.agent_id
+      );
+      const focused = agentSurface ? focusedIds.has(agentSurface.id) : false;
+      if (focused && runtime.project_id === project.id) {
+        notifiedFingerprints.current.add(fingerprint);
+        continue;
+      }
+
+      notifiedFingerprints.current.add(fingerprint);
+
+      const agentName =
+        data.agents.find((agent) => agent.id === runtime.agent_id)?.name ||
+        runtime.dynamic_title ||
+        runtime.title ||
+        undefined;
+      const body = formatAttentionPushBody({
+        reason,
+        context: runtime.attention_context || runtime.last_task_summary || '',
+        promptKind: runtime.prompt_kind,
+        agentName,
+        projectName: runtime.project_name || project.name,
+        rich: runtime.project_id !== project.id,
+      });
+      if (!body) continue;
+
+      if (prefs.soundEnabled) playAttentionSound();
+
+      if (prefs.notificationsEnabled) {
+        pushNotifications.sendPush({
+          runtimeId: runtime.runtime_id,
+          projectName: runtime.project_name || project.name,
+          agentName,
+          reason,
+          context: runtime.attention_context || runtime.last_task_summary || body,
+          dynamicTitle: runtime.dynamic_title,
+          fingerprint,
+          promptKind: runtime.prompt_kind,
+          onClick: () =>
+            handleFocusAttention({
+              runtimeId: runtime.runtime_id,
+              projectId: runtime.project_id,
+              agentId: runtime.agent_id,
+            }),
+        });
+      }
+    }
+  }, [data.runtimes, data.agents, project.id, project.name, workspace.model.root]);
 
   return (
     <>
@@ -428,6 +623,7 @@ const WorkspaceCoordinator: React.FC<{
         onOpenProjectManager={() => openKind('projects')}
         onOpenMaestroControl={() => setMaestroControlOpen(true)}
         onSettings={() => openKind('settings')}
+        onNewAgent={() => setNewAgentOpen(true)}
         onFocusRuntime={handleFocusRuntime}
         onFocusAttention={handleFocusAttention}
       >
@@ -449,9 +645,16 @@ const WorkspaceCoordinator: React.FC<{
       <MaestroControlModal
         open={maestroControlOpen}
         onClose={() => setMaestroControlOpen(false)}
+      />
+
+      <NewAgentModal
+        open={newAgentOpen}
+        onClose={() => setNewAgentOpen(false)}
         project={project}
-        onProjectUpdated={handleProjectUpdated}
-        onOpenMaestroSurface={() => openKind('maestro')}
+        onCreated={(created) => {
+          data.setAgents((cur) => [created, ...cur]);
+          terminal(created);
+        }}
       />
 
       <ProductTour
@@ -461,6 +664,16 @@ const WorkspaceCoordinator: React.FC<{
           window.localStorage.setItem(tourKey, 'true');
         }}
       />
+      {closeTarget && (
+        <TerminalActionDialog
+          close
+          shell={closeTarget.type === 'project-shell'}
+          busy={closingSurface}
+          onCancel={() => setCloseTarget(null)}
+          onCloseTab={() => void closeConfirmed(false)}
+          onStopRuntime={() => void closeConfirmed(true)}
+        />
+      )}
     </>
   );
 };

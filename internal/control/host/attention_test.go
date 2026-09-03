@@ -177,6 +177,14 @@ func TestAttentionDetectorIgnoresReplacementGarbage(t *testing.T) {
 	}
 }
 
+func TestFormatDesktopAttentionBodyFramesYN(t *testing.T) {
+	got := formatDesktopAttentionBody(PromptKindYN, "Continue anyway? [y/N]:")
+	want := "Um agente pede confirmação (Sim/Não): Continue anyway? [y/N]: — Abra o Nexus e responda no terminal."
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
 func TestAttentionDetectorNumberedListWithAskIsChoice(t *testing.T) {
 	detector := NewAttentionDetector("rt-choice-ask", "codex", "default", "/workspace/project", nil)
 	detector.ProcessChunk([]byte("\r\nSelect an option:\r\n1. Continue\r\n"))

@@ -45,6 +45,17 @@ func TestApplyLaunchConfigurationExplicitExtraArgs(t *testing.T) {
 	}
 }
 
+func TestApplyLaunchConfigurationIgnoresUIModeOption(t *testing.T) {
+	got, err := ApplyLaunchConfiguration("agy", "", map[string]any{"mode": "YOLO", "extra_args": []any{"--prompt", "hi"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"--prompt", "hi"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("args=%v want %v", got, want)
+	}
+}
+
 func TestApplyLaunchConfigurationRejectsUnknownOption(t *testing.T) {
 	if _, err := ApplyLaunchConfiguration("codex", "", map[string]any{"temperature": 0.7}, nil); err == nil {
 		t.Fatal("unknown provider options must not be silently ignored")

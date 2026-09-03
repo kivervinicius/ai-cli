@@ -77,6 +77,38 @@ func TestPrepareContextRequiresDurableArtifacts(t *testing.T) {
 	}
 }
 
+func TestPrepareContextWithBootstrapCreatesBaselineWithoutOverwriting(t *testing.T) {
+	n := openTestNexus(t)
+	n.maestroStatus = maestroStatus("1.0.0", true)
+	st, _ := n.OpenProject()
+	root := t.TempDir()
+	project, err := st.CreateProject(store.Project{Name: "Context", CanonicalPath: root, MaestroMode: store.MaestroAssist})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	readiness, err := n.PrepareContextWithBootstrap(project.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readiness.State != ContextReady {
+		t.Fatalf("expected READY after bootstrap, got %+v", readiness)
+	}
+	path := filepath.Join(root, "AGENTS.md")
+	first, err := os.ReadFile(path)
+	if err != nil || len(first) == 0 {
+		t.Fatalf("expected Nexus baseline AGENTS.md: %v", err)
+	}
+
+	if _, err := n.PrepareContextWithBootstrap(project.ID); err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(path)
+	if err != nil || string(second) != string(first) {
+		t.Fatalf("existing AGENTS.md was overwritten: %v", err)
+	}
+}
+
 func TestPrepareContextFailsWhenConfiguredMaestroUnavailable(t *testing.T) {
 	n := openTestNexus(t)
 	n.maestroStatus = maestroStatus("", false)

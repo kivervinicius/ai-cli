@@ -19,7 +19,8 @@ describe('notificationFromRuntime', () => {
       .toMatchObject({ title: 'Tarefa concluída', tone: 'success', message: 'Build finalizado.' });
   });
 
-  it('keeps interactive attention out of transient notifications', () => {
-    expect(notificationFromRuntime({ ...runtime, attention_reason: 'QUESTION' })).toBeNull();
+  it('creates a warning notification for interactive attention', () => {
+    expect(notificationFromRuntime({ ...runtime, attention_reason: 'QUESTION', attention_context: 'Continue?' }))
+      .toMatchObject({ title: 'Confirmação pendente', tone: 'warning', message: 'Continue?' });
   });
 });

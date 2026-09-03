@@ -126,7 +126,7 @@ func (n *Nexus) validateMaestroGatesStrict(ctx context.Context, gates []string) 
 	status := client.Status()
 	var catalog []string
 	if status.Capabilities != nil {
-		catalog = status.Capabilities.Skills
+		catalog = status.Capabilities.SkillIDs()
 	}
 	var cause error
 	if status.Error != "" {

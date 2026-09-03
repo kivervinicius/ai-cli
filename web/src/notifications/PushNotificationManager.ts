@@ -1,6 +1,9 @@
+import { formatAttentionPushBody, shouldSendBrowserAttentionPush } from './attentionPushCopy';
+
 export interface PushNotificationPayload {
   runtimeId: string;
   projectName?: string;
+  agentName?: string;
   reason: 'QUESTION' | 'APPROVAL' | 'TASK_COMPLETED' | 'WORKING' | 'IDLE' | 'ERROR' | string;
   context: string;
   dynamicTitle?: string;
@@ -40,7 +43,7 @@ class PushNotificationService {
     if (!this.isSupported() || this.getPermission() !== 'granted') return;
     try {
       new Notification(`Nexus · ${projectName || 'Projeto'}`, {
-        body: 'Notificações do navegador ativadas. Com a aba fechada, o aviso honesto sai do processo nexus.',
+        body: 'Notificações do navegador ativadas. Com a aba em segundo plano, o Nexus avisa quando um agente espera por você.',
         icon: '/logo.png',
         tag: 'nexus-permission-ok',
       });
@@ -50,23 +53,36 @@ class PushNotificationService {
   }
 
   public sendPush(payload: PushNotificationPayload): void {
-    if (!this.isSupported() || this.getPermission() !== 'granted') return;
+    if (!this.isSupported()) return;
 
-    // Fail-closed: never push TASK_COMPLETED / WORKING / empty context as "attention".
-    if (payload.reason !== 'QUESTION' && payload.reason !== 'APPROVAL' && payload.reason !== 'ERROR') {
-      return;
+    const documentHidden = typeof document === 'undefined' ? true : document.hidden;
+    let notificationsEnabled = true;
+    try {
+      const raw = window.localStorage.getItem('iapro:nexus:notification-prefs:v1');
+      if (raw) {
+        const parsed = JSON.parse(raw) as { notificationsEnabled?: boolean };
+        notificationsEnabled = parsed.notificationsEnabled !== false;
+      }
+    } catch {
+      notificationsEnabled = true;
     }
-    const context = (payload.context || '').trim();
-    if (!context) return;
-    if (payload.promptKind === 'none') return;
-    // Never treat the generic fallback as a real question.
-    if (/o agente requer atenção/i.test(context) || /atenção necessária no terminal/i.test(context)) {
+
+    if (
+      !shouldSendBrowserAttentionPush({
+        permission: this.getPermission(),
+        documentHidden,
+        reason: payload.reason,
+        context: payload.context,
+        promptKind: payload.promptKind,
+        notificationsEnabled,
+      })
+    ) {
       return;
     }
 
     const fingerprint =
       payload.fingerprint ||
-      `${payload.runtimeId}|${payload.promptKind || ''}|${context.toLowerCase().replace(/\s+/g, ' ')}`;
+      `${payload.runtimeId}|${payload.promptKind || ''}|${payload.context.toLowerCase().replace(/\s+/g, ' ')}`;
     if (this.notifiedFingerprints.has(fingerprint)) {
       return;
     }
@@ -74,14 +90,32 @@ class PushNotificationService {
 
     const proj = payload.projectName || 'Projeto';
     const title = payload.reason === 'ERROR' ? `Nexus · ${proj} · erro` : `Nexus · ${proj}`;
+    const body = formatAttentionPushBody({
+      reason: payload.reason,
+      context: payload.context,
+      promptKind: payload.promptKind,
+      agentName: payload.agentName,
+      projectName: payload.projectName,
+    });
+    if (!body) return;
 
     try {
       const notif = new Notification(title, {
-        body: context,
+        body,
         icon: '/logo.png',
         tag: `nexus-${fingerprint}`,
+        requireInteraction: false,
         silent: false,
       });
+
+      // Auto-dismiss after a short window so the OS tray does not keep a stale y/N forever.
+      window.setTimeout(() => {
+        try {
+          notif.close();
+        } catch {
+          // ignore
+        }
+      }, 20_000);
 
       notif.onclick = () => {
         try {

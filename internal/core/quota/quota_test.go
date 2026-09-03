@@ -123,6 +123,43 @@ func TestQuotaViewBottleneckUnknownWithoutWindowsIsZero(t *testing.T) {
 	}
 }
 
+func TestAGYAvailabilityRequiresQuotaInEveryModelGroup(t *testing.T) {
+	qv := QuotaView{
+		Provider: "agy",
+		Status:   string(model.UsageCached),
+		ModelGroups: []ModelGroup{
+			{Name: "Gemini Models", Windows: []Window{{Kind: "5h", Remaining: 8}, {Kind: "weekly", Remaining: 17}}},
+			{Name: "Claude & GPT Models", Windows: []Window{{Kind: "claude_5h", Remaining: 0}, {Kind: "claude_weekly", Remaining: 0}}},
+		},
+	}
+
+	qv.ComputeAvailability()
+
+	if qv.IsAvailable() {
+		t.Fatalf("AGY must be unavailable when one required model group is exhausted")
+	}
+	if len(qv.AvailReasons.ExhaustedWindows) != 2 {
+		t.Fatalf("expected both exhausted Claude/GPT windows, got %+v", qv.AvailReasons.ExhaustedWindows)
+	}
+}
+
+func TestAGYAvailabilityWhenEveryModelGroupHasQuota(t *testing.T) {
+	qv := QuotaView{
+		Provider: "agy",
+		Status:   string(model.UsageLive),
+		ModelGroups: []ModelGroup{
+			{Name: "Gemini Models", Windows: []Window{{Kind: "5h", Remaining: 8}, {Kind: "weekly", Remaining: 17}}},
+			{Name: "Claude & GPT Models", Windows: []Window{{Kind: "claude_5h", Remaining: 20}, {Kind: "claude_weekly", Remaining: 40}}},
+		},
+	}
+
+	qv.ComputeAvailability()
+
+	if !qv.IsAvailable() || !qv.AvailReasons.AllOK {
+		t.Fatalf("AGY must be available when both model groups have quota: %+v", qv.AvailReasons)
+	}
+}
+
 func TestLegacyAGYQuotaInvertsConsumedPercent(t *testing.T) {
 	if got := legacyAGYRemaining(100); got != 0 {
 		t.Fatalf("100%% consumed must be 0%% remaining, got %v", got)
@@ -178,4 +215,3 @@ func TestCodexLegacyQuotaPreservesRemainingAndGroup(t *testing.T) {
 		t.Fatalf("expected remaining 95%%, got %v", snap.Windows[1].RemainingPercent)
 	}
 }
-

@@ -272,31 +272,30 @@ func readBoundedLine(r *bufio.Reader, limit int) ([]byte, error) {
 
 func (sh *SessionHost) streamAttachedInput(conn net.Conn, reader *bufio.Reader) {
 	_ = conn.SetDeadline(time.Time{})
-	buf := make([]byte, 2048)
+	// Parse line-by-line so RPC frames (lease_acquire, resize, …) never leak
+	// into the PTY when a read spans a partial JSON object or mixes frames.
 	for {
-		n, err := reader.Read(buf)
-		if n > 0 {
-			chunk := buf[:n]
-			trimmed := bytes.TrimSpace(chunk)
-			if bytes.HasPrefix(trimmed, []byte("{\"version\":")) || bytes.HasPrefix(trimmed, []byte("{\"command\":")) {
-				var req protocol.Request
-				if json.Unmarshal(trimmed, &req) == nil && req.Command != "" {
-					sh.handleRPCRequest(conn, req)
-					if err != nil {
-						sh.removeClient(conn)
-						_ = conn.Close()
-						return
-					}
-					continue
-				}
-			}
-			sh.processAttachedInput(conn, chunk)
-		}
+		line, err := readBoundedLine(reader, MaxFrameSize)
 		if err != nil {
+			if err == errFrameTooLarge {
+				sh.broadcast([]byte("\r\n[Nexus Control] Error: oversized IPC frame rejected\r\n"))
+			}
 			sh.removeClient(conn)
 			_ = conn.Close()
 			return
 		}
+		trimmed := bytes.TrimSpace(line)
+		if len(trimmed) == 0 {
+			continue
+		}
+		if bytes.HasPrefix(trimmed, []byte("{")) {
+			var req protocol.Request
+			if json.Unmarshal(trimmed, &req) == nil && req.Command != "" {
+				sh.handleRPCRequest(conn, req)
+				continue
+			}
+		}
+		sh.processAttachedInput(conn, line)
 	}
 }
 

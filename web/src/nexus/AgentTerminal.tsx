@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Eye, Keyboard, Shield, ShieldAlert, Unplug } from 'lucide-react';
+import { MessageSquare, Play, RefreshCw, Send, ShieldAlert, Sparkles, Unplug, X } from 'lucide-react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
+import { nexus } from './api';
 import {
   TERMINAL_MAX_RECONNECT_ATTEMPTS,
   agentTerminalWebSocketURL,
@@ -13,19 +14,47 @@ import {
   type TerminalRole,
 } from './agentTerminalModel';
 import { pushNotifications } from '../notifications/PushNotificationManager';
+import type { RuntimeSession } from '../types';
+import { TerminalActionDialog } from './TerminalActionDialog';
 
 export const AgentTerminal: React.FC<{
   agentId: string;
   runtimeId?: string;
   initialPrompt?: string;
-  onClose?: () => void;
-}> = ({ agentId, runtimeId, initialPrompt, onClose }) => {
+  provider?: string;
+  profile?: string;
+  mode?: 'Safe' | 'YOLO';
+  agentName?: string;
+  /** When "window", identity lives on the Desktop titlebar; actions stay in a compact toolbar. */
+  chrome?: 'full' | 'window';
+  onRecover?: () => Promise<RuntimeSession | void> | RuntimeSession | void;
+  onRestartWithMode?: (mode: 'Safe' | 'YOLO') => Promise<RuntimeSession | void> | RuntimeSession | void;
+  onClose?: (stopRuntime: boolean) => void | Promise<void>;
+}> = ({ agentId, runtimeId, initialPrompt, provider, profile, mode = 'Safe', agentName, chrome = 'full', onRecover, onRestartWithMode, onClose }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [role, setRole] = useState<TerminalRole>('VIEW_ONLY');
   const [connection, setConnection] = useState<'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('CONNECTING');
   const [message, setMessage] = useState('');
   const [customTitle, setCustomTitle] = useState('');
+  const [recovering, setRecovering] = useState(false);
+  const [boundRuntimeId, setBoundRuntimeId] = useState(runtimeId || '');
+  const [connectNonce, setConnectNonce] = useState(0);
+  const [askOpen, setAskOpen] = useState(false);
+  const [askPrompt, setAskPrompt] = useState('');
+  const [availableSkills, setAvailableSkills] = useState<Array<{ id: string; name?: string; description?: string }>>([]);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [asking, setAsking] = useState(false);
+  const [askFeedback, setAskFeedback] = useState('');
+  const [modeAction, setModeAction] = useState<'Applying' | 'Restarting' | 'Ready' | 'Error' | ''>('');
+  const [selectedMode, setSelectedMode] = useState<'Safe' | 'YOLO'>(mode === 'YOLO' ? 'YOLO' : 'Safe');
+  const [pendingMode, setPendingMode] = useState<'Safe' | 'YOLO' | null>(null);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
+
+  useEffect(() => {
+    setBoundRuntimeId(runtimeId || '');
+  }, [runtimeId]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -38,6 +67,16 @@ export const AgentTerminal: React.FC<{
     let stopReconnect = false;
     const roleRef: { current: TerminalRole } = { current: 'VIEW_ONLY' };
     const kickoffRef = { current: normalizeInitialPrompt(initialPrompt), sent: false };
+
+    (container as any).__triggerReconnect = () => {
+      stopReconnect = false;
+      reconnectAttempt = 0;
+      if (reconnectTimer !== undefined) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = undefined;
+      }
+      connect();
+    };
 
     const term = new Terminal({
       cursorBlink: true,
@@ -117,7 +156,7 @@ export const AgentTerminal: React.FC<{
       if (!openedOnce) setMessage('');
 
       const ws = new WebSocket(
-        agentTerminalWebSocketURL(window.location.protocol, window.location.host, agentId, runtimeId)
+        agentTerminalWebSocketURL(window.location.protocol, window.location.host, agentId, boundRuntimeId)
       );
       wsRef.current = ws;
       roleRef.current = 'VIEW_ONLY';
@@ -127,7 +166,11 @@ export const AgentTerminal: React.FC<{
         openedOnce = true;
         reconnectAttempt = 0;
         setConnection('CONNECTED');
-        setMessage('');
+        setModeAction((current) => current === 'Restarting' ? 'Ready' : current);
+        setMessage((current) => current === 'Reiniciando runtime…' ? 'Pronto' : '');
+        // The backend still fences concurrent writers, but the normal single
+        // terminal flow should not require the user to operate a lease button.
+        ws.send(JSON.stringify({ type: 'lease_acquire' }));
         window.requestAnimationFrame(fitAndResize);
       };
 
@@ -140,6 +183,7 @@ export const AgentTerminal: React.FC<{
             const next = normalizeTerminalRole(payload.role);
             roleRef.current = next;
             setRole(next);
+            setMessage(next === 'CONTROL' ? '' : 'Somente leitura — outro acesso está digitando neste runtime.');
             maybeSendKickoff();
           } else if (payload.type === 'runtime_changed') {
             setMessage('Runtime generation changed — rebinding terminal…');
@@ -154,6 +198,7 @@ export const AgentTerminal: React.FC<{
               pushNotifications.sendPush({
                 runtimeId: payload.runtime_id || runtimeId || agentId,
                 projectName: payload.project_name,
+                agentName: agentName || customTitle || undefined,
                 reason: payload.attention_reason || 'QUESTION',
                 context,
                 dynamicTitle: payload.dynamic_title,
@@ -215,65 +260,333 @@ export const AgentTerminal: React.FC<{
       wsRef.current?.close();
       term.dispose();
     };
-  }, [agentId, runtimeId, initialPrompt]);
+  }, [agentId, runtimeId, boundRuntimeId, initialPrompt, connectNonce]);
 
-  const requestControl = () => {
-    const ws = wsRef.current;
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'lease_acquire' }));
+  const handleManualStartOrRecover = async () => {
+    setRecovering(true);
+    setMessage('Iniciando runtime do agente…');
+    try {
+      if (onRecover) {
+        const result = await onRecover();
+        if (result?.runtime_id) {
+          setBoundRuntimeId(result.runtime_id);
+          return;
+        }
+      } else {
+        const result = await nexus.recoverAgent(agentId).catch(() => nexus.startAgent(agentId));
+        if (result?.runtime?.runtime_id) setBoundRuntimeId(result.runtime.runtime_id);
+      }
+      if (containerRef.current && (containerRef.current as any).__triggerReconnect) {
+        (containerRef.current as any).__triggerReconnect();
+      } else {
+        setConnectNonce((n) => n + 1);
+      }
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRecovering(false);
     }
   };
 
-  const releaseControl = () => {
-    const ws = wsRef.current;
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'lease_release' }));
+  const loadSkills = async () => {
+    try {
+      const status = await nexus.getMaestroStatus();
+      if (status?.capabilities?.skills) {
+        setAvailableSkills(status.capabilities.skills);
+      }
+    } catch {
+      setAvailableSkills([]);
     }
   };
 
-  const connected = connection === 'CONNECTED';
+  const handleToggleSkill = (id: string) => {
+    setSelectedSkills((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : prev.length < 3 ? [...prev, id] : prev
+    );
+  };
+
+  const handleSendPrompt = async () => {
+    if (!askPrompt.trim() || asking) return;
+    setAsking(true);
+    setAskFeedback('');
+    try {
+      await nexus.askAgent(agentId, askPrompt.trim(), true, selectedSkills.length > 0 ? selectedSkills : undefined);
+      setAskPrompt('');
+      setSelectedSkills([]);
+      setAskOpen(false);
+      setAskFeedback('Prompt enviado');
+    } catch (err) {
+      setAskFeedback(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAsking(false);
+    }
+  };
+
+  const requestModeChange = (nextMode: 'Safe' | 'YOLO') => {
+    if (!onRestartWithMode || nextMode === selectedMode || modeAction === 'Applying' || modeAction === 'Restarting') return;
+    setPendingMode(nextMode);
+  };
+
+  const handleModeChange = async () => {
+    if (!onRestartWithMode || !pendingMode || modeAction === 'Applying' || modeAction === 'Restarting') return;
+    const nextMode = pendingMode;
+    setPendingMode(null);
+    setModeAction('Applying');
+    setMessage('Salvando configuração…');
+    try {
+      const nextRuntime = await onRestartWithMode(nextMode);
+      setModeAction('Restarting');
+      setMessage('Reiniciando runtime…');
+      if (nextRuntime?.runtime_id) {
+        setBoundRuntimeId(nextRuntime.runtime_id);
+      } else {
+        setConnectNonce((nonce) => nonce + 1);
+      }
+      setSelectedMode(nextMode);
+    } catch (error) {
+      setModeAction('Error');
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const confirmClose = async (stopRuntime: boolean) => {
+    if (!onClose || closing) return;
+    setClosing(true);
+    try {
+      await onClose(stopRuntime);
+    } finally {
+      setClosing(false);
+      setCloseConfirmOpen(false);
+    }
+  };
+
+  const displayName = customTitle || agentName || agentId;
+  const isStaleOrDisconnected = connection === 'ERROR' || connection === 'DISCONNECTED';
+  const windowChrome = chrome === 'window';
+
+  const modeButtons = (
+    <div className="nx-agent-terminal__modes" role="group" aria-label="Modo de execução">
+      {(['Safe', 'YOLO'] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          className="nx-agent-terminal__mode"
+          data-active={selectedMode === m ? 'true' : 'false'}
+          onClick={() => requestModeChange(m)}
+          disabled={!onRestartWithMode || modeAction === 'Applying' || modeAction === 'Restarting'}
+          title={`Alternar modo para ${m}`}
+        >
+          {m}
+        </button>
+      ))}
+    </div>
+  );
+
+  const terminalActions = (
+    <div className="nx-agent-terminal__controls">
+      {message && !isStaleOrDisconnected && (
+        <span className="nx-terminal-message">
+          {modeAction === 'Error' ? <ShieldAlert size={12} /> : <Unplug size={12} />}
+          {message}
+        </span>
+      )}
+      <button
+        type="button"
+        className="nx-agent-terminal__ask-btn"
+        onClick={() => {
+          const next = !askOpen;
+          setAskOpen(next);
+          if (next && availableSkills.length === 0) {
+            void loadSkills();
+          }
+        }}
+        title="Perguntar ao Agente / Sugerir skills"
+      >
+        <Sparkles size={13} />
+        <span>Perguntar</span>
+      </button>
+      {onClose && (
+        <button type="button" onClick={() => setCloseConfirmOpen(true)} title="Escolher como fechar este terminal">
+          Fechar terminal
+        </button>
+      )}
+    </div>
+  );
 
   return (
-    <section className="nx-agent-terminal" aria-label={`Terminal for Agent ${agentId}`}>
-      <header className="nx-agent-terminal__header">
-        <div className="nx-agent-terminal__identity">
-          <code>{customTitle || agentId}</code>
-          <span data-state={connection}>{connection.toLowerCase()}</span>
+    <section className="nx-agent-terminal" data-chrome={chrome} aria-label={`Terminal for Agent ${agentId}`} style={{ position: 'relative' }}>
+      {!windowChrome && (
+        <header className="nx-agent-terminal__header">
+          <div className="nx-agent-terminal__identity">
+            <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', background: 'var(--nx-accent)', color: 'white', fontWeight: 700 }}>
+              AGENT
+            </span>
+            <strong style={{ fontSize: '12px', color: 'var(--nx-text-primary)' }} title={agentId}>
+              {displayName}
+            </strong>
+            {provider && (
+              <span style={{ fontSize: '11px', color: 'var(--nx-text-soft)', border: '1px solid var(--nx-border)', padding: '1px 6px', borderRadius: '4px' }}>
+                nexus {provider}{profile && profile !== 'default' ? `:${profile}` : ''}
+              </span>
+            )}
+            <span data-state={connection}>{connection.toLowerCase()}</span>
+          </div>
+          <div className="nx-agent-terminal__status">
+            {modeButtons}
+            {terminalActions}
+          </div>
+        </header>
+      )}
+      {windowChrome && (
+        <div className="nx-agent-terminal__toolbar" aria-label="Terminal actions">
+          <div className="nx-agent-terminal__toolbar-group nx-agent-terminal__toolbar-group--identity"><strong>{displayName}</strong><span>{provider || 'provider n/d'}{profile && profile !== 'default' ? ` · ${profile}` : ''}</span><span data-state={connection}>{connection === 'CONNECTED' ? 'Conectado' : connection === 'CONNECTING' ? 'Conectando…' : 'Desconectado'}</span></div>
+          {modeButtons}
+          {terminalActions}
         </div>
-        <div className="nx-agent-terminal__status">
-          {connected ? (
-            <span data-role={role}>
-              {role === 'CONTROL' ? <Keyboard size={13} /> : <Eye size={13} />}
-              {role}
+      )}
+      {askOpen && (
+        <div className="nx-agent-terminal__composer" style={{ padding: '8px 12px', background: 'var(--nx-surface-2)', borderBottom: '1px solid var(--nx-border)', display: 'grid', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <MessageSquare size={13} /> Enviar instrução ao agente (One-shot)
             </span>
-          ) : null}
-          {message && (
-            <span className="nx-terminal-message">
-              <Unplug size={12} />
-              {message}
-            </span>
-          )}
-          {connected ? (
-            role === 'CONTROL' ? (
-              <button type="button" onClick={releaseControl} title="Release control">
-                <Shield size={13} />
-                Release
-              </button>
-            ) : (
-              <button type="button" onClick={requestControl} title="Take control">
-                <ShieldAlert size={13} />
-                Take Control
-              </button>
-            )
-          ) : null}
-          {onClose && (
-            <button type="button" onClick={onClose}>
-              Detach
+            <button type="button" onClick={() => setAskOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--nx-muted)' }}>
+              <X size={13} />
             </button>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              type="text"
+              className="nx-input"
+              style={{ flex: 1, fontSize: '12px', padding: '6px 10px' }}
+              placeholder="Digite o objetivo ou comando para o agente..."
+              value={askPrompt}
+              onChange={(e) => setAskPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSendPrompt();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="nx-button"
+              data-tone="brand"
+              data-size="sm"
+              disabled={asking || !askPrompt.trim()}
+              onClick={() => void handleSendPrompt()}
+            >
+              <Send size={12} />
+              <span>{asking ? 'Enviando...' : 'Enviar'}</span>
+            </button>
+          </div>
+          {availableSkills.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', color: 'var(--nx-muted)' }}>Skills Maestro (até 3 no próximo prompt):</span>
+              {availableSkills.slice(0, 8).map((s) => {
+                const active = selectedSkills.includes(s.id);
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => handleToggleSkill(s.id)}
+                    style={{
+                      fontSize: '11px',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      border: '1px solid',
+                      borderColor: active ? 'var(--nx-accent)' : 'var(--nx-border)',
+                      background: active ? 'var(--nx-accent-soft)' : 'var(--nx-surface-3)',
+                      color: active ? 'var(--nx-text)' : 'var(--nx-text-soft)',
+                      cursor: 'pointer',
+                    }}
+                    title={s.description || s.name || s.id}
+                  >
+                    {active ? '✓ ' : '+ '}{s.name || s.id}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {askFeedback && (
+            <span style={{ fontSize: '11px', color: askFeedback.includes('erro') || askFeedback.includes('failed') ? 'var(--nx-danger)' : 'var(--nx-accent)' }}>
+              {askFeedback}
+            </span>
           )}
         </div>
-      </header>
+      )}
+      {closeConfirmOpen && onClose && (
+        <TerminalActionDialog
+          close
+          busy={closing}
+          onCancel={() => setCloseConfirmOpen(false)}
+          onCloseTab={() => void confirmClose(false)}
+          onStopRuntime={() => void confirmClose(true)}
+        />
+      )}
+      <TerminalActionDialog
+        mode={pendingMode || undefined}
+        busy={modeAction === 'Applying' || modeAction === 'Restarting'}
+        onCancel={() => setPendingMode(null)}
+        onConfirmMode={() => void handleModeChange()}
+      />
       <div ref={containerRef} className="nx-agent-terminal__xterm" />
+
+      {isStaleOrDisconnected && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: windowChrome ? '32px 0 0 0' : '39px 0 0 0',
+            background: 'rgba(9, 11, 16, 0.88)',
+            backdropFilter: 'blur(3px)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '12px',
+            padding: '24px',
+            zIndex: 10,
+            textAlign: 'center',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--nx-warning)' }}>
+            <Unplug size={18} />
+            <strong style={{ fontSize: '14px' }}>Runtime do Agente desconectado</strong>
+          </div>
+          <p style={{ maxWidth: '420px', fontSize: '12px', color: 'var(--nx-muted)', margin: 0, lineHeight: 1.5 }}>
+            O processo do agente não está rodando no momento ou foi finalizado. Inicie o runtime para anexar o terminal e executar comandos.
+          </p>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+            <button
+              type="button"
+              className="nx-button"
+              data-tone="brand"
+              disabled={recovering}
+              onClick={handleManualStartOrRecover}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              {recovering ? <RefreshCw size={13} className="nx-spin-slow" /> : <Play size={13} />}
+              <span>{recovering ? 'Iniciando…' : 'Iniciar / Recuperar Agente'}</span>
+            </button>
+            <button
+              type="button"
+              className="nx-button"
+              onClick={() => {
+                if (containerRef.current && (containerRef.current as any).__triggerReconnect) {
+                  (containerRef.current as any).__triggerReconnect();
+                } else {
+                  setConnectNonce((n) => n + 1);
+                }
+              }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <RefreshCw size={13} />
+              <span>Tentar Conectar</span>
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 };

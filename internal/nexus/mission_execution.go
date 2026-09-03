@@ -77,9 +77,14 @@ func (n *Nexus) executeAgentPrompt(ctx context.Context, agentID, workspace, prom
 	if caps.Headless.Status != driver.CapabilitySupported || caps.SubmitPrompt.Status != driver.CapabilitySupported {
 		return nil, fmt.Errorf("provider %s:%s cannot execute autonomous prompt: headless=%s submit_prompt=%s", cfg.Provider, cfg.Profile, caps.Headless.Status, caps.SubmitPrompt.Status)
 	}
-	kickoffArgs, err := d.BuildKickoffArgs(ctx, profile, prompt)
-	if err != nil {
-		return nil, fmt.Errorf("build provider kickoff args: %w", err)
+	var kickoffArgs []string
+	if strings.EqualFold(cfg.Provider, "codex") {
+		kickoffArgs = []string{"exec", prompt}
+	} else {
+		kickoffArgs, err = d.BuildKickoffArgs(ctx, profile, prompt)
+		if err != nil {
+			return nil, fmt.Errorf("build provider kickoff args: %w", err)
+		}
 	}
 	kickoffArgs, err = missionProviderArgs(cfg.Provider, kickoffArgs, policy)
 	if err != nil {
@@ -205,6 +210,11 @@ func missionProviderArgs(provider string, args []string, policy agentPromptPolic
 			return nil, fmt.Errorf("claude autonomous coding requires allow_tool_auto_approval")
 		}
 		return append(out, "--dangerously-skip-permissions", "--output-format", "text"), nil
+	case "codex":
+		if !policy.Contract.AllowToolAutoApproval {
+			return nil, fmt.Errorf("codex autonomous coding requires allow_tool_auto_approval")
+		}
+		return append(out, "--ask-for-approval", "never", "--sandbox", "workspace-write"), nil
 	case "gemini":
 		if !policy.Contract.AllowToolAutoApproval {
 			return nil, fmt.Errorf("gemini autonomous coding requires allow_tool_auto_approval")

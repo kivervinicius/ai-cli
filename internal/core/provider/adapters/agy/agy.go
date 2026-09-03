@@ -509,7 +509,6 @@ func linkSharedAgyItems(profileHome, hostGemini string) {
 	items := []string{
 		"antigravity-cli/history.jsonl",
 		"antigravity-cli/conversation_summaries.db",
-		"antigravity-cli/settings.json",
 		"antigravity-cli/installed_extensions.json",
 		"antigravity-cli/customizations",
 	}

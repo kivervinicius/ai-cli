@@ -41,6 +41,28 @@ func TestTerminalBackendExecution(t *testing.T) {
 	_ = backend.Resize(30, 100)
 }
 
+func TestPrepareInteractiveCommandNormalizesDumbTerminal(t *testing.T) {
+	cmd := exec.Command("echo", "ok")
+	cmd.Env = []string{"TERM=dumb", "PATH=/bin"}
+
+	prepareInteractiveCommand(cmd)
+
+	if cmd.Env[0] != "TERM=xterm-256color" {
+		t.Fatalf("expected TERM to be normalized, got %q", cmd.Env[0])
+	}
+}
+
+func TestPrepareInteractiveCommandDoesNotMutateNormalTerminal(t *testing.T) {
+	cmd := exec.Command("echo", "ok")
+	cmd.Env = []string{"TERM=screen-256color"}
+
+	prepareInteractiveCommand(cmd)
+
+	if len(cmd.Env) != 1 || cmd.Env[0] != "TERM=screen-256color" {
+		t.Fatalf("normal TERM changed: %+v", cmd.Env)
+	}
+}
+
 func TestTerminalBackendStdin(t *testing.T) {
 	backend := NewBackend()
 	cmd := exec.Command("cat")

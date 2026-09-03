@@ -9,16 +9,16 @@ import { HandoffModal } from '../components/HandoffModal';
 import { ContinueModal } from '../components/ContinueModal';
 import { TerminalPane } from '../components/TerminalPane';
 import { AgentTerminal } from '../nexus/AgentTerminal';
-import { MaestroPage } from '../nexus/MaestroPage';
 import { ResourcePicker } from '../nexus/ResourcePicker';
+import { nexus } from '../nexus/api';
 import { api } from '../api';
 import type { Agent, EventRecord, ProfileInfo, Project, ProviderInfo, RuntimeSession, Workspace } from '../types';
 import type { WorkspaceSurface } from '../workspace/model';
 import { ProjectManagerSurface } from '../features/projects/ProjectManagerSurface';
 import { ProjectOverviewSurface } from '../features/overview/ProjectOverviewSurface';
 import { WorkSurface } from '../features/work/WorkSurface';
-import { PlanBuilderSurface } from '../features/work/PlanBuilderSurface';
 import { FlowRunSurface } from '../features/work/FlowRunSurface';
+import { FlowRunsHistorySurface } from '../features/work/FlowRunsHistorySurface';
 import { DirectSessionLauncher, type DirectSessionRequest } from '../features/work/DirectSessionLauncher';
 import { AgentsSurface } from '../features/agents/AgentsSurface';
 import { AgentConfigurationSurface } from '../features/agents/AgentConfigurationSurface';
@@ -27,6 +27,7 @@ import { SettingsSurface } from '../features/settings/SettingsSurface';
 import { ProjectShellSurface } from '../features/shell/ProjectShellSurface';
 import { useTranslation } from 'react-i18next';
 import { agentConfigSurface, agentTerminalSurface, flowRunSurface, projectSurface } from './surfaces';
+import { useWorkspacePresentation } from '../workspace/WorkspacePresentationProvider';
 
 export const WorkspaceSurfaceHost: React.FC<{
   surface: WorkspaceSurface;
@@ -44,6 +45,7 @@ export const WorkspaceSurfaceHost: React.FC<{
   onProjectCreated: (project: Project) => void;
   onProjectUpdated: (project: Project) => void;
   openSurface: (surface: WorkspaceSurface) => void;
+  closeSurface: (surfaceId: string) => void;
   onTour: () => void;
 }> = ({
   surface,
@@ -61,9 +63,12 @@ export const WorkspaceSurfaceHost: React.FC<{
   onProjectCreated,
   onProjectUpdated,
   openSurface,
+  closeSurface,
   onTour,
 }) => {
   const { t } = useTranslation();
+  const presentation = useWorkspacePresentation();
+  const terminalChrome = presentation.state.mode === 'DESKTOP' ? 'window' : 'full';
   const agent = useMemo(
     () => agents.find((item) => item.id === surface.data?.agentId),
     [agents, surface.data?.agentId]
@@ -81,7 +86,8 @@ export const WorkspaceSurfaceHost: React.FC<{
 
   const open = (kind: string) =>
     openSurface(projectSurface(project.id, kind as Parameters<typeof projectSurface>[1]));
-  const terminal = (target: Agent, initialPrompt = '') => openSurface(agentTerminalSurface(target.id, target.name, initialPrompt));
+  const terminal = (target: Agent, initialPrompt = '', runtimeId = '') =>
+    openSurface(agentTerminalSurface(target.id, target.name, initialPrompt, runtimeId));
   const config = (target: Agent) => openSurface(agentConfigSurface(target.id, target.name));
 
   if (surface.type === 'projects') {
@@ -103,14 +109,19 @@ export const WorkspaceSurfaceHost: React.FC<{
       <ProjectOverviewSurface
         project={project}
         agents={agents}
-        onOpenAgent={terminal}
+        onOpenAgent={(agent, runtimeId) => terminal(agent, '', runtimeId || '')}
+        refreshAgents={refreshAgents}
+        onNewAgent={() => window.dispatchEvent(new CustomEvent('nexus:new-agent'))}
+        onConfigureAgent={config}
         onNewAISession={() => {
           open('work');
-          window.dispatchEvent(new CustomEvent('nexus:new-ai-session'));
+          // WorkSurface mounts after open(); defer so its launcher listener is
+          // present before receiving the request.
+          window.setTimeout(() => window.dispatchEvent(new CustomEvent('nexus:new-ai-session')), 0);
         }}
         onProjectShell={() => window.dispatchEvent(new CustomEvent('nexus:project-shell'))}
         onOpenComposer={() => open('work')}
-        onOpenFlow={() => open('missions')}
+        onOpenFlow={undefined}
       />
     );
 
@@ -121,9 +132,6 @@ export const WorkspaceSurfaceHost: React.FC<{
           project={project}
           agents={agents}
           onDirect={terminal}
-          onStartSession={(mode, prompt) => setDirectSession({ mode, prompt })}
-          onPlan={() => open('missions')}
-          onMaestro={() => open('maestro')}
           onFlowRun={(run) => openSurface(flowRunSurface(run.id, `Flow Run · ${(run.id || '').slice(-6)}`))}
         />
         <DirectSessionLauncher
@@ -161,18 +169,72 @@ export const WorkspaceSurfaceHost: React.FC<{
   if (surface.type === 'project-shell')
     return surface.data?.runtimeId ? <ProjectShellSurface runtimeId={surface.data.runtimeId} title={surface.title} onRuntimeChanged={refreshGlobal} /> : <EmptyState title="Project shell unavailable" />;
 
-  if (surface.type === 'terminal')
+  if (surface.type === 'terminal') {
+    // A recovered Agent receives a new runtime generation. Never keep using
+    // the surface's historical runtime_id; the agent-scoped endpoint can
+    // resolve the current generation when the list is briefly stale/empty.
+    const runtime = runtimes.find((r) => r.agent_id === surface.data?.agentId);
     return surface.data?.agentId ? (
       <div className="nx-agent-terminal-surface">
         <AgentTerminal
           agentId={surface.data.agentId}
-          runtimeId={surface.data.runtimeId}
+          runtimeId={runtime?.runtime_id}
           initialPrompt={surface.data.initialPrompt}
+          provider={runtime?.provider_id || runtime?.provider || 'claude'}
+          profile={runtime?.profile_id || runtime?.profile || 'default'}
+          agentName={agent?.name || surface.title}
+          chrome={terminalChrome}
+          onRecover={async () => {
+            if (!surface.data?.agentId) return;
+            try {
+              const result = await nexus.recoverAgent(surface.data.agentId).catch(() => nexus.startAgent(surface.data!.agentId!));
+              await refreshAgents();
+              await refreshGlobal();
+              return result?.runtime;
+            } catch {
+              throw new Error('Não foi possível iniciar ou recuperar o runtime do agente. Verifique o provedor e a conta configurados.');
+            }
+          }}
+          onRestartWithMode={async (newMode: 'Safe' | 'YOLO') => {
+            if (!agent) return;
+            const currentCfg = await nexus.getAgentConfig(agent.id);
+            const configuredArgs = Array.isArray(currentCfg.config.options?.extra_args)
+              ? currentCfg.config.options.extra_args
+              : [];
+            // `mode` is a Nexus-level contract. Only pass a native flag when
+            // the selected CLI actually supports it: Codex has no `--plan`
+            // flag, so forwarding that canonical alias makes it abort before
+            // starting. The persisted mode still keeps the UI state explicit.
+            const extraArgs = configuredArgs.filter((arg) => arg !== '--plan' && arg !== '--yolo' && arg !== '-y');
+            if (newMode === 'YOLO') extraArgs.push('--yolo');
+            await nexus.applyAgentConfig(agent.id, {
+              ...currentCfg.config,
+              options: {
+                ...currentCfg.config.options,
+                mode: newMode,
+                extra_args: extraArgs,
+              },
+            });
+            const result = await nexus.recoverAgent(agent.id).catch(() => nexus.startAgent(agent.id));
+            await refreshAgents();
+            await refreshGlobal();
+            return result.runtime;
+          }}
+          onClose={async (stopRuntime) => {
+            if (stopRuntime) {
+              const currentRuntime = runtimes.find((item) => item.agent_id === surface.data?.agentId);
+              if (currentRuntime?.runtime_id) await api.stopRuntime(currentRuntime.runtime_id);
+              else if (surface.data?.agentId) await nexus.stopAgent(surface.data.agentId);
+              await refreshGlobal();
+            }
+            closeSurface(surface.id);
+          }}
         />
       </div>
     ) : (
       <EmptyState title={t('surfaces.terminalUnavailable')} />
     );
+  }
 
   if (surface.type === 'resources')
     return (
@@ -209,25 +271,19 @@ export const WorkspaceSurfaceHost: React.FC<{
           <div>
             <span className="nx-eyebrow">{t('surfaces.maestroEyebrow')}</span>
             <h1>Maestro</h1>
-            <p>{t('surfaces.maestroIntro')}</p>
+            <p>{t('maestroControl.legacySurface')}</p>
           </div>
         </div>
-        <MaestroPage projectId={project.id} />
       </div>
     );
 
   if (surface.type === 'missions')
     return (
-      <div className="nx-surface-scroll">
-        <div className="nx-page-header">
-          <div>
-            <span className="nx-eyebrow">{t('surfaces.missionsEyebrow')}</span>
-            <h1>{t('surfaces.missionsTitle')}</h1>
-            <p>{t('surfaces.missionsIntro')}</p>
-          </div>
-        </div>
-        <PlanBuilderSurface project={project} agents={agents} onOpenAgent={terminal} onRunCreated={(run) => openSurface(flowRunSurface(run.id, `Flow Run · ${run.id.slice(-6)}`))} />
-      </div>
+      <FlowRunsHistorySurface
+        project={project}
+        onOpenRun={(run) => openSurface(flowRunSurface(run.id, `Flow Run · ${run.id.slice(-6)}`))}
+        onOpenComposer={() => open('work')}
+      />
     );
 
   if (surface.type === 'sessions') return <SessionsSurface agents={agents} />;

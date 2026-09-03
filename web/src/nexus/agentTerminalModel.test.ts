@@ -18,6 +18,10 @@ describe('Agent terminal model', () => {
     expect(agentTerminalWebSocketURL('http:', 'localhost:3000', 'agt_1', 'rt_9')).toBe(
       'ws://localhost:3000/api/v1/agents/agt_1/terminal?runtime_id=rt_9'
     ));
+  it('supports agent-scoped reattachment after a runtime generation changes', () =>
+    expect(agentTerminalWebSocketURL('http:', 'localhost:3000', 'agt_1')).toBe(
+      'ws://localhost:3000/api/v1/agents/agt_1/terminal'
+    ));
   it('uses ws on http and encodes AgentID', () =>
     expect(agentTerminalWebSocketURL('http:', 'localhost:8080', 'a b')).toBe(
       'ws://localhost:8080/api/v1/agents/a%20b/terminal'

@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, Terminal, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Terminal, XCircle } from 'lucide-react';
 import type { RuntimeSession } from '../types';
 import { sanitizeAttentionText } from '../components/attentionText';
 import { IconButton } from '../design-system';
 import { notificationFromRuntime, type InAppNotification } from './inAppNotificationModel';
+import { loadNotificationPrefs } from './notificationPrefs';
 
 const DISMISS_AFTER_MS = 7_000;
 
@@ -16,6 +17,7 @@ export const InAppNotificationCenter: React.FC<{
   const initialized = useRef(false);
 
   useEffect(() => {
+    if (!loadNotificationPrefs().notificationsEnabled) return;
     const next = runtimes
       .map(notificationFromRuntime)
       .filter((notification): notification is InAppNotification => notification !== null);
@@ -46,10 +48,19 @@ export const InAppNotificationCenter: React.FC<{
     <section className="nx-notification-center" aria-label="Notificações recentes" aria-live="polite">
       {notifications.map((notification) => (
         <article className="nx-notification-toast" data-tone={notification.tone} key={notification.id} role="status">
-          {notification.tone === 'success' ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
+          {notification.tone === 'success' ? (
+            <CheckCircle2 size={18} />
+          ) : notification.tone === 'warning' ? (
+            <AlertTriangle size={18} />
+          ) : (
+            <XCircle size={18} />
+          )}
           <div className="nx-notification-toast__body">
             <strong>{notification.title}</strong>
-            <span>{sanitizeAttentionText(notification.projectName, 'Projeto')} · {sanitizeAttentionText(notification.message, 'Sem detalhes adicionais.')}</span>
+            <span>
+              {sanitizeAttentionText(notification.projectName, 'Projeto')} ·{' '}
+              {sanitizeAttentionText(notification.message, 'Sem detalhes adicionais.')}
+            </span>
           </div>
           <IconButton label="Abrir terminal" onClick={() => onFocusRuntime(notification.runtimeId)}>
             <Terminal size={15} />

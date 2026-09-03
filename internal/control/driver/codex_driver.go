@@ -89,9 +89,11 @@ func (d *CodexDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effect
 			Tested: false,
 		},
 		SubmitPrompt: CapabilityEvidence{
-			Status: CapabilityUnsupported,
-			Reason: "Structured prompt submission requires app-server adapter; use terminal input",
-			Tested: false,
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "codex exec <prompt>",
+			Reason:          "Codex exec provides a verified non-interactive prompt contract",
+			Tested:          true,
 		},
 		CancelTurn: CapabilityEvidence{
 			Status:    CapabilitySupported,
@@ -109,9 +111,11 @@ func (d *CodexDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effect
 			Tested: false,
 		},
 		Headless: CapabilityEvidence{
-			Status: CapabilityPartial,
-			Reason: "Supports -p non-interactive prompts in classic mode",
-			Tested: true,
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "codex exec <prompt>",
+			Reason:          "Codex exec is available for non-interactive prompts",
+			Tested:          true,
 		},
 		SlashControl: CapabilityEvidence{
 			Status:    CapabilitySupported,

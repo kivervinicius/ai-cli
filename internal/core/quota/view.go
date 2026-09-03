@@ -92,8 +92,10 @@ func (qv *QuotaView) HasMultipleGroups() bool {
 }
 
 // IsAvailable returns true if the agent can accept work RIGHT NOW.
-// An agent is unavailable when ANY quota window is at 0% (exhausted)
-// or when rate-limited.
+// An agent is unavailable when its required quota pools are exhausted
+// or when rate-limited. AGY requires every model family to have quota,
+// because selecting an account that only has Gemini (or only Claude/GPT)
+// available can still make the requested model unusable.
 // UNKNOWN quota is NOT a hard block — we just don't know, so we penalize
 // the score instead of rejecting.
 func (qv *QuotaView) IsAvailable() bool {
@@ -144,9 +146,37 @@ func (qv *QuotaView) ComputeAvailability() {
 		// not that it's exhausted. The scheduler penalizes this in scoring.
 	}
 
-	// Model groups are independent capacity pools (for example Gemini versus
-	// Claude/GPT in AGY). A depleted group must not block another usable group.
-	// The profile is unavailable only when every real group is exhausted.
+	// AGY exposes two required capacity pools (Gemini and Claude/GPT). Keep
+	// availability strict at the profile level while preserving each group's
+	// independent status for the UI.
+	if strings.EqualFold(qv.Provider, "agy") && len(qv.ModelGroups) > 1 {
+		allGroupsUsable := true
+		for _, g := range qv.ModelGroups {
+			groupExhausted := false
+			for _, w := range g.Windows {
+				if w.Kind == "unknown" {
+					continue
+				}
+				if w.Remaining <= 0.0 {
+					exhausted = append(exhausted, w.Kind)
+					groupExhausted = true
+				}
+			}
+			if groupExhausted {
+				allGroupsUsable = false
+			}
+		}
+		if !allGroupsUsable {
+			qv.Available = false
+			qv.AvailReasons.ExhaustedWindows = exhausted
+			return
+		}
+		qv.AvailReasons.AllOK = true
+		return
+	}
+
+	// For providers with independent or unknown model pools, retain the
+	// existing behavior: one usable group keeps the profile eligible.
 	usableGroup := false
 	for _, g := range qv.ModelGroups {
 		groupExhausted := false

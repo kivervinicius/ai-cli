@@ -35,7 +35,9 @@ export const PlanBuilderSurface: React.FC<{
   onRunCreated?: (run: MissionRun) => void;
   onClose?: () => void;
   initialGoal?: string;
-}> = ({ project, agents, onOpenAgent, onRunCreated, initialGoal = '' }) => {
+  /** Compact goal bar labels aligned with the Composer workbench. */
+  compactGoal?: boolean;
+}> = ({ project, agents, onOpenAgent, onRunCreated, initialGoal = '', compactGoal = false }) => {
   const [plans, setPlans] = useState<WorkPlan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<WorkPlan | null>(null);
   const [_loading, setLoading] = useState(false);
@@ -57,6 +59,7 @@ export const PlanBuilderSurface: React.FC<{
   const [selectedStepId, setSelectedStepId] = useState('');
   const [flowNotice, setFlowNotice] = useState('');
   const [stepComparison, setStepComparison] = useState('');
+  const [goalChips, setGoalChips] = useState<string[]>([]);
 
   useEffect(() => { if (initialGoal.trim()) setAutoGoal((current) => current || initialGoal.trim()); }, [initialGoal]);
 
@@ -65,9 +68,9 @@ export const PlanBuilderSurface: React.FC<{
       setLoading(true);
       const list = (await nexusApi.getPlans(project.id) || []).map(normalizeWorkPlan);
       setPlans(list);
-      if (list.length > 0 && !selectedPlan) {
+      // Composer compact: canvas stays empty until Refinar generates a draft this session.
+      if (!compactGoal && list.length > 0 && !selectedPlan) {
         setSelectedPlan(list[0]);
-        // Expand first phase by default
         if (list[0].phases.length > 0) {
           setExpandedPhases({ [list[0].phases[0].id]: true });
         }
@@ -77,7 +80,7 @@ export const PlanBuilderSurface: React.FC<{
     } finally {
       setLoading(false);
     }
-  }, [project.id, selectedPlan]);
+  }, [project.id, selectedPlan, compactGoal]);
 
   useEffect(() => {
     loadPlans();
@@ -119,11 +122,26 @@ export const PlanBuilderSurface: React.FC<{
     return () => { disposed = true; window.clearInterval(timer); };
   }, [activeRun?.id, activeRun?.state]);
 
+  const chipsFromPlan = (plan: WorkPlan, goalText: string): string[] => {
+    const chips: string[] = [];
+    const goal = goalText.trim();
+    if (goal) chips.push(goal.length > 72 ? `${goal.slice(0, 69)}…` : goal);
+    if (plan.title && plan.title !== goal) chips.push(plan.title);
+    for (const phase of plan.phases || []) {
+      if (phase.title) chips.push(phase.title);
+      for (const pkg of phase.packages || []) {
+        if (pkg.title) chips.push(pkg.title);
+      }
+    }
+    return [...new Set(chips)].slice(0, 8);
+  };
+
   const selectGeneratedPlan = (plan: WorkPlan) => {
     const next = normalizeWorkPlan(plan);
     setPlans((prev) => [next, ...prev.filter((item) => item.id !== next.id)]);
     setSelectedPlan(next);
-    setAutoGoal('');
+    setGoalChips(chipsFromPlan(next, autoGoal || next.title || next.description || ''));
+    if (!compactGoal) setAutoGoal('');
     setClarification(null);
     setClarificationAnswers({});
     if (next.phases.length > 0) {
@@ -479,6 +497,123 @@ export const PlanBuilderSurface: React.FC<{
   };
 
 
+  const clarificationBlock = clarification ? (
+    <Card style={{ margin: '16px 0 24px', padding: '16px' }}>
+      <div style={{ marginBottom: 12 }}>
+        <strong>Clarification required before autonomous planning</strong>
+        <p style={{ margin: '6px 0 0', color: 'var(--color-text-muted)' }}>
+          Nexus stopped instead of guessing. These answers become durable facts in the WorkPlan.
+        </p>
+      </div>
+      <div style={{ display: 'grid', gap: 14 }}>
+        {unresolvedBlocking(clarification).map((item) => (
+          <label key={item.key} style={{ display: 'grid', gap: 6 }}>
+            <span><strong>{item.question}</strong></span>
+            {item.rationale && <small style={{ color: 'var(--color-text-muted)' }}>{item.rationale}</small>}
+            {item.suggested_options && item.suggested_options.length > 0 ? (
+              <select
+                value={clarificationAnswers[item.key] || ''}
+                onChange={(event) => setClarificationAnswers((prev) => ({ ...prev, [item.key]: event.target.value }))}
+              >
+                <option value="">Choose…</option>
+                {item.suggested_options.map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+            ) : (
+              <Input
+                value={clarificationAnswers[item.key] || ''}
+                onChange={(value) => setClarificationAnswers((prev) => ({ ...prev, [item.key]: value }))}
+                placeholder="Answer required"
+              />
+            )}
+          </label>
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+        <Button
+          tone="brand"
+          disabled={generating || unresolvedBlocking(clarification).some((item) => !(clarificationAnswers[item.key] || '').trim())}
+          onClick={() => void handleResolveClarification()}
+        >
+          <ArrowRight size={14} /> Continue planning
+        </Button>
+      </div>
+    </Card>
+  ) : null;
+
+  if (compactGoal) {
+    return (
+      <div className="nx-composer-flow-clean">
+        <Card className="nx-composer-goal-bar">
+          <div className="nx-composer-goal-bar__label">
+            <Sparkles size={16} />
+            <span>Sua solicitação</span>
+          </div>
+          <div className="nx-composer-goal-bar__row">
+            <Input
+              value={autoGoal}
+              onChange={setAutoGoal}
+              placeholder="Descreva o objetivo do Flow…"
+              style={{ flex: 1 }}
+            />
+            <Button tone="brand" disabled={!autoGoal.trim() || generating} onClick={handleGenerateAIPlan}>
+              <Sparkles size={14} /> {generating ? 'Gerando…' : 'Refinar'}
+            </Button>
+            <Button tone="brand" disabled={!selectedPlan || !flowDraft || runBusy} onClick={() => void handleLaunchRun()}>
+              <Play size={14} /> Approve & Run
+            </Button>
+          </div>
+          {goalChips.length > 0 && (
+            <div className="nx-composer-goal-chips" aria-label="Objetivo refinado">
+              {goalChips.map((chip) => (
+                <span key={chip} className="nx-composer-goal-chip">{chip}</span>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {planError && (
+          <InlineAlert tone="danger" title="Nexus Intelligence could not generate the plan">
+            {planError}. Direct AI sessions remain available; configure a real Intelligence provider in Settings to use AI Planning.
+          </InlineAlert>
+        )}
+        {clarificationBlock}
+        {flowNotice && <InlineAlert tone="success" title="Flow Draft">{flowNotice}</InlineAlert>}
+        {flowErrors.length > 0 && <InlineAlert tone="warning" title="Flow needs attention">{flowErrors.join(' ')}</InlineAlert>}
+
+        <div className="nx-composer-flow-body" data-has-draft={flowDraft ? 'true' : 'false'}>
+          <div className="nx-composer-flow-canvas-pane">
+            {!flowDraft && (
+              <Card className="nx-composer-empty-canvas">
+                <Sparkles size={22} style={{ marginBottom: 8, opacity: 0.7 }} />
+                <strong>Canvas vazio</strong>
+                <p>Gere o rascunho acima para a IA propor as etapas. O inspector aparece ao selecionar uma etapa.</p>
+              </Card>
+            )}
+            {flowDraft && (
+              <>
+                <div className="nx-flow-editor-toolbar">
+                  <label>Autonomy policy
+                    <select value={flowDraft.policy} onChange={(event) => setFlowDraft({ ...flowDraft, policy: event.target.value as FlowDraftModel['policy'], policyStored: true })}>
+                      <option value="GUIDED">Guided</option><option value="AUTONOMOUS">Autonomous</option>
+                    </select>
+                  </label>
+                  <Badge tone={flowDirty ? 'warning' : 'success'}>{flowDirty ? 'Unsaved Draft' : `Revision ${selectedPlan?.current_revision || 0}`}</Badge>
+                  <Button size="sm" disabled={!flowDirty || flowErrors.length > 0} onClick={() => void saveFlowDraft()}>{flowDirty ? 'Save Draft' : 'Saved'}</Button>
+                </div>
+                <FlowCanvas flow={flowDraft} selectedId={selectedStepId} onSelect={setSelectedStepId} />
+              </>
+            )}
+          </div>
+          {flowDraft && selectedStep && (
+            <div className="nx-composer-flow-inspector-pane">
+              <FlowStepInspector flow={flowDraft} step={selectedStep} agents={agents} onChange={changeFlowStep} onAction={handleFlowStepAction} />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="nx-surface-scroll nx-plan-builder" style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
       <div className="nx-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
@@ -510,7 +645,7 @@ export const PlanBuilderSurface: React.FC<{
             style={{ flex: 1 }}
           />
           <Button tone="brand" disabled={!autoGoal.trim() || generating} onClick={handleGenerateAIPlan}>
-            <Sparkles size={14} /> {generating ? 'Creating…' : 'Generate Flow Draft'}
+            <Sparkles size={14} /> {generating ? 'Gerando…' : 'Generate Flow Draft'}
           </Button>
         </div>
       </Card>
@@ -521,48 +656,7 @@ export const PlanBuilderSurface: React.FC<{
         </InlineAlert>
       )}
 
-      {clarification && (
-        <Card style={{ margin: '16px 0 24px', padding: '16px' }}>
-          <div style={{ marginBottom: 12 }}>
-            <strong>Clarification required before autonomous planning</strong>
-            <p style={{ margin: '6px 0 0', color: 'var(--color-text-muted)' }}>
-              Nexus stopped instead of guessing. These answers become durable facts in the WorkPlan.
-            </p>
-          </div>
-          <div style={{ display: 'grid', gap: 14 }}>
-            {unresolvedBlocking(clarification).map((item) => (
-              <label key={item.key} style={{ display: 'grid', gap: 6 }}>
-                <span><strong>{item.question}</strong></span>
-                {item.rationale && <small style={{ color: 'var(--color-text-muted)' }}>{item.rationale}</small>}
-                {item.suggested_options && item.suggested_options.length > 0 ? (
-                  <select
-                    value={clarificationAnswers[item.key] || ''}
-                    onChange={(event) => setClarificationAnswers((prev) => ({ ...prev, [item.key]: event.target.value }))}
-                  >
-                    <option value="">Choose…</option>
-                    {item.suggested_options.map((option) => <option key={option} value={option}>{option}</option>)}
-                  </select>
-                ) : (
-                  <Input
-                    value={clarificationAnswers[item.key] || ''}
-                    onChange={(value) => setClarificationAnswers((prev) => ({ ...prev, [item.key]: value }))}
-                    placeholder="Answer required"
-                  />
-                )}
-              </label>
-            ))}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
-            <Button
-              tone="brand"
-              disabled={generating || unresolvedBlocking(clarification).some((item) => !(clarificationAnswers[item.key] || '').trim())}
-              onClick={() => void handleResolveClarification()}
-            >
-              <ArrowRight size={14} /> Continue planning
-            </Button>
-          </div>
-        </Card>
-      )}
+      {clarificationBlock}
 
       {/* Main Two-Column Layout: Plan Hierarchy & Inspector/Runner */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: '24px' }}>
@@ -610,6 +704,15 @@ export const PlanBuilderSurface: React.FC<{
 
           {flowNotice && <InlineAlert tone="success" title="Flow Draft">{flowNotice}</InlineAlert>}
           {flowErrors.length > 0 && <InlineAlert tone="warning" title="Flow needs attention">{flowErrors.join(' ')}</InlineAlert>}
+          {!flowDraft && (
+            <Card style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--nx-muted)' }}>
+              <Sparkles size={22} style={{ marginBottom: 8, opacity: 0.7 }} />
+              <strong style={{ display: 'block', color: 'var(--nx-text)', marginBottom: 6 }}>Canvas vazio</strong>
+              <p style={{ margin: 0, fontSize: 13 }}>
+                Gere o rascunho acima para a IA propor as etapas. O inspector aparece ao selecionar uma etapa.
+              </p>
+            </Card>
+          )}
           {flowDraft && (
             <>
               <div className="nx-flow-editor-toolbar">

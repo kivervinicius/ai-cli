@@ -109,6 +109,7 @@ func BackendMechanism() string { return "ConPTY (CreatePseudoConsole)" }
 func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	prepareInteractiveCommand(cmd)
 
 	b.cmd = cmd
 	if initialRows <= 0 {

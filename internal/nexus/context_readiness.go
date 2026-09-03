@@ -111,6 +111,41 @@ func hasDurableProjectContext(root string) bool {
 	return false
 }
 
+const defaultProjectContext = `# Contexto do projeto
+
+Este arquivo foi criado pelo IAPro Nexus para habilitar o contexto durável do projeto.
+
+## Objetivo
+
+Descreva aqui o objetivo principal deste projeto.
+
+## Regras de trabalho
+
+- Preserve a arquitetura e as convenções existentes.
+- Execute os testes relevantes antes de concluir alterações.
+- Não exponha credenciais ou dados sensíveis.
+`
+
+func createDurableProjectContext(root string) error {
+	if hasDurableProjectContext(root) {
+		return nil
+	}
+	path := filepath.Join(root, "AGENTS.md")
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		if os.IsExist(err) || hasDurableProjectContext(root) {
+			return nil
+		}
+		return fmt.Errorf("create durable project context: %w", err)
+	}
+	defer file.Close()
+	if _, err := file.WriteString(defaultProjectContext); err != nil {
+		_ = os.Remove(path)
+		return fmt.Errorf("write durable project context: %w", err)
+	}
+	return nil
+}
+
 func (n *Nexus) currentMaestroStatus() MaestroStatus {
 	if n != nil && n.maestroStatus != nil {
 		return n.maestroStatus()
@@ -165,6 +200,16 @@ func (n *Nexus) ObserveContextReadiness(projectID string) (*ContextReadiness, er
 // Maestro hydration: READY is recorded only when durable project context files
 // already exist and any configured Maestro dependency is actually available.
 func (n *Nexus) PrepareContext(projectID string) (*ContextReadiness, error) {
+	return n.prepareContext(projectID, false)
+}
+
+// PrepareContextWithBootstrap creates a minimal AGENTS.md only when the
+// project has no supported durable context file. Existing files are preserved.
+func (n *Nexus) PrepareContextWithBootstrap(projectID string) (*ContextReadiness, error) {
+	return n.prepareContext(projectID, true)
+}
+
+func (n *Nexus) prepareContext(projectID string, bootstrap bool) (*ContextReadiness, error) {
 	st, err := n.OpenProject()
 	if err != nil {
 		return nil, err
@@ -174,6 +219,11 @@ func (n *Nexus) PrepareContext(projectID string) (*ContextReadiness, error) {
 		return nil, err
 	}
 	maestro := n.currentMaestroStatus()
+	if bootstrap && !hasDurableProjectContext(project.CanonicalPath) {
+		if err := createDurableProjectContext(project.CanonicalPath); err != nil {
+			return nil, err
+		}
+	}
 	fp, currentID, raw, err := currentContextFingerprint(&project, maestro)
 	if err != nil {
 		return nil, err

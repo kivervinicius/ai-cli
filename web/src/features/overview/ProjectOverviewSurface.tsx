@@ -1,7 +1,9 @@
-import React from 'react';
-import { Activity, Bot, FolderGit2, Gauge, ShieldCheck, TerminalSquare } from 'lucide-react';
-import { Badge, Button, Card, EmptyState, Progress } from '../../design-system';
-import type { Agent, Project } from '../../types';
+import React, { useState } from 'react';
+import { Play, Plus, RotateCcw, TerminalSquare } from 'lucide-react';
+import { Badge, Button, Card, Dialog, EmptyState, Progress } from '../../design-system';
+import { nexus } from '../../nexus/api';
+import { ResourcePicker } from '../../nexus/ResourcePicker';
+import type { Agent, Project, RuntimeSession } from '../../types';
 import { translateStatus } from '../../i18n';
 import { useTranslation } from 'react-i18next';
 
@@ -17,151 +19,234 @@ const tone = (status: string) =>
 export const ProjectOverviewSurface: React.FC<{
   project: Project;
   agents: Agent[];
-  onOpenAgent: (agent: Agent) => void;
+  onOpenAgent: (agent: Agent, runtimeId?: string) => void;
   onNewAISession: () => void;
   onProjectShell: () => void;
   onOpenComposer?: () => void;
   onOpenFlow?: () => void;
-}> = ({ project, agents, onOpenAgent, onNewAISession, onProjectShell, onOpenComposer, onOpenFlow }) => {
+  onNewAgent?: () => void;
+  onConfigureAgent?: (agent: Agent) => void;
+  refreshAgents?: () => Promise<void>;
+  onStartAgent?: (agent: Agent) => Promise<{ runtime?: RuntimeSession } | void>;
+  onRecoverAgent?: (agent: Agent) => Promise<{ runtime?: RuntimeSession } | void>;
+}> = ({
+  project,
+  agents,
+  onOpenAgent,
+  onNewAISession,
+  onProjectShell,
+  onOpenComposer,
+  onOpenFlow: _onOpenFlow,
+  onNewAgent,
+  onConfigureAgent,
+  refreshAgents,
+  onStartAgent,
+  onRecoverAgent,
+}) => {
   const { t } = useTranslation();
+  const [busy, setBusy] = useState<string>('');
+  const [error, setError] = useState<string>('');
+  const [resourceAgent, setResourceAgent] = useState<Agent | null>(null);
+
   const agentList = Array.isArray(agents) ? agents : [];
   const working = agentList.filter((agent) => agent.status === 'WORKING').length;
-  const attention = agentList.filter((agent) =>
+  const degraded = agentList.filter((agent) =>
     ['FAILED', 'STALE', 'RECOVERABLE', 'RATE_LIMITED'].includes(agent.status)
   ).length;
+
+  const handleRecover = async (agent: Agent) => {
+    setBusy(agent.id);
+    setError('');
+    try {
+      const res = await (onRecoverAgent ? onRecoverAgent(agent) : nexus.recoverAgent(agent.id));
+      await refreshAgents?.();
+      const runtimeId = res && typeof res === 'object' && 'runtime' in res ? (res as any).runtime?.runtime_id : undefined;
+      onOpenAgent(agent, runtimeId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('REQUIRED_RESOURCE_SELECTION')) {
+        setResourceAgent(agent);
+      } else {
+        setError(message);
+      }
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const handleStart = async (agent: Agent) => {
+    setBusy(agent.id);
+    setError('');
+    try {
+      const res = await (onStartAgent ? onStartAgent(agent) : nexus.startAgent(agent.id));
+      await refreshAgents?.();
+      const runtimeId = res && typeof res === 'object' && 'runtime' in res ? (res as any).runtime?.runtime_id : undefined;
+      onOpenAgent(agent, runtimeId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('REQUIRED_RESOURCE_SELECTION')) {
+        setResourceAgent(agent);
+      } else {
+        setError(message);
+      }
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const allocateAndStart = async () => {
+    if (!resourceAgent) return;
+    setBusy(resourceAgent.id);
+    setError('');
+    try {
+      const res = await nexus.startAgent(resourceAgent.id);
+      await refreshAgents?.();
+      setResourceAgent(null);
+      onOpenAgent(resourceAgent, res?.runtime?.runtime_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy('');
+    }
+  };
 
   return (
     <div className="nx-surface-scroll">
       <div className="nx-page-header">
         <div>
-          <span className="nx-eyebrow">{t('overview.eyebrow')}</span>
+          <span className="nx-eyebrow">Workspace OS · Terminais do Projeto</span>
           <h1>{project.name}</h1>
-          <p>{project.canonical_path}</p>
+          <p>{project.canonical_path} · <code style={{ color: 'var(--nx-accent-text)' }}>{project.default_branch || 'main'}</code></p>
         </div>
         <div className="nx-page-header__actions">
-          <Button tone="brand" onClick={onNewAISession}>
+          {onNewAgent && (
+            <Button tone="brand" onClick={onNewAgent}>
+              <Plus size={14} /> Novo Agente
+            </Button>
+          )}
+          <Button tone={onNewAgent ? 'default' : 'brand'} onClick={onNewAISession}>
             <TerminalSquare size={14} /> {t('overview.newAISession')}
           </Button>
-          <Button onClick={onProjectShell}>{t('overview.projectShell')}</Button>
+          <Button onClick={onProjectShell}>
+            <TerminalSquare size={14} /> {t('overview.projectShell')}
+          </Button>
           {onOpenComposer ? (
             <Button tone="ghost" onClick={onOpenComposer}>
               {t('overview.openComposer')}
             </Button>
           ) : null}
-          {onOpenFlow ? (
-            <Button tone="ghost" onClick={onOpenFlow}>
-              {t('overview.openFlow')}
-            </Button>
-          ) : null}
         </div>
       </div>
-      <div className="nx-metric-grid">
-        <Card className="nx-metric-card">
-          <span className="nx-metric-card__icon">
-            <Bot size={18} />
-          </span>
+
+      <div style={{ display: 'grid', gap: '16px' }}>
+        <div className="nx-section-title">
           <div>
-            <strong>{agentList.length}</strong>
-            <span>{t('overview.persistentAgents')}</span>
+            <h2>{t('overview.fleet')} ({agentList.length})</h2>
+            <p>{t('overview.fleetDescription')}</p>
           </div>
-        </Card>
-        <Card className="nx-metric-card">
-          <span className="nx-metric-card__icon">
-            <Activity size={18} />
-          </span>
-          <div>
-            <strong>{working}</strong>
-            <span>{t('overview.workingNow')}</span>
-          </div>
-        </Card>
-        <Card className="nx-metric-card">
-          <span className="nx-metric-card__icon">
-            <Gauge size={18} />
-          </span>
-          <div>
-            <strong>{project.resource_policy || 'BALANCED'}</strong>
-            <span>{t('overview.resourcePolicy')}</span>
-          </div>
-        </Card>
-        <Card className="nx-metric-card">
-          <span className="nx-metric-card__icon">
-            <ShieldCheck size={18} />
-          </span>
-          <div>
-            <strong>{project.maestro_mode || 'ASSIST'}</strong>
-            <span>{t('overview.maestroMode')}</span>
-          </div>
-        </Card>
-      </div>
-      <div className="nx-overview-columns">
-        <Card className="nx-overview-card">
-          <div className="nx-section-title">
-            <div>
-              <h2>{t('overview.fleet')}</h2>
-              <p>{t('overview.fleetDescription')}</p>
-            </div>
-            <Badge tone={attention > 0 ? 'warning' : 'success'}>
-              {attention > 0 ? t('overview.needsAttention', { count: attention }) : t('overview.healthy')}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Badge tone={degraded > 0 ? 'warning' : 'success'}>
+              {degraded > 0
+                ? t('overview.degraded', { count: degraded, defaultValue: `${degraded} degradados` })
+                : t('overview.healthy')}
             </Badge>
+            {working > 0 && (
+              <Badge tone="success">
+                {working} em execução
+              </Badge>
+            )}
           </div>
-          {agentList.length === 0 ? (
-            <EmptyState icon={<Bot size={20} />} title={t('overview.noAgents')} hint={t('overview.noAgentsHint')} />
-          ) : (
-            <div className="nx-agent-mini-list">
-              {agentList.slice(0, 8).map((agent) => (
-                <button className="nx-agent-mini" key={agent.id} onClick={() => onOpenAgent(agent)}>
-                  <span className="nx-agent-avatar">{(agent.name || 'AG').slice(0, 2).toUpperCase()}</span>
-                  <span className="nx-agent-mini__copy">
-                    <strong>{agent.name || agent.id}</strong>
-                    <small>
-                      {agent.role || t('overview.developmentAgent')} ·{' '}
-                      {agent.continuity_status || t('overview.continuityPending')}
-                    </small>
+        </div>
+
+        {error && <Card className="nx-inline-error">{error}</Card>}
+
+        {agentList.length === 0 ? (
+          <EmptyState
+            icon={<TerminalSquare size={36} />}
+            title={t('overview.noAgents')}
+            hint={t('overview.noAgentsHint')}
+          />
+        ) : (
+          <div className="nx-agent-grid">
+            {agentList.map((agent) => (
+              <Card key={agent.id} className="nx-agent-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div className="nx-agent-card__head">
+                  <span className="nx-agent-avatar nx-agent-avatar--large">
+                    {(agent.name || 'AG').slice(0, 2).toUpperCase()}
                   </span>
-                  <Badge tone={tone(agent.status)}>{translateStatus(agent.status)}</Badge>
-                </button>
-              ))}
-            </div>
-          )}
-        </Card>
-        <Card className="nx-overview-card">
-          <div className="nx-section-title">
-            <div>
-              <h2>{t('overview.readiness')}</h2>
-              <p>{t('overview.readinessDescription')}</p>
-            </div>
+                  <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                    <strong style={{ fontSize: '14px', display: 'block', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                      {agent.name || agent.id}
+                    </strong>
+                    <small style={{ color: 'var(--nx-muted)', fontSize: '11.5px' }}>
+                      {agent.role || t('overview.developmentAgent')} · {agent.id}
+                    </small>
+                  </div>
+                  <Badge tone={tone(agent.status)}>
+                    {agent.status === 'RECOVERABLE'
+                      ? t('overview.runtimeStopped', 'Runtime parado')
+                      : translateStatus(agent.status)}
+                  </Badge>
+                </div>
+
+                <div className="nx-agent-card__meta">
+                  <span>{t('agents.continuity')}</span>
+                  <strong>{agent.continuity_status || t('common.unknown')}</strong>
+                  <span>{t('agents.lastStart')}</span>
+                  <strong>{agent.last_started_at || t('common.never')}</strong>
+                </div>
+
+                <div className="nx-agent-card__actions" style={{ marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid var(--nx-border)' }}>
+                  <Button size="sm" tone="brand" onClick={() => onOpenAgent(agent)}>
+                    <TerminalSquare size={13} /> {t('overview.openTerminal', 'Abrir Terminal')}
+                  </Button>
+                  {agent.status === 'RECOVERABLE' ? (
+                    <Button
+                      size="sm"
+                      tone="warning"
+                      disabled={busy === agent.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleRecover(agent);
+                      }}
+                    >
+                      <RotateCcw size={12} />{' '}
+                      {busy === agent.id ? t('overview.recovering', 'Recuperando…') : t('overview.recover', 'Recuperar')}
+                    </Button>
+                  ) : agent.status === 'STOPPED' ? (
+                    <Button
+                      size="sm"
+                      tone="brand"
+                      disabled={busy === agent.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleStart(agent);
+                      }}
+                    >
+                      <Play size={12} />{' '}
+                      {busy === agent.id ? t('overview.starting', 'Iniciando…') : t('overview.start', 'Iniciar')}
+                    </Button>
+                  ) : null}
+                  {onConfigureAgent && (
+                    <Button size="sm" tone="ghost" onClick={() => onConfigureAgent(agent)}>
+                      {t('agents.configure', 'Configurar')}
+                    </Button>
+                  )}
+                </div>
+              </Card>
+            ))}
           </div>
-          <div className="nx-readiness-list">
-            <div>
-              <span>
-                <FolderGit2 size={14} /> {t('overview.repository')}
-              </span>
-              <strong>{project.default_branch || 'main'}</strong>
-            </div>
-            <div>
-              <span>Maestro</span>
-              <strong>{project.maestro_mode || 'ASSIST'}</strong>
-            </div>
-            <div>
-              <span>{t('overview.isolation')}</span>
-              <strong>{project.default_isolation || 'project'}</strong>
-            </div>
-            <div>
-              <span>{t('overview.activeAgents')}</span>
-              <strong>{working}</strong>
-            </div>
-          </div>
-          <div className="nx-readiness-progress">
-            <Progress
-              value={Math.min(
-                100,
-                40 + (agentList.length ? 25 : 0) + (project.maestro_mode !== 'OFF' ? 20 : 0) + (project.resource_policy ? 15 : 0)
-              )}
-              label={t('overview.readinessLabel')}
-            />
-          </div>
-        </Card>
+        )}
       </div>
+
+      <Dialog
+        open={!!resourceAgent}
+        onClose={() => setResourceAgent(null)}
+        title={resourceAgent ? `Select resource for ${resourceAgent.name}` : 'Select resource'}
+        wide
+      >
+        <ResourcePicker agentId={resourceAgent?.id} onSelected={allocateAndStart} />
+      </Dialog>
     </div>
   );
 };

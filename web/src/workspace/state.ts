@@ -1,4 +1,4 @@
-import { normalizeSurface, surfaceLogicalKey, type WorkspaceModel, type WorkspaceNode } from './model';
+import { normalizeSurface, surfaceLogicalKey, type WorkspaceModel, type WorkspaceNode, type WorkspaceSurface } from './model';
 
 function validNode(node: unknown): node is WorkspaceNode {
   if (!node || typeof node !== 'object') return false;
@@ -12,29 +12,129 @@ export const workspaceStorageKey = (projectId: string) => `iapro:nexus:workspace
 
 export function serializeWorkspace(model: WorkspaceModel): string { return JSON.stringify(model); }
 
-function normalizeNode(node: WorkspaceNode, seen: Set<string>): WorkspaceNode {
+const PROJECT_SURFACE_KINDS = new Set([
+  'projects',
+  'overview',
+  'work',
+  'missions',
+  'agents',
+  'maestro',
+  'sessions',
+  'settings',
+  'resources',
+  'legacy-runtimes',
+  'legacy-providers',
+  'legacy-events',
+]);
+
+function canonicalizeSurface(surface: WorkspaceSurface, fallbackProjectId?: string): WorkspaceSurface {
+  const norm = normalizeSurface(surface);
+  const projId = fallbackProjectId || norm.data?.projectId;
+
+  if (norm.id === 'project-overview' || (norm.type === 'overview' && projId)) {
+    const effectiveProj = projId || 'default';
+    const logicalKey = `project:${effectiveProj}:overview`;
+    return {
+      ...norm,
+      id: logicalKey,
+      viewId: `view:${logicalKey}`,
+      logicalKey,
+      type: 'overview',
+      closable: false,
+      data: { ...norm.data, projectId: effectiveProj },
+    };
+  }
+
+  if (PROJECT_SURFACE_KINDS.has(norm.type) && projId) {
+    const logicalKey = `project:${projId}:${norm.type}`;
+    return {
+      ...norm,
+      id: logicalKey,
+      viewId: `view:${logicalKey}`,
+      logicalKey,
+      data: { ...norm.data, projectId: projId },
+    };
+  }
+
+  if (norm.type === 'terminal' && norm.data?.agentId) {
+    const logicalKey = `agent:${norm.data.agentId}:terminal`;
+    return {
+      ...norm,
+      id: logicalKey,
+      viewId: `view:${logicalKey}`,
+      logicalKey,
+    };
+  }
+
+  if (norm.type === 'agent-config' && norm.data?.agentId) {
+    const logicalKey = `agent:${norm.data.agentId}:config`;
+    return {
+      ...norm,
+      id: logicalKey,
+      viewId: `view:${logicalKey}`,
+      logicalKey,
+    };
+  }
+
+  return norm;
+}
+
+function normalizeNode(node: WorkspaceNode, seen: Set<string>, projectId?: string): WorkspaceNode {
   if (node.kind === 'stack') {
-    const tabs = node.tabs.map(normalizeSurface).filter((tab) => {
-      const key = surfaceLogicalKey(tab);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    const tabs = node.tabs
+      .filter((tab) => {
+        // Discard project surfaces belonging to another project
+        if (projectId && tab.data?.projectId && tab.data.projectId !== projectId) {
+          // If it is a project surface from another project, drop it so it doesn't pollute the layout
+          if (PROJECT_SURFACE_KINDS.has(tab.type) || tab.type === 'overview') {
+            return false;
+          }
+        }
+        return true;
+      })
+      .map((tab) => canonicalizeSurface(tab, projectId))
+      .filter((tab) => {
+        const key = surfaceLogicalKey(tab);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     const active = tabs.find((tab) => tab.id === node.activeId || tab.viewId === node.activeId || tab.legacyId === node.activeId || tab.logicalKey === node.activeId);
     return { ...node, tabs, activeId: active?.id || tabs[0]?.id || '' };
   }
-  return { ...node, first: normalizeNode(node.first, seen), second: normalizeNode(node.second, seen) };
+  return { ...node, first: normalizeNode(node.first, seen, projectId), second: normalizeNode(node.second, seen, projectId) };
 }
 
-function migrate(root: WorkspaceNode, maximizedSurfaceId?: string): WorkspaceModel {
-  return { version: 2, root: normalizeNode(root, new Set()), maximizedSurfaceId };
+function pruneNode(node: WorkspaceNode): WorkspaceNode | null {
+  if (node.kind === 'stack') {
+    return node.tabs.length > 0 ? node : null;
+  }
+  const first = pruneNode(node.first);
+  const second = pruneNode(node.second);
+  if (!first && !second) return null;
+  if (!first) return second;
+  if (!second) return first;
+  return { ...node, first, second };
 }
 
-export function deserializeWorkspace(raw: string | null | undefined, fallback: WorkspaceModel): WorkspaceModel {
+function migrate(root: WorkspaceNode, fallback: WorkspaceModel, projectId?: string, maximizedSurfaceId?: string): WorkspaceModel {
+  const seen = new Set<string>();
+  const normalizedRoot = normalizeNode(root, seen, projectId);
+  const pruned = pruneNode(normalizedRoot);
+  if (!pruned) return fallback;
+  const result: WorkspaceModel = { version: 2, root: pruned };
+  if (maximizedSurfaceId) result.maximizedSurfaceId = maximizedSurfaceId;
+  return result;
+}
+
+export function deserializeWorkspace(raw: string | null | undefined, fallback: WorkspaceModel, projectId?: string): WorkspaceModel {
   if (!raw) return fallback;
   try {
     const parsed = JSON.parse(raw) as { version?: number; root?: WorkspaceNode; maximizedSurfaceId?: string };
-    if ((parsed.version === 1 || parsed.version === 2) && validNode(parsed.root)) return migrate(parsed.root, parsed.maximizedSurfaceId);
+    const effectiveProj = projectId || (fallback.root.kind === 'stack' ? fallback.root.tabs[0]?.data?.projectId : undefined);
+    if ((parsed.version === 1 || parsed.version === 2) && validNode(parsed.root)) {
+      return migrate(parsed.root, fallback, effectiveProj, parsed.maximizedSurfaceId);
+    }
     return fallback;
   } catch { return fallback; }
 }

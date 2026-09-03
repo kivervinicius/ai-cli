@@ -99,7 +99,16 @@ export const AttentionNotificationCard: React.FC<AttentionNotificationCardProps>
             </button>
           </div>
 
-          <p className="nx-uui-notification__text">{contextText}</p>
+          <p className="nx-uui-notification__text">
+            {promptKind === 'yn'
+              ? `Confirmação pendente: ${contextText}`
+              : promptKind === 'choice'
+                ? `Escolha pendente: ${contextText}`
+                : contextText}
+          </p>
+          <p className="nx-uui-notification__hint" style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--nx-muted)' }}>
+            Responda aqui ou abra o terminal do agente.
+          </p>
 
           <div className="nx-uui-notification__footer">
             <div className="nx-uui-notification__quick-actions">

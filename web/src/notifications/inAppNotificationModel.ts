@@ -6,23 +6,57 @@ export type InAppNotification = {
   projectName: string;
   title: string;
   message: string;
-  tone: 'success' | 'danger';
+  tone: 'success' | 'danger' | 'warning';
 };
 
 export function notificationFromRuntime(runtime: RuntimeSession): InAppNotification | null {
   const reason = runtime.attention_reason;
-  if (reason !== 'TASK_COMPLETED' && reason !== 'ERROR') return null;
+  if (
+    reason !== 'TASK_COMPLETED' &&
+    reason !== 'ERROR' &&
+    reason !== 'QUESTION' &&
+    reason !== 'APPROVAL'
+  ) {
+    return null;
+  }
 
-  const completed = reason === 'TASK_COMPLETED';
-  const message = runtime.attention_context || runtime.last_task_summary || runtime.dynamic_title ||
-    (completed ? 'A tarefa foi concluída.' : 'O terminal reportou um erro.');
+  const message =
+    runtime.attention_context ||
+    runtime.last_task_summary ||
+    runtime.dynamic_title ||
+    (reason === 'TASK_COMPLETED'
+      ? 'A tarefa foi concluída.'
+      : reason === 'ERROR'
+        ? 'O terminal reportou um erro.'
+        : 'O agente espera sua resposta.');
 
+  const projectName = runtime.project_name || 'Projeto';
+  if (reason === 'TASK_COMPLETED') {
+    return {
+      id: `${runtime.runtime_id}:${reason}:${message}`,
+      runtimeId: runtime.runtime_id,
+      projectName,
+      title: 'Tarefa concluída',
+      message,
+      tone: 'success',
+    };
+  }
+  if (reason === 'ERROR') {
+    return {
+      id: `${runtime.runtime_id}:${reason}:${message}`,
+      runtimeId: runtime.runtime_id,
+      projectName,
+      title: 'Erro no terminal',
+      message,
+      tone: 'danger',
+    };
+  }
   return {
     id: `${runtime.runtime_id}:${reason}:${message}`,
     runtimeId: runtime.runtime_id,
-    projectName: runtime.project_name || 'Projeto',
-    title: completed ? 'Tarefa concluída' : 'Erro no terminal',
+    projectName,
+    title: reason === 'APPROVAL' ? 'Aprovação necessária' : 'Confirmação pendente',
     message,
-    tone: completed ? 'success' : 'danger',
+    tone: 'warning',
   };
 }

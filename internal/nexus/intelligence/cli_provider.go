@@ -28,6 +28,8 @@ func HeadlessPromptArgs(providerID, prompt string) ([]string, error) {
 	switch strings.ToLower(strings.TrimSpace(providerID)) {
 	case "claude", "agy", "gemini", "cursor":
 		return []string{"-p", prompt}, nil
+	case "codex":
+		return []string{"exec", prompt}, nil
 	case "opencode":
 		return []string{"run", prompt}, nil
 	default:

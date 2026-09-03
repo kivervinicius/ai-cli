@@ -5,40 +5,56 @@ import {
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
-  ExternalLink,
   Layers,
+  ArrowUpCircle,
 } from 'lucide-react';
-import { Dialog, Button, Badge } from '../../design-system';
+import { Dialog, Button, Badge, InlineAlert } from '../../design-system';
 import { nexus } from '../../nexus/api';
-import type { Project } from '../../types';
+
+type MaestroSkill = { id: string; name?: string; description?: string };
+
+type UpdateInfo = {
+  nexus_version: string;
+  maestro_version: string;
+  maestro_latest_version?: string;
+  maestro_available: boolean;
+  update_available: boolean;
+};
 
 export const MaestroControlModal: React.FC<{
   open: boolean;
   onClose: () => void;
-  project: Project;
-  onProjectUpdated: (updated: Project) => void;
-  onOpenMaestroSurface: () => void;
-}> = ({ open, onClose, project, onProjectUpdated, onOpenMaestroSurface }) => {
+}> = ({ open, onClose }) => {
   const { t } = useTranslation();
   const [maestroStatus, setMaestroStatus] = useState<{
     available: boolean;
     capabilities?: {
       version: string;
-      skills?: Array<{ id: string; name?: string; description?: string }>;
+      skills?: MaestroSkill[];
     };
-    advice_error?: string;
   } | null>(null);
+  const [updates, setUpdates] = useState<UpdateInfo | null>(null);
   const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState(project.maestro_mode || 'ASSIST');
-  const [savingMode, setSavingMode] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState('');
+  const [updateResult, setUpdateResult] = useState<{
+    maestro_updated: boolean;
+    maestro_version: string;
+    nexus_version: string;
+    nexus_updated: boolean;
+    error?: string;
+  } | null>(null);
 
   const fetchStatus = async () => {
     setLoading(true);
+    setUpdateError('');
     try {
-      const res = await nexus.getMaestroStatus();
-      setMaestroStatus(res);
+      const [status, info] = await Promise.all([nexus.getMaestroStatus(), nexus.getSystemUpdates()]);
+      setMaestroStatus(status);
+      setUpdates(info);
     } catch {
       setMaestroStatus({ available: false });
+      setUpdates(null);
     } finally {
       setLoading(false);
     }
@@ -46,35 +62,38 @@ export const MaestroControlModal: React.FC<{
 
   useEffect(() => {
     if (open) {
-      setMode(project.maestro_mode || 'ASSIST');
-      fetchStatus();
+      setUpdateResult(null);
+      void fetchStatus();
     }
-  }, [open, project.id]);
+  }, [open]);
 
-  const handleModeChange = async (newMode: 'ASSIST' | 'ORCHESTRATE' | 'OFF') => {
-    setMode(newMode);
-    setSavingMode(true);
+  const handleUpdate = async () => {
+    setUpdating(true);
+    setUpdateError('');
+    setUpdateResult(null);
     try {
-      const updated = await nexus.updateProject(project.id, { maestro_mode: newMode });
-      onProjectUpdated(updated);
+      const result = await nexus.performSystemUpdate();
+      setUpdateResult(result);
+      window.dispatchEvent(new CustomEvent('nexus:system-updates'));
+      await fetchStatus();
     } catch (err) {
-      console.error('Failed to update maestro mode', err);
+      setUpdateError(err instanceof Error ? err.message : String(err));
     } finally {
-      setSavingMode(false);
+      setUpdating(false);
     }
   };
 
   const isAvailable = maestroStatus?.available;
-  const version = maestroStatus?.capabilities?.version;
+  const version = maestroStatus?.capabilities?.version || updates?.maestro_version;
+  const latest = updates?.maestro_latest_version;
   const skills = maestroStatus?.capabilities?.skills || [];
-
+  const nexusVersion = updates?.nexus_version;
 
   return (
     <Dialog open={open} onClose={onClose} title={t('maestroControl.title')}>
       <div className="nx-maestro-modal">
         <p className="nx-maestro-subtitle">{t('maestroControl.subtitle')}</p>
 
-        {/* Integration Status Card */}
         <div className="nx-maestro-status-card">
           <div className="nx-maestro-status-header">
             <div className="nx-maestro-status-icon">
@@ -88,86 +107,60 @@ export const MaestroControlModal: React.FC<{
                   {isAvailable ? t('maestroControl.available') : t('maestroControl.degraded')}
                 </Badge>
                 {version && <Badge tone="brand">v{version}</Badge>}
+                {updates?.update_available && latest && (
+                  <Badge tone="warning">{t('maestroControl.latest')}: v{latest}</Badge>
+                )}
               </div>
             </div>
-            <Button size="sm" tone="ghost" onClick={fetchStatus} disabled={loading}>
+            <Button size="sm" tone="ghost" onClick={() => void fetchStatus()} disabled={loading || updating}>
               <RefreshCw size={12} className={loading ? 'nx-spin' : ''} />
             </Button>
           </div>
+          {nexusVersion && (
+            <p className="nx-maestro-nexus-version">
+              {t('maestroControl.nexusVersion')}: v{nexusVersion}
+            </p>
+          )}
         </div>
 
-        {/* Mode Selector */}
-        <div className="nx-maestro-mode-section">
-          <h4>{t('maestroControl.modeTitle')}</h4>
-          <div className="nx-mode-options">
-            <button
-              type="button"
-              className={`nx-mode-card ${mode === 'ASSIST' ? 'nx-mode-card--active' : ''}`}
-              onClick={() => handleModeChange('ASSIST')}
-              disabled={savingMode}
-            >
-              <div className="nx-mode-card-header">
-                <strong>{t('maestroControl.modeAssist')}</strong>
-                {mode === 'ASSIST' && <CheckCircle2 size={14} className="nx-mode-check" />}
-              </div>
-              <p>{t('maestroControl.modeAssistDesc')}</p>
-            </button>
+        {updateResult && (
+          <InlineAlert tone={updateResult.maestro_updated ? 'success' : 'info'} title={t('maestroControl.updateResult')}>
+            {updateResult.maestro_updated
+              ? t('maestroControl.updateMaestroDone', { version: updateResult.maestro_version })
+              : t('maestroControl.updateMaestroSame', { version: updateResult.maestro_version })}
+            {' '}
+            {t('maestroControl.nexusBinaryNote', { version: updateResult.nexus_version })}
+          </InlineAlert>
+        )}
+        {updateError && (
+          <InlineAlert tone="danger" title={t('maestroControl.updateMaestroFailed')}>
+            {updateError}
+          </InlineAlert>
+        )}
 
-            <button
-              type="button"
-              className={`nx-mode-card ${mode === 'ORCHESTRATE' ? 'nx-mode-card--active' : ''}`}
-              onClick={() => handleModeChange('ORCHESTRATE')}
-              disabled={savingMode}
-            >
-              <div className="nx-mode-card-header">
-                <strong>{t('maestroControl.modeAutonomous')}</strong>
-                {mode === 'ORCHESTRATE' && <CheckCircle2 size={14} className="nx-mode-check" />}
-              </div>
-              <p>{t('maestroControl.modeAutonomousDesc')}</p>
-            </button>
-
-            <button
-              type="button"
-              className={`nx-mode-card ${mode === 'OFF' ? 'nx-mode-card--active' : ''}`}
-              onClick={() => handleModeChange('OFF')}
-              disabled={savingMode}
-            >
-              <div className="nx-mode-card-header">
-                <strong>{t('maestroControl.modeOff')}</strong>
-                {mode === 'OFF' && <CheckCircle2 size={14} className="nx-mode-check" />}
-              </div>
-              <p>{t('maestroControl.modeOffDesc')}</p>
-            </button>
-          </div>
-        </div>
-
-        {/* Integrated Skills List */}
         <div className="nx-maestro-skills-section">
           <div className="nx-section-header">
             <Layers size={14} />
             <h4>{t('maestroControl.skillsTitle')} ({skills.length})</h4>
           </div>
-          <div className="nx-skills-grid">
-            {skills.map((skill) => (
-              <div key={skill.id} className="nx-skill-pill" title={skill.description}>
-                <span className="nx-skill-dot" />
-                <span className="nx-skill-name">{skill.name || skill.id}</span>
-              </div>
-            ))}
-          </div>
+          {skills.length === 0 ? (
+            <p className="nx-maestro-subtitle">{t('maestroControl.noSkills')}</p>
+          ) : (
+            <div className="nx-skills-grid">
+              {skills.map((skill) => (
+                <div key={skill.id} className="nx-skill-pill" title={skill.description}>
+                  <span className="nx-skill-dot" />
+                  <span className="nx-skill-name">{skill.name || skill.id}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Footer Actions */}
         <div className="nx-maestro-footer">
-          <Button
-            tone="brand"
-            onClick={() => {
-              onClose();
-              onOpenMaestroSurface();
-            }}
-          >
-            <ExternalLink size={14} />
-            <span>{t('maestroControl.openWorkspace')}</span>
+          <Button tone="brand" onClick={() => void handleUpdate()} disabled={updating}>
+            <ArrowUpCircle size={14} className={updating ? 'nx-spin' : ''} />
+            <span>{updating ? t('maestroControl.updating') : t('maestroControl.updateNow')}</span>
           </Button>
           <Button onClick={onClose}>{t('common.closeDialog')}</Button>
         </div>

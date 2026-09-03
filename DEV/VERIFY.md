@@ -1,5 +1,57 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## Controles de terminais e resumo de Agentes — 2026-09-03
+
+- `make web-verify` — PASS (typecheck, lint, null-arrays, testes, i18n, build,
+  embed-sync e ui-markers).
+- `make build` — PASS; instalou `nexus v0.5.0-beta.23`.
+- Cobertura funcional implementada: troca de modo com erro visível e rebinding,
+  feedback de lease, fechamento com escolha aba/runtime, confirmação de Project
+  Shell e badge operacional clicável com foco/recuperação.
+
+## Bootstrap de contexto durável — 2026-09-03
+
+- `go test ./internal/nexus ./internal/control/web` — PASS.
+- `npm --prefix web run typecheck` — PASS.
+- `npm --prefix web test -- --run` — PASS (42 arquivos, 180 testes).
+- `make build` — PASS; instalou `nexus v0.5.0-beta.23`.
+- A criação é explícita, gera `AGENTS.md` base e nunca sobrescreve contexto
+  existente.
+
+## Recuperação de terminal desconectado — 2026-09-03
+
+- Web: `npm --prefix web run typecheck` — PASS.
+- Web: `npm --prefix web test -- --run` — PASS (42 arquivos, 175 testes).
+- Build: `make build` — PASS; instalou `nexus v0.5.0-beta.23`.
+- Recover/Start agora vincula diretamente a geração retornada; o terminal também
+  oferece fechamento explícito da aba.
+
+## Nova sessão de IA — 2026-09-03
+
+- Web: `npm --prefix web test -- --run` — PASS (40 arquivos, 157 testes).
+- Web: `npm --prefix web run typecheck` — PASS.
+- Build: `make build` — PASS; instalou `nexus v0.5.0-beta.23`.
+- O launcher agora é disparado depois que a superfície Composer está montada.
+
+## TERM=dumb em CLIs interativos — 2026-09-03
+
+- `go test ./internal/runtime ./internal/control/terminal` — valida substituição
+  de `TERM=dumb` sem mutar o ambiente original e preservação de terminais normais.
+- A correção cobre execução direta e runtimes supervisionados com PTY/ConPTY.
+
+## AGY quota por grupo — 2026-09-03
+
+- `go test ./internal/core/quota ./internal/app ./internal/core/scheduler ./internal/nexus` — PASS
+- Conta AGY com Gemini disponível e Claude/GPT esgotado agora fica `INDISPONIVEL`/
+  `QUOTA ESGOTADA` no nível da conta.
+- Conta AGY só fica `DISPONIVEL` quando os dois grupos têm quota.
+
+## AGY keyring e modelo — 2026-09-03
+
+O processo AGY recebe `GNOME_KEYRING_CONTROL` do Secret Service privado, e o
+arquivo `antigravity-cli/settings.json` não é mais sobrescrito pelo host a cada
+execução. Testes Go focados passaram e `make build` instalou `nexus v0.5.0-beta.15`.
+
 ## Radar falso + terminal “connecting” — 2026-09-03
 
 - Go: `go test ./internal/control/host` — PASS
@@ -43,6 +95,12 @@ Nesta execução, `yarn typecheck` também passou.
 todos os endpoints que retornam WorkPlan, cobrindo planos e fases nulos antes
 do acesso da UI. Verificação atual: testes focados (19/19), `yarn lint`,
 `yarn typecheck` e `yarn build` — PASS.
+
+## Reanexação de terminal — 2026-09-03
+
+Após Recover/Start, o terminal não reutiliza o `runtime_id` histórico da
+superfície. Ele reanexa pelo Agente e acompanha a nova geração. Testes focados
+(14/14), typecheck e build passaram; lint passou com 7 warnings preexistentes.
 
 ## Tabela TUI de uso — 2026-09-02
 
@@ -158,6 +216,6 @@ All business logic lives in `internal/nexus/` (service layer). Web and TUI consu
 - Performance benchmarks
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-03T12:45:37Z
+## Frontend gate — 2026-09-03T19:35:59Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).

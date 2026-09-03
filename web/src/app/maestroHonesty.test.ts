@@ -11,4 +11,14 @@ describe('Maestro UI honesty', () => {
     expect(source).not.toContain('skill-security-hooks');
     expect(source).toContain('capabilities?.skills || []');
   });
+
+  it('does not expose ASSIST / autonomous / off as workspace modes', () => {
+    expect(source).not.toContain('modeAssist');
+    expect(source).not.toContain('modeAutonomous');
+    expect(source).not.toContain('modeOff');
+    expect(source).not.toContain('ASSIST');
+    expect(source).not.toContain('AUTONOMOUS');
+    expect(source).not.toContain('ORCHESTRATE');
+    expect(source).not.toContain('onOpenMaestroSurface');
+  });
 });

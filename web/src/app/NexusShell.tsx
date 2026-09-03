@@ -10,6 +10,7 @@ import {
   Menu,
   MoonStar,
   Network,
+  Plus,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Badge, IconButton } from '../design-system';
@@ -36,6 +37,7 @@ export const NexusShell: React.FC<{
   onOpenProjectManager: () => void;
   onOpenMaestroControl: () => void;
   onSettings: () => void;
+  onNewAgent?: () => void;
   onFocusRuntime?: (runtimeId: string) => void;
   onFocusAttention?: (item: RadarRuntimeItem) => void;
 }> = ({
@@ -45,21 +47,31 @@ export const NexusShell: React.FC<{
   rail,
   children,
   onOpenRail,
-  onOpenSurface: _onOpenSurface,
+  onOpenSurface,
   onCommand,
   onOpenWelcome,
   onOpenProjectManager,
   onOpenMaestroControl,
   onSettings,
+  onNewAgent,
   onFocusRuntime,
   onFocusAttention,
 }) => {
   const { t } = useTranslation();
   const agentList = Array.isArray(agents) ? agents : [];
-  const working = agentList.filter((agent) => agent.status === 'WORKING').length;
-  const attention = agentList.filter((agent) =>
-    ['FAILED', 'STALE', 'RECOVERABLE', 'RATE_LIMITED'].includes(agent.status)
-  ).length;
+  const [agentsOpen, setAgentsOpen] = useState(false);
+  const liveStates = ['STARTING', 'RUNNING', 'HANDOFF', 'WAITING', 'APPROVAL'];
+  const runtimeByAgent = new Map(runtimes.filter((runtime) => runtime.agent_id).map((runtime) => [runtime.agent_id as string, runtime]));
+  const working = agentList.filter((agent) => runtimeByAgent.get(agent.id)?.state === 'RUNNING' || agent.status === 'WORKING').length;
+  const awaiting = agentList.filter((agent) => {
+    const runtime = runtimeByAgent.get(agent.id);
+    return runtime?.state === 'WAITING' || runtime?.state === 'APPROVAL' || runtime?.attention_kind === 'needs_user';
+  }).length;
+  const disconnected = agentList.filter((agent) => !liveStates.includes(runtimeByAgent.get(agent.id)?.state || '')).length;
+  const attention = agentList.filter((agent) => {
+    const runtimeState = runtimeByAgent.get(agent.id)?.state;
+    return ['FAILED', 'STALE', 'RECOVERABLE', 'RATE_LIMITED'].includes(agent.status) || ['FAILED', 'STALE'].includes(runtimeState || '');
+  }).length;
   const [sysInfo, setSysInfo] = useState<{
     nexus_version: string;
     maestro_version: string;
@@ -68,8 +80,27 @@ export const NexusShell: React.FC<{
   } | null>(null);
 
   useEffect(() => {
-    nexus.getSystemUpdates().then(setSysInfo).catch(() => undefined);
+    const load = () => {
+      nexus.getSystemUpdates().then(setSysInfo).catch(() => undefined);
+    };
+    load();
+    window.addEventListener('nexus:system-updates', load);
+    return () => window.removeEventListener('nexus:system-updates', load);
   }, []);
+
+  const maestroBadge = (() => {
+    if (!sysInfo) return { tone: 'default' as const, label: 'Maestro' };
+    if (!sysInfo.maestro_available) {
+      return { tone: 'warning' as const, label: t('maestroControl.badgeMissing') };
+    }
+    if (sysInfo.update_available) {
+      return { tone: 'warning' as const, label: t('maestroControl.badgeUpdate') };
+    }
+    return {
+      tone: 'brand' as const,
+      label: t('maestroControl.badgeOk', { version: sysInfo.maestro_version }),
+    };
+  })();
 
   return (
     <div className="nx-os-shell">
@@ -104,9 +135,24 @@ export const NexusShell: React.FC<{
               <ChevronDown size={12} className="nx-project-chevron" />
             </button>
 
-            <span className="nx-topbar__path" title={project.canonical_path}>
+            <span className="nx-topbar__path" title={project.canonical_path} style={{ maxWidth: '28vw', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {project.canonical_path}
             </span>
+
+            {onNewAgent && (
+              <button
+                type="button"
+                className="nx-button"
+                data-tone="brand"
+                data-size="sm"
+                onClick={onNewAgent}
+                style={{ height: '28px', padding: '0 8px', gap: '4px', fontSize: '11.5px', marginLeft: '6px' }}
+                title="Criar novo Agente no Projeto"
+              >
+                <Plus size={12} />
+                <span>Novo Agente</span>
+              </button>
+            )}
 
             <GlobalAttentionRadar
               runtimes={runtimes}
@@ -132,27 +178,55 @@ export const NexusShell: React.FC<{
               </button>
             )}
 
-            {/* Working Agents Count */}
-            <Badge tone={attention ? 'warning' : 'success'}>
-              <Network size={10} />
-              {t('shell.working', { count: working })}
-            </Badge>
+            <div className="nx-agent-summary-wrap">
+              <button
+                type="button"
+                className="nx-agent-summary-btn"
+                aria-expanded={agentsOpen}
+                aria-controls="nexus-agent-summary"
+                onClick={() => setAgentsOpen((open) => !open)}
+                title="Abrir resumo operacional dos Agentes"
+              >
+                <Badge tone={attention || disconnected ? 'warning' : 'success'}>
+                  <Network size={10} />
+                  <span>{working} trabalhando · {awaiting} aguardando · {disconnected} desconectado{disconnected === 1 ? '' : 's'}</span>
+                </Badge>
+              </button>
+              {agentsOpen && (
+                <div id="nexus-agent-summary" className="nx-agent-summary-popover" role="dialog" aria-label="Agentes do Projeto">
+                  <div className="nx-agent-summary-popover__heading"><strong>Agentes do Projeto</strong><button type="button" onClick={() => onOpenSurface?.('agents')}>Abrir lista completa</button></div>
+                  {agentList.length === 0 ? <p className="nx-muted-copy">Nenhum Agente configurado.</p> : agentList.map((agent) => {
+                    const runtime = runtimeByAgent.get(agent.id);
+                    const live = Boolean(runtime && liveStates.includes(runtime.state));
+                    const degraded = ['RECOVERABLE', 'FAILED', 'STALE', 'RATE_LIMITED'].includes(agent.status) || ['FAILED', 'STALE'].includes(runtime?.state || '');
+                    const status = degraded ? (agent.status === 'WORKING' ? runtime?.state : agent.status) : runtime?.state || 'DISCONNECTED';
+                    return <button type="button" className="nx-agent-summary-row" key={agent.id} onClick={() => {
+                      setAgentsOpen(false);
+                      if (live && runtime) onFocusRuntime?.(runtime.runtime_id);
+                      else onOpenSurface?.('agents');
+                    }}>
+                      <span className="nx-agent-summary-row__name"><strong>{agent.name}</strong><small>{runtime?.provider || runtime?.provider_id || 'provider n/d'} · {runtime?.profile || runtime?.profile_id || 'perfil n/d'}</small></span>
+                      <span className="nx-agent-summary-row__status" data-degraded={degraded ? 'true' : undefined}>{status}{runtime?.attention_kind === 'needs_user' ? ' · atenção' : ''}</span>
+                    </button>;
+                  })}
+                </div>
+              )}
+            </div>
 
-            {/* Interactive Maestro Badge */}
             <button
               type="button"
               className="nx-maestro-badge-btn"
               onClick={onOpenMaestroControl}
-              title="Open Orquestrador Maestro Control"
+              title={t('maestroControl.title')}
             >
-              <Badge tone={project.maestro_mode === 'OFF' ? 'default' : 'brand'}>
+              <Badge tone={maestroBadge.tone}>
                 <BrainCircuit size={10} />
-                <span>Maestro: {project.maestro_mode || 'ASSIST'}</span>
+                <span>{maestroBadge.label}</span>
               </Badge>
             </button>
 
             {/* System Versions Pill */}
-            <div className="nx-topbar-version-pill" title="Nexus & Maestro Versions">
+            <div className="nx-topbar-version-pill" title="Nexus Version" style={{ display: 'none' }}>
               <span className="nx-ver-nexus">Nexus v{sysInfo?.nexus_version || 'unknown'}</span>
             </div>
 

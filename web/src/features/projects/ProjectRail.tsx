@@ -1,18 +1,22 @@
 import React, { useState } from 'react';
 import {
   Bot,
-  BrainCircuit,
   FolderGit2,
   Gauge,
+  History,
   Home,
+  Layers,
   LayoutGrid,
   Plus,
   Settings,
+  Sparkles,
+  TerminalSquare,
+  Workflow,
   X,
 } from 'lucide-react';
 import { Button, IconButton } from '../../design-system';
 import { AddProjectModal } from './AddProjectModal';
-import type { Project } from '../../types';
+import type { Agent, Project } from '../../types';
 import { useTranslation } from 'react-i18next';
 
 export const ProjectRail: React.FC<{
@@ -23,19 +27,38 @@ export const ProjectRail: React.FC<{
   onSelect: (project: Project) => void;
   onCreated: (project: Project) => void;
   onOpenGlobal: (
-    kind: 'projects' | 'overview' | 'agents' | 'resources' | 'maestro' | 'sessions' | 'settings'
+    kind: 'projects' | 'overview' | 'agents' | 'resources' | 'maestro' | 'sessions' | 'settings' | 'work' | 'missions'
   ) => void;
-}> = ({ projects, selected, open, onClose, onSelect, onCreated, onOpenGlobal }) => {
+  agents?: Agent[];
+  onOpenAgent?: (agent: Agent) => void;
+  onNewAgent?: () => void;
+  onNewAISession?: () => void;
+  onProjectShell?: () => void;
+}> = ({
+  projects,
+  selected,
+  open,
+  onClose,
+  onSelect,
+  onCreated,
+  onOpenGlobal,
+  agents = [],
+  onOpenAgent,
+  onNewAgent,
+  onNewAISession,
+  onProjectShell,
+}) => {
   const { t } = useTranslation();
   const [addOpen, setAddOpen] = useState(false);
 
-  const global = [
-    { id: 'projects', label: t('projectManager.desktopsTitle'), icon: LayoutGrid },
+  const optionalTools = [
     { id: 'overview', label: t('nav.overview'), icon: Home },
-    { id: 'agents', label: t('nav.agents'), icon: Bot },
+    { id: 'work', label: 'Composer', icon: Layers },
+    { id: 'missions', label: 'Flow Runs', icon: Workflow },
     { id: 'resources', label: t('nav.resources'), icon: Gauge },
+    { id: 'sessions', label: t('nav.sessions'), icon: History },
+    { id: 'projects', label: t('projectManager.desktopsTitle'), icon: LayoutGrid },
     { id: 'settings', label: t('nav.settings'), icon: Settings },
-    { id: 'maestro', label: t('rail.maestroMethod'), icon: BrainCircuit },
   ] as const;
 
   return (
@@ -61,22 +84,55 @@ export const ProjectRail: React.FC<{
           </IconButton>
         </div>
 
-        <div className="nx-project-rail__global">
-          {global.map((item) => (
+        {/* Primary Workspace Quick Actions */}
+        <div style={{ padding: '8px 8px 4px', display: 'grid', gap: '4px' }}>
+          <button
+            type="button"
+            className="nx-button"
+            data-tone="brand"
+            data-size="sm"
+            style={{ width: '100%', justifyContent: 'flex-start', padding: '0 10px' }}
+            onClick={() => {
+              if (onNewAgent) onNewAgent();
+              onClose();
+            }}
+          >
+            <Plus size={13} />
+            <span>Novo Agente</span>
+          </button>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
             <button
               type="button"
-              key={item.id}
+              className="nx-button"
+              data-size="sm"
+              style={{ fontSize: '11px', padding: '0 6px', justifyContent: 'center' }}
               onClick={() => {
-                onOpenGlobal(item.id);
+                if (onNewAISession) onNewAISession();
                 onClose();
               }}
+              title="Nova sessão de IA"
             >
-              <item.icon size={15} />
-              <span>{item.label}</span>
+              <Sparkles size={11} />
+              <span>Sessão IA</span>
             </button>
-          ))}
+            <button
+              type="button"
+              className="nx-button"
+              data-size="sm"
+              style={{ fontSize: '11px', padding: '0 6px', justifyContent: 'center' }}
+              onClick={() => {
+                if (onProjectShell) onProjectShell();
+                onClose();
+              }}
+              title="Terminal"
+            >
+              <TerminalSquare size={11} />
+              <span>Terminal</span>
+            </button>
+          </div>
         </div>
 
+        {/* Projects Section */}
         <div className="nx-project-rail__heading">
           <span>{t('rail.projects')}</span>
           <IconButton label={t('rail.add')} onClick={() => setAddOpen(true)}>
@@ -84,7 +140,7 @@ export const ProjectRail: React.FC<{
           </IconButton>
         </div>
 
-        <div className="nx-project-list">
+        <div className="nx-project-list" style={{ maxHeight: '180px', flex: '0 0 auto' }}>
           {projects.map((project) => (
             <button
               type="button"
@@ -107,6 +163,81 @@ export const ProjectRail: React.FC<{
             </button>
           ))}
           {projects.length === 0 && <p>{t('rail.empty')}</p>}
+        </div>
+
+        {/* Agents Section (Primary for Current Project) */}
+        <div className="nx-project-rail__heading" style={{ marginTop: '4px' }}>
+          <span>Agentes do Projeto ({agents.length})</span>
+          {onNewAgent && (
+            <IconButton label="Novo Agente" onClick={onNewAgent}>
+              <Plus size={14} />
+            </IconButton>
+          )}
+        </div>
+
+        <div className="nx-project-list" style={{ flex: 1, minHeight: '120px' }}>
+          {agents.map((agent) => (
+            <button
+              type="button"
+              key={agent.id}
+              onClick={() => {
+                if (onOpenAgent) onOpenAgent(agent);
+                onClose();
+              }}
+              title={`${agent.name} · ${agent.role || 'developer'} (${agent.status})`}
+            >
+              <span
+                className="nx-status-dot"
+                style={{
+                  background:
+                    agent.status === 'WORKING'
+                      ? 'var(--nx-success, #10b981)'
+                      : agent.status === 'RECOVERABLE' || agent.status === 'WAITING'
+                      ? 'var(--nx-warning, #f59e0b)'
+                      : agent.status === 'FAILED' || agent.status === 'STALE'
+                      ? 'var(--nx-danger, #ef4444)'
+                      : 'var(--nx-muted, #64748b)',
+                  boxShadow:
+                    agent.status === 'WORKING'
+                      ? '0 0 6px var(--nx-success, #10b981)'
+                      : agent.status === 'RECOVERABLE'
+                      ? '0 0 6px var(--nx-warning, #f59e0b)'
+                      : 'none',
+                }}
+              />
+              <span>
+                <strong>{agent.name}</strong>
+                <small>{agent.role || 'developer'}</small>
+              </span>
+              <TerminalSquare size={12} style={{ color: 'var(--nx-subtle)', marginLeft: 'auto' }} />
+            </button>
+          ))}
+          {agents.length === 0 && (
+            <p style={{ padding: '8px 12px', fontSize: '11.5px', color: 'var(--nx-subtle)' }}>
+              Nenhum agente ainda. Crie um acima.
+            </p>
+          )}
+        </div>
+
+        {/* Secondary Tools */}
+        <div className="nx-project-rail__heading" style={{ marginTop: 'auto', borderTop: '1px solid var(--nx-border)' }}>
+          <span>Ferramentas</span>
+        </div>
+        <div className="nx-project-rail__global" style={{ padding: '4px 8px 8px' }}>
+          {optionalTools.map((item) => (
+            <button
+              type="button"
+              key={item.id}
+              onClick={() => {
+                onOpenGlobal(item.id as any);
+                onClose();
+              }}
+              style={{ height: '30px', fontSize: '11.5px' }}
+            >
+              <item.icon size={13} />
+              <span>{item.label}</span>
+            </button>
+          ))}
         </div>
 
         <div className="nx-project-rail__footer">

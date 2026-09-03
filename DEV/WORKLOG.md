@@ -1,5 +1,67 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-03 — Nexus cria contexto durável base
+
+- **Problema**: projetos novos sem `AGENTS.md` ou `DEV` ficavam em `FAILED`, mas
+  o requisito de contexto era apresentado sem uma ação de criação.
+- **Correção**: o Composer avisa que criará um `AGENTS.md` base e o Nexus cria o
+  arquivo somente quando o usuário aciona a preparação; criação atômica impede
+  sobrescrever contexto existente.
+- **Verificação**: teste cobre criação, estado `READY` e preservação em segunda
+  execução; Go/Web typecheck e testes passaram; bundle recompilado.
+
+## 2026-09-03 — Recuperação de terminal desconectado
+
+- **Problema**: Recover/Start criava uma nova geração, mas o terminal podia
+  continuar tentando conectar no `runtime_id` morto até o próximo polling; não
+  havia uma saída explícita dentro do terminal desconectado.
+- **Correção**: o terminal agora recebe e usa imediatamente o runtime retornado
+  pela recuperação; erros de Recover/Start são exibidos; foi adicionado `Fechar
+  terminal`, que remove a aba sem parar o Agente persistente.
+- **Verificação**: typecheck Web, 42 arquivos/175 testes Web e `make build`
+  passaram; bundle embutido no `nexus v0.5.0-beta.23`.
+
+## 2026-09-03 — Nova sessão de IA e controles da shell
+
+- **Problema**: o atalho `Sessão IA` abria o Composer, mas o evento que deveria
+  abrir o launcher era disparado antes da montagem da aba e era perdido.
+- **Correção**: o evento agora é enfileirado após a abertura da superfície; os
+  controles do terminal foram traduzidos e explicados (`Controle`, `Liberar`,
+  `Assumir controle`, `Somente leitura`).
+- **Verificação**: 40 arquivos/157 testes Web passaram, typecheck passou e o
+  bundle foi embutido no `nexus v0.5.0-beta.23`.
+
+## 2026-09-03 — TERM=dumb bloqueando prompt interativo
+
+- **Causa**: CLIs interativos recebiam `TERM=dumb` mesmo com PTY real do Nexus,
+  disparando a confirmação “Continue anyway?” e deixando a entrada inutilizável.
+- **Correção**: normalização para `TERM=xterm-256color` somente no processo
+  interativo filho quando o ambiente original é `dumb`; o ambiente normal não é
+  alterado. Aplicado na execução direta e no backend PTY/ConPTY supervisionado.
+- **Verificação**: testes de ambiente normalizado adicionados ao runtime e ao
+  backend de terminal.
+
+## 2026-09-03 — AGY: disponibilidade exige quota dos dois grupos
+
+- **Problema**: uma conta AGY aparecia como disponível quando Gemini tinha quota,
+  mesmo com Claude/GPT totalmente esgotado.
+- **Correção**: a disponibilidade da conta AGY agora exige quota em todos os
+  grupos de modelos; os indicadores de cada grupo continuam independentes para
+  explicar qual pool está indisponível.
+- **Verificação**: testes cobrem AGY misto (indisponível) e AGY com ambos os
+  grupos disponíveis.
+
+## 2026-09-03 — AGY: keyring privado e persistência de modelo
+
+- **Causa**: o wrapper AGY iniciava o Secret Service privado sem exportar
+  `GNOME_KEYRING_CONTROL` para o processo filho; além disso,
+  `antigravity-cli/settings.json` era tratado como artefato compartilhado e
+  sobrescrevia o modelo escolhido no perfil.
+- **Correção**: o diretório privado agora é exportado e `settings.json` ficou
+  sob posse do perfil AGY. Histórico/extensões continuam compartilhados.
+- **Verificação**: testes Go dos pacotes AGY/runtime/driver/app passaram;
+  binário `nexus v0.5.0-beta.15` recompilado e instalado.
+
 ## 2026-09-03 — Correção radar falso + terminal preso em connecting
 
 - **Problema**: Radar “precisa de você” com texto quebrado; clique abria terminal em
@@ -67,6 +129,17 @@
   Respostas que não são listas também viram lista vazia.
 - **Cobertura**: testes de API para `packages: null` e lista nula; suíte
   frontend completa passou com 140 testes.
+
+## 2026-09-03 — Reanexação após recuperação de Agente
+
+- **Causa evitada**: uma superfície de terminal podia conservar o
+  `runtime_id` da geração anterior e reconectar indefinidamente ao processo
+  morto.
+- **Correção**: `WorkspaceSurfaceHost` agora resolve o runtime por `agent_id`
+  e deixa o endpoint escopado ao Agente resolver a geração atual quando a lista
+  ainda está em atualização.
+- **Verificação**: testes focados (14/14), typecheck, build e lint passaram
+  (lint mantém apenas warnings preexistentes).
 
 ## 2026-09-02 — Sistema Unificado de Aliases e Normalização de Flags nos CLIs
 
@@ -960,3 +1033,66 @@ foi normalizada para uma linha por grupo, com 5h, semanal, reset e status.
 - `go test ./internal/app ./internal/core/quota ./internal/profile`: PASS
 - `go vet ./...`: PASS
 - `make build`: PASS — `v0.5.0-beta.9`, instalado em `/home/desenvolvedor/.local/bin/nexus`
+
+## 2026-09-03 — Controles explícitos e resumo operacional de Agentes
+
+A troca Safe/Plan/YOLO agora exibe Aplicando/Reiniciando/Pronto/erro, propaga
+falhas ao usuário e rebinda a geração retornada pelo Recover/Start. Lease informa
+solicitação, controle assumido e somente leitura. O fechamento do terminal oferece
+manter o runtime ou pará-lo; Project Shells pedem confirmação antes de encerrar o
+processo. O badge superior virou resumo clicável de trabalho, espera, desconexão e
+estados degradados, focando terminais vivos ou abrindo Agentes para recuperação.
+
+Verificação: `make web-verify` PASS; `make build` PASS (`v0.5.0-beta.23`).
+
+## 2026-09-03 — Confirmação Nexus e Codex exec
+
+Trocas de modo e fechamentos de terminal passaram a usar Dialog Nexus acessível,
+com confirmação antes de reiniciar/parar runtimes. A toolbar foi reorganizada para
+quebrar corretamente em Desktop e telas estreitas. Codex foi habilitado no fluxo
+Coding CLI com `codex exec <prompt>`; a sessão direta continua interativa.
+
+Verificação: testes Go focados, `make web-verify`, `make build`, HTTP 200 e `git diff --check`.
+
+## 2026-09-03 — Confirmação de terminal e Codex executável
+
+Foi implementado o Dialog Nexus para confirmar troca de modo antes do reinício e
+fechamento de terminal antes de manter/parar runtime. A toolbar ganhou layout
+responsivo. Codex passou a ser elegível no Coding CLI via `codex exec <prompt>`;
+execução autônoma recebeu sandbox e aprovação explícitos, sem alterar sessões
+diretas interativas.
+
+Verificação: `go test ./internal/control/driver ./internal/nexus ./internal/nexus/intelligence`,
+`make web-verify`, `make build`, HTTP 200 e `git diff --check`.
+
+## 2026-09-03 — Dialog de fechamento aparecendo ao abrir
+
+Corrigida a renderização do Dialog global: ele só é montado quando existe um
+terminal ou Project Shell selecionado para fechamento. Antes, `closeTarget` nulo
+era passado com `close=true`, fazendo o modal bloquear a tela imediatamente.
+
+Verificação: `make web-verify`, `make build`, HTTP 200 e processo Web reiniciado.
+
+## 2026-09-03 — Plan removido dos controles de terminal
+
+Removido o modo Plan dos seletores de terminal e criação de Agente, pois o
+planejamento já é responsabilidade do Composer/Flow. Configurações antigas
+com Plan continuam sendo tratadas como Safe na interface. O ajuste também
+impede que `--plan` seja encaminhado ao Codex, que rejeita esse argumento.
+Os controles de lease foram mantidos e renomeados para deixar claro que
+governam a permissão de enviar teclas ao PTY compartilhado.
+
+Verificação: `make web-verify`, `make build`, testes Go focados e servidor Web
+reiniciado em `http://127.0.0.1:3000`.
+
+## 2026-09-03 — Lease automático e opções do projeto
+
+Removidos os botões manuais de lease do terminal. A conexão agora solicita
+automaticamente a permissão de escrita; o backend continua protegendo o PTY
+contra escritores concorrentes e informa somente conflitos reais como
+Somente leitura. A Visão geral foi recolocada na barra lateral do projeto,
+evitando que layouts iniciados diretamente em terminais escondam as opções
+principais do projeto.
+
+Verificação: `make web-verify` PASS, `make build` PASS, `git diff --check` PASS,
+HTTP do Web validado e servidor reiniciado com o binário instalado.

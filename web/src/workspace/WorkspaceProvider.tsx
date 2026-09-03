@@ -56,7 +56,19 @@ function reducer(model: WorkspaceModel, action: Action): WorkspaceModel {
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
-const defaultSurface = (): WorkspaceSurface => ({ id: 'project-overview', type: 'overview', title: 'Overview', titleKey: 'nav.overview', closable: false });
+const defaultSurface = (projectId: string): WorkspaceSurface => {
+  const logicalKey = `project:${projectId}:overview`;
+  return {
+    id: logicalKey,
+    viewId: `view:${logicalKey}`,
+    logicalKey,
+    type: 'overview',
+    title: 'Overview',
+    titleKey: 'nav.overview',
+    closable: false,
+    data: { projectId },
+  };
+};
 
 export const WorkspaceProvider: React.FC<{
   projectId: string;
@@ -65,12 +77,12 @@ export const WorkspaceProvider: React.FC<{
   onSurfaceClosed?: (surface: WorkspaceSurface) => void | Promise<void>;
   children: React.ReactNode;
 }> = ({ projectId, initialLayout, saveLayout, onSurfaceClosed, children }) => {
-  const fallback = useMemo(() => createWorkspace(defaultSurface()), []);
+  const fallback = useMemo(() => createWorkspace(defaultSurface(projectId)), [projectId]);
   const [model, dispatch] = useReducer(reducer, fallback);
 
   useEffect(() => {
     const local = window.localStorage.getItem(workspaceStorageKey(projectId));
-    dispatch({ type: 'replace', model: deserializeWorkspace(initialLayout || local, fallback) });
+    dispatch({ type: 'replace', model: deserializeWorkspace(initialLayout || local, fallback, projectId) });
   }, [projectId, initialLayout, fallback]);
 
   useEffect(() => {

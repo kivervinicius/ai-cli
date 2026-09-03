@@ -186,9 +186,12 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 		}
 	}()
 
-	// 1. Pump stdout from child process to browser
+	// 1. Pump stdout from child process to browser.
+	// Buffer across reads so protocol frames (request or response) that
+	// span chunk boundaries never leak into the visible terminal.
 	go func() {
 		buf := make([]byte, 2048)
+		var pending []byte
 		for {
 			select {
 			case <-stopChan:
@@ -197,18 +200,46 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 				_ = rawConn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 				n, err := rawConn.Read(buf)
 				if n > 0 {
-					chunk := buf[:n]
-					trimmed := bytes.TrimSpace(chunk)
-					if (bytes.HasPrefix(trimmed, []byte("{\"version\":")) && bytes.Contains(trimmed, []byte("\"ok\":"))) || bytes.HasPrefix(trimmed, []byte("{\"ok\":")) {
-						// Skip RPC response frame from being displayed in terminal
-						continue
+					pending = append(pending, buf[:n]...)
+					for {
+						idx := bytes.IndexByte(pending, '\n')
+						if idx < 0 {
+							// Flush non-protocol partial data that cannot be a
+							// control frame (does not start with '{').
+							if len(pending) > 0 && pending[0] != '{' {
+								_ = safeWriteJSON(TerminalMessage{
+									Type: "output",
+									Data: string(pending),
+								})
+								pending = nil
+							} else if len(pending) > MaxProtocolPending {
+								// Oversized incomplete JSON: show as output rather than stall.
+								_ = safeWriteJSON(TerminalMessage{
+									Type: "output",
+									Data: string(pending),
+								})
+								pending = nil
+							}
+							break
+						}
+						line := pending[:idx+1]
+						pending = pending[idx+1:]
+						if isProtocolControlFrame(line) {
+							continue
+						}
+						_ = safeWriteJSON(TerminalMessage{
+							Type: "output",
+							Data: string(line),
+						})
 					}
-					_ = safeWriteJSON(TerminalMessage{
-						Type: "output",
-						Data: string(chunk),
-					})
 				}
 				if err != nil && !strings.Contains(err.Error(), "timeout") {
+					if len(pending) > 0 && !isProtocolControlFrame(pending) {
+						_ = safeWriteJSON(TerminalMessage{
+							Type: "output",
+							Data: string(pending),
+						})
+					}
 					return
 				}
 			}
@@ -272,4 +303,28 @@ func sendAttachedCommand(conn interface{ Write([]byte) (int, error) }, command p
 	}
 	_, err = conn.Write(append(data, '\n'))
 	return err
+}
+
+// MaxProtocolPending bounds incomplete JSON held while waiting for a newline
+// before treating the bytes as terminal output.
+const MaxProtocolPending = 64 * 1024
+
+// isProtocolControlFrame reports whether data is a Nexus Control RPC request
+// or response that must not be shown in the agent terminal.
+func isProtocolControlFrame(data []byte) bool {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return false
+	}
+	var probe map[string]json.RawMessage
+	if json.Unmarshal(trimmed, &probe) != nil {
+		return false
+	}
+	if _, hasCommand := probe["command"]; hasCommand {
+		return true
+	}
+	if _, hasOK := probe["ok"]; hasOK {
+		return true
+	}
+	return false
 }
