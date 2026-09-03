@@ -1,74 +1,85 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { toast, Toaster } from 'sonner';
 import type { RuntimeSession } from '../types';
-import { AttentionNotificationCard } from './AttentionNotificationCard';
+import { attentionMessageKey } from '../app/documentTitle';
+import { AttentionNotificationCard, shouldRenderAttentionCard } from './AttentionNotificationCard';
 
 export interface AttentionNotificationManagerProps {
   runtimes: RuntimeSession[];
+  focusedProjectId?: string;
   onFocusRuntime: (runtimeId: string) => void;
 }
 
 export const AttentionNotificationManager: React.FC<AttentionNotificationManagerProps> = ({
   runtimes,
+  focusedProjectId,
   onFocusRuntime,
 }) => {
-  const [dismissedIds, setDismissedIds] = useState<string[]>([]);
+  const [dismissedFingerprints, setDismissedFingerprints] = useState<string[]>([]);
   const activeToastIds = useRef<Map<string, string | number>>(new Map());
 
-  // Attention filter
-  const attentionRuntimes = runtimes.filter((r) => {
-    if (dismissedIds.includes(r.runtime_id)) return false;
-    return (
-      r.attention_reason === 'QUESTION' ||
-      r.attention_reason === 'APPROVAL' ||
-      r.state === 'WAITING' ||
-      r.state === 'APPROVAL'
-    );
+  // Toast only for honest needs_user with context, preferably for non-focused projects.
+  const attentionRuntimes = runtimes.filter((runtime) => {
+    if (!shouldRenderAttentionCard(runtime)) return false;
+    const fingerprint = attentionMessageKey(runtime);
+    if (dismissedFingerprints.includes(fingerprint)) return false;
+    if (focusedProjectId && runtime.project_id && runtime.project_id === focusedProjectId) {
+      return false;
+    }
+    return true;
   });
 
+  // One toast per message content (not per runtime).
+  const uniqueByFingerprint = new Map<string, RuntimeSession>();
+  for (const runtime of attentionRuntimes) {
+    const fingerprint = attentionMessageKey(runtime);
+    if (!uniqueByFingerprint.has(fingerprint)) {
+      uniqueByFingerprint.set(fingerprint, runtime);
+    }
+  }
+  const toastRuntimes = [...uniqueByFingerprint.values()];
+
   const handleDismiss = (runtimeId: string) => {
-    setDismissedIds((prev) => [...prev, runtimeId]);
-    const toastId = activeToastIds.current.get(runtimeId);
+    const runtime = runtimes.find((item) => item.runtime_id === runtimeId);
+    const fingerprint = runtime ? attentionMessageKey(runtime) : runtimeId;
+    setDismissedFingerprints((prev) => [...prev, fingerprint]);
+    const toastId = activeToastIds.current.get(fingerprint);
     if (toastId) {
       toast.dismiss(toastId);
-      activeToastIds.current.delete(runtimeId);
+      activeToastIds.current.delete(fingerprint);
     }
   };
 
   useEffect(() => {
-    // Current runtime IDs needing attention
-    const currentNeedingAttentionIds = new Set(attentionRuntimes.map((r) => r.runtime_id));
+    const currentFingerprints = new Set(toastRuntimes.map((runtime) => attentionMessageKey(runtime)));
 
-    // Dismiss toasts for runtimes that no longer require attention (e.g. responded or stopped)
-    activeToastIds.current.forEach((toastId, runtimeId) => {
-      if (!currentNeedingAttentionIds.has(runtimeId)) {
+    activeToastIds.current.forEach((toastId, fingerprint) => {
+      if (!currentFingerprints.has(fingerprint)) {
         toast.dismiss(toastId);
-        activeToastIds.current.delete(runtimeId);
+        activeToastIds.current.delete(fingerprint);
       }
     });
 
-    // Create or update toast for each attention runtime
-    attentionRuntimes.forEach((runtime) => {
-      const existingToastId = activeToastIds.current.get(runtime.runtime_id);
-      if (!existingToastId) {
-        const id = toast.custom(
-          () => (
-            <AttentionNotificationCard
-              runtime={runtime}
-              onFocusRuntime={onFocusRuntime}
-              onDismiss={handleDismiss}
-            />
-          ),
-          {
-            id: `attention-${runtime.runtime_id}`,
-            duration: Infinity, // Stay until answered or dismissed
-            dismissible: false,
-          }
-        );
-        activeToastIds.current.set(runtime.runtime_id, id);
-      }
+    toastRuntimes.forEach((runtime) => {
+      const fingerprint = attentionMessageKey(runtime);
+      if (activeToastIds.current.has(fingerprint)) return;
+      const id = toast.custom(
+        () => (
+          <AttentionNotificationCard
+            runtime={runtime}
+            onFocusRuntime={onFocusRuntime}
+            onDismiss={handleDismiss}
+          />
+        ),
+        {
+          id: `attention-${fingerprint}`,
+          duration: Infinity,
+          dismissible: false,
+        }
+      );
+      activeToastIds.current.set(fingerprint, id);
     });
-  }, [attentionRuntimes, onFocusRuntime]);
+  }, [toastRuntimes, onFocusRuntime]);
 
   return (
     <Toaster

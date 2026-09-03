@@ -8,7 +8,8 @@
     "test": "vitest run",
     "build:css": "node node_modules/@tailwindcss/cli/dist/index.mjs -i src/index.css -o dist/bundle.css --minify",
     "build:js": "node scripts/build.mjs",
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "verify": "node scripts/verify-report.mjs"
   },
   "dependencies": {
     "i18next": "^26.4.0",

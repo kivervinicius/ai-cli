@@ -54,6 +54,7 @@ type Config struct {
 	MaxConcurrency    int                            `json:"max_concurrency"`
 	Language          string                         `json:"language,omitempty"`
 	Intelligence      IntelligenceConfig             `json:"intelligence,omitempty"`
+	FlagAliases       map[string]map[string][]string `json:"flag_aliases,omitempty"` // alias -> provider -> flags
 }
 
 // NewDefaultConfig returns a well-configured default Configuration.

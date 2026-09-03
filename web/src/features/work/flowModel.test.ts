@@ -25,6 +25,74 @@ describe('Flow editor compatibility model', () => {
     expect(flowFromWorkPlan(workPlanFromFlow(flow, plan))).toEqual(flow);
   });
 
+  it('treats nullable API phase collections as empty', () => {
+    const malformed = {
+      ...fixture(),
+      phases: [
+        { ...fixture().phases[0], packages: null },
+        { ...fixture().phases[1], packages: null },
+      ],
+    } as unknown as WorkPlan;
+
+    expect(flowFromWorkPlan(malformed)).toMatchObject({ phases: [
+      { id: 'p1', title: 'Build', order: 1 },
+      { id: 'p2', title: 'Verify', order: 2 },
+    ], steps: [] });
+  });
+
+  it('normalizes null package dependencies so canvas render does not crash', () => {
+    const malformed = {
+      ...fixture(),
+      phases: [
+        {
+          ...fixture().phases[0],
+          packages: [
+            { ...fixture().phases[0].packages[0], dependencies: null },
+            { ...fixture().phases[0].packages[1], dependencies: null },
+          ],
+        },
+      ],
+    } as unknown as WorkPlan;
+    const flow = flowFromWorkPlan(malformed);
+    expect(flow.steps.every((step) => Array.isArray(step.dependencies))).toBe(true);
+    expect(() => executionWaves(flow)).not.toThrow();
+    for (const step of flow.steps) {
+      expect((step.dependencies || []).length).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('normalizes null package dependency arrays so canvas .length is safe', () => {
+    const malformed = {
+      ...fixture(),
+      phases: [
+        {
+          id: 'p1',
+          title: 'Build',
+          order: 1,
+          packages: [
+            {
+              id: 'A',
+              title: 'A',
+              goal: 'A',
+              priority: 'NORMAL',
+              status: 'READY',
+              dependencies: null,
+              role: 'architect',
+              assignment_strategy: 'AUTO',
+              acceptance_criteria: null,
+            },
+          ],
+        },
+      ],
+    } as unknown as WorkPlan;
+
+    const flow = flowFromWorkPlan(malformed);
+    expect(flow.steps[0].dependencies).toEqual([]);
+    expect(flow.steps[0].acceptanceCriteria).toEqual([]);
+    expect(() => executionWaves(flow)).not.toThrow();
+    expect((flow.steps[0].dependencies || []).length).toBe(0);
+  });
+
   it('computes deterministic A -> B||C -> D waves', () => {
     const flow = flowFromWorkPlan(fixture());
     expect(topologicalOrder(flow)).toEqual(['A','B','C','D']);

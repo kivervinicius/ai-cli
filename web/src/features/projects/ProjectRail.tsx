@@ -34,8 +34,8 @@ export const ProjectRail: React.FC<{
     { id: 'overview', label: t('nav.overview'), icon: Home },
     { id: 'agents', label: t('nav.agents'), icon: Bot },
     { id: 'resources', label: t('nav.resources'), icon: Gauge },
-    { id: 'maestro', label: 'Maestro', icon: BrainCircuit },
     { id: 'settings', label: t('nav.settings'), icon: Settings },
+    { id: 'maestro', label: t('rail.maestroMethod'), icon: BrainCircuit },
   ] as const;
 
   return (
@@ -50,7 +50,7 @@ export const ProjectRail: React.FC<{
           <span className="nx-brand-mark">N</span>
           <span>
             <strong>IAPro Nexus</strong>
-            <small>Powered by Maestro</small>
+            <small>{t('rail.maestroMention')}</small>
           </span>
           <IconButton
             className="nx-project-rail__mobile-close"

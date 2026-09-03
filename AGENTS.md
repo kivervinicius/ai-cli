@@ -6,6 +6,18 @@ O Nexus ainda não está em produção. São permitidas refatorações estrutura
 compatíveis com o objetivo do produto; não preserve implementações duplicadas
 somente por compatibilidade interna sem uma necessidade explícita.
 
+## Frontend (web)
+
+Após qualquer alteração em `web/`, rode `make web-verify` antes de declarar
+conclusão. O relatório canônico fica em `DEV/validation/FRONTEND_LATEST.md`.
+Gate vermelho bloqueia entrega. UI “quebrada” com testes verdes quase sempre
+significa binário antigo: `make build` + reiniciar `nexus web`.
+
+Arrays vindos da API Go podem ser JSON `null`. Nunca use `.length`/`.map` direto
+em `dependencies`, `phases`, `packages`, `generations`, etc. — normalize com
+`asArray` (`web/src/lib/safeArray.ts`) ou `(value || [])`. O gate
+`null-arrays` no `web-verify` rejeita acessos inseguros conhecidos.
+
 ## Interface de terminal
 
 - Todo fluxo visual/interativo de terminal deve usar o stack Charm já adotado:

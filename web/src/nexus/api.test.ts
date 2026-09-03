@@ -40,6 +40,30 @@ describe('nexus API request errors', () => {
   });
 });
 
+describe('WorkPlan response normalization', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('normalizes nullable phases and packages at the API boundary', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ plan: { id: 'plan-1', phases: [{ id: 'phase-1', packages: null }] }, revisions: [] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const detail = await nexusApi.getPlan('plan-1');
+
+    expect(detail.plan.phases).toEqual([{ id: 'phase-1', packages: [] }]);
+  });
+
+  it('turns a malformed plan list into an empty list instead of crashing', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(null) }));
+
+    await expect(nexusApi.getPlans('project-1')).resolves.toEqual([]);
+  });
+});
+
 describe('mission manual-control API routes', () => {
   beforeEach(() => {
     vi.unstubAllGlobals();

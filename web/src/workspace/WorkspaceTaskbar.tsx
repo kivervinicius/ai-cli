@@ -31,7 +31,8 @@ export const WorkspaceTaskbar: React.FC<{
   }, [project?.default_branch]);
 
   const working = agents.filter((a) => a.status === 'WORKING').length;
-  const attention = agents.filter((a) =>
+  // Agent health (FAILED/STALE/…) is not the same as Radar "needs you" waits.
+  const degraded = agents.filter((a) =>
     ['FAILED', 'STALE', 'RECOVERABLE', 'RATE_LIMITED'].includes(a.status)
   ).length;
 
@@ -67,10 +68,10 @@ export const WorkspaceTaskbar: React.FC<{
 
       {/* Center: Agents status */}
       <div className="nx-statusbar-center">
-        {attention > 0 ? (
+        {degraded > 0 ? (
           <span className="nx-statusbar-item" style={{ color: 'var(--nx-warning, #f59e0b)' }}>
             <AlertTriangle size={12} />
-            <span>{t('statusBar.attention', { count: attention, defaultValue: `${attention} precisam de atenção` })}</span>
+            <span>{t('statusBar.degraded', { count: degraded })}</span>
           </span>
         ) : working > 0 ? (
           <span className="nx-statusbar-item nx-statusbar-working">

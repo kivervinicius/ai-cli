@@ -16,6 +16,7 @@ export const FlowStepInspector: React.FC<{
 }> = ({ flow, step, agents, onChange, onAction }) => {
   if(!step) return <Card className="nx-flow-inspector nx-flow-inspector--empty"><strong>Select a Flow Step</strong><p>Assignment, dependencies, context and verification are edited here.</p></Card>;
   const candidates=flow.steps.filter((candidate)=>candidate.id!==step.id);
+  const deps=step.dependencies||[];
   return <Card className="nx-flow-inspector">
     <div className="nx-flow-inspector__header"><div><span className="nx-eyebrow">STEP INSPECTOR</span><h3>{step.title}</h3></div><Badge tone="brand">{step.assignmentStrategy}</Badge></div>
     <label><span>Title</span><Input value={step.title} onChange={(title)=>onChange({title})}/></label>
@@ -28,7 +29,7 @@ export const FlowStepInspector: React.FC<{
       <label><span>Provider restriction</span><Input value={step.provider||''} onChange={(provider)=>onChange({provider:provider||undefined})} placeholder="optional"/></label>
       <label><span>Profile restriction</span><Input value={step.profile||''} onChange={(profile)=>onChange({profile:profile||undefined})} placeholder="optional"/></label>
     </div>
-    <div className="nx-flow-inspector__section"><strong>Dependencies</strong><div className="nx-flow-dependencies">{candidates.map((candidate)=>{const checked=step.dependencies.includes(candidate.id);return <label key={candidate.id}><input type="checkbox" checked={checked} onChange={()=>onChange({dependencies:checked?step.dependencies.filter((id)=>id!==candidate.id):[...step.dependencies,candidate.id]})}/><span>{candidate.title}</span></label>;})}</div></div>
+    <div className="nx-flow-inspector__section"><strong>Dependencies</strong><div className="nx-flow-dependencies">{candidates.map((candidate)=>{const checked=deps.includes(candidate.id);return <label key={candidate.id}><input type="checkbox" checked={checked} onChange={()=>onChange({dependencies:checked?deps.filter((id)=>id!==candidate.id):[...deps,candidate.id]})}/><span>{candidate.title}</span></label>;})}</div></div>
     <label><span>Acceptance criteria · one per line</span><Textarea rows={4} value={joined(step.acceptanceCriteria)} onChange={(value)=>onChange({acceptanceCriteria:lines(value)})}/></label>
     <label><span>Relevant paths · one per line</span><Textarea rows={3} value={joined(step.relevantPaths)} onChange={(value)=>onChange({relevantPaths:lines(value)})}/></label>
     <label><span>Maestro skills · real catalog IDs only</span><Textarea rows={3} value={joined(step.maestroSkills)} onChange={(value)=>onChange({maestroSkills:lines(value)})}/></label>

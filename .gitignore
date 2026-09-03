@@ -1,4 +1,4 @@
-# Binaries
+# Binaries and archives
 /ai
 /nexus
 /dist/
@@ -7,6 +7,9 @@ bin/
 *.dll
 *.so
 *.dylib
+*.zip
+*.tar.gz
+*.7z
 
 # Logs and databases
 *.log
@@ -56,3 +59,7 @@ web/dist/
 !.yarn/plugins/
 !.yarn/releases/
 !.yarn/versions/
+
+# Ephemeral dated test/verification reports
+DEV/validation/FRONTEND_20*.md
+

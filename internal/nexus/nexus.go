@@ -264,10 +264,12 @@ func (n *Nexus) StartProjectShell(ctx context.Context, projectID string) (*regis
 		return nil, fmt.Errorf("project canonical path is empty")
 	}
 	return n.launcher.Launch(ctx, launcher.LaunchOptions{
-		Title:      "Shell · " + project.Name,
-		ProviderID: "shell",
-		ProfileID:  "local",
-		Workspace:  project.CanonicalPath,
+		Title:       "Shell · " + project.Name,
+		ProviderID:  "shell",
+		ProfileID:   "local",
+		Workspace:   project.CanonicalPath,
+		ProjectID:   project.ID,
+		ProjectName: project.Name,
 	})
 }
 
@@ -335,6 +337,8 @@ func (n *Nexus) StartAgent(ctx context.Context, agentID, provider, profile strin
 	}
 	sess, err := n.launcher.Launch(ctx, launcher.LaunchOptions{
 		AgentID:           agentID,
+		ProjectID:         proj.ID,
+		ProjectName:       proj.Name,
 		ProviderID:        provider,
 		ProfileID:         agentCfg.Profile,
 		ProviderSessionID: continuityLaunch.ProviderSessionID,
@@ -591,6 +595,8 @@ func (n *Nexus) RecoverAgent(ctx context.Context, agentID string) (*registry.Run
 	}
 	sess, err := n.launcher.Launch(ctx, launcher.LaunchOptions{
 		AgentID:           agentID,
+		ProjectID:         proj.ID,
+		ProjectName:       proj.Name,
 		ProviderID:        provider,
 		ProfileID:         profile,
 		ProviderSessionID: sessionID,

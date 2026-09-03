@@ -121,3 +121,13 @@ The Nexus Control Plane introduces a supervised runtime model where AI developer
 2. The background `SessionHost` runs the actual provider CLI (via PTY) and broadcasts stdout to all attached clients via a ring buffer.
 3. Attached user terminals send input which the `SessionHost` intercepts using a `SlashRouter`.
 4. Commands like `/nexus handoff` (or `/ai handoff`) trigger asynchronous transactional handoff routines that quiesce the current process, launch the target process, and safely link session IDs before stopping the source process.
+
+---
+
+## 6. Canonical Flags Normalization & Merged Help
+
+To provide seamless developer ergonomics across disparate AI coding tools, Nexus provides a unified flag normalization and help engine (`internal/control/flags`):
+
+- **Canonical Flag Translation**: Common universal options (`--yolo`, `-y`, `--continue`, `-c`, `--resume`, `-r`, `--print`, `-p`, `--effort`, `--plan`) are intercepted and translated to each CLI's native syntax before execution. Native options are never shadowed and remain 100% supported.
+- **Merged Help Pipeline**: Invoking `nexus <provider> --help` or `nexus help <provider>` inspects provider capabilities, generates an informative comparison banner of canonical aliases, and transparently passes through the complete native CLI help output.
+

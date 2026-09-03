@@ -107,13 +107,19 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
             setCustomTitle(msg.dynamic_title);
             if (onUpdateTitle) onUpdateTitle(runtimeId, msg.dynamic_title);
           }
-          pushNotifications.sendPush({
-            runtimeId,
-            projectName: msg.project_name,
-            reason: msg.attention_reason || 'QUESTION',
-            context: msg.context || msg.summary || 'Atenção necessária no terminal',
-            dynamicTitle: msg.dynamic_title,
-          });
+          const context = String(msg.context || msg.attention_context || '').trim();
+          const promptKind = String(msg.prompt_kind || '');
+          if (context && promptKind !== 'none') {
+            pushNotifications.sendPush({
+              runtimeId,
+              projectName: msg.project_name,
+              reason: msg.attention_reason || 'QUESTION',
+              context,
+              dynamicTitle: msg.dynamic_title,
+              fingerprint: msg.fingerprint || msg.attention_fingerprint,
+              promptKind,
+            });
+          }
         } else if (msg.type === 'error') {
           setErrorMsg(msg.data);
         }

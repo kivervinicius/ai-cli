@@ -304,8 +304,34 @@ func (r *Registry) UpdateTitle(runtimeID, title string) error {
 	return nil
 }
 
+// AttentionUpdate carries fail-closed attention metadata for a runtime.
+type AttentionUpdate struct {
+	State        RuntimeState
+	Reason       string
+	Context      string
+	PromptKind   string
+	Kind         string
+	Fingerprint  string
+	ProjectID    string
+	ProjectName  string
+	TaskSummary  string
+	DynamicTitle string
+}
+
 // UpdateAttention updates the attention metadata and dynamic title of a runtime session.
 func (r *Registry) UpdateAttention(runtimeID string, state RuntimeState, reason, context, projectName, taskSummary, dynamicTitle string) error {
+	return r.UpdateAttentionMeta(runtimeID, AttentionUpdate{
+		State:        state,
+		Reason:       reason,
+		Context:      context,
+		ProjectName:  projectName,
+		TaskSummary:  taskSummary,
+		DynamicTitle: dynamicTitle,
+	})
+}
+
+// UpdateAttentionMeta updates attention metadata including prompt kind and fingerprint.
+func (r *Registry) UpdateAttentionMeta(runtimeID string, update AttentionUpdate) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -316,20 +342,26 @@ func (r *Registry) UpdateAttention(runtimeID string, state RuntimeState, reason,
 			notFound = true
 			return
 		}
-		if state != "" {
-			s.State = state
+		if update.State != "" {
+			s.State = update.State
 		}
-		s.AttentionReason = reason
-		s.AttentionContext = context
-		if projectName != "" {
-			s.ProjectName = projectName
+		s.AttentionReason = update.Reason
+		s.AttentionContext = update.Context
+		s.PromptKind = update.PromptKind
+		s.AttentionKind = update.Kind
+		s.AttentionFingerprint = update.Fingerprint
+		if update.ProjectID != "" {
+			s.ProjectID = update.ProjectID
 		}
-		if taskSummary != "" {
-			s.LastTaskSummary = taskSummary
+		if update.ProjectName != "" {
+			s.ProjectName = update.ProjectName
 		}
-		if dynamicTitle != "" {
-			s.DynamicTitle = dynamicTitle
-			s.Title = dynamicTitle
+		if update.TaskSummary != "" {
+			s.LastTaskSummary = update.TaskSummary
+		}
+		if update.DynamicTitle != "" {
+			s.DynamicTitle = update.DynamicTitle
+			s.Title = update.DynamicTitle
 		}
 		s.UpdatedAt = time.Now()
 		fresh[runtimeID] = s

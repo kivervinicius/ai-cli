@@ -19,7 +19,13 @@ export function useNexusData() {
       const [projectList, workspaceList, runtimeList, providerList, profileList, eventList] = await Promise.all([
         nexus.listProjects(), api.getWorkspaces(), api.getRuntimes(), api.getProviders(), api.getProfiles(), api.getEvents(),
       ]);
-      setProjects(projectList); setWorkspaces(workspaceList); setRuntimes(runtimeList); setProviders(providerList); setProfiles(profileList); setEvents(eventList); setError('');
+      setProjects(Array.isArray(projectList) ? projectList : []);
+      setWorkspaces(Array.isArray(workspaceList) ? workspaceList : []);
+      setRuntimes(Array.isArray(runtimeList) ? runtimeList : []);
+      setProviders(Array.isArray(providerList) ? providerList : []);
+      setProfiles(Array.isArray(profileList) ? profileList : []);
+      setEvents(Array.isArray(eventList) ? eventList : []);
+      setError('');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to load Nexus data');
     } finally { setLoading(false); }
@@ -27,7 +33,12 @@ export function useNexusData() {
 
   const refreshAgents = useCallback(async (projectId?: string | null) => {
     if (!projectId) { setAgents([]); return; }
-    try { setAgents(await nexus.listAgents(projectId)); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load Agents'); }
+    try {
+      const list = await nexus.listAgents(projectId);
+      setAgents(Array.isArray(list) ? list : []);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to load Agents');
+    }
   }, []);
 
   useEffect(() => { void refreshGlobal(); const timer = window.setInterval(() => void refreshGlobal(), 5000); return () => window.clearInterval(timer); }, [refreshGlobal]);

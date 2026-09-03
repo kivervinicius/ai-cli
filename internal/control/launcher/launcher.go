@@ -20,6 +20,8 @@ import (
 type LaunchOptions struct {
 	RuntimeID         string
 	AgentID           string
+	ProjectID         string
+	ProjectName       string
 	Title             string
 	ProviderID        string
 	ProfileID         string
@@ -102,6 +104,8 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 	sess := registry.RuntimeSession{
 		RuntimeID:         opts.RuntimeID,
 		AgentID:           opts.AgentID,
+		ProjectID:         opts.ProjectID,
+		ProjectName:       opts.ProjectName,
 		Title:             title,
 		ProviderID:        opts.ProviderID,
 		ProfileID:         opts.ProfileID,

@@ -133,12 +133,16 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 				Data: sess.DynamicTitle,
 			})
 		}
-		if sess.AttentionReason != "" && sess.AttentionContext != "" {
+		if sess.AttentionReason != "" && sess.AttentionContext != "" && sess.PromptKind != "" && sess.PromptKind != "none" {
 			_ = safeWriteJSON(map[string]any{
 				"type":             "attention",
 				"runtime_id":       runtimeID,
 				"attention_reason": sess.AttentionReason,
+				"attention_kind":   sess.AttentionKind,
+				"prompt_kind":      sess.PromptKind,
+				"fingerprint":      sess.AttentionFingerprint,
 				"context":          sess.AttentionContext,
+				"project_id":       sess.ProjectID,
 				"project_name":     sess.ProjectName,
 				"dynamic_title":    sess.DynamicTitle,
 			})
@@ -162,7 +166,11 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 						"type":             "attention",
 						"runtime_id":       ev.RuntimeID,
 						"attention_reason": ev.Data["attention_reason"],
+						"attention_kind":   ev.Data["attention_kind"],
+						"prompt_kind":      ev.Data["prompt_kind"],
+						"fingerprint":      ev.Data["fingerprint"],
 						"context":          ev.Data["context"],
+						"project_id":       ev.Data["project_id"],
 						"project_name":     ev.Data["project_name"],
 						"dynamic_title":    ev.Data["dynamic_title"],
 						"summary":          ev.Summary,

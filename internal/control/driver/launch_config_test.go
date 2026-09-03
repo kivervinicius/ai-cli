@@ -50,3 +50,23 @@ func TestApplyLaunchConfigurationRejectsUnknownOption(t *testing.T) {
 		t.Fatal("unknown provider options must not be silently ignored")
 	}
 }
+
+func TestApplyLaunchConfigurationCanonicalAlias(t *testing.T) {
+	gotAGY, err := ApplyLaunchConfiguration("agy", "", nil, []string{"--yolo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantAGY := []string{"--dangerously-skip-permissions"}
+	if !reflect.DeepEqual(gotAGY, wantAGY) {
+		t.Fatalf("agy args=%v want %v", gotAGY, wantAGY)
+	}
+
+	gotCodex, err := ApplyLaunchConfiguration("codex", "", nil, []string{"--yolo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCodex := []string{"--dangerously-bypass-approvals-and-sandbox"}
+	if !reflect.DeepEqual(gotCodex, wantCodex) {
+		t.Fatalf("codex args=%v want %v", gotCodex, wantCodex)
+	}
+}

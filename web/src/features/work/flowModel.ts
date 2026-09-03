@@ -62,21 +62,25 @@ export function packageAssignment(pkg: WorkPackage): FlowAssignmentStrategy {
 export function flowFromWorkPlan(plan: WorkPlan): FlowDraftModel {
   const rawPolicy = plan.structured_facts?.[FLOW_POLICY_FACT];
   const steps: FlowStepModel[] = [];
-  plan.phases.forEach((phase) => phase.packages.forEach((pkg, order) => {
-    steps.push({
-      id: pkg.id, phaseId: phase.id, order, title: pkg.title, goal: pkg.goal, priority: pkg.priority, status: pkg.status,
-      dependencies: clone(pkg.dependencies), parallelGroup: pkg.parallel_group, role: pkg.role, taskRequirements: pkg.task_requirements,
-      assignmentStrategy: packageAssignment(pkg), agentId: pkg.agent_allocation, resourcePolicy: pkg.resource_policy, provider: pkg.provider, profile: pkg.profile,
-      maestroGates: clone(pkg.maestro_gates), maestroSkills: clone(pkg.maestro_skills), relevantPaths: clone(pkg.relevant_paths),
-      acceptanceCriteria: clone(pkg.acceptance_criteria), verificationRequirements: clone(pkg.verification_requirements),
-      sharedArtifacts: clone(pkg.shared_artifacts), compiledPrompt: pkg.compiled_prompt,
+  const phases = Array.isArray(plan?.phases) ? plan.phases : [];
+  phases.forEach((phase) => {
+    const packages = Array.isArray(phase?.packages) ? phase.packages : [];
+    packages.forEach((pkg, order) => {
+      steps.push({
+        id: pkg.id, phaseId: phase.id, order, title: pkg.title, goal: pkg.goal, priority: pkg.priority, status: pkg.status,
+        dependencies: clone(pkg.dependencies), parallelGroup: pkg.parallel_group, role: pkg.role, taskRequirements: pkg.task_requirements,
+        assignmentStrategy: packageAssignment(pkg), agentId: pkg.agent_allocation, resourcePolicy: pkg.resource_policy, provider: pkg.provider, profile: pkg.profile,
+        maestroGates: clone(pkg.maestro_gates), maestroSkills: clone(pkg.maestro_skills), relevantPaths: clone(pkg.relevant_paths),
+        acceptanceCriteria: clone(pkg.acceptance_criteria), verificationRequirements: clone(pkg.verification_requirements),
+        sharedArtifacts: clone(pkg.shared_artifacts), compiledPrompt: pkg.compiled_prompt,
+      });
     });
-  }));
+  });
   return {
     id: plan.id, projectId: plan.project_id, missionId: plan.mission_id, title: plan.title, description: plan.description,
     status: plan.status, revision: plan.current_revision, policy: rawPolicy === 'AUTONOMOUS' ? 'AUTONOMOUS' : 'GUIDED',
     policyStored: rawPolicy === 'GUIDED' || rawPolicy === 'AUTONOMOUS',
-    phases: plan.phases.map((phase) => ({ id: phase.id, title: phase.title, description: phase.description, order: phase.order })),
+    phases: phases.map((phase) => ({ id: phase.id, title: phase.title, description: phase.description, order: phase.order })),
     steps, structuredFacts: plan.structured_facts ? { ...plan.structured_facts } : undefined,
   };
 }
@@ -85,8 +89,10 @@ export function workPlanFromFlow(flow: FlowDraftModel, baseline: WorkPlan): Work
   const facts = flow.structuredFacts ? { ...flow.structuredFacts } : {};
   if (flow.policyStored || flow.policy !== 'GUIDED') facts[FLOW_POLICY_FACT] = flow.policy;
   else delete facts[FLOW_POLICY_FACT];
-  const phaseMap = new Map(flow.phases.map((phase) => [phase.id, { ...phase, packages: [] as WorkPackage[] }]));
-  [...flow.steps].sort((a,b) => phaseOrder(flow,a.phaseId)-phaseOrder(flow,b.phaseId) || a.order-b.order || a.id.localeCompare(b.id)).forEach((step) => {
+  const flowPhases = Array.isArray(flow?.phases) ? flow.phases : [];
+  const flowSteps = Array.isArray(flow?.steps) ? flow.steps : [];
+  const phaseMap = new Map(flowPhases.map((phase) => [phase.id, { ...phase, packages: [] as WorkPackage[] }]));
+  [...flowSteps].sort((a,b) => phaseOrder(flow,a.phaseId)-phaseOrder(flow,b.phaseId) || a.order-b.order || a.id.localeCompare(b.id)).forEach((step) => {
     let phase = phaseMap.get(step.phaseId);
     if (!phase) {
       phase = { id: step.phaseId, title: 'Flow', order: phaseMap.size + 1, packages: [] };
@@ -104,7 +110,7 @@ export function workPlanFromFlow(flow: FlowDraftModel, baseline: WorkPlan): Work
   return {
     ...baseline, id: flow.id, project_id: flow.projectId, mission_id: flow.missionId, title: flow.title, description: flow.description,
     status: flow.status, current_revision: flow.revision,
-    phases: flow.phases.map((meta) => {
+    phases: flowPhases.map((meta) => {
       const phase = phaseMap.get(meta.id)!;
       return { id: meta.id, title: meta.title, description: meta.description, order: meta.order, packages: phase.packages };
     }),
@@ -112,19 +118,20 @@ export function workPlanFromFlow(flow: FlowDraftModel, baseline: WorkPlan): Work
   };
 }
 
-function phaseOrder(flow: FlowDraftModel, phaseId: string): number { return flow.phases.find((phase) => phase.id === phaseId)?.order ?? Number.MAX_SAFE_INTEGER; }
+function phaseOrder(flow: FlowDraftModel, phaseId: string): number { return (flow.phases || []).find((phase) => phase.id === phaseId)?.order ?? Number.MAX_SAFE_INTEGER; }
 function compareStep(flow: FlowDraftModel, a: FlowStepModel, b: FlowStepModel): number { return phaseOrder(flow,a.phaseId)-phaseOrder(flow,b.phaseId) || a.order-b.order || a.id.localeCompare(b.id); }
 
 function dependencyMaps(flow: FlowDraftModel) {
+  const steps = Array.isArray(flow?.steps) ? flow.steps : [];
   const byId = new Map<string,FlowStepModel>();
-  for (const step of flow.steps) {
+  for (const step of steps) {
     if (!step.id) throw new Error('Flow Step id is required.');
     if (byId.has(step.id)) throw new Error(`duplicate Flow Step ${step.id}.`);
     byId.set(step.id,step);
   }
-  const indegree = new Map(flow.steps.map((step) => [step.id,0]));
+  const indegree = new Map(steps.map((step) => [step.id,0]));
   const dependents = new Map<string,string[]>();
-  for (const step of flow.steps) for (const dep of step.dependencies) {
+  for (const step of steps) for (const dep of (step.dependencies || [])) {
     if (dep === step.id) throw new Error(`${step.title}: self dependency.`);
     if (!byId.has(dep)) throw new Error(`${step.title}: unknown dependency ${dep}.`);
     indegree.set(step.id,(indegree.get(step.id) || 0)+1);
@@ -134,20 +141,22 @@ function dependencyMaps(flow: FlowDraftModel) {
 }
 
 export function topologicalOrder(flow: FlowDraftModel): string[] {
+  const steps = Array.isArray(flow?.steps) ? flow.steps : [];
   const {byId,indegree,dependents}=dependencyMaps(flow);
-  const ready=flow.steps.filter((step)=>(indegree.get(step.id)||0)===0).sort((a,b)=>compareStep(flow,a,b));
+  const ready=steps.filter((step)=>(indegree.get(step.id)||0)===0).sort((a,b)=>compareStep(flow,a,b));
   const out:string[]=[];
   while(ready.length){
     const step=ready.shift()!; out.push(step.id);
     const children=(dependents.get(step.id)||[]).map((id)=>byId.get(id)!).sort((a,b)=>compareStep(flow,a,b));
     for(const child of children){ indegree.set(child.id,(indegree.get(child.id)||0)-1); if(indegree.get(child.id)===0){ready.push(child);ready.sort((a,b)=>compareStep(flow,a,b));} }
   }
-  if(out.length!==flow.steps.length) throw new Error('Flow contains a dependency cycle.');
+  if(out.length!==steps.length) throw new Error('Flow contains a dependency cycle.');
   return out;
 }
 
 export function executionWaves(flow: FlowDraftModel): string[][] {
-  const {byId,indegree,dependents}=dependencyMaps(flow); const remaining=new Set(flow.steps.map((step)=>step.id)); const waves:string[][]=[];
+  const steps = Array.isArray(flow?.steps) ? flow.steps : [];
+  const {byId,indegree,dependents}=dependencyMaps(flow); const remaining=new Set(steps.map((step)=>step.id)); const waves:string[][]=[];
   while(remaining.size){
     const ready=[...remaining].filter((id)=>(indegree.get(id)||0)===0).map((id)=>byId.get(id)!).sort((a,b)=>compareStep(flow,a,b));
     if(!ready.length) throw new Error('Flow contains a dependency cycle.');
@@ -159,9 +168,11 @@ export function executionWaves(flow: FlowDraftModel): string[][] {
 
 export function validateFlow(flow: FlowDraftModel): string[] {
   const errors:string[]=[];
-  const phaseIds = new Set(flow.phases.map((phase) => phase.id));
+  const phases = Array.isArray(flow?.phases) ? flow.phases : [];
+  const steps = Array.isArray(flow?.steps) ? flow.steps : [];
+  const phaseIds = new Set(phases.map((phase) => phase.id));
   try { topologicalOrder(flow); } catch(error) { errors.push(error instanceof Error ? error.message : String(error)); }
-  for(const step of flow.steps){
+  for(const step of steps){
     if(!phaseIds.has(step.phaseId)) errors.push(`${step.title}: unknown phase ${step.phaseId}.`);
     if(step.assignmentStrategy==='EXISTING' && !step.agentId) errors.push(`${step.title}: EXISTING assignment requires an Agent.`);
     if((step.assignmentStrategy==='CREATE' || step.assignmentStrategy==='AUTO') && step.agentId) errors.push(`${step.title}: ${step.assignmentStrategy} assignment cannot fix an AgentID.`);
@@ -172,19 +183,34 @@ export function validateFlow(flow: FlowDraftModel): string[] {
 }
 
 export function updateStepLocalized(flow: FlowDraftModel, stepId:string, patch:Partial<FlowStepModel>):FlowDraftModel { return {...flow,steps:flow.steps.map((step)=>step.id===stepId?{...step,...patch}:step)}; }
-export function removeStepLocalized(flow:FlowDraftModel,stepId:string):FlowDraftModel { return {...flow,steps:flow.steps.filter((step)=>step.id!==stepId).map((step)=>({...step,dependencies:step.dependencies.filter((dep)=>dep!==stepId)}))}; }
+export function removeStepLocalized(flow:FlowDraftModel,stepId:string):FlowDraftModel {
+  return {
+    ...flow,
+    steps: flow.steps
+      .filter((step) => step.id !== stepId)
+      .map((step) => ({ ...step, dependencies: (step.dependencies || []).filter((dep) => dep !== stepId) })),
+  };
+}
 export function splitStepLocalized(flow:FlowDraftModel,stepId:string,ids:[string,string]):FlowDraftModel {
   const target=flow.steps.find((step)=>step.id===stepId); if(!target)return flow; const [firstId,secondId]=ids;
   const first={...target,id:firstId,title:`${target.title} · 1`,dependencies:clone(target.dependencies)};
   const second={...target,id:secondId,title:`${target.title} · 2`,order:target.order+1,dependencies:[firstId]};
-  return {...flow,steps:flow.steps.flatMap((step)=>step.id===stepId?[first,second]:[{...step,dependencies:step.dependencies.map((dep)=>dep===stepId?secondId:dep)}])};
+  return {
+    ...flow,
+    steps: flow.steps.flatMap((step) =>
+      step.id === stepId
+        ? [first, second]
+        : [{ ...step, dependencies: (step.dependencies || []).map((dep) => (dep === stepId ? secondId : dep)) }]
+    ),
+  };
 }
 
 export function expandStepLocalized(flow:FlowDraftModel,stepId:string):FlowDraftModel {
   const step=flow.steps.find((candidate)=>candidate.id===stepId);
   if(!step)return flow;
   const evidence=`Capture verification evidence for: ${step.title}.`;
-  const acceptanceCriteria=step.acceptanceCriteria.includes(evidence)?clone(step.acceptanceCriteria):[...step.acceptanceCriteria,evidence];
+  const currentAcceptance = Array.isArray(step.acceptanceCriteria) ? step.acceptanceCriteria : [];
+  const acceptanceCriteria=currentAcceptance.includes(evidence)?clone(currentAcceptance):[...currentAcceptance,evidence];
   const taskRequirements=step.taskRequirements?.trim() || `Work only on the approved Flow Step: ${step.goal || step.title}`;
   return updateStepLocalized(flow,stepId,{acceptanceCriteria,taskRequirements});
 }

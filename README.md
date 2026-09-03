@@ -243,6 +243,52 @@ nexus opencode         # OpenCode
 nexus agy              # AGY / Antigravity
 ```
 
+### Aliases Canônicos Universais & Interoperabilidade de Flags
+
+O Nexus normaliza as flags mais comuns da comunidade e as traduz automaticamente para as opções nativas de cada provedor, tanto em `nexus start <provider>` quanto no modo direto (`nexus <provider>`). **As flags nativas de cada ferramenta continuam 100% suportadas sem qualquer conflito.**
+
+| Alias Canônico | Descrição | Tradução no AGY | Tradução no Codex | Tradução no Claude |
+|---|---|---|---|---|
+| `--yolo` ou `-y` | Auto-aprova permissões e bypassa prompts | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` |
+| `--continue` ou `-c` | Continua a conversa mais recente | `--continue` | `resume --last` | `--continue` |
+| `--resume <id>` ou `-r <id>` | Retoma uma sessão específica | `--conversation=<id>` | `resume <id>` | `--resume <id>` |
+| `--print` ou `-p` | Modo não-interativo (print output) | `--print` | `exec` | `--print` |
+| `--effort <level>` | Esforço de raciocínio (low, medium, high) | `--effort <level>` | `-c model_reasoning_effort="<level>"` | — |
+| `--plan` | Inicia o agente em modo de planejamento | `--mode plan` | — | — |
+| `--accept-edits` | Inicia em modo de aceitação de edições | `--mode accept-edits` | — | — |
+
+Exemplos práticos:
+```bash
+nexus agy --yolo                   # Dispara agy com --dangerously-skip-permissions
+nexus start codex --yolo           # Inicia runtime supervisionado com bypass de sandbox/approvals
+nexus codex -c                     # Continua a última conversa do Codex de forma imediata
+nexus agy --resume 0192a...        # Conecta diretamente à conversa informada
+```
+
+#### Ajuda Integrada com Merge de CLI (`Merged Help`)
+
+Para consultar as opções de qualquer provedor sem perder a visão dos aliases suportados pelo Nexus, use:
+```bash
+nexus agy --help       # ou: nexus help agy
+nexus codex --help     # ou: nexus help codex
+nexus claude --help    # ou: nexus help claude
+```
+O Nexus renderiza no topo uma tabela comparativa com os **aliases canônicos aplicáveis àquele CLI** e, logo abaixo, exibe o **help oficial nativo completo** do binário.
+
+#### Aliases Customizados do Usuário
+
+Você pode registrar aliases personalizados adicionais no arquivo `~/.config/nexus/config.json`:
+```json
+{
+  "flag_aliases": {
+    "--fast": {
+      "agy": ["--effort", "low"],
+      "codex": ["-c", "model_reasoning_effort=\"low\""]
+    }
+  }
+}
+```
+
 ### Slash `/nexus` dentro de um terminal supervisionado
 
 Dentro de um runtime supervisionado, digite:

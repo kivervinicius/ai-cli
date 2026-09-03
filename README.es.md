@@ -63,6 +63,28 @@ nexus sessions                # sesiones recientes
 nexus doctor                  # diagnóstico local
 ```
 
+### Banderas Canónicas Universales y Ayuda Fusionada
+
+Nexus normaliza las opciones de CLI más utilizadas y las traduce automáticamente a cada proveedor:
+
+| Bandera Canónica | Descripción | Traducción en AGY | Traducción en Codex | Traducción en Claude |
+|---|---|---|---|---|
+| `--yolo` / `-y` | Omite confirmaciones y autoriza herramientas | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` |
+| `--continue` / `-c` | Continúa la última conversación | `--continue` | `resume --last` | `--continue` |
+| `--resume <id>` / `-r <id>` | Reanuda una sesión por ID | `--conversation=<id>` | `resume <id>` | `--resume <id>` |
+| `--print` / `-p` | Modo sin interfaz interactiva | `--print` | `exec` | `--print` |
+| `--effort <level>` | Esfuerzo de razonamiento (low, medium, high) | `--effort <level>` | `-c model_reasoning_effort="<level>"` | — |
+| `--plan` | Modo de planificación | `--mode plan` | — | — |
+
+Para consultar la ayuda fusionada:
+```bash
+nexus agy --help       # o: nexus help agy
+nexus codex --help     # o: nexus help codex
+nexus claude --help    # o: nexus help claude
+```
+Nexus presenta en primer lugar la tabla comparativa con los **aliases canónicos** y a continuación la **ayuda oficial completa** del binario.
+
+
 ## Desarrollo
 
 Requisitos: Go 1.25+, Bun y las CLIs de los proveedores deseados.

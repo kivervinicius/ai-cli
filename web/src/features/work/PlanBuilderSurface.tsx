@@ -26,6 +26,7 @@ import { composerGateForReadiness } from './composerModel';
 import { FlowCanvas } from './FlowCanvas';
 import { FlowStepInspector } from './FlowStepInspector';
 import { expandStepLocalized, flowFromWorkPlan, removeStepLocalized, splitStepLocalized, updateStepLocalized, validateFlow, workPlanFromFlow, type FlowDraftModel, type FlowStepModel } from './flowModel';
+import { normalizeWorkPlan } from './planBuilderModel';
 
 export const PlanBuilderSurface: React.FC<{
   project: Project;
@@ -62,12 +63,12 @@ export const PlanBuilderSurface: React.FC<{
   const loadPlans = useCallback(async () => {
     try {
       setLoading(true);
-      const list = await nexusApi.getPlans(project.id);
-      setPlans(list || []);
-      if (list && list.length > 0 && !selectedPlan) {
+      const list = (await nexusApi.getPlans(project.id) || []).map(normalizeWorkPlan);
+      setPlans(list);
+      if (list.length > 0 && !selectedPlan) {
         setSelectedPlan(list[0]);
         // Expand first phase by default
-        if (list[0].phases && list[0].phases.length > 0) {
+        if (list[0].phases.length > 0) {
           setExpandedPhases({ [list[0].phases[0].id]: true });
         }
       }
@@ -90,7 +91,7 @@ export const PlanBuilderSurface: React.FC<{
     if (!selectedPlan) { setRevisions([]); return; }
     nexusApi.getPlan(selectedPlan.id).then((detail) => {
       setRevisions(detail.revisions || []);
-      if (detail.plan.current_revision !== selectedPlan.current_revision) setSelectedPlan(detail.plan);
+      if (detail.plan.current_revision !== selectedPlan.current_revision) setSelectedPlan(normalizeWorkPlan(detail.plan));
     }).catch((error) => console.error('Failed to load plan revisions:', error));
   }, [selectedPlan?.id, selectedPlan?.current_revision]);
 
@@ -119,13 +120,14 @@ export const PlanBuilderSurface: React.FC<{
   }, [activeRun?.id, activeRun?.state]);
 
   const selectGeneratedPlan = (plan: WorkPlan) => {
-    setPlans((prev) => [plan, ...prev.filter((item) => item.id !== plan.id)]);
-    setSelectedPlan(plan);
+    const next = normalizeWorkPlan(plan);
+    setPlans((prev) => [next, ...prev.filter((item) => item.id !== next.id)]);
+    setSelectedPlan(next);
     setAutoGoal('');
     setClarification(null);
     setClarificationAnswers({});
-    if (plan.phases && plan.phases.length > 0) {
-      setExpandedPhases({ [plan.phases[0].id]: true });
+    if (next.phases.length > 0) {
+      setExpandedPhases({ [next.phases[0].id]: true });
     }
   };
 
@@ -185,10 +187,11 @@ export const PlanBuilderSurface: React.FC<{
 
   const persistPlan = async (nextPlan: WorkPlan, summary: string) => {
     const res = await nexusApi.updatePlan(nextPlan.id, nextPlan, summary);
-    setSelectedPlan(res.plan);
-    setPlans((prev) => prev.map((p) => (p.id === res.plan.id ? res.plan : p)));
+    const plan = normalizeWorkPlan(res.plan);
+    setSelectedPlan(plan);
+    setPlans((prev) => prev.map((p) => (p.id === plan.id ? plan : p)));
     setRevisions((prev) => [res.revision, ...prev]);
-    return res.plan;
+    return plan;
   };
 
   const patchPackage = async (phaseId: string, packageId: string, patch: Partial<WorkPackage>, summary: string) => {
@@ -241,8 +244,9 @@ export const PlanBuilderSurface: React.FC<{
     if (!selectedPlan || revision === selectedPlan.current_revision) return;
     try {
       const result = await nexusApi.restorePlanRevision(selectedPlan.id, revision);
-      setSelectedPlan(result.plan);
-      setPlans((prev) => prev.map((plan) => plan.id === result.plan.id ? result.plan : plan));
+      const plan = normalizeWorkPlan(result.plan);
+      setSelectedPlan(plan);
+      setPlans((prev) => prev.map((entry) => entry.id === plan.id ? plan : entry));
       setRevisions((prev) => [result.revision, ...prev]);
       setRevisionDiff(null);
     } catch (error) { console.error('Failed to restore plan revision:', error); }
@@ -281,8 +285,9 @@ export const PlanBuilderSurface: React.FC<{
     };
     try {
       const res = await nexusApi.updatePlan(selectedPlan.id, updatedPlan, 'Fase adicionada');
-      setSelectedPlan(res.plan);
-      setPlans((prev) => prev.map((p) => (p.id === res.plan.id ? res.plan : p)));
+      const plan = normalizeWorkPlan(res.plan);
+      setSelectedPlan(plan);
+      setPlans((prev) => prev.map((p) => (p.id === plan.id ? plan : p)));
       setExpandedPhases((prev) => ({ ...prev, [newPhase.id]: true }));
     } catch (e) {
       console.error('Failed to add phase:', e);
@@ -310,8 +315,9 @@ export const PlanBuilderSurface: React.FC<{
     };
     try {
       const res = await nexusApi.updatePlan(selectedPlan.id, updatedPlan, 'Pacote adicionado');
-      setSelectedPlan(res.plan);
-      setPlans((prev) => prev.map((p) => (p.id === res.plan.id ? res.plan : p)));
+      const plan = normalizeWorkPlan(res.plan);
+      setSelectedPlan(plan);
+      setPlans((prev) => prev.map((p) => (p.id === plan.id ? plan : p)));
     } catch (e) {
       console.error('Failed to add package:', e);
     }
@@ -712,11 +718,11 @@ export const PlanBuilderSurface: React.FC<{
                           </label>
                         </div>
 
-                        {pkg.acceptance_criteria && pkg.acceptance_criteria.length > 0 && (
+                        {(pkg.acceptance_criteria || []).length > 0 && (
                           <div style={{ marginTop: '8px', fontSize: '12px' }}>
                             <span style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>Critérios de Aceitação:</span>
                             <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
-                              {pkg.acceptance_criteria.map((c, i) => (
+                              {(pkg.acceptance_criteria || []).map((c, i) => (
                                 <li key={i}>{c}</li>
                               ))}
                             </ul>
@@ -805,7 +811,7 @@ export const PlanBuilderSurface: React.FC<{
               </div>
 
               <div style={{ fontSize: '13px', marginBottom: '12px' }}>
-                <div>Progresso: {activeRun.package_runs.filter((pkg) => pkg.state === 'VERIFIED').length} de {activeRun.package_runs.length} pacotes verificados</div>
+                <div>Progresso: {(activeRun.package_runs || []).filter((pkg) => pkg.state === 'VERIFIED').length} de {(activeRun.package_runs || []).length} pacotes verificados</div>
                 <div style={{ color: 'var(--color-text-muted)', fontSize: '12px' }}>Snapshot: {activeRun.execution_snapshot_id || '—'} · Rev {activeRun.plan_revision} · Iteração {activeRun.total_iterations}/{activeRun.contract.max_total_iterations}</div>
                 <div style={{ color: 'var(--color-text-muted)', fontSize: '12px' }}>
                   Tentativas permitidas: {activeRun.contract.max_retries} | Verificação: {activeRun.contract.require_verification ? 'Ativa' : 'Desativada'}
@@ -813,7 +819,7 @@ export const PlanBuilderSurface: React.FC<{
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-                {activeRun.package_runs.map((pr, idx) => (
+                {(activeRun.package_runs || []).map((pr, idx) => (
                   <div
                     key={pr.id}
                     style={{

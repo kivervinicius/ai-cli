@@ -19,6 +19,8 @@ import { NexusShell } from './NexusShell';
 import { WorkspaceSurfaceHost } from './WorkspaceSurfaceHost';
 import { agentConfigSurface, agentTerminalSurface, flowRunSurface, projectShellSurface, projectSurface } from './surfaces';
 import { agentForRuntime, terminalSurfaceIDForRuntime } from './runtimeAgentMapping';
+import { buildDocumentTitle } from './documentTitle';
+import { planFocusAttention, type RadarRuntimeItem } from './attentionRadarModel';
 import { resolveProjectSelection } from './projectSelection';
 import { useNexusData } from './useNexusData';
 import type { Agent, MissionRun, Project } from '../types';
@@ -106,7 +108,8 @@ export const NexusWorkspaceApp: React.FC<{ popoutSurface?: WorkspaceSurface }> =
             }}>N</div>
             <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Sessão Expirada ou Não Autenticada</h2>
             <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: 1.5, marginBottom: '24px' }}>
-              O servidor Nexus foi reiniciado ou a sessão anterior expirou. No terminal que iniciou o Nexus, copie o novo link de <strong>Bootstrap</strong>. Se o link não estiver mais disponível, encerre o servidor com <code>Ctrl+C</code> e execute <code>nexus web</code> novamente; depois abra a URL exibida.
+              Em <code>127.0.0.1</code>/<code>localhost</code>, reabra o mesmo link <strong>Bootstrap</strong> impresso no terminal do <code>nexus web</code> — o token local pode ser reutilizado enquanto o servidor estiver no ar.
+              Se o link não estiver mais disponível (ou se o bind não for loopback), encerre com <code>Ctrl+C</code>, rode <code>nexus web</code> de novo e abra a URL exibida.
             </p>
             <button
               type="button"
@@ -255,13 +258,17 @@ const WorkspaceCoordinator: React.FC<{
     () => [
       { id: 'projects', label: t('commands.open', { name: t('projectManager.desktopsTitle') }), group: t('commands.project'), keywords: ['workspace', 'desktops', 'hub'], run: () => openKind('projects') },
       { id: 'overview', label: t('commands.open', { name: t('nav.overview') }), group: t('commands.project'), keywords: ['home'], run: () => openKind('overview') },
+      { id: 'new-ai-session', label: 'New AI Session', group: t('commands.project'), keywords: ['agent', 'session', 'direct', 'create', 'terminal'], run: () => { openKind('work'); window.dispatchEvent(new CustomEvent('nexus:new-ai-session')); } },
       { id: 'project-shell', label: 'New Project Shell', group: t('commands.project'), keywords: ['shell', 'terminal', 'bash', 'powershell'], run: () => void shell() },
-      { id: 'new-ai-session', label: 'New AI Session', group: t('commands.project'), keywords: ['agent', 'session', 'direct', 'create'], run: () => { openKind('work'); window.dispatchEvent(new CustomEvent('nexus:new-ai-session')); } },
-      { id: 'work', label: 'Open Composer', group: t('commands.project'), keywords: ['composer', 'prompt', 'goal', 'plan'], run: () => openKind('work') },
-      { id: 'plan', label: 'Open Flow Runs', group: t('commands.project'), keywords: ['flow', 'mission', 'workplan', 'tasks'], run: () => openKind('missions') },
-      { id: 'agents', label: t('commands.open', { name: t('nav.agents') }), group: t('commands.project'), keywords: ['fleet', 'workers'], run: () => openKind('agents') },
+      { id: 'agents', label: t('commands.open', { name: t('nav.agents') }), group: t('commands.project'), keywords: ['fleet', 'workers', 'terminals'], run: () => openKind('agents') },
+      ...data.agents.flatMap((agent) => [
+        { id: `terminal-${agent.id}`, label: t('commands.open', { name: `${agent.name} terminal` }), group: t('nav.agents'), keywords: ['terminal', agent.role], run: () => terminal(agent) },
+        { id: `config-${agent.id}`, label: t('commands.configure', { name: agent.name }), group: t('nav.agents'), keywords: ['settings', agent.role], run: () => config(agent) },
+      ]),
+      { id: 'work', label: 'Open Composer (optional)', group: t('commands.project'), keywords: ['composer', 'prompt', 'goal', 'plan'], run: () => openKind('work') },
+      { id: 'plan', label: 'Open Flow Runs (optional)', group: t('commands.project'), keywords: ['flow', 'mission', 'workplan', 'tasks'], run: () => openKind('missions') },
       { id: 'resources', label: t('commands.open', { name: t('nav.resources') }), group: 'Nexus', keywords: ['quota', 'provider', 'accounts'], run: () => openKind('resources') },
-      { id: 'maestro', label: t('commands.open', { name: 'Maestro' }), group: 'Nexus', keywords: ['skills', 'process', 'verification'], run: () => openKind('maestro') },
+      { id: 'maestro', label: t('commands.open', { name: 'Maestro method' }), group: 'Nexus', keywords: ['skills', 'process', 'verification', 'community'], run: () => openKind('maestro') },
       { id: 'maestro-control', label: t('maestroControl.title'), group: 'Nexus', keywords: ['assist', 'autonomous', 'mode'], run: () => setMaestroControlOpen(true) },
       { id: 'project-manager', label: t('projectManager.title'), group: t('commands.project'), keywords: ['switch', 'create', 'workspace'], run: () => openKind('projects') },
       { id: 'sessions', label: t('commands.open', { name: t('nav.sessions') }), group: t('commands.project'), keywords: ['resume', 'continuity'], run: () => openKind('sessions') },
@@ -275,10 +282,6 @@ const WorkspaceCoordinator: React.FC<{
         keywords: ['flow', 'run', 'mission', run.state],
         run: () => open(flowRunSurface(run.id, `Flow Run · ${run.id.slice(-6)}`)),
       })),
-      ...data.agents.flatMap((agent) => [
-        { id: `terminal-${agent.id}`, label: t('commands.open', { name: `${agent.name} terminal` }), group: t('nav.agents'), keywords: ['terminal', agent.role], run: () => terminal(agent) },
-        { id: `config-${agent.id}`, label: t('commands.configure', { name: agent.name }), group: t('nav.agents'), keywords: ['settings', agent.role], run: () => config(agent) },
-      ]),
       { id: 'welcome', label: t('welcome.title'), group: t('commands.help'), keywords: ['guide', 'help', 'onboarding'], run: () => setWelcomeOpen(true) },
       { id: 'tour', label: t('commands.tour'), group: t('commands.help'), keywords: ['help', 'onboarding'], run: () => setTour(true) },
     ],
@@ -299,6 +302,14 @@ const WorkspaceCoordinator: React.FC<{
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+  }, [project.id]);
+
+  useEffect(() => {
+    const onShell = () => {
+      void shell();
+    };
+    window.addEventListener('nexus:project-shell', onShell);
+    return () => window.removeEventListener('nexus:project-shell', onShell);
   }, [project.id]);
 
   const handleProjectUpdated = (updated: Project) => {
@@ -357,11 +368,37 @@ const WorkspaceCoordinator: React.FC<{
     />
   );
 
+  const handleFocusAttention = (item: RadarRuntimeItem | { runtimeId: string }) => {
+    const runtimeId = item.runtimeId;
+    const runtime = data.runtimes.find((entry) => entry.runtime_id === runtimeId);
+    const projectId = 'projectId' in item && item.projectId ? item.projectId : runtime?.project_id;
+    const agentId = 'agentId' in item && item.agentId ? item.agentId : runtime?.agent_id;
+    const agentName =
+      (agentId && data.agents.find((agent) => agent.id === agentId)?.name) ||
+      runtime?.dynamic_title ||
+      runtime?.title;
+
+    const actions = planFocusAttention(
+      { projectId, agentId, runtimeId },
+      { currentProjectId: project.id, runtime, agentName }
+    );
+
+    for (const action of actions) {
+      if (action.type === 'switch-project') {
+        const next = data.projects.find((entry) => entry.id === action.projectId);
+        if (next) setProject(next);
+      } else if (action.type === 'open-agent-terminal') {
+        open(agentTerminalSurface(action.agentId, action.title, '', action.runtimeId || ''));
+      } else if (action.type === 'open-project-shell') {
+        open(projectShellSurface(action.projectId, action.runtimeId, action.title));
+      } else if (action.type === 'refresh-agents') {
+        void data.refreshAgents(action.projectId).catch(() => undefined);
+      }
+    }
+  };
+
   const handleFocusRuntime = (runtimeId: string) => {
-    const runtime = data.runtimes.find((item) => item.runtime_id === runtimeId);
-    const matchingAgent = runtime ? agentForRuntime(runtime, data.agents) : undefined;
-    if (matchingAgent) terminal(matchingAgent);
-    else openKind('legacy-runtimes');
+    handleFocusAttention({ runtimeId });
   };
 
   // Sync dynamic titles & attention icons to workspace surfaces and browser document.title
@@ -374,15 +411,7 @@ const WorkspaceCoordinator: React.FC<{
       }
     });
 
-    // Update document title if runtimes need attention
-    const needingAttention = data.runtimes.filter(
-      (r) => r.attention_reason === 'QUESTION' || r.attention_reason === 'APPROVAL'
-    );
-    if (needingAttention.length > 0) {
-      document.title = `(${needingAttention.length} ❓) Nexus | ${project.name} - Atenção Necessária`;
-    } else {
-      document.title = `Nexus | ${project.name}`;
-    }
+    document.title = buildDocumentTitle(project.name, data.runtimes);
   }, [data.runtimes, data.agents, project.name, project.id]);
 
   return (
@@ -400,6 +429,7 @@ const WorkspaceCoordinator: React.FC<{
         onOpenMaestroControl={() => setMaestroControlOpen(true)}
         onSettings={() => openKind('settings')}
         onFocusRuntime={handleFocusRuntime}
+        onFocusAttention={handleFocusAttention}
       >
         {shellError && <div className="nx-workspace-global-error" role="alert">{shellError}</div>}
         {renderer}

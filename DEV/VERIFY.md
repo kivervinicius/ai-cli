@@ -1,5 +1,49 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## Radar falso + terminal “connecting” — 2026-09-03
+
+- Go: `go test ./internal/control/host` — PASS
+  (lista numerada sozinha não vira pergunta; lixo `\uFFFD`/box-drawing rejeitado;
+  `Select an option` + `1. …` continua `choice`)
+- Web: `make web-verify` → [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md) — PASS
+  (radar colapsa mensagens iguais; honesty usa `sanitizeAttentionText`;
+  WS `?runtime_id=`; erro fatal para reconnect; taskbar “agentes degradados”)
+- Runtime: `make install` + reinício de `nexus web` + `pkill` dos `__control-host` velhos
+- Browser smoke: Radar **ok** / “Nenhum terminal ativo” sem hosts;
+  AgentTerminal mostra `error` + “Use Recover/Start…” em vez de `connecting` eterno
+
+## Organizador de terminais + radar — 2026-09-03
+
+Cobertura automatizada do P0:
+
+- Go: `go test ./internal/control/host ./internal/control/notify` — PASS
+  (shortcuts/`[y/n]` isolado silenciam; yn real + free_text; clear on `thinking...`;
+  OS notify só com evidência + dedupe de fingerprint)
+- Web: `make web-verify` → [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md) — PASS
+  (título sem emoji/`(N ❓)`; fingerprints de mensagem iguais colapsam; Sim/Não só se `yn`;
+  radar/focus model; i18n parity)
+- Embed sync: `web/dist` ≡ `internal/control/web/dist` após o gate
+
+Caminho manual ainda necessário no ambiente do operador (depende de `make build` +
+reinício de `nexus web`): dois Projetos, pergunta yn real vs chrome de help, e
+notificação de SO com a aba fechada.
+
+## `null.forEach` no Flow — 2026-09-03
+
+O bundle servido foi regenerado a partir de `flowModel.ts`, que trata
+`plan.phases` e `phase.packages` não-array como coleções vazias. A regressão
+para payloads nulos passou em `yarn test src/features/work/flowModel.test.ts`
+(9/9), e `yarn build` atualizou `internal/control/web/dist`.
+
+Nesta execução, `yarn typecheck` também passou.
+
+## Normalização de WorkPlan — 2026-09-03
+
+`web/src/nexus/workPlan.ts` passou a ser a fronteira de normalização para
+todos os endpoints que retornam WorkPlan, cobrindo planos e fases nulos antes
+do acesso da UI. Verificação atual: testes focados (19/19), `yarn lint`,
+`yarn typecheck` e `yarn build` — PASS.
+
 ## Tabela TUI de uso — 2026-09-02
 
 `nexus usage` usa a tabela navegável do Charm Bubbles. O filtro cobre
@@ -112,3 +156,8 @@ All business logic lives in `internal/nexus/` (service layer). Web and TUI consu
 - Mission execution/orchestration (scaffold only)
 - Full E2E verification with live providers
 - Performance benchmarks
+
+<!-- frontend-verify:latest -->
+## Frontend gate — 2026-09-03T12:45:37Z
+
+Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).

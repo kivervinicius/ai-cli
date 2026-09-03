@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -175,7 +176,14 @@ func (a *AuthManager) ExchangeBootstrapToken(token string) (*Session, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	if a.usedBootstrap || token == "" || token != a.bootstrapToken {
+	if token == "" || token != a.bootstrapToken {
+		return nil, false
+	}
+	// Remote/private binds keep one-time consume. Loopback reuses the printed
+	// Bootstrap URL for the life of the process so local re-auth does not
+	// require restarting `nexus web` after a cookie loss or accidental consume.
+	loopback := a.isLoopbackListen()
+	if a.usedBootstrap && !loopback {
 		return nil, false
 	}
 
@@ -199,9 +207,20 @@ func (a *AuthManager) ExchangeBootstrapToken(token string) (*Session, bool) {
 		ExpiresAt:    now.Add(sessionTTL),
 		LastActiveAt: now,
 	}
-	a.usedBootstrap = true
+	if !loopback {
+		a.usedBootstrap = true
+	}
 	a.sessions[sessID] = sess
 	return sess, true
+}
+
+func (a *AuthManager) isLoopbackListen() bool {
+	host := strings.TrimSpace(a.listenHost)
+	if host == "" || strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func (a *AuthManager) entropyReader() io.Reader {

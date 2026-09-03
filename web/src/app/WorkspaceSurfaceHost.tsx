@@ -104,8 +104,13 @@ export const WorkspaceSurfaceHost: React.FC<{
         project={project}
         agents={agents}
         onOpenAgent={terminal}
-        onOpenWork={() => open('work')}
-        onOpenPlan={() => open('missions')}
+        onNewAISession={() => {
+          open('work');
+          window.dispatchEvent(new CustomEvent('nexus:new-ai-session'));
+        }}
+        onProjectShell={() => window.dispatchEvent(new CustomEvent('nexus:project-shell'))}
+        onOpenComposer={() => open('work')}
+        onOpenFlow={() => open('missions')}
       />
     );
 
@@ -159,7 +164,11 @@ export const WorkspaceSurfaceHost: React.FC<{
   if (surface.type === 'terminal')
     return surface.data?.agentId ? (
       <div className="nx-agent-terminal-surface">
-        <AgentTerminal agentId={surface.data.agentId} initialPrompt={surface.data.initialPrompt} />
+        <AgentTerminal
+          agentId={surface.data.agentId}
+          runtimeId={surface.data.runtimeId}
+          initialPrompt={surface.data.initialPrompt}
+        />
       </div>
     ) : (
       <EmptyState title={t('surfaces.terminalUnavailable')} />

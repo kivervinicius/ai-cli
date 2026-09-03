@@ -3,9 +3,12 @@ import { Eye, Keyboard, Shield, ShieldAlert, Unplug } from 'lucide-react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import {
+  TERMINAL_MAX_RECONNECT_ATTEMPTS,
   agentTerminalWebSocketURL,
+  isFatalTerminalAttachError,
   normalizeInitialPrompt,
   normalizeTerminalRole,
+  terminalAttachFailureMessage,
   terminalReconnectDelay,
   type TerminalRole,
 } from './agentTerminalModel';
@@ -13,9 +16,10 @@ import { pushNotifications } from '../notifications/PushNotificationManager';
 
 export const AgentTerminal: React.FC<{
   agentId: string;
+  runtimeId?: string;
   initialPrompt?: string;
   onClose?: () => void;
-}> = ({ agentId, initialPrompt, onClose }) => {
+}> = ({ agentId, runtimeId, initialPrompt, onClose }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [role, setRole] = useState<TerminalRole>('VIEW_ONLY');
@@ -30,6 +34,8 @@ export const AgentTerminal: React.FC<{
     let disposed = false;
     let reconnectAttempt = 0;
     let reconnectTimer: number | undefined;
+    let openedOnce = false;
+    let stopReconnect = false;
     const roleRef: { current: TerminalRole } = { current: 'VIEW_ONLY' };
     const kickoffRef = { current: normalizeInitialPrompt(initialPrompt), sent: false };
 
@@ -72,8 +78,30 @@ export const AgentTerminal: React.FC<{
       }
     };
 
-    const scheduleReconnect = () => {
-      if (disposed || reconnectTimer !== undefined) return;
+    const failPermanently = (detail?: string) => {
+      stopReconnect = true;
+      if (reconnectTimer !== undefined) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = undefined;
+      }
+      setConnection('ERROR');
+      setMessage(terminalAttachFailureMessage(detail));
+    };
+
+    const scheduleReconnect = (detail?: string) => {
+      if (disposed || stopReconnect || reconnectTimer !== undefined) return;
+      if (detail && isFatalTerminalAttachError(detail)) {
+        failPermanently(detail);
+        return;
+      }
+      if (!openedOnce && reconnectAttempt >= TERMINAL_MAX_RECONNECT_ATTEMPTS) {
+        failPermanently(detail);
+        return;
+      }
+      if (openedOnce && reconnectAttempt >= TERMINAL_MAX_RECONNECT_ATTEMPTS) {
+        failPermanently(detail || 'Conexão com o terminal perdida.');
+        return;
+      }
       const delay = terminalReconnectDelay(reconnectAttempt++);
       setConnection('CONNECTING');
       setMessage(`Reconnecting Agent terminal in ${delay}ms…`);
@@ -84,18 +112,19 @@ export const AgentTerminal: React.FC<{
     };
 
     const connect = async () => {
-      if (disposed) return;
+      if (disposed || stopReconnect) return;
       setConnection('CONNECTING');
-      setMessage('');
+      if (!openedOnce) setMessage('');
 
-      if (disposed) return;
-
-      const ws = new WebSocket(agentTerminalWebSocketURL(window.location.protocol, window.location.host, agentId));
+      const ws = new WebSocket(
+        agentTerminalWebSocketURL(window.location.protocol, window.location.host, agentId, runtimeId)
+      );
       wsRef.current = ws;
       roleRef.current = 'VIEW_ONLY';
       setRole('VIEW_ONLY');
 
       ws.onopen = () => {
+        openedOnce = true;
         reconnectAttempt = 0;
         setConnection('CONNECTED');
         setMessage('');
@@ -114,23 +143,31 @@ export const AgentTerminal: React.FC<{
             maybeSendKickoff();
           } else if (payload.type === 'runtime_changed') {
             setMessage('Runtime generation changed — rebinding terminal…');
-            // The server currently closes the generation-bound socket after this
-            // event. Closing proactively also keeps this client compatible with a
-            // future server that leaves the old transport open for a grace period.
             ws.close(1012, 'runtime generation changed');
           } else if (payload.type === 'title' && payload.data) {
             setCustomTitle(payload.data);
           } else if (payload.type === 'attention') {
             if (payload.dynamic_title) setCustomTitle(payload.dynamic_title);
-            pushNotifications.sendPush({
-              runtimeId: payload.runtime_id || agentId,
-              projectName: payload.project_name,
-              reason: payload.attention_reason || 'QUESTION',
-              context: payload.context || payload.summary || 'Atenção necessária no terminal',
-              dynamicTitle: payload.dynamic_title,
-            });
+            const context = String(payload.context || payload.attention_context || '').trim();
+            const promptKind = String(payload.prompt_kind || '');
+            if (context && promptKind !== 'none') {
+              pushNotifications.sendPush({
+                runtimeId: payload.runtime_id || runtimeId || agentId,
+                projectName: payload.project_name,
+                reason: payload.attention_reason || 'QUESTION',
+                context,
+                dynamicTitle: payload.dynamic_title,
+                fingerprint: payload.fingerprint || payload.attention_fingerprint,
+                promptKind,
+              });
+            }
           } else if (payload.type === 'error') {
-            setMessage(String(payload.data ?? 'Terminal error'));
+            const detail = String(payload.data ?? 'Terminal error');
+            setMessage(detail);
+            if (isFatalTerminalAttachError(detail)) {
+              failPermanently(detail);
+              ws.close(1011, 'fatal attach error');
+            }
           }
         } catch {
           term.write(event.data);
@@ -138,7 +175,7 @@ export const AgentTerminal: React.FC<{
       };
 
       ws.onerror = () => {
-        if (!disposed) {
+        if (!disposed && !stopReconnect) {
           setConnection('ERROR');
           setMessage('Terminal transport error — reconnecting…');
         }
@@ -146,7 +183,7 @@ export const AgentTerminal: React.FC<{
 
       ws.onclose = () => {
         if (wsRef.current === ws) wsRef.current = null;
-        if (disposed) return;
+        if (disposed || stopReconnect) return;
         setConnection('DISCONNECTED');
         scheduleReconnect();
       };
@@ -170,6 +207,7 @@ export const AgentTerminal: React.FC<{
 
     return () => {
       disposed = true;
+      stopReconnect = true;
       if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
       observer.disconnect();
       document.removeEventListener('visibilitychange', visibility);
@@ -177,7 +215,7 @@ export const AgentTerminal: React.FC<{
       wsRef.current?.close();
       term.dispose();
     };
-  }, [agentId, initialPrompt]);
+  }, [agentId, runtimeId, initialPrompt]);
 
   const requestControl = () => {
     const ws = wsRef.current;
@@ -193,6 +231,8 @@ export const AgentTerminal: React.FC<{
     }
   };
 
+  const connected = connection === 'CONNECTED';
+
   return (
     <section className="nx-agent-terminal" aria-label={`Terminal for Agent ${agentId}`}>
       <header className="nx-agent-terminal__header">
@@ -201,27 +241,31 @@ export const AgentTerminal: React.FC<{
           <span data-state={connection}>{connection.toLowerCase()}</span>
         </div>
         <div className="nx-agent-terminal__status">
-          <span data-role={role}>
-            {role === 'CONTROL' ? <Keyboard size={13} /> : <Eye size={13} />}
-            {role}
-          </span>
+          {connected ? (
+            <span data-role={role}>
+              {role === 'CONTROL' ? <Keyboard size={13} /> : <Eye size={13} />}
+              {role}
+            </span>
+          ) : null}
           {message && (
             <span className="nx-terminal-message">
               <Unplug size={12} />
               {message}
             </span>
           )}
-          {role === 'CONTROL' ? (
-            <button type="button" onClick={releaseControl} title="Release control">
-              <Shield size={13} />
-              Release
-            </button>
-          ) : (
-            <button type="button" onClick={requestControl} title="Take control">
-              <ShieldAlert size={13} />
-              Take Control
-            </button>
-          )}
+          {connected ? (
+            role === 'CONTROL' ? (
+              <button type="button" onClick={releaseControl} title="Release control">
+                <Shield size={13} />
+                Release
+              </button>
+            ) : (
+              <button type="button" onClick={requestControl} title="Take control">
+                <ShieldAlert size={13} />
+                Take Control
+              </button>
+            )
+          ) : null}
           {onClose && (
             <button type="button" onClick={onClose}>
               Detach

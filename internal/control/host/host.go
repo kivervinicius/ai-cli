@@ -79,15 +79,28 @@ func NewSessionHost(cfg Config) (*SessionHost, error) {
 		prefixRouter: NewSlashPrefixRouter(),
 	}
 
-	sh.detector = NewAttentionDetector(cfg.Session.RuntimeID, cfg.Session.ProviderID, cfg.Session.ProfileID, cfg.Cwd, func(reason, context, dynamicTitle string, state registry.RuntimeState) {
-		sh.mu.Lock()
-		sh.session.State = state
-		sh.session.AttentionReason = reason
-		sh.session.AttentionContext = context
-		sh.session.DynamicTitle = dynamicTitle
-		sh.session.Title = dynamicTitle
-		sh.mu.Unlock()
-	})
+	sh.detector = NewAttentionDetectorWithProject(
+		cfg.Session.RuntimeID,
+		cfg.Session.ProviderID,
+		cfg.Session.ProfileID,
+		cfg.Cwd,
+		cfg.Session.ProjectID,
+		cfg.Session.ProjectName,
+		func(reason, context, dynamicTitle string, state registry.RuntimeState) {
+			sh.mu.Lock()
+			sh.session.State = state
+			sh.session.AttentionReason = reason
+			sh.session.AttentionContext = context
+			sh.session.DynamicTitle = dynamicTitle
+			sh.session.Title = dynamicTitle
+			if sh.detector != nil {
+				sh.session.PromptKind = sh.detector.lastPrompt
+				sh.session.AttentionKind = sh.detector.lastKind
+				sh.session.AttentionFingerprint = sh.detector.lastFingerprint
+			}
+			sh.mu.Unlock()
+		},
+	)
 
 	return sh, nil
 }

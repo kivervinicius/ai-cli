@@ -1,19 +1,7 @@
 import type { WorkPackage, WorkPlan } from '../../types';
+import { normalizeWorkPlan } from '../../nexus/workPlan';
 
-/** Normalize nullable collections from older/API-generated plan payloads. */
-export function normalizeWorkPlan(plan: WorkPlan): WorkPlan {
-  return {
-    ...plan,
-    phases: (plan.phases || []).map((phase) => ({
-      ...phase,
-      packages: (phase.packages || []).map((pkg) => ({
-        ...pkg,
-        dependencies: pkg.dependencies || [],
-        acceptance_criteria: pkg.acceptance_criteria || [],
-      })),
-    })),
-  };
-}
+export { normalizeWorkPlan } from '../../nexus/workPlan';
 
 function clonePlan(plan: WorkPlan): WorkPlan {
   const normalized = normalizeWorkPlan(plan);
@@ -46,12 +34,13 @@ export function splitPackage(plan: WorkPlan, phaseId: string, packageId: string,
     throw new Error(`package ${newPackageId} already exists`);
   }
   const source = phase.packages[index];
-  if ((source.acceptance_criteria || []).length < 2) {
+  const criteria = source.acceptance_criteria || [];
+  if (criteria.length < 2) {
     throw new Error('split requires at least two acceptance criteria');
   }
-  const midpoint = Math.ceil(source.acceptance_criteria.length / 2);
-  const firstAcceptance = source.acceptance_criteria.slice(0, midpoint);
-  const secondAcceptance = source.acceptance_criteria.slice(midpoint);
+  const midpoint = Math.ceil(criteria.length / 2);
+  const firstAcceptance = criteria.slice(0, midpoint);
+  const secondAcceptance = criteria.slice(midpoint);
   const first: WorkPackage = { ...source, title: `${source.title} · Parte 1`, acceptance_criteria: firstAcceptance };
   const second: WorkPackage = {
     ...source,

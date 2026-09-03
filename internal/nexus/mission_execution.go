@@ -115,6 +115,7 @@ func (n *Nexus) executeAgentPrompt(ctx context.Context, agentID, workspace, prom
 
 	sess, err := n.launcher.Launch(ctx, launcher.LaunchOptions{
 		AgentID:     agent.ID,
+		ProjectID:   agent.ProjectID,
 		ProviderID:  cfg.Provider,
 		ProfileID:   cfg.Profile,
 		Workspace:   workspace,

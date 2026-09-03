@@ -3,16 +3,17 @@ import type { RuntimeSession } from '../types';
 import { AttentionNotificationManager } from './AttentionNotificationManager';
 
 /**
- * AttentionIntermediationBanner is refactored to use Sonner with Untitled UI styling.
- * Preserves exact props signature for complete backwards compatibility with all callers.
+ * AttentionIntermediationBanner hosts Sonner toasts for honest needs_user waits.
  */
 export const AttentionIntermediationBanner: React.FC<{
   runtimes: RuntimeSession[];
+  focusedProjectId?: string;
   onFocusRuntime: (runtimeId: string) => void;
-}> = ({ runtimes, onFocusRuntime }) => {
+}> = ({ runtimes, focusedProjectId, onFocusRuntime }) => {
   return (
     <AttentionNotificationManager
       runtimes={runtimes}
+      focusedProjectId={focusedProjectId}
       onFocusRuntime={onFocusRuntime}
     />
   );

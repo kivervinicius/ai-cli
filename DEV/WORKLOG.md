@@ -1,5 +1,96 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-03 — Correção radar falso + terminal preso em connecting
+
+- **Problema**: Radar “precisa de você” com texto quebrado; clique abria terminal em
+  `connecting` eterno; taskbar misturava saúde de Agente com espera real.
+- **Backend**: `attention.go` deixa de tratar lista numerada sozinha como choice;
+  rejeita contexto com `\uFFFD`/box-drawing; WS aceita `?runtime_id=` no attach.
+- **Frontend**: `AgentTerminal` passa `runtimeId`, limita reconnect e mostra Recover/Start;
+  radar deduplica linhas + sanitiza texto; taskbar usa “agentes degradados”.
+- **Verificação**: host tests + `make web-verify` PASS; `make install`; smoke no browser
+  (Radar ok sem hosts; terminal com erro explícito de attach).
+
+## 2026-09-03 — Normalização Avançada de Comandos, Merged Help e Reorganização Documental
+
+- **Objetivo**: Expandir o sistema de flags canônicas universais para múltiplos provedores (`--continue`, `-c`, `--resume`, `-r`, `--print`, `-p`, `--effort`), prover uma experiência de ajuda unificada e enriquecida (`Merged Help`) ao inspecionar opções de provedores e reorganizar estruturalmente toda a documentação de engenharia e usuário.
+- **Implementação**:
+  - `internal/control/flags/normalizer.go`:
+    - Adicionado suporte a flags com valor (`TakesValue`) e interpolação de template `{value}`.
+    - Suporte nativo a `--continue` / `-c` (AGY/Claude: `--continue`, Codex: `resume --last`).
+    - Suporte a `--resume <id>` / `-r <id>` (AGY: `--conversation=<id>`, Claude: `--resume <id>`, Codex: `resume <id>`).
+    - Suporte a `--print` / `-p` (AGY/Claude: `--print`, Codex: `exec`).
+    - Suporte a `--effort <level>` (AGY: `--effort <level>`, Codex: `-c model_reasoning_effort="<level>"`).
+  - `internal/control/flags/help.go` e `provider_help.go`:
+    - Criado `RenderMergedHelp` e `ShowProviderHelp`: captura a saída do binário oficial e insere no topo uma tabela comparativa elegante dos aliases canônicos universais do Nexus e as flags nativas correspondentes.
+  - `internal/app/app.go`:
+    - Interceptação de flags de ajuda (`--help`, `-h`, `help`) em comandos diretos de provedores (`nexus agy --help`, `nexus codex -h`, `nexus help claude`), renderizando o Merged Help formatado.
+    - Atualização da ajuda geral `usage()` (`nexus help`) detalhando os aliases canônicos universais e o recurso de Merged Help.
+  - Documentação & Governança:
+    - Atualizados `README.md` (PT-BR), `README.en.md` (EN) e `README.es.md` (ES) com seção dedicada de Aliases Canônicos Universais e Merged Help.
+    - Atualizado `ARCHITECTURE.md` detalhando o pipeline de normalização e ajuda unificada.
+    - Reestruturado `DEV/INDEX.md` como Master Index temático (Governança, Arquitetura, Matrizes, Frontend e Histórico de Releases).
+    - Atualizados `DEV/CONTEXT.md` e `DEV/HANDOFF.md`.
+- **Verificação**:
+  - Testes de flags: `TestNormalizeYolo`, `TestNormalizeCustomUserAliases`, `TestRenderMergedHelp` aprovados.
+  - Testes de app: `TestControlPlaneCLICommands` aprovado.
+  - Testes manuais: `nexus agy --help`, `nexus codex --help`, `nexus help claude` testados e validados no terminal.
+  - Binário final compilado e instalado em `/home/desenvolvedor/.local/bin/nexus`.
+
+## 2026-09-03 — Organizador de terminais + radar de atenção (P0)
+
+- **Loop principal**: Projeto → terminais (Agent/Shell) → radar global → foco cross-project.
+- **Backend**: `project_id` no `RuntimeSession`; classificador fail-closed (`prompt_kind`, fingerprint);
+  OS notify via `internal/control/notify` só em `needs_user`/`error` com evidência.
+- **Frontend**: título sem `(N ❓)`; Sim/Não só se `yn`; toast/radar colapsam mensagem idêntica;
+  Overview/rail/palette/i18n reordenados (Composer/Flow/Maestro opcionais).
+- **Verificação**: `go test ./internal/control/host ./internal/control/notify` PASS;
+  `make web-verify` / `DEV/validation/FRONTEND_LATEST.md` PASS.
+- **Manual residual**: reiniciar `nexus web` com binário novo (`make build`) para validar
+  toast SO com browser fechado e clique do radar entre dois Projetos ao vivo.
+
+## 2026-09-03 — Correção de `null.forEach` no Flow
+
+- **Causa**: o bundle embutido ainda usava `flowFromWorkPlan` sem normalizar
+  `phases`/`packages` nulos vindos da API.
+- **Correção**: mantida a normalização defensiva no modelo e adicionada
+  regressão para coleções de fases nulas; bundle Web embutido recompilado.
+- **Verificação**: `yarn test src/features/work/flowModel.test.ts` (9 testes)
+  e `yarn build` passaram. `yarn typecheck` continua bloqueado por erros
+  preexistentes em `NexusDemoApp.tsx` e traduções.
+
+## 2026-09-03 — Normalização na fronteira da API
+
+- **Implementação**: criada `web/src/nexus/workPlan.ts`; todos os endpoints
+  que retornam WorkPlan (`getPlans`, `getPlan`, `createPlan`, resolução,
+  atualização e restauração) normalizam respostas antes de entregá-las à UI.
+  Respostas que não são listas também viram lista vazia.
+- **Cobertura**: testes de API para `packages: null` e lista nula; suíte
+  frontend completa passou com 140 testes.
+
+## 2026-09-02 — Sistema Unificado de Aliases e Normalização de Flags nos CLIs
+
+- **Objetivo**: Permitir o uso de apelidos universais amplamente conhecidos na comunidade (como `--yolo` / `-y`, `--plan`, etc.) de forma transparente em qualquer provedor de IA gerenciado pelo Nexus (`agy`, `codex`, `claude`, etc.), mantendo suporte 100% retrocompatível às flags nativas de cada CLI e evitando duplicações acidentais.
+- **Implementação**:
+  - `internal/control/flags/normalizer.go`: Criado pacote e motor de normalização de flags (`flags.Normalize`), mapeando apelidos canônicos universais:
+    - `--yolo` e `-y`:
+      - `agy`: `--dangerously-skip-permissions`
+      - `claude`: `--dangerously-skip-permissions`
+      - `codex`: `--dangerously-bypass-approvals-and-sandbox`
+    - `--plan`:
+      - `agy`: `--mode plan`
+    - `--accept-edits`:
+      - `agy`: `--mode accept-edits`
+    - Suporte a aliases adicionais customizados pelo usuário através do campo `flag_aliases` no arquivo de configuração do Nexus (`Config.FlagAliases`).
+  - `internal/control/driver/launch_config.go`: Integrado `flags.Normalize` dentro de `ApplyLaunchConfiguration`, garantindo que sessões iniciadas via `nexus start`, Workspace OS (REST `/api/v1/runtimes`), `nexus continue` e `nexus handoff` normalizem automaticamente todos os argumentos recebidos.
+  - `internal/app/app.go`: Integrado `flags.Normalize` na execução direta interativa e em lote (`executeProviderWithSmartSelection`), permitindo usar diretamente `nexus agy --yolo` ou `nexus codex:work --yolo`.
+  - `internal/core/config/config.go`: Adicionado campo `FlagAliases map[string]map[string][]string` ao struct `Config`.
+- **Testes & Gates**:
+  - Adicionado `TestNormalizeYolo` e `TestNormalizeCustomUserAliases` em `internal/control/flags/normalizer_test.go`.
+  - Adicionado `TestApplyLaunchConfigurationCanonicalAlias` em `internal/control/driver/launch_config_test.go`.
+  - Suíte completa de testes (`go test -v ./...`) executada e 100% aprovada.
+  - Binário `nexus` compilado e instalado em `/home/desenvolvedor/.local/bin/nexus`.
+
 ## 2026-09-02 — Isolamento Estrito do Control Directory do gnome-keyring-daemon
 
 - **Diagnóstico**: O `dbus-daemon` da sessão privada gerava mensagens de erro `Failed to activate service 'org.freedesktop.secrets': timed out` durante a execução do `agy`. O motivo era que o comando anterior `gnome-keyring-daemon --start` tentava conectar ao socket de controle padrão `/run/user/1000/keyring` (pertencente à sessão do host desktop), não assumindo o barramento privado e forçando o `dbus-daemon` a disparar auto-ativação até estourar o timeout padrão de 25 segundos.

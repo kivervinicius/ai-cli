@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/nexus"
 )
 
@@ -423,13 +424,22 @@ func (s *Server) routeAgent(h *NexusHandler) http.HandlerFunc {
 		path := strings.TrimPrefix(r.URL.Path, "/api/v1/agents/")
 		parts := strings.Split(path, "/")
 
-		// WebSocket terminal: /api/v1/agents/:id/terminal
+		// WebSocket terminal: /api/v1/agents/:id/terminal[?runtime_id=…]
 		if len(parts) == 2 && parts[1] == "terminal" && r.Method == http.MethodGet {
 			agentID := parts[0]
-			runtimeID, err := h.resolveAgentRuntimeID(agentID)
-			if err != nil {
-				writeError(w, http.StatusNotFound, "agent has no active runtime: "+err.Error())
-				return
+			runtimeID := strings.TrimSpace(r.URL.Query().Get("runtime_id"))
+			if runtimeID != "" {
+				if _, ok := registry.DefaultRegistry().Get(runtimeID); !ok {
+					writeError(w, http.StatusNotFound, "runtime not found: "+runtimeID)
+					return
+				}
+			} else {
+				var err error
+				runtimeID, err = h.resolveAgentRuntimeID(agentID)
+				if err != nil {
+					writeError(w, http.StatusNotFound, "agent has no active runtime: "+err.Error())
+					return
+				}
 			}
 			s.terminal.HandleWebSocket(w, r, agentID, runtimeID)
 			return

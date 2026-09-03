@@ -4,14 +4,19 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/kivervinicius/ai-cli/internal/control/flags"
+	"github.com/kivervinicius/ai-cli/internal/core/config"
 )
 
 // ApplyLaunchConfiguration converts the subset of Agent configuration that is
 // truthfully supported by provider CLIs into command arguments. Unsupported
 // values return an error instead of being silently ignored.
 func ApplyLaunchConfiguration(provider, model string, options map[string]any, baseArgs []string) ([]string, error) {
-	args := append([]string(nil), baseArgs...)
 	provider = strings.ToLower(strings.TrimSpace(provider))
+	cfg, _ := config.LoadConfig()
+	normalizedBaseArgs := flags.Normalize(provider, baseArgs, cfg.FlagAliases)
+	args := append([]string(nil), normalizedBaseArgs...)
 	model = strings.TrimSpace(model)
 	if model != "" {
 		switch provider {

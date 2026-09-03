@@ -17,9 +17,11 @@ import { LanguagePicker } from './components/LanguagePicker';
 import { WorkspaceTaskbar } from '../workspace/WorkspaceTaskbar';
 import { nexus } from '../nexus/api';
 import { AttentionIntermediationBanner } from '../components/AttentionIntermediationBanner';
+import { GlobalAttentionRadar } from '../components/GlobalAttentionRadar';
 import { pushNotifications } from '../notifications/PushNotificationManager';
 import { InAppNotificationCenter } from '../notifications/InAppNotificationCenter';
 import type { Agent, Project, RuntimeSession } from '../types';
+import type { RadarRuntimeItem } from './attentionRadarModel';
 
 export const NexusShell: React.FC<{
   project: Project;
@@ -35,6 +37,7 @@ export const NexusShell: React.FC<{
   onOpenMaestroControl: () => void;
   onSettings: () => void;
   onFocusRuntime?: (runtimeId: string) => void;
+  onFocusAttention?: (item: RadarRuntimeItem) => void;
 }> = ({
   project,
   agents,
@@ -49,10 +52,12 @@ export const NexusShell: React.FC<{
   onOpenMaestroControl,
   onSettings,
   onFocusRuntime,
+  onFocusAttention,
 }) => {
   const { t } = useTranslation();
-  const working = agents.filter((agent) => agent.status === 'WORKING').length;
-  const attention = agents.filter((agent) =>
+  const agentList = Array.isArray(agents) ? agents : [];
+  const working = agentList.filter((agent) => agent.status === 'WORKING').length;
+  const attention = agentList.filter((agent) =>
     ['FAILED', 'STALE', 'RECOVERABLE', 'RATE_LIMITED'].includes(agent.status)
   ).length;
   const [sysInfo, setSysInfo] = useState<{
@@ -102,6 +107,15 @@ export const NexusShell: React.FC<{
             <span className="nx-topbar__path" title={project.canonical_path}>
               {project.canonical_path}
             </span>
+
+            <GlobalAttentionRadar
+              runtimes={runtimes}
+              currentProjectId={project.id}
+              onFocus={(item) => {
+                if (onFocusAttention) onFocusAttention(item);
+                else if (onFocusRuntime) onFocusRuntime(item.runtimeId);
+              }}
+            />
           </div>
 
           {/* Right Status Controls */}
@@ -164,12 +178,7 @@ export const NexusShell: React.FC<{
               onClick={async () => {
                 const perm = await pushNotifications.requestPermission();
                 if (perm === 'granted') {
-                  pushNotifications.sendPush({
-                    runtimeId: 'test',
-                    projectName: project.name,
-                    reason: 'TASK_COMPLETED',
-                    context: 'Notificações push ativadas com sucesso para o IAPro Nexus!',
-                  });
+                  pushNotifications.confirmEnabled(project.name);
                 }
               }}
             >
@@ -195,6 +204,7 @@ export const NexusShell: React.FC<{
           {/* Attention & Intermediation Alert Banner */}
           <AttentionIntermediationBanner
             runtimes={runtimes}
+            focusedProjectId={project.id}
             onFocusRuntime={(rtId) => {
               if (onFocusRuntime) onFocusRuntime(rtId);
             }}

@@ -59,6 +59,10 @@ type RuntimeSession struct {
 	Transport         string            `json:"transport,omitempty"`
 	AttentionReason   string            `json:"attention_reason,omitempty"`
 	AttentionContext  string            `json:"attention_context,omitempty"`
+	PromptKind        string            `json:"prompt_kind,omitempty"` // yn | choice | free_text | none
+	AttentionKind     string            `json:"attention_kind,omitempty"` // needs_user | working | completed | error | idle
+	AttentionFingerprint string         `json:"attention_fingerprint,omitempty"`
+	ProjectID         string            `json:"project_id,omitempty"`
 	ProjectName       string            `json:"project_name,omitempty"`
 	LastTaskSummary   string            `json:"last_task_summary,omitempty"`
 	DynamicTitle      string            `json:"dynamic_title,omitempty"`

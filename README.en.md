@@ -230,6 +230,52 @@ nexus opencode         # OpenCode
 nexus agy              # AGY / Antigravity
 ```
 
+### Universal Canonical Aliases & Flag Interoperability
+
+Nexus normalizes the most popular community CLI flags and translates them transparently to each provider's native options, both under supervised mode (`nexus start <provider>`) and direct invocation (`nexus <provider>`). **Native CLI flags remain 100% supported without any conflict.**
+
+| Canonical Alias | Description | AGY Translation | Codex Translation | Claude Translation |
+|---|---|---|---|---|
+| `--yolo` or `-y` | Auto-approve permissions & bypass prompts | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` |
+| `--continue` or `-c` | Continue most recent conversation | `--continue` | `resume --last` | `--continue` |
+| `--resume <id>` or `-r <id>` | Resume a specific session by ID | `--conversation=<id>` | `resume <id>` | `--resume <id>` |
+| `--print` or `-p` | Non-interactive mode (print output) | `--print` | `exec` | `--print` |
+| `--effort <level>` | Reasoning effort (low, medium, high) | `--effort <level>` | `-c model_reasoning_effort="<level>"` | — |
+| `--plan` | Start session in planning mode | `--mode plan` | — | — |
+| `--accept-edits` | Start session in accept edits mode | `--mode accept-edits` | — | — |
+
+Examples:
+```bash
+nexus agy --yolo                   # Dispatches agy with --dangerously-skip-permissions
+nexus start codex --yolo           # Starts supervised runtime with sandbox bypass
+nexus codex -c                     # Continues most recent Codex conversation immediately
+nexus agy --resume 0192a...        # Connects directly to the specified conversation
+```
+
+#### Integrated Merged Help (`nexus <provider> --help`)
+
+To inspect options for any provider with visibility of all supported Nexus aliases, run:
+```bash
+nexus agy --help       # or: nexus help agy
+nexus codex --help     # or: nexus help codex
+nexus claude --help    # or: nexus help claude
+```
+Nexus prints a prominent comparison table displaying the **canonical aliases applicable to that tool** followed immediately by the **complete official CLI help**.
+
+#### Custom User Aliases
+
+You can define additional custom aliases in `~/.config/nexus/config.json`:
+```json
+{
+  "flag_aliases": {
+    "--fast": {
+      "agy": ["--effort", "low"],
+      "codex": ["-c", "model_reasoning_effort=\"low\""]
+    }
+  }
+}
+```
+
 ### `/nexus` slash commands inside a supervised runtime
 
 ```text

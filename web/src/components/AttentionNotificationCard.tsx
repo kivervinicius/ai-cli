@@ -3,11 +3,33 @@ import { AlertCircle, HelpCircle, Send, Terminal, X, Check } from 'lucide-react'
 import { api } from '../api';
 import type { RuntimeSession } from '../types';
 import { sanitizeAttentionText } from './attentionText';
+import { isHonestNeedsUser } from '../app/documentTitle';
 
 export interface AttentionNotificationCardProps {
   runtime: RuntimeSession;
   onFocusRuntime: (runtimeId: string) => void;
   onDismiss: (runtimeId: string) => void;
+}
+
+export function shouldRenderAttentionCard(runtime: RuntimeSession): boolean {
+  return isHonestNeedsUser(runtime);
+}
+
+/** Pure UI contract: Yes/No only for honest yn waits. */
+export function attentionCardActions(runtime: RuntimeSession): {
+  showYesNo: boolean;
+  showTextInput: boolean;
+  showOpenTerminal: boolean;
+} {
+  if (!shouldRenderAttentionCard(runtime)) {
+    return { showYesNo: false, showTextInput: false, showOpenTerminal: false };
+  }
+  const promptKind = runtime.prompt_kind || 'free_text';
+  return {
+    showYesNo: promptKind === 'yn',
+    showTextInput: promptKind === 'yn' || promptKind === 'free_text' || promptKind === 'choice',
+    showOpenTerminal: true,
+  };
 }
 
 export const AttentionNotificationCard: React.FC<AttentionNotificationCardProps> = ({
@@ -19,14 +41,15 @@ export const AttentionNotificationCard: React.FC<AttentionNotificationCardProps>
   const [sending, setSending] = useState(false);
 
   const projName = sanitizeAttentionText(runtime.project_name, 'Projeto');
-  const reason = runtime.attention_reason || (runtime.state === 'APPROVAL' ? 'APPROVAL' : 'QUESTION');
-  const rawContext = runtime.attention_context || runtime.dynamic_title;
-  const sanitizedContext = sanitizeAttentionText(rawContext, 'O agente requer atenção no terminal.');
-  const contextText = /[\p{L}\p{N}]/u.test(sanitizedContext) ? sanitizedContext : 'O agente requer atenção no terminal.';
+  const promptKind = runtime.prompt_kind || 'free_text';
+  const isApproval = runtime.attention_reason === 'APPROVAL';
+  const contextText = sanitizeAttentionText(runtime.attention_context, '');
   const runtimeLabel = runtime.runtime_id.length > 16 ? `${runtime.runtime_id.slice(0, 16)}…` : runtime.runtime_id;
+  const actions = attentionCardActions(runtime);
 
-  const isApproval = reason === 'APPROVAL';
-  const isQuestion = reason === 'QUESTION';
+  if (!contextText) {
+    return null;
+  }
 
   const handleSend = async (text: string) => {
     if (!text.trim() || sending) return;
@@ -47,24 +70,19 @@ export const AttentionNotificationCard: React.FC<AttentionNotificationCardProps>
       className="nx-uui-notification"
       role="alertdialog"
       aria-live="assertive"
-      aria-label={`${isApproval ? 'Aprovação Requerida' : 'Pergunta do Agente'} em ${projName}`}
+      aria-label={`${isApproval ? 'Aprovação requerida' : 'Espera do agente'} em ${projName}`}
     >
       <div className="nx-uui-notification__container">
-        {/* Left Icon with Untitled UI colored circular background */}
-        <div className={`nx-uui-notification__icon-wrap nx-uui-notification__icon-wrap--${isApproval ? 'rose' : isQuestion ? 'amber' : 'brand'}`}>
-          {isApproval && <AlertCircle className="nx-uui-notification__icon text-rose-400" size={20} />}
-          {isQuestion && <HelpCircle className="nx-uui-notification__icon text-amber-400" size={20} />}
-          {!isApproval && !isQuestion && <Terminal className="nx-uui-notification__icon text-indigo-400" size={20} />}
+        <div className={`nx-uui-notification__icon-wrap nx-uui-notification__icon-wrap--${isApproval ? 'rose' : 'amber'}`}>
+          {isApproval ? <AlertCircle className="nx-uui-notification__icon text-rose-400" size={20} /> : <HelpCircle className="nx-uui-notification__icon text-amber-400" size={20} />}
         </div>
 
-        {/* Center Content */}
         <div className="nx-uui-notification__content">
-          {/* Header Row: Badge, Title & Close */}
           <div className="nx-uui-notification__header">
             <div className="nx-uui-notification__badges">
               <span className="nx-uui-badge nx-uui-badge--brand">{projName}</span>
               <span className={`nx-uui-badge nx-uui-badge--${isApproval ? 'rose' : 'amber'}`}>
-                {isApproval ? 'Aprovação Requerida' : isQuestion ? 'Pergunta do Agente' : 'Atenção'}
+                {isApproval ? 'Aprovação' : promptKind === 'yn' ? 'Sim/Não' : promptKind === 'choice' ? 'Escolha' : 'Resposta'}
               </span>
               <span className="nx-uui-notification__id" title={runtime.runtime_id}>
                 {runtimeLabel}
@@ -81,31 +99,32 @@ export const AttentionNotificationCard: React.FC<AttentionNotificationCardProps>
             </button>
           </div>
 
-          {/* Message / Question text */}
-          <p className="nx-uui-notification__text">
-            {contextText}
-          </p>
+          <p className="nx-uui-notification__text">{contextText}</p>
 
-          {/* Quick Action Buttons & Input Form in Untitled UI style */}
           <div className="nx-uui-notification__footer">
             <div className="nx-uui-notification__quick-actions">
-              <button
-                type="button"
-                className="nx-uui-btn nx-uui-btn--primary"
-                onClick={() => handleSend('y')}
-                disabled={sending}
-              >
-                <Check size={13} />
-                <span>Sim (y)</span>
-              </button>
-              <button
-                type="button"
-                className="nx-uui-btn nx-uui-btn--secondary"
-                onClick={() => handleSend('n')}
-                disabled={sending}
-              >
-                <span>Não (n)</span>
-              </button>
+              {actions.showYesNo ? (
+                <>
+                  <button
+                    type="button"
+                    className="nx-uui-btn nx-uui-btn--primary"
+                    onClick={() => handleSend('y')}
+                    disabled={sending}
+                  >
+                    <Check size={13} />
+                    <span>Sim (y)</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="nx-uui-btn nx-uui-btn--secondary"
+                    onClick={() => handleSend('n')}
+                    disabled={sending}
+                  >
+                    <span>Não (n)</span>
+                  </button>
+                </>
+              ) : null}
+              {actions.showOpenTerminal ? (
               <button
                 type="button"
                 className="nx-uui-btn nx-uui-btn--tertiary"
@@ -114,34 +133,36 @@ export const AttentionNotificationCard: React.FC<AttentionNotificationCardProps>
                 <Terminal size={13} />
                 <span>Ver Terminal</span>
               </button>
+              ) : null}
             </div>
 
-            {/* Response Input */}
-            <form
-              className="nx-uui-notification__form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void handleSend(inputText);
-              }}
-            >
-              <input
-                type="text"
-                className="nx-uui-input"
-                placeholder="Digitar resposta personalizada..."
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                disabled={sending}
-              />
-              <button
-                type="submit"
-                className="nx-uui-btn nx-uui-btn--icon-submit"
-                disabled={!inputText.trim() || sending}
-                aria-label="Enviar resposta"
-                title="Enviar resposta"
+            {actions.showTextInput ? (
+              <form
+                className="nx-uui-notification__form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void handleSend(inputText);
+                }}
               >
-                <Send size={13} />
-              </button>
-            </form>
+                <input
+                  type="text"
+                  className="nx-uui-input"
+                  placeholder={promptKind === 'choice' ? 'Digite o número da opção…' : 'Digitar resposta…'}
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  disabled={sending}
+                />
+                <button
+                  type="submit"
+                  className="nx-uui-btn nx-uui-btn--icon-submit"
+                  disabled={!inputText.trim() || sending}
+                  aria-label="Enviar resposta"
+                  title="Enviar resposta"
+                >
+                  <Send size={13} />
+                </button>
+              </form>
+            ) : null}
           </div>
         </div>
       </div>

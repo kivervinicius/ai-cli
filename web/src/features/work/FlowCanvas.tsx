@@ -18,7 +18,7 @@ export const FlowCanvas: React.FC<{ flow: FlowDraftModel; selectedId?: string; o
           {wave.map((id) => { const step=byId.get(id)!; return <button type="button" key={id} className="nx-flow-node" data-selected={selectedId===id?'true':'false'} onClick={()=>onSelect(id)}>
             <div className="nx-flow-node__title">{step.status==='VERIFIED'?<CircleCheck size={13}/>:<CircleDot size={13}/>}<strong>{step.title || id}</strong></div>
             <div className="nx-flow-node__meta"><Badge tone="default">{step.assignmentStrategy}</Badge>{step.parallelGroup&&<Badge tone="brand">{step.parallelGroup}</Badge>}</div>
-            <small>{step.dependencies.length ? `after ${step.dependencies.join(', ')}` : 'entry step'}</small>
+            <small>{(step.dependencies || []).length ? `after ${(step.dependencies || []).join(', ')}` : 'entry step'}</small>
             <span className="nx-flow-node__agent"><Bot size={11}/>{step.agentId || step.role || 'Auto resource'}</span>
           </button>; })}
         </div>

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/buildinfo"
+	"github.com/kivervinicius/ai-cli/internal/control/flags"
 	"github.com/kivervinicius/ai-cli/internal/conversation"
 	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/cooldown"
@@ -99,6 +100,9 @@ func Run(args []string) error {
 
 	switch args[0] {
 	case "help", "-h", "--help":
+		if len(args) > 1 && isSupportedProvider(args[1]) {
+			return flags.ShowProviderHelp(args[1])
+		}
 		usage()
 		return nil
 	case "version", "--version", "-v":
@@ -196,6 +200,9 @@ func Run(args []string) error {
 		return controlHostCmd(args[1:])
 	case "codex", "agy", "claude", "opencode", "gemini", "cursor":
 		prov := args[0]
+		if flags.IsHelpFlag(args[1:]) {
+			return flags.ShowProviderHelp(prov)
+		}
 		targetProfile := ""
 		rest := args[1:]
 		if len(rest) > 0 && !strings.HasPrefix(rest[0], "-") {
@@ -275,6 +282,7 @@ func executeProviderWithSmartSelection(provName, explicitProfile string, args []
 	}
 
 	cfg, _ := config.LoadConfig()
+	args = flags.Normalize(provName, args, cfg.FlagAliases)
 	qEng := quota.NewEngine(5 * time.Minute)
 	cdTracker := cooldown.NewTracker()
 	sel := scheduler.NewSelector(cfg, qEng, cdTracker)
@@ -457,11 +465,23 @@ func usage() {
   %s completion <bash|zsh|fish>   Generate shell completion scripts
   %s version [--json]             Display build and platform information
   %s release                      Interactively bump, build, install and validate Nexus
+
+Universal Canonical Aliases (translated to native options for all providers):
+  --yolo / -y                     Bypass approval prompts and permissions
+  --continue / -c                 Continue most recent session
+  --resume <id> / -r <id>         Resume session by ID
+  --print / -p                    Run non-interactively
+  --effort <low|med|high>         Set model reasoning effort
+  --plan                          Start session in planning mode
+
+Merged Help:
+  %s <provider> --help            Show Nexus canonical aliases merged with official CLI help
 `,
 		p, p, p, p, p, p, p, p, p, p, p, p,
 		p, p, p, p, p,
 		p, p, p, p, p, p, p, p, p,
 		p, p, p, p, p, p, p, p, p, p, p, p, p, p,
+		p,
 	)
 	fmt.Print(localization.HumanizeHelp(body))
 	fmt.Println(localization.T("help.language"))

@@ -1,0 +1,23 @@
+---
+description: Após mudanças no frontend Nexus, rodar o gate e publicar o relatório DEV/validation/FRONTEND_LATEST.md
+globs: web/**/*.{ts,tsx,css,html,mjs,json}
+alwaysApply: false
+---
+
+# Frontend verify report (obrigatório)
+
+Sempre que alterar arquivos sob `web/` (ou o embed em `internal/control/web/dist/`):
+
+1. Antes de declarar a tarefa concluída, rode:
+   - `make web-verify`
+   - ou `npm --prefix web run verify`
+2. O comando deve gerar/atualizar:
+   - `DEV/validation/FRONTEND_LATEST.md` (relatório canônico)
+   - entrada em `DEV/validation/FRONTEND_HISTORY.md`
+   - ponteiro em `DEV/VERIFY.md`
+3. Se o gate falhar (**FAIL**), corrija e rode de novo. Não diga que o frontend está ok com gate vermelho.
+4. Se o gate passar mas a UI no browser ainda parecer antiga/quebrada:
+   - rode `make build` e reinicie `nexus web` (o bundle é embutido no binário)
+5. No resumo final para o usuário, cite o verdict do relatório (`PASS`/`FAIL`) e o caminho `DEV/validation/FRONTEND_LATEST.md`.
+
+Não pule typecheck/lint/test/build só porque “só mudou CSS/copy”.

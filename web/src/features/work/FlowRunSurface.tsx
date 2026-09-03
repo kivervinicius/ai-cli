@@ -16,6 +16,7 @@ import {
 import { Badge, Button, Card, InlineAlert, Spinner } from '../../design-system';
 import { nexusApi } from '../../nexus/api';
 import type { Agent, FlowRunEvidence, MissionRun, Project, WorkPlan, WorkReceipt } from '../../types';
+import { asArray, asStringArray } from '../../lib/safeArray';
 import { flowFromWorkPlan } from './flowModel';
 import { flowRunStateFromMission, packageRunState, type FlowRunState } from './flowRunModel';
 
@@ -38,8 +39,10 @@ const toneFor = (state: FlowRunState): 'default' | 'brand' | 'success' | 'warnin
 
 const receiptSummary = (receipt?: WorkReceipt) => {
   if (!receipt) return 'No receipt yet';
-  if (receipt.changed_files.length) return `${receipt.changed_files.length} changed file${receipt.changed_files.length === 1 ? '' : 's'}`;
-  if (receipt.commands.length) return `${receipt.commands.length} verified command${receipt.commands.length === 1 ? '' : 's'}`;
+  const files = asStringArray(receipt.changed_files);
+  const commands = asStringArray(receipt.commands);
+  if (files.length) return `${files.length} changed file${files.length === 1 ? '' : 's'}`;
+  if (commands.length) return `${commands.length} verified command${commands.length === 1 ? '' : 's'}`;
   return receipt.summary || receipt.status;
 };
 
@@ -136,16 +139,20 @@ export const FlowRunSurface: React.FC<{
 
       <Card className="nx-flow-run-overview">
         <div><strong>Execution snapshot</strong><code>{run.execution_snapshot_id || '—'}</code></div>
-        <div><strong>Progress</strong><span>{run.package_runs.filter((pkg) => pkg.state === 'VERIFIED').length} / {run.package_runs.length} verified</span></div>
+        <div><strong>Progress</strong><span>{(run.package_runs || []).filter((pkg) => pkg.state === 'VERIFIED').length} / {(run.package_runs || []).length} verified</span></div>
         <div><strong>Iteration budget</strong><span>{run.total_iterations} / {run.contract.max_total_iterations}</span></div>
         <div><strong>Verification</strong><span>{run.contract.require_verification ? 'Required' : 'Contract disabled'}</span></div>
       </Card>
 
       <div className="nx-flow-run-grid">
-        {run.package_runs.map((pkg, index) => {
+        {(run.package_runs || []).map((pkg, index) => {
           const state = packageRunState(pkg.state);
           const capsule = capsules.get(pkg.package_id);
           const receipt = receipts.get(pkg.package_id);
+          const files = asStringArray(receipt?.changed_files);
+          const commands = asStringArray(receipt?.commands);
+          const remaining = asStringArray(receipt?.remaining_issues);
+          const dependencyReceiptCount = asArray(capsule?.dependency_receipts).length;
           return (
             <Card className="nx-flow-run-step" data-state={state} key={pkg.id}>
               <div className="nx-flow-run-step__header">
@@ -157,10 +164,10 @@ export const FlowRunSurface: React.FC<{
                 <span><Bot size={11} /> {pkg.assigned_agent || 'Awaiting allocation'}</span>
                 <span><Clock3 size={11} /> attempt {pkg.attempt}</span>
               </div>
-              {pkg.dependencies?.length ? <small className="nx-flow-run-deps">after {pkg.dependencies.join(', ')}</small> : <small className="nx-flow-run-deps">entry Step</small>}
+              {(pkg.dependencies || []).length ? <small className="nx-flow-run-deps">after {(pkg.dependencies || []).join(', ')}</small> : <small className="nx-flow-run-deps">entry Step</small>}
 
               <div className="nx-flow-run-evidence-row">
-                <span data-ready={capsule ? 'true' : 'false'}><FileCode2 size={11} /> {capsule ? `Capsule · ${capsule.dependency_receipts.length} receipt input${capsule.dependency_receipts.length === 1 ? '' : 's'}` : 'Capsule pending'}</span>
+                <span data-ready={capsule ? 'true' : 'false'}><FileCode2 size={11} /> {capsule ? `Capsule · ${dependencyReceiptCount} receipt input${dependencyReceiptCount === 1 ? '' : 's'}` : 'Capsule pending'}</span>
                 <span data-ready={receipt ? 'true' : 'false'}><ShieldCheck size={11} /> {receiptSummary(receipt)}</span>
               </div>
 
@@ -168,9 +175,9 @@ export const FlowRunSurface: React.FC<{
                 <details className="nx-flow-run-receipt">
                   <summary>{receipt.status === 'VERIFIED' ? <CheckCircle2 size={12} /> : <CircleAlert size={12} />} Work Receipt</summary>
                   <div><strong>Summary</strong><span>{receipt.summary}</span></div>
-                  <div><strong>Files</strong><span>{receipt.changed_files.length ? receipt.changed_files.join(', ') : 'No factual file changes captured'}</span></div>
-                  <div><strong>Commands</strong><span>{receipt.commands.length ? receipt.commands.join(' · ') : 'No verification commands captured'}</span></div>
-                  {receipt.remaining_issues.length > 0 && <div><strong>Remaining</strong><span>{receipt.remaining_issues.join(' · ')}</span></div>}
+                  <div><strong>Files</strong><span>{files.length ? files.join(', ') : 'No factual file changes captured'}</span></div>
+                  <div><strong>Commands</strong><span>{commands.length ? commands.join(' · ') : 'No verification commands captured'}</span></div>
+                  {remaining.length > 0 && <div><strong>Remaining</strong><span>{remaining.join(' · ')}</span></div>}
                 </details>
               )}
 

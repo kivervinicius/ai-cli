@@ -30,6 +30,10 @@ export interface RuntimeSession {
   started_at: string;
   attention_reason?: 'QUESTION' | 'APPROVAL' | 'TASK_COMPLETED' | 'WORKING' | 'IDLE' | 'ERROR';
   attention_context?: string;
+  prompt_kind?: 'yn' | 'choice' | 'free_text' | 'none' | '';
+  attention_kind?: 'needs_user' | 'working' | 'completed' | 'error' | 'idle' | '';
+  attention_fingerprint?: string;
+  project_id?: string;
   project_name?: string;
   last_task_summary?: string;
   dynamic_title?: string;

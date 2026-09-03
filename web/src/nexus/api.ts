@@ -1,6 +1,7 @@
 /* Nexus product API client (projects, agents, layouts, config). */
 
 import { Project, Agent, AgentDetail, RuntimeSession, AgentConfig, ConfigImpact } from '../types';
+import { normalizeWorkPlan } from './workPlan';
 
 export class NexusAPIError<TPayload = unknown> extends Error {
   readonly status: number;
@@ -203,33 +204,43 @@ export const nexus = {
     ),
   getClarification: (id: string) =>
     request<import('../types').ClarificationCheckpoint>(`/api/v1/clarifications/${id}`),
-  resolveClarification: (id: string, answers: Record<string, string>) =>
-    request<{ plan: import('../types').WorkPlan; clarification: import('../types').ClarificationCheckpoint }>(
+  resolveClarification: async (id: string, answers: Record<string, string>) => {
+    const result = await request<{ plan: unknown; clarification: import('../types').ClarificationCheckpoint }>(
       `/api/v1/clarifications/${id}/resolve`,
       { method: 'POST', body: JSON.stringify({ answers }) }
-    ),
+    );
+    return { ...result, plan: normalizeWorkPlan(result.plan) };
+  },
 
   // WorkPlans & Autonomous Mission Runner (Phase D, E, F, H)
-  getPlans: (projectId: string) =>
-    request<import('../types').WorkPlan[]>(`/api/v1/projects/${projectId}/plans`),
-  createPlan: (projectId: string, data: { title?: string; description?: string; goal?: string; auto_plan?: boolean; phases?: any[]; facts?: any }) =>
-    request<import('../types').WorkPlan>(`/api/v1/projects/${projectId}/plans`, {
+  getPlans: async (projectId: string) => {
+    const plans = await request<unknown>(`/api/v1/projects/${projectId}/plans`);
+    return Array.isArray(plans) ? plans.map(normalizeWorkPlan) : [];
+  },
+  createPlan: async (projectId: string, data: { title?: string; description?: string; goal?: string; auto_plan?: boolean; phases?: any[]; facts?: any }) =>
+    normalizeWorkPlan(await request<unknown>(`/api/v1/projects/${projectId}/plans`, {
       method: 'POST',
       body: JSON.stringify(data),
-    }),
-  getPlan: (planId: string) =>
-    request<{ plan: import('../types').WorkPlan; revisions: import('../types').PlanRevision[] }>(`/api/v1/plans/${planId}`),
-  updatePlan: (planId: string, plan: import('../types').WorkPlan, change_summary?: string) =>
-    request<{ plan: import('../types').WorkPlan; revision: import('../types').PlanRevision }>(`/api/v1/plans/${planId}`, {
+    })),
+  getPlan: async (planId: string) => {
+    const detail = await request<{ plan: unknown; revisions: import('../types').PlanRevision[] }>(`/api/v1/plans/${planId}`);
+    return { ...detail, plan: normalizeWorkPlan(detail.plan) };
+  },
+  updatePlan: async (planId: string, plan: import('../types').WorkPlan, change_summary?: string) => {
+    const result = await request<{ plan: unknown; revision: import('../types').PlanRevision }>(`/api/v1/plans/${planId}`, {
       method: 'PUT',
       body: JSON.stringify({ plan, change_summary }),
-    }),
+    });
+    return { ...result, plan: normalizeWorkPlan(result.plan) };
+  },
   deletePlan: (planId: string) =>
     request<{ deleted: boolean }>(`/api/v1/plans/${planId}`, { method: 'DELETE' }),
-  restorePlanRevision: (planId: string, revision: number) =>
-    request<{ plan: import('../types').WorkPlan; revision: import('../types').PlanRevision }>(`/api/v1/plans/${planId}/restore`, {
+  restorePlanRevision: async (planId: string, revision: number) => {
+    const result = await request<{ plan: unknown; revision: import('../types').PlanRevision }>(`/api/v1/plans/${planId}/restore`, {
       method: 'POST', body: JSON.stringify({ revision }),
-    }),
+    });
+    return { ...result, plan: normalizeWorkPlan(result.plan) };
+  },
   diffPlanRevisions: (planId: string, from: number, to: number) =>
     request<import('../types').PlanRevisionDiff>(`/api/v1/plans/${planId}/diff?from=${from}&to=${to}`),
   compilePackagePrompt: (planId: string, packageId: string, phaseId?: string) =>

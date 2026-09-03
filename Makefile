@@ -3,7 +3,7 @@ MODULE=github.com/kivervinicius/ai-cli
 HOST_LOCAL_BIN = /home/desenvolvedor/.local/bin
 LOCAL_BIN ?= $(HOST_LOCAL_BIN)
 
-.PHONY: all build web test race vet lint install install-local release-local bump clean
+.PHONY: all build web web-verify test race vet lint install install-local release-local bump clean
 
 all: build
 
@@ -14,6 +14,9 @@ web:
 	@echo "Building frontend..."
 	@cd web && node scripts/build.mjs
 	@echo "✓ Frontend bundle ready for embedding"
+
+web-verify:
+	@cd web && node scripts/verify-report.mjs
 
 build: web
 	@set -e; VERSION=$$(cat VERSION 2>/dev/null || echo "dev"); \
