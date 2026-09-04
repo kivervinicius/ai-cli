@@ -9,6 +9,8 @@ import { useTranslation } from 'react-i18next';
 import { isPtySurface } from '../app/surfaces';
 import { findTileSplitters } from './arrange';
 import { isWindowedPresentationMode, mosaicDropTargetViewId } from './presentation';
+import { ptyWindowHeading } from './ptyLiveChrome';
+import { liveChromeFor, usePtyLiveChromeOptional } from './PtyLiveChromeContext';
 
 const WINDOW_ACCENTS = ['#38bdf8', '#22c55e', '#f59e0b', '#f472b6', '#a78bfa', '#fb7185'];
 const WINDOW_ICONS = ['⌘', '⚡', '◆', '●', '★', '◎'];
@@ -27,6 +29,10 @@ const PRODUCT_TAB_ICONS: Record<string, React.ComponentType<{ size?: number; str
 
 const isPinnedProductTab = (surface: WorkspaceSurface) =>
   surface.closable === false || surface.type === 'overview' || surface.type === 'terminals' || surface.type === 'work';
+
+function surfaceIdentity(surface: WorkspaceSurface, customTitle?: string): string {
+  return customTitle || surface.data?.agentName || surface.title.replace(/\s·\s.*$/, '') || surface.title;
+}
 
 const WindowChromeMenu: React.FC<{
   viewId: string;
@@ -427,6 +433,8 @@ const TerminalsHost: React.FC<{
 }> = ({ ptySurfaces, renderSurface, onRequestClose, active }) => {
   const { t } = useTranslation();
   const presentation = useWorkspacePresentation();
+  const liveChrome = usePtyLiveChromeOptional();
+  const liveByViewId = liveChrome?.byViewId || {};
   const [tabMenu, setTabMenu] = useState<{ surface: WorkspaceSurface; point: ContextMenuPoint } | null>(null);
   const [chromeMenuViewId, setChromeMenuViewId] = useState<string | null>(null);
   const [chromeMenuPoint, setChromeMenuPoint] = useState<ContextMenuPoint | null>(null);
@@ -503,7 +511,12 @@ const TerminalsHost: React.FC<{
             {minimizedPtys.map((surface) => {
               const viewId = surfaceViewId(surface);
               const win = presentation.state.windows[viewId];
-              const label = win?.customTitle || surface.data?.agentName || surface.title;
+              const live = liveChromeFor(liveByViewId, viewId);
+              const label = ptyWindowHeading({
+                customTitle: win?.customTitle,
+                identity: surfaceIdentity(surface, win?.customTitle),
+                liveTitle: live.title,
+              }).heading;
               return (
                 <button
                   key={viewId}
@@ -538,7 +551,12 @@ const TerminalsHost: React.FC<{
               {ptySurfaces.map((surface) => {
                 const viewId = surfaceViewId(surface);
                 const win = presentation.state.windows[viewId];
-                const tabLabel = win?.customTitle || surface.data?.agentName || surface.title;
+                const live = liveChromeFor(liveByViewId, viewId);
+                const tabLabel = ptyWindowHeading({
+                  customTitle: win?.customTitle,
+                  identity: surfaceIdentity(surface, win?.customTitle),
+                  liveTitle: live.title,
+                }).heading;
                 const accent = win?.accent || '';
                 const icon = win?.icon || '';
                 return (
@@ -554,7 +572,7 @@ const TerminalsHost: React.FC<{
                       role="tab"
                       className="nx-workspace-tab"
                       data-active={focusedPtyId === surface.id ? 'true' : 'false'}
-                      data-attention={surface.data?.hasAttention === 'true' ? 'true' : undefined}
+                      data-attention={surface.data?.hasAttention === 'true' || live.questionnaire ? 'true' : undefined}
                       data-unread={surface.data?.unreadAttention === 'true' ? 'true' : undefined}
                       aria-selected={focusedPtyId === surface.id}
                       onClick={() => {
@@ -670,6 +688,8 @@ const DesktopWorkspace: React.FC<{
   const { t } = useTranslation();
   const workspace = useWorkspace();
   const presentation = useWorkspacePresentation();
+  const liveChrome = usePtyLiveChromeOptional();
+  const liveByViewId = liveChrome?.byViewId || {};
   const hostRef = useRef<HTMLDivElement>(null);
   const [chromeMenuViewId, setChromeMenuViewId] = useState<string | null>(null);
   const [chromeMenuPoint, setChromeMenuPoint] = useState<ContextMenuPoint | null>(null);
@@ -829,12 +849,19 @@ const DesktopWorkspace: React.FC<{
       {windows.map(({ surface, win }) => {
         if (!win || win.minimized) return null;
         const viewId = surfaceViewId(surface);
-        const attention = surface.data?.hasAttention === 'true';
+        const live = liveChromeFor(liveByViewId, viewId);
+        const questionnaire = live.questionnaire;
+        const attention = surface.data?.hasAttention === 'true' || questionnaire;
         const unread = surface.data?.unreadAttention === 'true';
-        const attentionKind = surface.data?.attentionKind || '';
-        const agentName = win.customTitle || surface.data?.agentName || surface.title.replace(/\s·\s.*$/, '');
+        const attentionKind = questionnaire ? 'needs_user' : surface.data?.attentionKind || '';
+        const agentName = surfaceIdentity(surface, win.customTitle);
+        const heading = ptyWindowHeading({
+          customTitle: win.customTitle,
+          identity: agentName,
+          liveTitle: live.title,
+        });
         const statusSuffix = surface.data?.statusSuffix || '';
-        const dynamicTitle = surface.data?.dynamicTitle || '';
+        const dynamicTitle = live.title ? '' : surface.data?.dynamicTitle || '';
         const providerLabel = surface.data?.providerLabel || '';
         const accent = win.accent || '';
         const icon = win.icon || '';
@@ -864,6 +891,7 @@ const DesktopWorkspace: React.FC<{
             data-attention={attention ? 'true' : undefined}
             data-unread={unread ? 'true' : undefined}
             data-attention-kind={attentionKind || undefined}
+            data-questionnaire={questionnaire ? 'true' : undefined}
             data-icon={icon || undefined}
             style={style}
             onPointerDownCapture={() => {
@@ -891,11 +919,16 @@ const DesktopWorkspace: React.FC<{
                     className="nx-desktop-window__attention-dot"
                     data-kind={attentionKind || 'needs_user'}
                     data-unread={unread ? 'true' : undefined}
-                    aria-label={unread ? 'unread attention' : 'attention'}
+                    aria-label={unread ? 'unread attention' : questionnaire ? 'questionnaire' : 'attention'}
                   />
                 )}
-                <strong title={agentName}>{agentName}</strong>
-                {providerLabel && <small className="nx-desktop-window__provider">{providerLabel}</small>}
+                <strong title={heading.heading}>{heading.heading}</strong>
+                {heading.identityHint && (
+                  <small className="nx-desktop-window__provider" title={heading.identityHint}>
+                    {heading.identityHint}
+                  </small>
+                )}
+                {!heading.identityHint && providerLabel && <small className="nx-desktop-window__provider">{providerLabel}</small>}
                 {dynamicTitle && (
                   <small className="nx-desktop-window__dynamic" title={dynamicTitle}>
                     {dynamicTitle}
@@ -1037,7 +1070,12 @@ const DesktopWorkspace: React.FC<{
           .map(({ surface, win }) => {
             const viewId = surfaceViewId(surface);
             const unread = surface.data?.unreadAttention === 'true';
-            const label = win?.customTitle || surface.data?.agentName || surface.title;
+            const live = liveChromeFor(liveByViewId, viewId);
+            const label = ptyWindowHeading({
+              customTitle: win?.customTitle,
+              identity: surfaceIdentity(surface, win?.customTitle),
+              liveTitle: live.title,
+            }).heading;
             return (
               <button
                 type="button"

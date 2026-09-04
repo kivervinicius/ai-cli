@@ -60,6 +60,9 @@ func TestProjectCRUD(t *testing.T) {
 	if p.MaestroMode != MaestroAssist {
 		t.Errorf("default maestro mode should be ASSIST, got %q", p.MaestroMode)
 	}
+	if p.DefaultIsolation != "project" {
+		t.Errorf("default isolation should be project, got %q", p.DefaultIsolation)
+	}
 
 	got, err := s.GetProject(p.ID)
 	if err != nil {

@@ -42,6 +42,36 @@ func TestComposerFinalizationCreatesPromptWithoutWorkPlan(t *testing.T) {
 	}
 }
 
+func TestMaterializePromptArtifactPreservesLineage(t *testing.T) {
+	n := openTestNexus(t)
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := st.CreateProject(store.Project{Name: "Lineage", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := n.CreateComposerSessionWithPrompt(context.Background(), project.ID, "Ship a small feature", "Implement the feature and verify it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := n.FinalizeComposerSession(context.Background(), view.Session.ID, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := n.MaterializePromptArtifactAsFlow(context.Background(), artifact.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.StructuredFacts["nexus.source_artifact_id"] != artifact.ID || plan.StructuredFacts["nexus.source_artifact_revision"] != "1" {
+		t.Fatalf("missing artifact lineage: %+v", plan.StructuredFacts)
+	}
+	if got := plan.Phases[0].Packages[0].CompiledPrompt; got != artifact.Content {
+		t.Fatalf("materialized flow lost canonical prompt: %q", got)
+	}
+}
+
 func TestComposerImportedPromptTracksUnknownsAndAppliesSkills(t *testing.T) {
 	n := openTestNexus(t)
 	n.maestroStatus = func() MaestroStatus {

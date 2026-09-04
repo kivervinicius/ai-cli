@@ -51,6 +51,13 @@ describe('surfaceAttention', () => {
     expect(statusSuffixFromRuntime(runtime({ attention_reason: 'ERROR' }))).toBe('erro');
   });
 
+  it('does not treat bare RUNNING as trabalhando', () => {
+    expect(statusSuffixFromRuntime(runtime({ state: 'RUNNING', attention_kind: 'idle' }))).toBe('');
+    expect(
+      statusSuffixFromRuntime(runtime({ state: 'RUNNING', attention_kind: 'working', attention_reason: 'WORKING' }))
+    ).toBe('trabalhando');
+  });
+
   it('marks unread only on fingerprint transition when unfocused', () => {
     expect(
       shouldMarkUnread({

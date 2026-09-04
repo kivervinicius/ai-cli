@@ -104,11 +104,14 @@ def generate_dark_variant(full_img):
     return dark_mode
 
 def make_square_icon(icon_img, target_size=512):
+    bbox = icon_img.getbbox()
+    if bbox:
+        icon_img = icon_img.crop(bbox)
     w, h = icon_img.size
-    max_dim = int(target_size * 0.84)
-    scale = max_dim / max(w, h)
-    new_w = int(w * scale)
-    new_h = int(h * scale)
+    # Fill target square canvas with high density (98% fill for crisp anti-aliasing edge)
+    scale = (target_size * 0.98) / max(w, h)
+    new_w = max(1, int(w * scale))
+    new_h = max(1, int(h * scale))
     resized = icon_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
     sq = Image.new('RGBA', (target_size, target_size), (0, 0, 0, 0))
@@ -149,6 +152,9 @@ def main():
 
     icon_clean = clean_extract(icon_crop)
     full_clean = clean_extract(full_crop)
+    full_bbox = full_clean.getbbox()
+    if full_bbox:
+        full_clean = full_clean.crop(full_bbox)
     full_dark = generate_dark_variant(full_clean)
 
     # 2. Square icon

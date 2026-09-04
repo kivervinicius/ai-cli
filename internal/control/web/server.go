@@ -120,6 +120,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	mux.HandleFunc("/api/v1/intelligence/probe", s.authMiddleware(nexusHandler.handleIntelligenceProbe))
 	mux.HandleFunc("/api/v1/clarifications/", s.authMiddleware(nexusHandler.handleClarification))
 	mux.HandleFunc("/api/v1/composer-sessions/", s.authMiddleware(nexusHandler.handleComposerSession))
+	mux.HandleFunc("/api/v1/prompt-artifacts/", s.authMiddleware(nexusHandler.handlePromptArtifact))
 	mux.HandleFunc("/api/v1/plans/", s.routePlan(nexusHandler))
 
 	// Autonomous Mission Runs (Phase F & H)

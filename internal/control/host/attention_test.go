@@ -254,6 +254,36 @@ func TestFormatDesktopAttentionBodyFramesYN(t *testing.T) {
 	}
 }
 
+func TestExtractOSCTitleUsesNewestSequence(t *testing.T) {
+	raw := "\x1b]0;first\x07work\x1b]2;Question 1 of 3\x1b\\"
+	got := ExtractOSCTitle(raw)
+	if got != "Question 1 of 3" {
+		t.Fatalf("ExtractOSCTitle=%q, want newest OSC title", got)
+	}
+}
+
+func TestAttentionDetectorShellAppliesOSCTitle(t *testing.T) {
+	var gotTitle string
+	detector := NewAttentionDetector("rt-shell-title", "shell", "default", "/workspace/project", func(_, _, dynamicTitle string, _ registry.RuntimeState) {
+		gotTitle = dynamicTitle
+	})
+	detector.ProcessChunk([]byte("\x1b]0;agy · thinking\x07"))
+	if gotTitle != "agy · thinking" {
+		t.Fatalf("project shell must surface OSC settitle, got %q", gotTitle)
+	}
+}
+
+func TestAttentionDetectorShellQuestionnaireIsNeedsUser(t *testing.T) {
+	detector := NewAttentionDetector("rt-shell-q", "shell", "default", "/workspace/project", nil)
+	detector.ProcessChunk([]byte("\r\nQuestion 1 of 2\r\nSelect all that apply\r\n"))
+	if detector.lastReason != "QUESTION" || detector.lastKind != AttentionNeedsUser {
+		t.Fatalf("AGY questionnaire in project shell must be needs_user, reason=%q kind=%q", detector.lastReason, detector.lastKind)
+	}
+	if detector.lastPrompt != PromptKindChoice {
+		t.Fatalf("expected choice prompt for questionnaire, got %q", detector.lastPrompt)
+	}
+}
+
 func TestAttentionDetectorNumberedListWithAskIsChoice(t *testing.T) {
 	detector := NewAttentionDetector("rt-choice-ask", "codex", "default", "/workspace/project", nil)
 	detector.ProcessChunk([]byte("\r\nSelect an option:\r\n1. Continue\r\n"))

@@ -5,6 +5,7 @@ import { Spinner } from '../design-system';
 import { ThemeProvider } from '../design-system';
 import { WorkspaceProvider, useWorkspace } from '../workspace/WorkspaceProvider';
 import { WorkspacePresentationProvider, useWorkspacePresentation } from '../workspace/WorkspacePresentationProvider';
+import { PtyLiveChromeProvider } from '../workspace/PtyLiveChromeContext';
 import { WorkspaceRenderer } from '../workspace/WorkspaceRenderer';
 import { createWorkspace, isSurfaceMatch, listStacks, listSurfaces, surfaceViewId, type WorkspaceSurface } from '../workspace/model';
 import { serializeWorkspace } from '../workspace/state';
@@ -198,12 +199,14 @@ const NexusWorkspaceSession: React.FC<{ popoutSurface?: WorkspaceSurface }> = ({
       saveLayout={popoutSurface ? undefined : (next) => nexus.saveLayout(selected.id, next)}
     >
       <WorkspacePresentationProvider projectId={selected.id}>
+        <PtyLiveChromeProvider>
         <WorkspaceCoordinator
           project={selected}
           setProject={(project) => setSelectedId(project.id)}
           data={data}
           popout={Boolean(popoutSurface)}
         />
+        </PtyLiveChromeProvider>
       </WorkspacePresentationProvider>
     </WorkspaceProvider>
   );

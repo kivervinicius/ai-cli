@@ -31,7 +31,7 @@ function badgeFor(runtime: RuntimeSession): RadarBadge {
   if (runtime.attention_kind === 'completed' || runtime.attention_reason === 'TASK_COMPLETED') {
     return 'completed';
   }
-  if (runtime.attention_kind === 'working' || runtime.attention_reason === 'WORKING' || runtime.state === 'RUNNING') {
+  if (runtime.attention_kind === 'working' || runtime.attention_reason === 'WORKING') {
     return 'working';
   }
   return 'idle';

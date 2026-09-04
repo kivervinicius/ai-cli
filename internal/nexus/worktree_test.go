@@ -10,12 +10,23 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
 
-func TestResolveExecutionWorkspaceProject(t *testing.T) {
+func TestResolveExecutionWorkspaceDeveloperMapsToProject(t *testing.T) {
 	n := &Nexus{}
 	dir := t.TempDir()
-	project := store.Project{ID: "p", CanonicalPath: dir, DefaultIsolation: "project"}
+	project := store.Project{ID: "p", CanonicalPath: dir, DefaultIsolation: "developer"}
 	agent := store.Agent{ID: "a", ProjectID: "p"}
 	got, err := n.resolveExecutionWorkspace(context.Background(), project, agent, AgentConfig{})
+	if err != nil || got != dir {
+		t.Fatalf("workspace=%q err=%v want %q", got, err, dir)
+	}
+}
+
+func TestResolveExecutionWorkspaceAgentProjectOverridesWorktreeDefault(t *testing.T) {
+	n := &Nexus{}
+	dir := t.TempDir()
+	project := store.Project{ID: "p", CanonicalPath: dir, DefaultIsolation: "worktree"}
+	agent := store.Agent{ID: "a", ProjectID: "p"}
+	got, err := n.resolveExecutionWorkspace(context.Background(), project, agent, AgentConfig{Isolation: "project"})
 	if err != nil || got != dir {
 		t.Fatalf("workspace=%q err=%v want %q", got, err, dir)
 	}

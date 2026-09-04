@@ -15,6 +15,34 @@ type CompiledAgentPrompt struct {
 	ValidatedSkills []string `json:"validated_skills"`
 }
 
+// CompileAgentPromptWithValidatedSkills constructs the compiled prompt envelope with already validated skills.
+func CompileAgentPromptWithValidatedSkills(userPrompt string, validatedSkills []string) *CompiledAgentPrompt {
+	var compiled string
+	if len(validatedSkills) == 0 {
+		compiled = userPrompt
+	} else {
+		var b strings.Builder
+		b.WriteString("Nexus execution context\n")
+		b.WriteString("Scope: next prompt only\n")
+		b.WriteString("Validated Maestro skills:\n")
+		for _, s := range validatedSkills {
+			b.WriteString("- " + s + "\n")
+		}
+		b.WriteString("\nUser request:\n")
+		b.WriteString(userPrompt)
+		compiled = b.String()
+	}
+
+	h := sha256.Sum256([]byte(compiled))
+	hashStr := hex.EncodeToString(h[:])
+
+	return &CompiledAgentPrompt{
+		CompiledPrompt:  compiled,
+		PromptHash:      hashStr,
+		ValidatedSkills: validatedSkills,
+	}
+}
+
 // CompileAgentPrompt compiles user request and optional Maestro skill ids into an
 // honest execution envelope.
 func CompileAgentPrompt(userPrompt string, requestedSkills []string, maestroClient *MaestroClient) (*CompiledAgentPrompt, error) {
@@ -44,28 +72,5 @@ func CompileAgentPrompt(userPrompt string, requestedSkills []string, maestroClie
 		}
 	}
 
-	var compiled string
-	if len(validatedSkills) == 0 {
-		compiled = userPrompt
-	} else {
-		var b strings.Builder
-		b.WriteString("Nexus execution context\n")
-		b.WriteString("Scope: next prompt only\n")
-		b.WriteString("Validated Maestro skills:\n")
-		for _, s := range validatedSkills {
-			b.WriteString("- " + s + "\n")
-		}
-		b.WriteString("\nUser request:\n")
-		b.WriteString(userPrompt)
-		compiled = b.String()
-	}
-
-	h := sha256.Sum256([]byte(compiled))
-	hashStr := hex.EncodeToString(h[:])
-
-	return &CompiledAgentPrompt{
-		CompiledPrompt:  compiled,
-		PromptHash:      hashStr,
-		ValidatedSkills: validatedSkills,
-	}, nil
+	return CompileAgentPromptWithValidatedSkills(userPrompt, validatedSkills), nil
 }

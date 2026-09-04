@@ -15,7 +15,7 @@ export function attentionKindFromRuntime(runtime?: RuntimeSession | null): Surfa
   if (runtime.attention_reason === 'TASK_COMPLETED' || runtime.attention_kind === 'completed') {
     return 'completed';
   }
-  if (runtime.attention_reason === 'WORKING' || runtime.attention_kind === 'working' || runtime.state === 'RUNNING') {
+  if (runtime.attention_reason === 'WORKING' || runtime.attention_kind === 'working') {
     return 'working';
   }
   return '';

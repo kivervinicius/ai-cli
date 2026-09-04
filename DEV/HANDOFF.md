@@ -1,5 +1,19 @@
 # Handoff
 
+## Atualização 2026-09-04
+
+Baseline do working tree revalidado após correções pequenas de P0. `make
+web-verify`, `go test -count=1 ./...`, `go vet ./...` e `git diff --check`
+estão verdes. O CI agora fixa Bun `1.3.9`; Composer possui rota/UI para
+aceitar ou dispensar Maestro skills, envia skills aceitas ao PromptArtifact e
+exibe Prompt Readiness, Unknowns e Assumptions.
+
+As alterações locais anteriores foram preservadas; não houve commit/push.
+PromptArtifact → Flow e o DAG visual editável já foram implementados neste
+ciclo. Próxima ação: validar manualmente drag/zoom/conexão em flows de 20, 50 e
+100 nodes e formalizar `FlowMaterializationRequest` caso o contrato externo
+exija esse tipo nomeado.
+
 ## Current state
 
 Nexus was rebuilt from the current source and installed at `/home/desenvolvedor/.local/bin/nexus`; the `ai` alias points to the same binary. The installed binary is `0.5.0-beta.23`.

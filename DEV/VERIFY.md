@@ -1,5 +1,18 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-04 — Baseline atual e Composer skills
+
+- `make web-verify` — PASS (typecheck, lint, null-arrays, Vitest, i18n,
+  build, embed-sync e UI markers).
+- `go test -count=1 ./...` — PASS.
+- `go vet ./...` — PASS.
+- `git diff --check` — PASS.
+- CI frontend passou a fixar Bun `1.3.9` e o `packageManager` do workspace foi
+  declarado como `bun@1.3.9`.
+- Composer agora expõe e persiste aceitar/dispensar de Maestro skills e envia
+  as skills aceitas na finalização; Readiness, Unknowns e Assumptions são
+  visíveis.
+
 ## Identidade visual e assets de marca — 2026-09-04
 
 - `make web-verify` — PASS (typecheck, lint, null-arrays, vitest, i18n, build, embed-sync e ui-markers).
@@ -236,7 +249,7 @@ All business logic lives in `internal/nexus/` (service layer). Web and TUI consu
 Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CURRENT_CODE_REVIEW.md).
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-04T18:14:31Z
+## Frontend gate — 2026-09-04T19:41:04Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
 

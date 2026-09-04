@@ -88,8 +88,10 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 		selected = recommendation.Recommended.Account
 	}
 	current.Provider, current.Profile = selected.Provider, selected.Profile
-	if strings.TrimSpace(current.Workspace) == "" {
-		current.Isolation = "worktree"
+	// Interactive and Flow agents run in the Project folder by default. Worktree
+	// isolation stays opt-in via agent config or project.default_isolation.
+	if strings.TrimSpace(current.Workspace) == "" && strings.TrimSpace(current.Isolation) == "" {
+		current.Isolation = "project"
 	}
 	if _, err := e.n.SafeApply(ctx, agent.ID, current); err != nil {
 		return runner.AllocationResult{}, fmt.Errorf("persist mission resource allocation: %w", err)

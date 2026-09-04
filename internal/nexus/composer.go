@@ -321,7 +321,7 @@ func compileComposerPrompt(userPrompt string, requestedSkills []string, status M
 			return nil, fmt.Errorf("skill validation failed: %w", err)
 		}
 	}
-	return CompileAgentPrompt(userPrompt, validatedSkills, nil)
+	return CompileAgentPromptWithValidatedSkills(userPrompt, validatedSkills), nil
 }
 
 func reconcileComposerSkillAvailability(st *store.Store, sessionID string, skills []store.ComposerSkillProposal, status MaestroStatus) []store.ComposerSkillProposal {

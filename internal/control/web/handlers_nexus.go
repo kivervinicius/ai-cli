@@ -1366,6 +1366,27 @@ func (h *NexusHandler) handleComposerSession(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusCreated, artifact)
 		return
 	}
+	if strings.Contains(id, "/skills/") {
+		parts := strings.SplitN(id, "/skills/", 2)
+		if r.Method != http.MethodPatch || len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
+			writeError(w, http.StatusBadRequest, "skill id and PATCH are required")
+			return
+		}
+		var body struct {
+			State string `json:"state"`
+		}
+		if json.NewDecoder(r.Body).Decode(&body) != nil || strings.TrimSpace(body.State) == "" {
+			writeError(w, http.StatusBadRequest, "state is required")
+			return
+		}
+		view, err := h.nexus.UpdateComposerSkillState(r.Context(), parts[0], parts[1], body.State)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, view)
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -1376,6 +1397,26 @@ func (h *NexusHandler) handleComposerSession(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
+}
+
+func (h *NexusHandler) handlePromptArtifact(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/prompt-artifacts/")
+	if !strings.HasSuffix(path, "/flow") || r.Method != http.MethodPost {
+		writeError(w, http.StatusNotFound, "prompt artifact flow materialization not found")
+		return
+	}
+	id := strings.TrimSuffix(path, "/flow")
+	id = strings.Trim(id, "/")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "missing prompt artifact id")
+		return
+	}
+	plan, err := h.nexus.MaterializePromptArtifactAsFlow(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, plan)
 }
 
 // handlePlanDetail GET/PUT/DELETE /api/v1/plans/{id}

@@ -180,6 +180,8 @@ export const NewAgentModal: React.FC<{
         {
           provider: origin === 'custom' ? 'opencode' : provider,
           profile: 'default',
+          isolation: 'project',
+          workspace: project.canonical_path || undefined,
           options: configOptions,
         }
       );

@@ -44,7 +44,7 @@ class PushNotificationService {
     try {
       new Notification(`Nexus · ${projectName || 'Projeto'}`, {
         body: 'Notificações do navegador ativadas. Com a aba em segundo plano, o Nexus avisa quando um agente espera por você.',
-        icon: '/nexus-icon.png',
+        icon: './nexus-icon.png',
         tag: 'nexus-permission-ok',
       });
     } catch (e) {
@@ -102,7 +102,7 @@ class PushNotificationService {
     try {
       const notif = new Notification(title, {
         body,
-        icon: '/nexus-icon.png',
+        icon: './nexus-icon.png',
         tag: `nexus-${fingerprint}`,
         requireInteraction: false,
         silent: false,

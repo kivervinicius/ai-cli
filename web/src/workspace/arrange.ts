@@ -4,7 +4,7 @@ export type TileRect = { viewId: string; x: number; y: number; width: number; he
 
 const GAP = 8;
 const MIN_W = 280;
-const MIN_H = 180;
+const MIN_H = 220;
 
 function roundRect(rect: Omit<TileRect, 'viewId'> & { viewId: string }): TileRect {
   return {

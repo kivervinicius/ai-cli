@@ -45,6 +45,62 @@ func (n *Nexus) CreateWorkPlan(ctx context.Context, projectID, title, descriptio
 	return st.CreateWorkPlan(plan)
 }
 
+// MaterializePromptArtifactAsFlow creates a first-class Flow from the exact
+// finalized Composer artifact. The artifact id/version remains in structured
+// facts so later revisions retain durable lineage instead of transporting a
+// prompt through an opaque UI string.
+func (n *Nexus) MaterializePromptArtifactAsFlow(ctx context.Context, artifactID string) (*store.WorkPlan, error) {
+	st, err := n.OpenProject()
+	if err != nil {
+		return nil, err
+	}
+	artifact, err := st.GetPromptArtifact(artifactID)
+	if err != nil {
+		return nil, err
+	}
+	session, err := st.GetComposerSession(artifact.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	var brief LivingBrief
+	if err := json.Unmarshal([]byte(session.BriefJSON), &brief); err != nil {
+		return nil, fmt.Errorf("decode composer brief: %w", err)
+	}
+	title := firstNonEmpty(brief.Intent.Objective, brief.Goal, "Composer Flow")
+	facts := map[string]string{
+		"nexus.source_artifact_id":       artifact.ID,
+		"nexus.source_artifact_revision": fmt.Sprintf("%d", artifact.Version),
+		"nexus.source_artifact_hash":     artifact.Hash,
+	}
+	for key, value := range map[string]string{
+		"composer.context":   artifact.ContextJSON,
+		"composer.skill_ids": artifact.SkillIDsJSON,
+	} {
+		if strings.TrimSpace(value) != "" {
+			facts[key] = value
+		}
+	}
+	phaseID := "phase_" + ids.NewRuntimeID()
+	plan, err := n.CreateWorkPlan(ctx, session.ProjectID, title, "Materialized from Composer PromptArtifact", []store.PlanPhase{{
+		ID: phaseID, Title: "Composer Flow", Order: 1, Packages: []store.WorkPackage{{
+			ID: "pkg_" + ids.NewRuntimeID(), Title: title, Goal: brief.Goal, Priority: "HIGH", Status: "READY", Role: "implementer",
+			MaestroSkills: decodeStringArray(artifact.SkillIDsJSON), AcceptanceCriteria: append([]string(nil), brief.Quality.AcceptanceCriteria...), CompiledPrompt: artifact.Content,
+		}},
+	}}, facts)
+	if err != nil {
+		return nil, err
+	}
+	return plan, nil
+}
+
+func decodeStringArray(raw string) []string {
+	var values []string
+	if json.Unmarshal([]byte(raw), &values) != nil {
+		return []string{}
+	}
+	return values
+}
+
 // GetWorkPlan fetches a plan by ID.
 func (n *Nexus) GetWorkPlan(ctx context.Context, planID string) (*store.WorkPlan, error) {
 	st, err := n.OpenProject()

@@ -78,6 +78,12 @@ export const DirectSessionLauncher: React.FC<{
     try {
       const agent = await nexus.createAgent(project.id, name.trim() || buildDirectAgentName(request.prompt, selected.provider), 'developer');
       await nexus.selectResource(agent.id, selected.provider, selected.profile, 'MANUAL');
+      await nexus.applyAgentConfig(agent.id, {
+        provider: selected.provider,
+        profile: selected.profile,
+        isolation: 'project',
+        workspace: project.canonical_path || undefined,
+      });
       await nexus.startAgent(agent.id);
       await refreshAgents();
       await onStarted(agent, request.prompt);

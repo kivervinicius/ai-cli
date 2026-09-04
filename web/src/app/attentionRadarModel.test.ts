@@ -113,6 +113,19 @@ describe('buildAttentionRadar', () => {
     expect(groups[0].needsUserCount).toBe(0);
     expect(groups[0].items[0].badge).toBe('idle');
   });
+
+  it('does not mark bare RUNNING as working on the radar', () => {
+    const groups = buildAttentionRadar([
+      rt({
+        runtime_id: 'idle-run',
+        project_id: 'p1',
+        project_name: 'Alpha',
+        state: 'RUNNING',
+        attention_kind: 'idle',
+      }),
+    ]);
+    expect(groups[0].items[0].badge).toBe('idle');
+  });
 });
 
 describe('planFocusAttention', () => {

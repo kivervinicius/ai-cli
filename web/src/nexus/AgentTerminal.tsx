@@ -22,6 +22,8 @@ import { TerminalActionDialog } from './TerminalActionDialog';
 import { scrubProtocolOutput } from './terminalProtocol';
 import { ConfirmDialog, Tooltip } from '../design-system';
 import type { RuntimeSession } from '../types';
+import { consumePtyOutputForChrome, extractOscTitle } from '../workspace/ptyLiveChrome';
+import { usePtyLiveChromeOptional } from '../workspace/PtyLiveChromeContext';
 
 export const AgentTerminal: React.FC<{
   agentId: string;
@@ -33,11 +35,13 @@ export const AgentTerminal: React.FC<{
   agentName?: string;
   /** When "window", identity lives on the Desktop titlebar; actions stay in a compact toolbar. */
   chrome?: 'full' | 'window';
+  /** Workspace view id so Janelas/Mosaico can mirror OSC settitle. */
+  liveTitleKey?: string;
   onRecover?: () => Promise<RuntimeSession | void> | RuntimeSession | void;
   onRestartWithMode?: (mode: 'Safe' | 'YOLO') => Promise<RuntimeSession | void> | RuntimeSession | void;
   onClose?: (stopRuntime: boolean) => void | Promise<void>;
   onDelete?: () => void | Promise<void>;
-}> = ({ agentId, runtimeId, initialPrompt, provider, profile, mode = 'Safe', agentName, chrome = 'full', onRecover, onRestartWithMode, onClose, onDelete }) => {
+}> = ({ agentId, runtimeId, initialPrompt, provider, profile, mode = 'Safe', agentName, chrome = 'full', liveTitleKey, onRecover, onRestartWithMode, onClose, onDelete }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -65,10 +69,23 @@ export const AgentTerminal: React.FC<{
   const autoRecoveredRef = useRef(false);
   const onRecoverRef = useRef(onRecover);
   onRecoverRef.current = onRecover;
+  const liveChrome = usePtyLiveChromeOptional();
+  const liveTitleKeyRef = useRef(liveTitleKey);
+  liveTitleKeyRef.current = liveTitleKey;
+  const liveChromeRef = useRef(liveChrome);
+  liveChromeRef.current = liveChrome;
+  const ptyChromeRef = useRef({ title: '', questionnaire: false });
 
   useEffect(() => {
     setBoundRuntimeId((current) => nextBoundRuntimeId(current, runtimeId));
   }, [runtimeId]);
+
+  useEffect(() => {
+    const key = liveTitleKey;
+    return () => {
+      if (key) liveChromeRef.current?.clearLive(key);
+    };
+  }, [liveTitleKey]);
 
   const rebindTerminal = (nextRuntimeId?: string) => {
     const trimmed = (nextRuntimeId || '').trim();
@@ -130,7 +147,39 @@ export const AgentTerminal: React.FC<{
     term.loadAddon(fit);
     term.open(container);
 
-    const fitAndResize = () => {
+    let lastSentSize = { rows: 0, cols: 0 };
+
+    const publishChrome = (nextTitle?: string, questionnaire?: boolean) => {
+      if (nextTitle) {
+        ptyChromeRef.current.title = nextTitle;
+        setPtyTitle(nextTitle);
+      }
+      if (questionnaire !== undefined) ptyChromeRef.current.questionnaire = questionnaire;
+      const key = liveTitleKeyRef.current;
+      if (key) {
+        liveChromeRef.current?.setLive(key, {
+          ...(nextTitle ? { title: nextTitle } : {}),
+          ...(questionnaire !== undefined ? { questionnaire } : {}),
+        });
+      }
+    };
+
+    const ingestOutput = (data: string) => {
+      const next = consumePtyOutputForChrome(data, ptyChromeRef.current);
+      if (next.title !== ptyChromeRef.current.title || next.questionnaire !== ptyChromeRef.current.questionnaire) {
+        publishChrome(next.title, next.questionnaire);
+      } else {
+        ptyChromeRef.current = next;
+      }
+    };
+
+    const titleListener = term.onTitleChange((nextTitle) => {
+      const trimmed = String(nextTitle || '').trim();
+      if (trimmed) publishChrome(trimmed);
+    });
+
+    const fitAndResize = (force = false) => {
+      if (disposed) return;
       try {
         if (term.element && term.element.isConnected && container.isConnected && container.clientWidth > 0 && container.clientHeight > 0) {
           fit.fit();
@@ -139,9 +188,17 @@ export const AgentTerminal: React.FC<{
         return;
       }
       const ws = wsRef.current;
-      if (ws?.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
-      }
+      if (ws?.readyState !== WebSocket.OPEN) return;
+      if (!force && term.rows === lastSentSize.rows && term.cols === lastSentSize.cols) return;
+      lastSentSize = { rows: term.rows, cols: term.cols };
+      ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
+    };
+
+    const scheduleRedrawPulse = () => {
+      // After history replay, TUI agents need a second SIGWINCH-sized pulse
+      // or the screen stays on a stale "thinking" frame from the ring buffer.
+      window.setTimeout(() => fitAndResize(true), 120);
+      window.setTimeout(() => fitAndResize(true), 480);
     };
 
     const maybeSendKickoff = () => {
@@ -260,8 +317,9 @@ export const AgentTerminal: React.FC<{
           ws.send(JSON.stringify({ type: 'lease_acquire' }));
         }
         window.requestAnimationFrame(() => {
-          fitAndResize();
+          fitAndResize(true);
           term.focus();
+          scheduleRedrawPulse();
         });
       };
 
@@ -270,7 +328,10 @@ export const AgentTerminal: React.FC<{
           const payload = JSON.parse(event.data);
           if (payload.type === 'output' && payload.data) {
             const cleaned = scrubProtocolOutput(String(payload.data));
-            if (cleaned) term.write(cleaned);
+            if (cleaned) {
+              ingestOutput(cleaned);
+              term.write(cleaned);
+            }
           } else if (payload.type === 'lease') {
             const next = normalizeTerminalRole(payload.role);
             leased = true;
@@ -286,9 +347,14 @@ export const AgentTerminal: React.FC<{
             setMessage('Runtime generation changed — rebinding terminal…');
             ws.close(1012, 'runtime generation changed');
           } else if (payload.type === 'title' && payload.data) {
-            setPtyTitle(String(payload.data));
+            const next = String(payload.data).trim();
+            publishChrome(extractOscTitle(next) || next);
           } else if (payload.type === 'attention') {
-            if (payload.dynamic_title) setPtyTitle(String(payload.dynamic_title));
+            if (payload.dynamic_title) publishChrome(String(payload.dynamic_title));
+            const kind = String(payload.attention_kind || payload.prompt_kind || '');
+            if (kind === 'needs_user' || kind === 'choice' || kind === 'yn' || kind === 'free_text') {
+              publishChrome(undefined, true);
+            }
           } else if (payload.type === 'error') {
             const detail = String(payload.data ?? 'Terminal error');
             lastError = detail;
@@ -299,6 +365,8 @@ export const AgentTerminal: React.FC<{
             }
           }
         } catch {
+          const raw = String(event.data);
+          ingestOutput(raw);
           term.write(event.data);
         }
       };
@@ -337,10 +405,10 @@ export const AgentTerminal: React.FC<{
       ws.send(JSON.stringify({ type: 'input', data }));
     });
 
-    const observer = new ResizeObserver(() => window.requestAnimationFrame(fitAndResize));
+    const observer = new ResizeObserver(() => window.requestAnimationFrame(() => fitAndResize()));
     observer.observe(container);
     const visibility = () => {
-      if (!document.hidden) window.requestAnimationFrame(fitAndResize);
+      if (!document.hidden) window.requestAnimationFrame(() => fitAndResize());
     };
     document.addEventListener('visibilitychange', visibility);
 
@@ -352,10 +420,39 @@ export const AgentTerminal: React.FC<{
       if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
       observer.disconnect();
       document.removeEventListener('visibilitychange', visibility);
-      dataDisposable.dispose();
-      wsRef.current?.close();
+      try {
+        titleListener.dispose();
+      } catch {
+        // ignore
+      }
+      try {
+        dataDisposable.dispose();
+      } catch {
+        // ignore
+      }
+      try {
+        if (wsRef.current) {
+          wsRef.current.onopen = null;
+          wsRef.current.onmessage = null;
+          wsRef.current.onerror = null;
+          wsRef.current.onclose = null;
+          wsRef.current.close();
+          wsRef.current = null;
+        }
+      } catch {
+        // ignore
+      }
       termRef.current = null;
-      term.dispose();
+      try {
+        fit.dispose?.();
+      } catch {
+        // ignore
+      }
+      try {
+        term.dispose();
+      } catch {
+        // ignore
+      }
     };
   }, [agentId, boundRuntimeId, initialPrompt, connectNonce]);
 
@@ -537,7 +634,7 @@ export const AgentTerminal: React.FC<{
           </Tooltip>
         </>
       )}
-      {ptyTitle && (
+      {ptyTitle && !windowChrome && (
         <span className="nx-agent-terminal__pty-title" title={ptyTitle}>
           {ptyTitle}
         </span>

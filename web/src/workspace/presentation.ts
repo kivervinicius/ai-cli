@@ -63,7 +63,7 @@ const DEFAULT_WINDOW_W = 640;
 const DEFAULT_WINDOW_H = 420;
 const CASCADE_OFFSET = 28;
 const MIN_W = 280;
-const MIN_H = 180;
+const MIN_H = 220;
 const FLOATING_TYPES = new Set(['terminal', 'project-shell']);
 /** Bottom restore shelf when mosaic has minimized tiles. Must match CSS. */
 export const MOSAIC_MINIMIZED_SHELF_H = 42;

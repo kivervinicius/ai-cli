@@ -37,7 +37,8 @@ export const PlanBuilderSurface: React.FC<{
   initialGoal?: string;
   /** Compact goal bar labels aligned with the Composer workbench. */
   compactGoal?: boolean;
-}> = ({ project, agents, onOpenAgent, onRunCreated, initialGoal = '', compactGoal = false }) => {
+  initialPlan?: WorkPlan | null;
+}> = ({ project, agents, onOpenAgent, onRunCreated, initialGoal = '', compactGoal = false, initialPlan = null }) => {
   const [plans, setPlans] = useState<WorkPlan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<WorkPlan | null>(null);
   const [_loading, setLoading] = useState(false);
@@ -94,6 +95,9 @@ export const PlanBuilderSurface: React.FC<{
   }, [autoGoal, composerDraftKey]);
 
   useEffect(() => { if (initialGoal.trim()) setAutoGoal((current) => current || initialGoal.trim()); }, [initialGoal]);
+  useEffect(() => {
+    if (initialPlan) selectGeneratedPlan(initialPlan);
+  }, [initialPlan]);
 
   const loadPlans = useCallback(async () => {
     try {
@@ -388,7 +392,24 @@ export const PlanBuilderSurface: React.FC<{
     catch (error) { console.error('Failed to compare revisions:', error); }
   };
 
-  const allPackages = selectedPlan?.phases.flatMap((phase) => phase.packages) || [];
+  const handleCreateManualPlan = async () => {
+    try {
+      setGenerating(true);
+      setPlanError('');
+      const created = await nexusApi.createPlan(project.id, {
+        goal: autoGoal.trim() || 'Novo Flow Manual',
+        auto_plan: false,
+      });
+      selectGeneratedPlan(created);
+      setFlowNotice('Flow manual criado com sucesso. Adicione etapas e configure dependências.');
+    } catch (e) {
+      setPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const allPackages = useMemo(() => selectedPlan?.phases?.flatMap((phase) => phase.packages) || [], [selectedPlan?.phases]);
 
   const handleAddPhase = async () => {
     if (!selectedPlan) return;
@@ -669,35 +690,75 @@ export const PlanBuilderSurface: React.FC<{
         <Card className="nx-composer-goal-bar">
           <div className="nx-composer-goal-bar__label">
             <Sparkles size={16} />
-            <span>Sua solicitação</span>
+            <span>{flowDraft && selectedPlan ? 'Flow Rascunho Ativo' : 'Sua solicitação'}</span>
           </div>
-          <div className="nx-composer-goal-bar__row">
-            <Input
-              value={autoGoal}
-              onChange={setAutoGoal}
-              placeholder="Descreva o objetivo do Flow…"
-              style={{ flex: 1 }}
-            />
-            <Button tone="brand" disabled={!autoGoal.trim() || generating} onClick={handleGenerateAIPlan}>
-              <Sparkles size={14} /> {generating ? 'Refinando…' : 'Refinar'}
-            </Button>
-            {generating && (
-              <Button tone="default" onClick={cancelGenerate}>
-                Cancelar
+
+          {!flowDraft && (
+            <div className="nx-composer-goal-bar__row">
+              <Input
+                value={autoGoal}
+                onChange={setAutoGoal}
+                placeholder="Descreva o objetivo do Flow…"
+                style={{ flex: 1 }}
+              />
+              <Button tone="brand" disabled={!autoGoal.trim() || generating} onClick={handleGenerateAIPlan}>
+                <Sparkles size={14} /> {generating ? 'Refinando…' : 'Refinar'}
               </Button>
-            )}
-            <Button tone="brand" disabled={!selectedPlan || !flowDraft || runBusy} onClick={() => void handleLaunchRun()}>
-              <Play size={14} /> Approve & Run
-            </Button>
-          </div>
+              <Button tone="default" disabled={generating} onClick={() => void handleCreateManualPlan()}>
+                <Plus size={14} /> Criar manual
+              </Button>
+              {generating && (
+                <Button tone="default" onClick={cancelGenerate}>
+                  Cancelar
+                </Button>
+              )}
+            </div>
+          )}
+
+          {flowDraft && selectedPlan && (
+            <div className="nx-composer-goal-bar__row" style={{ alignItems: 'center' }}>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <strong style={{ fontSize: 13, color: 'var(--nx-text)' }}>
+                  {selectedPlan.title || autoGoal || 'Objetivo do Flow'}
+                </strong>
+                {selectedPlan.description && (
+                  <p className="nx-muted-copy" style={{ margin: '2px 0 0', fontSize: 11.5 }}>
+                    {selectedPlan.description}
+                  </p>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <Badge tone={flowDirty ? 'warning' : 'success'}>
+                  {flowDirty ? 'Alterações não salvas' : `Revisão ${selectedPlan.current_revision}`}
+                </Badge>
+                <Button
+                  tone="brand"
+                  disabled={!selectedPlan || !flowDraft || runBusy || flowErrors.length > 0}
+                  onClick={() => void handleLaunchRun()}
+                >
+                  <Play size={14} /> {runBusy ? 'Iniciando…' : 'Approve & Run'}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {goalChips.length > 0 && !selectedPlan && (
             <div className="nx-composer-goal-chips" aria-label="Solicitações recentes">
               <small style={{ color: 'var(--nx-muted)' }}>Continuar uma solicitação recente:</small>
               {goalChips.slice(0, 5).map((goal) => (
-                <button key={goal} type="button" className="nx-composer-goal-chip" onClick={() => setAutoGoal(goal)} title={goal}>{goal.length > 72 ? `${goal.slice(0, 69)}…` : goal}</button>
+                <button
+                  key={goal}
+                  type="button"
+                  className="nx-composer-goal-chip"
+                  onClick={() => setAutoGoal(goal)}
+                  title={goal}
+                >
+                  {goal.length > 72 ? `${goal.slice(0, 69)}…` : goal}
+                </button>
               ))}
             </div>
           )}
+
           {generating && (
             <div className="nx-composer-generate-status" role="status" aria-live="polite">
               <strong>{generateStage || 'Preparando…'}</strong>
@@ -712,13 +773,15 @@ export const PlanBuilderSurface: React.FC<{
               )}
             </div>
           )}
-          {goalChips.length > 0 && (
+
+          {goalChips.length > 0 && !selectedPlan && (
             <div className="nx-composer-goal-chips" aria-label="Objetivo refinado">
               {goalChips.map((chip) => (
                 <span key={chip} className="nx-composer-goal-chip">{chip}</span>
               ))}
             </div>
           )}
+
           {flowDraft && selectedPlan && (
             <Card style={{ marginTop: 12, padding: 12 }}>
               <strong>Agent líder sugerido</strong>
@@ -750,7 +813,12 @@ export const PlanBuilderSurface: React.FC<{
               <Card className="nx-composer-empty-canvas">
                 <Sparkles size={22} style={{ marginBottom: 8, opacity: 0.7 }} />
                 <strong>Canvas vazio</strong>
-                <p>Gere o rascunho acima para a IA propor as etapas. O inspector aparece ao selecionar uma etapa.</p>
+                <p>Gere o rascunho com a IA ou crie uma estrutura base para montar as etapas manualmente.</p>
+                <div style={{ marginTop: 14 }}>
+                  <Button size="sm" tone="default" disabled={generating} onClick={() => void handleCreateManualPlan()}>
+                    <Plus size={13} /> Criar Flow Manual
+                  </Button>
+                </div>
               </Card>
             )}
             {flowDraft && (
@@ -764,7 +832,7 @@ export const PlanBuilderSurface: React.FC<{
                   <Badge tone={flowDirty ? 'warning' : 'success'}>{flowDirty ? 'Unsaved Draft' : `Revision ${selectedPlan?.current_revision || 0}`}</Badge>
                   <Button size="sm" disabled={!flowDirty || flowErrors.length > 0} onClick={() => void saveFlowDraft()}>{flowDirty ? 'Save Draft' : 'Saved'}</Button>
                 </div>
-                <FlowCanvas flow={flowDraft} selectedId={selectedStepId} onSelect={setSelectedStepId} />
+                <FlowCanvas flow={flowDraft} selectedId={selectedStepId} onSelect={setSelectedStepId} onConnect={(from, to) => setFlowDraft((current) => current ? updateStepLocalized(current, to, { dependencies: [...new Set([...(current.steps.find((step) => step.id === to)?.dependencies || []), from])] }) : current)} />
               </>
             )}
           </div>
@@ -907,7 +975,7 @@ export const PlanBuilderSurface: React.FC<{
                 <Badge tone={flowDirty ? 'warning' : 'success'}>{flowDirty ? 'Unsaved Draft' : `Revision ${selectedPlan?.current_revision || 0}`}</Badge>
                 <Button size="sm" disabled={!flowDirty || flowErrors.length > 0} onClick={() => void saveFlowDraft()}>{flowDirty ? 'Save Draft' : 'Saved'}</Button>
               </div>
-              <FlowCanvas flow={flowDraft} selectedId={selectedStepId} onSelect={setSelectedStepId} />
+              <FlowCanvas flow={flowDraft} selectedId={selectedStepId} onSelect={setSelectedStepId} onConnect={(from, to) => setFlowDraft((current) => current ? updateStepLocalized(current, to, { dependencies: [...new Set([...(current.steps.find((step) => step.id === to)?.dependencies || []), from])] }) : current)} />
               {stepComparison && <Card className="nx-flow-step-compare"><pre>{stepComparison}</pre></Card>}
               <details className="nx-flow-compat-details"><summary>Advanced WorkPlan compatibility view</summary>
                     {/* Phases & Packages Tree */}

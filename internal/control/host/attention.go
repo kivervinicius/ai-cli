@@ -58,6 +58,17 @@ var (
 		regexp.MustCompile(`(?i)enter\s+(?:a\s+)?(?:number|option)\s*[:=]`),
 	}
 
+	// AGY/Antigravity ask_question TUI (questionnaires), not generic shell prompts.
+	questionnairePatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\bask_question\b`),
+		regexp.MustCompile(`(?i)question\s+\d+\s+of\s+\d+`),
+		regexp.MustCompile(`(?i)pergunta\s+\d+\s+de\s+\d+`),
+		regexp.MustCompile(`(?i)question[aá]rio`),
+		regexp.MustCompile(`(?i)select all that apply`),
+		regexp.MustCompile(`(?i)press\s+(?:space|espaço).{0,40}toggle`),
+		regexp.MustCompile(`(?i)space to (?:select|toggle)`),
+	}
+
 	// Numbered bullets alone are agent narration, not a choice prompt.
 	numberedOptionLine = regexp.MustCompile(`(?i)^\s*\d+[\).]\s+\S+`)
 
@@ -83,11 +94,15 @@ var (
 	}
 )
 
-// ExtractOSCTitle finds any OSC window title sequence in the raw chunk.
+// ExtractOSCTitle finds the newest OSC 0/2 window title sequence in the raw chunk.
 func ExtractOSCTitle(raw string) string {
-	matches := oscTitleRegex.FindStringSubmatch(raw)
-	if len(matches) > 1 {
-		return strings.TrimSpace(matches[1])
+	matches := oscTitleRegex.FindAllStringSubmatch(raw, -1)
+	if len(matches) == 0 {
+		return ""
+	}
+	last := matches[len(matches)-1]
+	if len(last) > 1 {
+		return strings.TrimSpace(last[1])
 	}
 	return ""
 }
@@ -112,6 +127,7 @@ type AttentionDetector struct {
 	lastKind         string
 	lastPrompt       string
 	lastTitle        string
+	lastOSCTitle     string
 	lastFingerprint  string
 	lastUpdateAt     time.Time
 	onAttention      func(reason, context, dynamicTitle string, state registry.RuntimeState)
@@ -189,11 +205,18 @@ func (d *AttentionDetector) ProcessChunk(chunk []byte) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	if !ptyHeuristicAllowed(d.providerID, d.controlLevel, d.structuredEvents) {
+	raw := string(chunk)
+	oscTitle := ExtractOSCTitle(raw)
+	if oscTitle != "" && !isChromeLine(oscTitle) {
+		d.applyOSCTitleLocked(oscTitle)
+	}
+
+	heuristic := ptyHeuristicAllowed(d.providerID, d.controlLevel, d.structuredEvents)
+	shellQuestionnaire := isShellProvider(d.providerID) && !d.structuredEvents
+	if !heuristic && !shellQuestionnaire {
 		return
 	}
 
-	raw := string(chunk)
 	d.buffer.WriteString(raw)
 
 	if d.buffer.Len() > 8192 {
@@ -204,7 +227,6 @@ func (d *AttentionDetector) ProcessChunk(chunk []byte) {
 
 	cleanText := stripANSIKeepNewlines(d.buffer.String())
 	recentLines := recentUsefulLines(cleanText, 2)
-	oscTitle := ExtractOSCTitle(raw)
 	lastLine := ""
 	if len(recentLines) > 0 {
 		lastLine = recentLines[len(recentLines)-1]
@@ -217,66 +239,82 @@ func (d *AttentionDetector) ProcessChunk(chunk []byte) {
 	attentionCtx := ""
 	dynamicTitle := ""
 
-	// Newest line wins: working/error/completed clear stale wait prompts
-	// still present in the short lookback window.
-	if lastLine != "" {
-		for _, p := range workingPatterns {
-			if p.MatchString(lastLine) {
-				state = registry.StateRunning
-				reason = "WORKING"
-				kind = AttentionWorking
-				attentionCtx = lastLine
-				dynamicTitle = d.projectName + " · " + truncateRunes(attentionCtx, 48)
-				break
-			}
-		}
-	}
-
-	if reason == "" && lastLine != "" {
-		for _, p := range errorPatterns {
-			if p.MatchString(lastLine) {
-				state = registry.StateFailed
-				reason = "ERROR"
-				kind = AttentionError
-				attentionCtx = lastLine
-				dynamicTitle = d.projectName + " · erro"
-				break
-			}
-		}
-	}
-
-	if reason == "" && lastLine != "" {
-		for _, p := range taskCompletedPatterns {
-			if p.MatchString(lastLine) {
-				state = registry.StateRunning
-				reason = "TASK_COMPLETED"
-				kind = AttentionCompleted
-				attentionCtx = lastLine
-				dynamicTitle = d.projectName + " · concluído"
-				break
-			}
-		}
-	}
-
-	if reason == "" {
-		if ctx, pk := classifyNeedsUser(recentLines); ctx != "" && pk != PromptKindNone {
+	if shellQuestionnaire && !heuristic {
+		if ctx, pk := classifyQuestionnaire(recentLines); ctx != "" && pk != PromptKindNone {
 			state = registry.StateWaiting
 			reason = "QUESTION"
 			kind = AttentionNeedsUser
 			promptKind = pk
 			attentionCtx = truncateRunes(ctx, 200)
-			dynamicTitle = d.projectName + " · " + truncateRunes(attentionCtx, 72)
-		}
-	}
-
-	if dynamicTitle == "" {
-		if oscTitle != "" && !isChromeLine(oscTitle) {
-			dynamicTitle = d.projectName + " · " + truncateRunes(oscTitle, 48)
-			attentionCtx = oscTitle
-			kind = AttentionWorking
+			dynamicTitle = oscTitle
+			if dynamicTitle == "" {
+				dynamicTitle = truncateRunes(attentionCtx, 72)
+			}
 		} else {
-			dynamicTitle = d.projectName + " · " + strings.ToUpper(d.providerID)
-			kind = AttentionIdle
+			return
+		}
+	} else {
+		// Newest line wins: working/error/completed clear stale wait prompts
+		// still present in the short lookback window.
+		if lastLine != "" {
+			for _, p := range workingPatterns {
+				if p.MatchString(lastLine) {
+					state = registry.StateRunning
+					reason = "WORKING"
+					kind = AttentionWorking
+					attentionCtx = lastLine
+					dynamicTitle = d.projectName + " · " + truncateRunes(attentionCtx, 48)
+					break
+				}
+			}
+		}
+
+		if reason == "" && lastLine != "" {
+			for _, p := range errorPatterns {
+				if p.MatchString(lastLine) {
+					state = registry.StateFailed
+					reason = "ERROR"
+					kind = AttentionError
+					attentionCtx = lastLine
+					dynamicTitle = d.projectName + " · erro"
+					break
+				}
+			}
+		}
+
+		if reason == "" && lastLine != "" {
+			for _, p := range taskCompletedPatterns {
+				if p.MatchString(lastLine) {
+					state = registry.StateRunning
+					reason = "TASK_COMPLETED"
+					kind = AttentionCompleted
+					attentionCtx = lastLine
+					dynamicTitle = d.projectName + " · concluído"
+					break
+				}
+			}
+		}
+
+		if reason == "" {
+			if ctx, pk := classifyNeedsUser(recentLines); ctx != "" && pk != PromptKindNone {
+				state = registry.StateWaiting
+				reason = "QUESTION"
+				kind = AttentionNeedsUser
+				promptKind = pk
+				attentionCtx = truncateRunes(ctx, 200)
+				dynamicTitle = d.projectName + " · " + truncateRunes(attentionCtx, 72)
+			}
+		}
+
+		if dynamicTitle == "" {
+			if oscTitle != "" && !isChromeLine(oscTitle) {
+				dynamicTitle = oscTitle
+				attentionCtx = oscTitle
+				kind = AttentionWorking
+			} else {
+				dynamicTitle = d.projectName + " · " + strings.ToUpper(d.providerID)
+				kind = AttentionIdle
+			}
 		}
 	}
 
@@ -378,7 +416,41 @@ func (d *AttentionDetector) ProcessChunk(chunk []byte) {
 	}
 }
 
+// applyOSCTitleLocked records the raw terminal settitle (OSC 0/2) without
+// scraping agent narration or clearing an active wait/error.
+func (d *AttentionDetector) applyOSCTitleLocked(title string) {
+	if title == "" || title == d.lastOSCTitle {
+		return
+	}
+	d.lastOSCTitle = title
+	_ = registry.DefaultRegistry().UpdateTitle(d.runtimeID, title)
+	if d.onAttention != nil && d.lastKind != AttentionNeedsUser && d.lastKind != AttentionError {
+		d.onAttention(d.lastReason, title, title, d.lastState)
+	}
+}
+
+func classifyQuestionnaire(lines []string) (context string, promptKind string) {
+	if len(lines) == 0 {
+		return "", PromptKindNone
+	}
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" || isChromeLine(line) || isGarbageAttentionText(line) {
+			continue
+		}
+		for _, p := range questionnairePatterns {
+			if p.MatchString(line) {
+				return line, PromptKindChoice
+			}
+		}
+	}
+	return "", PromptKindNone
+}
+
 func classifyNeedsUser(lines []string) (context string, promptKind string) {
+	if ctx, pk := classifyQuestionnaire(lines); ctx != "" {
+		return ctx, pk
+	}
 	if len(lines) == 0 {
 		return "", PromptKindNone
 	}

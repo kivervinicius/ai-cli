@@ -27,6 +27,7 @@ import { SettingsSurface } from '../features/settings/SettingsSurface';
 import { ProjectShellSurface } from '../features/shell/ProjectShellSurface';
 import { useTranslation } from 'react-i18next';
 import { agentConfigSurface, agentTerminalSurface, flowRunSurface, projectSurface } from './surfaces';
+import { surfaceViewId } from '../workspace/model';
 import { useWorkspacePresentation } from '../workspace/WorkspacePresentationProvider';
 
 export const WorkspaceSurfaceHost: React.FC<{
@@ -148,7 +149,7 @@ export const WorkspaceSurfaceHost: React.FC<{
     return <AgentConfigurationSurface agent={agent} onApplied={refreshAgents} />;
 
   if (surface.type === 'project-shell')
-    return surface.data?.runtimeId ? <ProjectShellSurface runtimeId={surface.data.runtimeId} title={surface.title} onRuntimeChanged={refreshGlobal} /> : <EmptyState title="Project shell unavailable" />;
+    return surface.data?.runtimeId ? <ProjectShellSurface runtimeId={surface.data.runtimeId} title={surface.title} liveTitleKey={surfaceViewId(surface)} onRuntimeChanged={refreshGlobal} /> : <EmptyState title="Project shell unavailable" />;
 
   if (surface.type === 'terminal') {
     // A recovered Agent receives a new runtime generation. Never keep using
@@ -165,6 +166,7 @@ export const WorkspaceSurfaceHost: React.FC<{
           profile={runtime?.profile_id || runtime?.profile || 'default'}
           agentName={agent?.name || surface.title}
           chrome={terminalChrome}
+          liveTitleKey={surfaceViewId(surface)}
           onRecover={async () => {
             if (!surface.data?.agentId) return;
             try {
@@ -311,6 +313,7 @@ export const WorkspaceSurfaceHost: React.FC<{
         title={runtime.title}
         provider={runtime.provider_id || runtime.provider || 'AI'}
         profile={runtime.profile_id || runtime.profile || 'default'}
+        liveTitleKey={surfaceViewId(surface)}
         onUpdateTitle={async (id, title) => {
           await api.updateRuntimeTitle(id, title);
           await refreshGlobal();

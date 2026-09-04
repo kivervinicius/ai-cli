@@ -1,5 +1,74 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-04 — Otimização de Layout e Ocupação Integral das Logos do Nexus
+
+- **Problema**:
+  - Os assets de ícone (`nexus-icon.png`, favicons e SVG) possuíam margens vazias/transparentes internas significativas (~41% de margem vertical em canvas 512x512).
+  - Em conjunto com `padding: 3px`/`padding: 5px` e `p-1` nos elementos `.nx-brand-mark` e `Sidebar.tsx`, a arte gráfica da marca ficava encolhida e subaproveitada visualmente dentro dos containers.
+- **Correções Realizadas**:
+  - `scripts/generate_brand_assets.py`: atualizada a extração e `make_square_icon` para recortar na bounding box exata dos pixels não-vazios (`getbbox()`), preenchendo 98% da área útil do canvas quadrado para favicons e ícones mestres.
+  - `web/public/nexus-icon.svg`, `nexus-icon.svg` e `assets/brand/nexus-icon.svg`: atualizado o `viewBox` para a bounding box justa (`48 76 380 260`), garantindo renderização vetorial sem margens ociosas.
+  - `web/src/app/workspace-os.css`:
+    - Removido o padding desnecessário em `.nx-brand-mark__img` e `.nx-brand-mark--hero .nx-brand-mark__img` (`padding: 0`), mantendo `object-fit: contain; width: 100%; height: 100%`.
+    - Ajustada a dimensão da marca hero em `.nx-brand-mark--hero` para `64px` com raio `14px`, proporcionando presença marcante no `ProjectHub`.
+    - Ajustado o flex e layout do cabeçalho da barra lateral em `.nx-project-rail__brand` e `.nx-brand-mark`.
+  - `web/src/components/Sidebar.tsx`: removido o `p-1` do container da logo, garantindo preenchimento total de borda a borda do elemento com overflow limpo.
+- **Verificação**:
+  - `python3 scripts/generate_brand_assets.py` executado com sucesso e bboxes validadas.
+  - `make web-verify` executado com 8/8 gates aprovados (`typecheck`, `lint`, `null-arrays`, `test`, `i18n`, `build`, `embed-sync`, `ui-markers`).
+
+- **Problemas corrigidos**:
+  - Removida duplicação de goal bars e inputs sobrepostos entre o Composer e o PlanBuilder (`WorkSurface.tsx` e `PlanBuilderSurface.tsx`).
+  - Corrigido o fallback do Briefing vivo em `ComposerSurface.tsx` que ficava vazio quando não havia itens (bug de array truthy em JSX).
+  - Adicionado seletor de sessões anteriores no Composer (`ComposerSurface.tsx`), permitindo alternar e retomar sessões deliberativas anteriores de forma explícita.
+  - Ordenação correta por `updated_at` descendente na retomada de sessões em `composerSessionModel.ts` com testes unitários atualizados.
+  - Implementada criação manual de Flow diretamente no Goal Bar e no Canvas vazio (`handleCreateManualPlan`) quando a Intelligence local não estiver disponível ou configurada.
+  - Adicionados estados de carregamento explícitos (`busy`/`generating`) com desativação preventiva de botões para evitar submissões duplicadas.
+  - Responsividade aprimorada em `workspace-os.css`: stack vertical automático do grid de inspector e canvas em telas menores (< 1080px), alinhamento responsivo da goal bar e botões expandidos em telas móveis (< 640px).
+- **Verificação**:
+  - `npm --prefix web run verify` executado com sucesso: 8/8 gates PASS (TypeScript, ESLint, null-arrays, vitest, i18n, build, embed-sync, ui-markers).
+
+
+- **Problema**:
+  - Ao alternar abas de terminal ou reconectar WebSockets expirados (`404`), o xterm disparava `Cannot read properties of undefined (reading 'dimensions')` no unmount/resize.
+  - O gate de verificação `null-arrays` reprovava acessos diretos a `view.turns` no `ComposerSurface.tsx`.
+  - `TestComposerImportedPromptTracksUnknownsAndAppliesSkills` falhava porque `CompileAgentPrompt` re-validava skills já validadas contra o client Maestro padrão ao invés de reutilizar os skills validados.
+- **Correções**:
+  - Implementado flag `disposed` no `TerminalPane.tsx` e `AgentTerminal.tsx`, nullificação de callbacks WS antes de fechar, e try/catch em limpezas de addons/dimensões do xterm.
+  - Normalizado acesso a arrays no `ComposerSurface.tsx` com `(view.turns || [])`.
+  - Criado `CompileAgentPromptWithValidatedSkills` em `internal/nexus/prompt_compiler.go` e atualizado `compileComposerPrompt` em `composer.go` para evitar redundância de validação.
+- **Verificação**:
+  - `make web-verify` 100% PASS (8/8 gates: TypeScript, ESLint, null-arrays, Vitest, i18n, build, embed-sync, ui-markers).
+  - `go test ./...` 100% PASS em todos os pacotes.
+  - `make build` recompilou o binário Go embutindo o frontend atualizado.
+
+## 2026-09-04 — Aplicação da Identidade Visual e Catálogo de Marca
+
+- **Problemas revalidados no HEAD**: o gate frontend inicialmente falhou por
+  `no-control-regex` em `ptyLiveChrome.ts`; o CI ainda usava `bun-version:
+  latest`; e o Composer finalizava sempre com `selectedSkills=[]`, sem rota
+  para aceitar/dispensar propostas.
+- **Correções**: delimitadores OSC passaram a ser compilados com caracteres de
+  controle em runtime; Bun foi fixado em `1.3.9` no CI e em `web/package.json`;
+  foi adicionada a rota PATCH de estado de skill, API frontend e controles
+  reais no Composer. Readiness, Unknowns e Assumptions agora aparecem na UI.
+- **Verificação**: `make web-verify`, `go test -count=1 ./...`, `go vet ./...`
+  e `git diff --check` passaram. Nenhum commit ou push foi criado.
+- **Próximo contexto**: este baseline foi resolvido no ciclo seguinte abaixo;
+  a validação manual de flows grandes permanece pendente.
+
+## 2026-09-04 — PromptArtifact → Flow e DAG visual
+
+- **Correção**: adicionada materialização explícita por `POST
+  /api/v1/prompt-artifacts/{id}/flow`; o WorkPlan criado registra id, revisão,
+  hash, contexto e skills do artefato, preservando o prompt compilado.
+- **Canvas**: substituída a composição visual por waves por nodes posicionados,
+  edges SVG, auto-layout inicial, drag, zoom, fit view e conexão de dependências
+  pelos controles acessíveis; edição continua salvando o mesmo WorkPlan consumido
+  pelo Mission Runner.
+- **Verificação**: teste Go de lineage, `make web-verify`, `go test ./...`,
+  `go vet ./...` e `git diff --check` passaram.
+
 ## 2026-09-04 — Aplicação da Identidade Visual e Catálogo de Marca
 
 - **Objetivo**: Integrar a identidade visual oficial do Nexus em todo o projeto e documentações, separar o logotipo em ícones e favicons (múltiplas resoluções, light/dark mode) e mapear oportunidades de substituição de componentes genéricos.

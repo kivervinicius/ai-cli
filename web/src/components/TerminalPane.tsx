@@ -3,6 +3,8 @@ import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { Shield, ShieldAlert, XSquare, Pencil, Check } from 'lucide-react';
 import { scrubProtocolOutput } from '../nexus/terminalProtocol';
+import { consumePtyOutputForChrome, extractOscTitle } from '../workspace/ptyLiveChrome';
+import { usePtyLiveChromeOptional } from '../workspace/PtyLiveChromeContext';
 
 interface TerminalPaneProps {
   runtimeId: string;
@@ -11,6 +13,8 @@ interface TerminalPaneProps {
   profile: string;
   /** Desktop mosaic titlebar already shows identity — skip the inner header. */
   hideHeader?: boolean;
+  /** Workspace view id so Janelas/Mosaico can mirror OSC settitle. */
+  liveTitleKey?: string;
   onUpdateTitle?: (id: string, newTitle: string) => void;
   onClose?: () => void;
 }
@@ -21,6 +25,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   provider,
   profile,
   hideHeader = false,
+  liveTitleKey,
   onUpdateTitle,
   onClose,
 }) => {
@@ -28,6 +33,12 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const liveChrome = usePtyLiveChromeOptional();
+  const liveTitleKeyRef = useRef(liveTitleKey);
+  liveTitleKeyRef.current = liveTitleKey;
+  const liveChromeRef = useRef(liveChrome);
+  liveChromeRef.current = liveChrome;
+  const ptyChromeRef = useRef({ title: '', questionnaire: false });
 
   const [role, setRole] = useState<'CONTROL' | 'VIEW_ONLY'>('VIEW_ONLY');
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -38,6 +49,13 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   useEffect(() => {
     setCustomTitle(title || '');
   }, [title]);
+
+  useEffect(() => {
+    const key = liveTitleKey;
+    return () => {
+      if (key) liveChromeRef.current?.clearLive(key);
+    };
+  }, [liveTitleKey]);
 
   const handleSaveTitle = () => {
     setIsEditingTitle(false);
@@ -68,19 +86,72 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     term.loadAddon(fitAddon);
     term.open(containerRef.current);
 
-    const safeFit = () => {
+    let disposed = false;
+    let lastSentSize = { rows: 0, cols: 0 };
+
+    const safeFit = (force = false) => {
+      if (disposed) return;
       try {
-        if (term.element && term.element.isConnected && containerRef.current && containerRef.current.clientWidth > 0 && containerRef.current.clientHeight > 0) {
+        if (
+          term.element &&
+          term.element.isConnected &&
+          containerRef.current &&
+          containerRef.current.clientWidth > 0 &&
+          containerRef.current.clientHeight > 0
+        ) {
           fitAddon.fit();
         }
       } catch {
         // Ignore fit measurement errors when dimensions are transiently undefined
       }
+      if (!force) return;
+      const ws = wsRef.current;
+      if (ws?.readyState !== WebSocket.OPEN) return;
+      lastSentSize = { rows: term.rows, cols: term.cols };
+      ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
     };
-    const initialFit = window.requestAnimationFrame(safeFit);
+
+    const scheduleRedrawPulse = () => {
+      window.setTimeout(() => safeFit(true), 120);
+      window.setTimeout(() => safeFit(true), 480);
+    };
+
+    const initialFit = window.requestAnimationFrame(() => safeFit(true));
 
     termRef.current = term;
     fitAddonRef.current = fitAddon;
+
+    const publishChrome = (nextTitle?: string, questionnaire?: boolean) => {
+      if (disposed) return;
+      if (nextTitle) {
+        ptyChromeRef.current.title = nextTitle;
+        setPtyTitle(nextTitle);
+      }
+      if (questionnaire !== undefined) ptyChromeRef.current.questionnaire = questionnaire;
+      const key = liveTitleKeyRef.current;
+      if (key) {
+        liveChromeRef.current?.setLive(key, {
+          ...(nextTitle ? { title: nextTitle } : {}),
+          ...(questionnaire !== undefined ? { questionnaire } : {}),
+        });
+      }
+    };
+
+    const ingestOutput = (data: string) => {
+      if (disposed) return;
+      const next = consumePtyOutputForChrome(data, ptyChromeRef.current);
+      if (next.title !== ptyChromeRef.current.title || next.questionnaire !== ptyChromeRef.current.questionnaire) {
+        publishChrome(next.title, next.questionnaire);
+      } else {
+        ptyChromeRef.current = next;
+      }
+    };
+
+    const titleListener = term.onTitleChange((nextTitle) => {
+      if (disposed) return;
+      const trimmed = String(nextTitle || '').trim();
+      if (trimmed) publishChrome(trimmed);
+    });
 
     // Connect WebSocket
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -89,50 +160,67 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     wsRef.current = ws;
 
     ws.onopen = () => {
+      if (disposed) return;
       setErrorMsg('');
-      safeFit();
+      safeFit(true);
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
         ws.send(JSON.stringify({ type: 'lease_acquire' }));
       }
-      term.focus();
+      scheduleRedrawPulse();
+      try {
+        term.focus();
+      } catch {
+        // ignore
+      }
     };
 
     ws.onmessage = (event) => {
+      if (disposed) return;
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'output' && msg.data) {
           const cleaned = scrubProtocolOutput(String(msg.data));
-          if (cleaned) term.write(cleaned);
+          if (cleaned) {
+            ingestOutput(cleaned);
+            term.write(cleaned);
+          }
         } else if (msg.type === 'lease') {
           setRole(msg.role === 'CONTROL' ? 'CONTROL' : 'VIEW_ONLY');
         } else if (msg.type === 'title' && msg.data) {
-          setPtyTitle(String(msg.data));
+          const next = String(msg.data).trim();
+          publishChrome(extractOscTitle(next) || next);
         } else if (msg.type === 'attention') {
           // Push is owned by NexusWorkspaceApp poll (focused project only).
-          // OSC / dynamic_title only feeds the live chip — never identity.
-          if (msg.dynamic_title) {
-            setPtyTitle(String(msg.dynamic_title));
+          if (msg.dynamic_title) publishChrome(String(msg.dynamic_title));
+          const kind = String(msg.attention_kind || msg.prompt_kind || '');
+          if (kind === 'needs_user' || kind === 'choice' || kind === 'yn' || kind === 'free_text') {
+            publishChrome(undefined, true);
           }
         } else if (msg.type === 'error') {
           setErrorMsg(msg.data);
         }
       } catch {
+        if (disposed) return;
         // Raw bytes fallback
+        const raw = String(event.data);
+        ingestOutput(raw);
         term.write(event.data);
       }
     };
 
     ws.onclose = () => {
+      if (disposed) return;
       setErrorMsg('Disconnected from runtime');
     };
 
     ws.onerror = () => {
+      if (disposed) return;
       setErrorMsg('WebSocket connection error');
     };
 
     // Forward terminal input to WebSocket with focus/CPR sequence filtering
     const dataListener = term.onData((data) => {
+      if (disposed) return;
       // Discard browser focus in/out and cursor position report sequences that leak during tab switching
       if (
         data === '\x1b[I' ||
@@ -150,8 +238,11 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       }
     });
 
-    // Resize handling
+    // Resize handling — FitAddon.fit triggers onResize for real size changes.
     const resizeListener = term.onResize(({ rows, cols }) => {
+      if (disposed) return;
+      if (rows === lastSentSize.rows && cols === lastSentSize.cols) return;
+      lastSentSize = { rows, cols };
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'resize', rows, cols }));
       }
@@ -163,12 +254,43 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     window.addEventListener('resize', handleWindowResize);
 
     return () => {
-      dataListener.dispose();
-      resizeListener.dispose();
+      disposed = true;
+      try {
+        titleListener.dispose();
+      } catch {
+        // ignore
+      }
+      try {
+        dataListener.dispose();
+      } catch {
+        // ignore
+      }
+      try {
+        resizeListener.dispose();
+      } catch {
+        // ignore
+      }
       window.removeEventListener('resize', handleWindowResize);
       window.cancelAnimationFrame(initialFit);
-      ws.close();
-      term.dispose();
+      try {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        ws.close();
+      } catch {
+        // ignore
+      }
+      try {
+        fitAddon.dispose?.();
+      } catch {
+        // ignore
+      }
+      try {
+        term.dispose();
+      } catch {
+        // ignore
+      }
     };
   }, [runtimeId]);
 

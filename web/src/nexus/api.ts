@@ -52,7 +52,9 @@ export const nexus = {
   createComposerSession: (projectId: string, goal: string) => request<import('../types').ComposerSessionView>(`/api/v1/projects/${projectId}/composer-sessions`, { method: 'POST', body: JSON.stringify({ goal }) }),
   getComposerSession: (id: string) => request<import('../types').ComposerSessionView>(`/api/v1/composer-sessions/${id}`),
   addComposerTurn: (id: string, content: string) => request<import('../types').ComposerSessionView>(`/api/v1/composer-sessions/${id}/turns`, { method: 'POST', body: JSON.stringify({ content }) }),
+  updateComposerSkillState: (id: string, skillId: string, state: string) => request<import('../types').ComposerSessionView>(`/api/v1/composer-sessions/${id}/skills/${encodeURIComponent(skillId)}`, { method: 'PATCH', body: JSON.stringify({ state }) }),
   finalizeComposerSession: (id: string, skillIds: string[] = [], confirmGaps = false) => request<import('../types').PromptArtifact>(`/api/v1/composer-sessions/${id}/finalize`, { method: 'POST', body: JSON.stringify({ skill_ids: skillIds, confirm_gaps: confirmGaps }) }),
+  materializePromptArtifact: async (id: string) => normalizeWorkPlan(await request<unknown>(`/api/v1/prompt-artifacts/${id}/flow`, { method: 'POST' })),
   saveLayout: (projectId: string, layout: string) =>
     request<{ status: string }>(`/api/v1/projects/${projectId}/layout`, {
       method: 'PUT',

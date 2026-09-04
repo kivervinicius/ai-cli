@@ -62,6 +62,9 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 		opts.RuntimeID = fmt.Sprintf("%s-%s", opts.ProviderID, ids.NewRuntimeID())
 	}
 	if opts.Workspace == "" {
+		if strings.TrimSpace(opts.ProjectID) != "" {
+			return nil, fmt.Errorf("project runtime requires an explicit workspace (refusing server CWD fallback)")
+		}
 		cwd, _ := os.Getwd()
 		opts.Workspace = cwd
 	}

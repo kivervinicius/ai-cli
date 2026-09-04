@@ -6,8 +6,9 @@ import { useWorkspacePresentation } from '../../workspace/WorkspacePresentationP
 export const ProjectShellSurface: React.FC<{
   runtimeId: string;
   title?: string;
+  liveTitleKey?: string;
   onRuntimeChanged?: () => void | Promise<void>;
-}> = ({ runtimeId, title = 'Project Shell', onRuntimeChanged }) => {
+}> = ({ runtimeId, title = 'Project Shell', liveTitleKey, onRuntimeChanged }) => {
   const presentation = useWorkspacePresentation();
   const hideHeader = presentation.state.mode === 'DESKTOP' || presentation.state.mode === 'MOSAIC';
   return (
@@ -22,6 +23,7 @@ export const ProjectShellSurface: React.FC<{
         provider="shell"
         profile="local"
         hideHeader={hideHeader}
+        liveTitleKey={liveTitleKey}
         onUpdateTitle={async (id, nextTitle) => {
           await api.updateRuntimeTitle(id, nextTitle);
           await onRuntimeChanged?.();

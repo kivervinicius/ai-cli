@@ -84,7 +84,7 @@ func (s *Store) CreateProject(p Project) (Project, error) {
 		p.MaestroMode = MaestroAssist
 	}
 	if p.DefaultIsolation == "" {
-		p.DefaultIsolation = "developer"
+		p.DefaultIsolation = "project"
 	}
 	if p.ResourcePolicy == "" {
 		p.ResourcePolicy = "{}"

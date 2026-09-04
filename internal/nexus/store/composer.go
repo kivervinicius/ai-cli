@@ -289,6 +289,18 @@ func (s *Store) ListPromptArtifacts(sessionID string) ([]PromptArtifact, error) 
 	return out, rows.Err()
 }
 
+func (s *Store) GetPromptArtifact(id string) (*PromptArtifact, error) {
+	var item PromptArtifact
+	var created string
+	err := s.db.QueryRow(`SELECT id,session_id,version,content,content_hash,context_json,skill_ids_json,created_at FROM prompt_artifacts WHERE id=?`, id).
+		Scan(&item.ID, &item.SessionID, &item.Version, &item.Content, &item.Hash, &item.ContextJSON, &item.SkillIDsJSON, &created)
+	if err != nil {
+		return nil, err
+	}
+	item.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
+	return &item, nil
+}
+
 func capComposerText(value string) string {
 	value = strings.TrimSpace(value)
 	const max = 8 * 1024

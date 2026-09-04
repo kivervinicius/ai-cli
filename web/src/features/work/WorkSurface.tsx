@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Network, RefreshCw, Sparkles } from 'lucide-react';
 import { Badge, Button, Card } from '../../design-system';
-import type { Agent, ContextReadiness, ContextReadinessState, MissionRun, Project } from '../../types';
+import type { Agent, ContextReadiness, ContextReadinessState, MissionRun, Project, PromptArtifact, WorkPlan } from '../../types';
 import { nexus } from '../../nexus/api';
 import { PlanBuilderSurface } from './PlanBuilderSurface';
 import { ComposerSurface } from './ComposerSurface';
@@ -24,7 +24,9 @@ export const WorkSurface: React.FC<{
   const [readinessBusy, setReadinessBusy] = useState(false);
   const [error, setError] = useState('');
   const [intelligence, setIntelligence] = useState<{ available: boolean; provider?: string; error?: string } | null>(null);
-  const [flowPrompt, setFlowPrompt] = useState('');
+  const [flowArtifact, setFlowArtifact] = useState<PromptArtifact | null>(null);
+  const [flowPlan, setFlowPlan] = useState<WorkPlan | null>(null);
+  const [flowError, setFlowError] = useState('');
 
   const refreshContext = useCallback(async () => {
     try {
@@ -65,6 +67,16 @@ export const WorkSurface: React.FC<{
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setReadinessBusy(false);
+    }
+  };
+
+  const materializeFlow = async (artifact: PromptArtifact) => {
+    setFlowArtifact(artifact);
+    setFlowError('');
+    try {
+      setFlowPlan(await nexus.materializePromptArtifact(artifact.id));
+    } catch (err) {
+      setFlowError(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -115,8 +127,9 @@ export const WorkSurface: React.FC<{
       {error && <div className="nx-inline-error">{error}</div>}
 
       <div className="nx-composer-flow-region" data-gate={gate.canCompose ? 'ready' : 'blocked'}>
-        <ComposerSurface project={project} onTransformFlow={setFlowPrompt} />
-        {flowPrompt && <PlanBuilderSurface project={project} agents={agents} onOpenAgent={onDirect} onRunCreated={onFlowRun} initialGoal={flowPrompt} compactGoal />}
+        <ComposerSurface project={project} onTransformFlow={(artifact) => void materializeFlow(artifact)} />
+        {flowError && <div className="nx-inline-error">Flow materialization failed: {flowError}</div>}
+        {flowArtifact && flowPlan && <PlanBuilderSurface project={project} agents={agents} onOpenAgent={onDirect} onRunCreated={onFlowRun} initialPlan={flowPlan} compactGoal />}
       </div>
     </div>
   );
