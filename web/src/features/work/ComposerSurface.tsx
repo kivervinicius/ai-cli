@@ -4,6 +4,7 @@ import { Badge, Button, Card, Input } from '../../design-system';
 import { nexus } from '../../nexus/api';
 import type { ComposerSession, ComposerSessionView, PromptArtifact, Project } from '../../types';
 import { selectResumableComposerSession } from './composerSessionModel';
+import { asStringArray } from '../../lib/safeArray';
 
 export const ComposerSurface: React.FC<{ project: Project; onTransformFlow: (prompt: string) => void }> = ({ project, onTransformFlow }) => {
   const [sessions, setSessions] = useState<ComposerSession[]>([]);
@@ -23,7 +24,16 @@ export const ComposerSurface: React.FC<{ project: Project; onTransformFlow: (pro
   useEffect(() => { void (async () => { try { const next = await refreshSessions(); const id = selectResumableComposerSession(next); if (id) setView(await nexus.getComposerSession(id)); } catch (err) { setError(err instanceof Error ? err.message : String(err)); } })(); }, [project.id]);
 
   const briefItems = useMemo(() => view ? [
-    ['Entendido', view.brief.goal], ['Contexto', (view.brief.context || []).join(' · ')], ['Decisões', (view.brief.decisions || []).join(' · ')], ['Critérios', (view.brief.success_criteria || []).join(' · ')], ['Dúvidas abertas', (view.brief.open_questions || []).join(' · ')],
+    ['Entendido', view.brief.goal],
+    ['Contexto', [
+      ...asStringArray(view.brief.context),
+      ...(view.brief.context && typeof view.brief.context === 'object' && !Array.isArray(view.brief.context)
+        ? asStringArray((view.brief.context as { existing_state?: unknown }).existing_state)
+        : []),
+    ].join(' · ')],
+    ['Decisões', asStringArray(view.brief.decisions).join(' · ')],
+    ['Critérios', asStringArray(view.brief.success_criteria).join(' · ')],
+    ['Dúvidas abertas', asStringArray(view.brief.open_questions).join(' · ')],
   ].filter(([, value]) => value) : [], [view]);
 
   const create = async () => { if (!draft.trim()) return; setBusy(true); setError(''); try { const next = await nexus.createComposerSession(project.id, draft.trim()); setView(next); setDraft(''); setArtifact(null); await refreshSessions(); } catch (err) { setError(err instanceof Error ? err.message : String(err)); } finally { setBusy(false); } };

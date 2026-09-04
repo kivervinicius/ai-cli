@@ -132,7 +132,7 @@ export const AgentTerminal: React.FC<{
 
     const fitAndResize = () => {
       try {
-        if (container.clientWidth > 0 && container.clientHeight > 0) {
+        if (term.element && term.element.isConnected && container.isConnected && container.clientWidth > 0 && container.clientHeight > 0) {
           fit.fit();
         }
       } catch {

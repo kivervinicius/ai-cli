@@ -3,9 +3,11 @@ package nexus
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/kivervinicius/ai-cli/internal/nexus/intelligence"
 	"github.com/kivervinicius/ai-cli/internal/nexus/maestrogates"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
@@ -78,7 +80,7 @@ func (n *Nexus) ListComposerSessions(_ context.Context, projectID string) ([]sto
 	return st.ListComposerSessions(projectID)
 }
 
-func (n *Nexus) AddComposerTurn(_ context.Context, sessionID, role, content string) (*ComposerSessionView, error) {
+func (n *Nexus) AddComposerTurn(ctx context.Context, sessionID, role, content string) (*ComposerSessionView, error) {
 	st, err := n.OpenProject()
 	if err != nil {
 		return nil, err
@@ -94,10 +96,36 @@ func (n *Nexus) AddComposerTurn(_ context.Context, sessionID, role, content stri
 		return nil, err
 	}
 	brief := decodeComposerBrief(session.BriefJSON)
+	intelligenceNotice := ""
 	if role == store.ComposerUser {
 		mergeTextIntoBrief(&brief, content, "USER")
+		if provider, providerErr := n.ConfiguredIntelligenceProvider(ctx, session.ProjectID); providerErr == nil && provider.Available(ctx) {
+			analysis, analyzeErr := provider.AnalyzeIntent(ctx, content, map[string]any{"project_id": session.ProjectID, "brief": brief})
+			if analyzeErr != nil {
+				intelligenceNotice = "Inteligência local indisponível nesta rodada: " + analyzeErr.Error()
+			}
+			if analysis != nil {
+				brief.Intent.Objective = firstNonEmpty(analysis.Intent, brief.Intent.Objective)
+				brief.Intent.DesiredOutcome = firstNonEmpty(analysis.Intent, brief.Intent.DesiredOutcome)
+				brief.Constraints.Technical = appendUniqueAll(brief.Constraints.Technical, analysis.Constraints)
+				for _, assumption := range analysis.Assumptions {
+					brief.Assumptions = upsertAssumption(brief.Assumptions, PromptAssumption{ID: "intelligence-" + fmt.Sprint(len(brief.Assumptions)+1), Value: assumption, Confidence: "MEDIUM", Status: "INFERRED"})
+				}
+			}
+			if analysis != nil {
+				unknowns, unknownErr := provider.EvaluateAmbiguities(ctx, analysis)
+				if unknownErr != nil {
+					intelligenceNotice = "Inteligência local não conseguiu avaliar as lacunas: " + unknownErr.Error()
+				}
+				for _, unknown := range unknowns {
+					brief.OpenQuestions = appendUnique(brief.OpenQuestions, unknown.Question)
+				}
+			}
+		} else if providerErr != nil && !errors.Is(providerErr, intelligence.ErrIntelligenceUnavailable) {
+			intelligenceNotice = "Inteligência local indisponível: " + providerErr.Error()
+		}
 		refreshComposerBrief(&brief)
-		response := composeAssistantReply(brief)
+		response := strings.TrimSpace(strings.Join([]string{intelligenceNotice, composeAssistantReply(brief)}, "\n\n"))
 		if strings.TrimSpace(response) != "" {
 			if _, err := st.AppendComposerTurn(store.ComposerTurn{SessionID: sessionID, Role: store.ComposerAssistant, Content: response}); err != nil {
 				return nil, err

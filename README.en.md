@@ -1,6 +1,9 @@
 <p align="center">
   <a href="https://github.com/IAPro-Community">
-    <img src="logo.png" alt="IAPro Community Logo" width="200">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="nexus-logo-dark.png">
+      <img src="nexus-logo.png" alt="IAPro Nexus Logo" width="380">
+    </picture>
   </a>
 </p>
 

@@ -70,14 +70,14 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
 
     const safeFit = () => {
       try {
-        if (containerRef.current && containerRef.current.clientWidth > 0 && containerRef.current.clientHeight > 0) {
+        if (term.element && term.element.isConnected && containerRef.current && containerRef.current.clientWidth > 0 && containerRef.current.clientHeight > 0) {
           fitAddon.fit();
         }
       } catch {
         // Ignore fit measurement errors when dimensions are transiently undefined
       }
     };
-    safeFit();
+    const initialFit = window.requestAnimationFrame(safeFit);
 
     termRef.current = term;
     fitAddonRef.current = fitAddon;
@@ -166,6 +166,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       dataListener.dispose();
       resizeListener.dispose();
       window.removeEventListener('resize', handleWindowResize);
+      window.cancelAnimationFrame(initialFit);
       ws.close();
       term.dispose();
     };

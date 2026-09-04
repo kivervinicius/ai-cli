@@ -23,6 +23,7 @@ O código canônico utiliza o binário `nexus`, mantendo `ai` como alias transpa
 - [`NEXUS_CAPABILITY_PRESERVATION.md`](NEXUS_CAPABILITY_PRESERVATION.md): Matriz de preservação honesta de capacidades.
 - [`NEXUS_V1_AGENT_MODEL.md`](NEXUS_V1_AGENT_MODEL.md): Modelo de agentes duráveis e persistentes.
 - [`NEXUS_V1_MAESTRO_INTEGRATION.md`](NEXUS_V1_MAESTRO_INTEGRATION.md): Integração profunda e governança com o Orquestrador Maestro.
+- [`BRANDING_AND_ASSETS.md`](BRANDING_AND_ASSETS.md): Identidade visual, catálogo de assets, favicon, script de extração e propostas de design.
 
 ---
 

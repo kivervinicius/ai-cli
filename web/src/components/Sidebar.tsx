@@ -49,16 +49,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Brand Header */}
       <div className="p-4 border-b border-slate-800/80 flex items-center space-x-3 bg-gradient-to-b from-slate-900/50 to-transparent">
         <img
-          src="./logo.png"
-          alt="IAPro Community"
-          className="w-9 h-9 rounded-lg object-contain bg-slate-950/80 p-0.5 border border-purple-500/30 shadow-md shadow-purple-950/50"
+          src="./nexus-icon.png"
+          alt="IAPro Nexus"
+          className="w-9 h-9 rounded-lg object-contain bg-slate-900/90 p-1 border border-cyan-500/30 shadow-md shadow-cyan-950/50"
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center space-x-1.5">
             <h1 className="text-sm font-extrabold iapro-gradient-text tracking-wide truncate">IAPro</h1>
-            <span className="text-[10px] font-bold text-slate-300 tracking-wider">CONTROL</span>
+            <span className="text-[10px] font-bold text-slate-300 tracking-wider">NEXUS</span>
           </div>
-          <p className="text-[10px] font-mono text-cyan-400/90 font-medium truncate">Community • v0.4.0</p>
+          <p className="text-[10px] font-mono text-cyan-400/90 font-medium truncate">Workspace OS</p>
         </div>
       </div>
 

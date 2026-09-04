@@ -1,4 +1,9 @@
-<p align="center"><img src="logo.png" alt="Logo de IAPro Community" width="200"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="nexus-logo-dark.png">
+    <img src="nexus-logo.png" alt="Logo de IAPro Nexus" width="380">
+  </picture>
+</p>
 
 <p align="center">
   <a href="README.md">🇧🇷 Português (Brasil)</a> &nbsp;|&nbsp; <a href="README.en.md">🇬🇧 English</a> &nbsp;|&nbsp; <strong>🇪🇸 Español</strong>

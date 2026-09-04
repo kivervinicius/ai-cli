@@ -32,6 +32,10 @@ await build({
 });
 
 await cp(resolve(webDir, 'index.html'), resolve(distDir, 'index.html'));
+const publicDir = resolve(webDir, 'public');
+if (existsSync(publicDir)) {
+  await cp(publicDir, distDir, { recursive: true });
+}
 const logo = existsSync(resolve(webDir, 'public/logo.png')) ? resolve(webDir, 'public/logo.png') : resolve(repoDir, 'logo.png');
 if (existsSync(logo)) await cp(logo, resolve(distDir, 'logo.png'));
 

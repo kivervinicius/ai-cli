@@ -28,7 +28,7 @@ runtime. Project Shells confirmam o encerramento do processo. O badge superior
 resume trabalho, espera, desconexão e degradação; clique em runtime vivo foca o
 terminal e clique em desconectado abre Agentes para recuperação.
 
-Última validação: `make web-verify` e `make build` passaram em 2026-09-03.
+Última validação: `make web-verify`, `go test ./...` e `make build` passaram em 2026-09-04 com a aplicação da identidade visual oficial e geração do pacote de assets de marca.
 
 O Codex agora aparece como recurso compatível no modo Coding CLI quando autenticado,
 usando `codex exec` para prompts não interativos. O servidor foi reiniciado após o

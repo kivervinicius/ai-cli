@@ -1,5 +1,19 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-04 — Aplicação da Identidade Visual e Catálogo de Marca
+
+- **Objetivo**: Integrar a identidade visual oficial do Nexus em todo o projeto e documentações, separar o logotipo em ícones e favicons (múltiplas resoluções, light/dark mode) e mapear oportunidades de substituição de componentes genéricos.
+- **Implementação**:
+  - Script autônomo `scripts/generate_brand_assets.py` com desmatting alfa subpixel a partir da arte master, gerando `nexus-icon.png` (512x512), `nexus-icon.svg`, suíte completa de favicons (`favicon.ico`, 16x16, 32x32, 48x48, 64x64, 128x128, 180x180 `apple-touch-icon`, 192x192 e 512x512 para PWA), logos horizontais completos para Dark Mode (`nexus-logo-dark.png`) e Light Mode (`nexus-logo.png`), além de cartões OpenGraph 1200x630 em `assets/brand/`.
+  - Adicionado `web/public/manifest.webmanifest` para suporte completo a PWA no Workspace OS.
+  - Atualizado `web/index.html` com os favicons e manifesto.
+  - `web/scripts/build.mjs` atualizado para copiar recursivamente todos os assets de `web/public` para o bundle de distribuição e o embed do Go.
+  - Substituído o badge genérico `"N"` em texto no `ProjectRail.tsx`, `ProjectHub.tsx` e `NexusDemoApp.tsx` pela renderização do ícone oficial com a nova classe `.nx-brand-mark__img` e fundo com contraste elevado.
+  - Atualizado cabeçalho do `Sidebar.tsx` e ícone das notificações push do navegador em `PushNotificationManager.ts`.
+  - Documentação nos READMEs (`README.md`, `README.en.md`, `README.es.md`) atualizada com a tag `<picture>` responsiva a `prefers-color-scheme: dark`.
+  - Criado `DEV/BRANDING_AND_ASSETS.md` detalhando catálogo, diretrizes de marca e proposta completa de modernização do CLI e Web.
+- **Verificação**: `make web-verify` 100% verde (typecheck, lint, null-arrays, vitest, i18n, build, embed-sync, ui-markers), `make build` e `go test ./...` executados com sucesso.
+
 ## 2026-09-03 — Nexus cria contexto durável base
 
 - **Problema**: projetos novos sem `AGENTS.md` ou `DEV` ficavam em `FAILED`, mas
@@ -1154,3 +1168,36 @@ no mesmo ambiente em que será executado.
 
 Verificação: testes Go de launcher/driver/app/nexus PASS, `make web-verify`
 PASS e `make build` PASS.
+## 2026-09-04 — Composer/Flow finalization candidate
+
+Executada a validação em worktree isolada e integrada a evolução do Composer:
+brief estruturado por archetype, unknowns com severidade/status/fonte,
+readiness contextual, importação de prompt externo, skills Maestro validadas e
+aplicadas, e histórico imutável de PromptArtifacts. Foram gerados o relatório
+de verificação e o prompt de validação local em `DEV/`.
+
+Verificação: `go test ./...` PASS, `make web-verify` PASS e `make build` PASS.
+O status geral é `CONDITIONAL_GO` porque o editor DAG visual completo,
+scheduling e a suíte cross-platform de terminal ainda exigem implementação e
+testes adicionais.
+## 2026-09-04 — Correção de crashes do Composer e terminal
+
+Corrigida a incompatibilidade entre o `LivingBrief` estruturado e a leitura
+legada do Composer (`context` agora é normalizado antes de renderizar). O
+TerminalPane e o AgentTerminal também passaram a aguardar um elemento xterm
+conectado e dimensões válidas antes de chamar `FitAddon.fit`, evitando falhas
+transitórias de `Viewport.dimensions` durante montagem/desmontagem.
+
+Verificação: `make web-verify` PASS, `make build` PASS e Web reiniciado com
+HTTP 200 em `http://127.0.0.1:3000`.
+## 2026-09-04 — Correção de regressão do LivingBrief e Intelligence local
+
+A UI do Composer passou a receber `context` estruturado após a evolução do
+brief, mas ainda tentava tratá-lo como array. A leitura agora normaliza os dois
+formatos. O Composer também volta a consultar a Intelligence configurada a cada
+rodada; quando o provider local está ausente, inválido ou não responde, a
+conversa continua com uma mensagem explícita de degradação em vez de falhar
+silenciosamente ou repetir uma resposta sem diagnóstico.
+
+Verificação: testes Nexus/Intelligence PASS, `make web-verify` PASS, `make
+build` PASS e Web reiniciado em HTTP 200.

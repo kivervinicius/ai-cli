@@ -75,7 +75,9 @@ export const ProjectRail: React.FC<{
         aria-label={t('rail.aria')}
       >
         <div className="nx-project-rail__brand">
-          <span className="nx-brand-mark">N</span>
+          <span className="nx-brand-mark">
+            <img src="./nexus-icon.png" alt="Nexus" className="nx-brand-mark__img" />
+          </span>
           <span>
             <strong>IAPro Nexus</strong>
             <small>Workspace OS</small>

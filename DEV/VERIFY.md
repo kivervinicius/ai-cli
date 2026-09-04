@@ -1,5 +1,12 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## Identidade visual e assets de marca — 2026-09-04
+
+- `make web-verify` — PASS (typecheck, lint, null-arrays, vitest, i18n, build, embed-sync e ui-markers).
+- `go test ./...` — PASS (todos os pacotes Go testados e passando).
+- `make build` — PASS; binário `nexus v0.5.0-beta.23` gerado e instalado com novos assets embutidos em `internal/control/web/dist`.
+- Validação visual: extração do master em alta resolução com desmatting transparente, verificação de contraste em fundo escuro (`#080a0f`) e fundo claro, geração do pacote favicon e renderização no rail e hero.
+
 ## Controles de terminais e resumo de Agentes — 2026-09-03
 
 - `make web-verify` — PASS (typecheck, lint, null-arrays, testes, i18n, build,
@@ -229,7 +236,7 @@ All business logic lives in `internal/nexus/` (service layer). Web and TUI consu
 Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CURRENT_CODE_REVIEW.md).
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-04T16:22:57Z
+## Frontend gate — 2026-09-04T18:14:31Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
 
