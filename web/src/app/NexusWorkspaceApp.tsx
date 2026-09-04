@@ -290,9 +290,10 @@ const WorkspaceCoordinator: React.FC<{
     }
   }, [project.id, workspace, data]);
 
-  // Ensure the Terminais product tab always exists without stealing Overview focus.
+  // Ensure pinned product tabs exist without stealing Overview focus.
   useEffect(() => {
     workspace.ensure(projectSurface(project.id, 'terminals'));
+    workspace.ensure(projectSurface(project.id, 'work'));
   }, [project.id, workspace]);
 
   useEffect(() => {
@@ -535,6 +536,7 @@ const WorkspaceCoordinator: React.FC<{
         surface.data?.unreadAttention !== (unread ? 'true' : 'false') ||
         surface.data?.attentionKind !== next.attentionKind ||
         surface.data?.statusSuffix !== next.statusSuffix ||
+        surface.data?.dynamicTitle !== next.dynamicTitle ||
         surface.data?.attentionFingerprint !== next.fingerprint ||
         surface.data?.providerLabel !== providerLabel ||
         surface.data?.agentName !== agent.name;
@@ -549,6 +551,7 @@ const WorkspaceCoordinator: React.FC<{
             unreadAttention: unread ? 'true' : 'false',
             attentionKind: next.attentionKind,
             statusSuffix: next.statusSuffix,
+            dynamicTitle: next.dynamicTitle,
             attentionFingerprint: next.fingerprint,
             providerLabel,
           },

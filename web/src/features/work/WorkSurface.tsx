@@ -22,6 +22,7 @@ export const WorkSurface: React.FC<{
   const [readiness, setReadiness] = useState<ContextReadiness | null>(null);
   const [readinessBusy, setReadinessBusy] = useState(false);
   const [error, setError] = useState('');
+  const [intelligence, setIntelligence] = useState<{ available: boolean; provider?: string; error?: string } | null>(null);
 
   const refreshContext = useCallback(async () => {
     try {
@@ -30,12 +31,28 @@ export const WorkSurface: React.FC<{
       setError(err instanceof Error ? err.message : String(err));
     }
   }, [project.id]);
+
+  const refreshIntelligence = useCallback(async () => {
+    try {
+      const status = await nexus.getIntelligence(project.id);
+      setIntelligence({
+        available: status.available,
+        provider: status.provider || status.mode,
+        error: status.error,
+      });
+    } catch (err) {
+      setIntelligence({ available: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  }, [project.id]);
+
   useEffect(() => {
     void refreshContext();
-  }, [refreshContext]);
+    void refreshIntelligence();
+  }, [refreshContext, refreshIntelligence]);
 
   const state: ContextReadinessState = readiness?.state ?? 'MISSING';
   const gate = composerGateForReadiness(state);
+  const intelligenceTone = intelligence?.available ? 'success' : 'warning';
 
   const prepareContext = async (createContext = false) => {
     setReadinessBusy(true);
@@ -62,6 +79,9 @@ export const WorkSurface: React.FC<{
         <div className="nx-composer-header-actions">
           <Badge tone="brand">{project.name}</Badge>
           <Badge tone={readinessTone(state)}>Context {state}</Badge>
+          <Badge tone={intelligenceTone}>
+            Intelligence {intelligence?.available ? `READY${intelligence.provider ? ` · ${intelligence.provider}` : ''}` : 'OFF'}
+          </Badge>
         </div>
       </div>
 

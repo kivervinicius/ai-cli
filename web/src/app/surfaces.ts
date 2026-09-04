@@ -51,7 +51,7 @@ export function projectSurface(projectId: string, kind: ProjectSurfaceKind): Wor
     type: kind,
     title: labels[kind],
     titleKey,
-    closable: kind !== 'overview' && kind !== 'terminals',
+    closable: kind !== 'overview' && kind !== 'terminals' && kind !== 'work',
     data: { projectId },
   };
 }

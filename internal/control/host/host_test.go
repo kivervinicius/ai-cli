@@ -551,10 +551,11 @@ func TestSessionHost_AttachedLeaseAcquireDoesNotLeakToPTY(t *testing.T) {
 		t.Fatalf("lease_acquire not OK: %s (raw=%q)", resp.Error, got)
 	}
 
-	// A subsequent normal write must still reach the PTY (cat echoes it).
-	marker := "pty-still-alive\n"
+	// A subsequent single keystroke (no newline) must still reach the PTY.
+	// Interactive terminals send raw bytes without trailing \n.
+	marker := "k"
 	if _, err := client.RawConn().Write([]byte(marker)); err != nil {
-		t.Fatalf("write marker: %v", err)
+		t.Fatalf("write single keystroke: %v", err)
 	}
 	deadline := time.Now().Add(2 * time.Second)
 	var echoed strings.Builder
@@ -563,7 +564,7 @@ func TestSessionHost_AttachedLeaseAcquireDoesNotLeakToPTY(t *testing.T) {
 		n, err := client.RawConn().Read(buf)
 		if n > 0 {
 			echoed.Write(buf[:n])
-			if strings.Contains(echoed.String(), "pty-still-alive") {
+			if strings.Contains(echoed.String(), marker) {
 				return
 			}
 		}
@@ -571,5 +572,5 @@ func TestSessionHost_AttachedLeaseAcquireDoesNotLeakToPTY(t *testing.T) {
 			t.Fatalf("read marker echo: %v (so far %q)", err, echoed.String())
 		}
 	}
-	t.Fatalf("PTY did not echo marker after lease_acquire; got %q", echoed.String())
+	t.Fatalf("PTY did not echo single keystroke after lease_acquire; got %q", echoed.String())
 }

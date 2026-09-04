@@ -210,7 +210,11 @@ func (e *ClarificationRequiredError) Error() string {
 
 // GeneratePlanFromIntent uses a real configured Nexus Intelligence provider.
 // It persists BLOCKING ambiguities and never falls back to fabricated packages.
+// CLI providers use a single-shot PlanFromGoal call; OpenAI-compatible keeps multi-call.
 func (n *Nexus) GeneratePlanFromIntent(ctx context.Context, projectID, goal string) (*store.WorkPlan, error) {
+	ctx, cancel := context.WithTimeout(ctx, intelligence.PlanGenerationTimeout)
+	defer cancel()
+
 	contextData, err := n.ComposerContextData(projectID)
 	if err != nil {
 		return nil, err
@@ -220,7 +224,8 @@ func (n *Nexus) GeneratePlanFromIntent(ctx context.Context, projectID, goal stri
 		return nil, err
 	}
 	engine := intelligence.NewNexusEngine(provider).WithContextData(contextData)
-	intent, unknowns, err := engine.Analyze(ctx, goal, projectID)
+
+	intent, unknowns, outlines, err := engine.PlanFromGoal(ctx, goal, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -241,9 +246,11 @@ func (n *Nexus) GeneratePlanFromIntent(ctx context.Context, projectID, goal stri
 		return nil, &ClarificationRequiredError{Checkpoint: checkpoint}
 	}
 
-	outlines, err := engine.GeneratePlan(ctx, intent, state.StructuredFacts)
-	if err != nil {
-		return nil, err
+	if len(outlines) == 0 {
+		outlines, err = engine.GeneratePlan(ctx, intent, state.StructuredFacts)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return n.createPlanFromOutlines(ctx, projectID, goal, intent, outlines, state.StructuredFacts)
 }
@@ -360,16 +367,122 @@ func (n *Nexus) ResolveClarificationAndGeneratePlan(ctx context.Context, id stri
 	return plan, updated, err
 }
 
-func (n *Nexus) createPlanFromOutlines(ctx context.Context, projectID, goal string, intent *intelligence.IntentAnalysis, outlines []intelligence.WorkPackageOutline, facts map[string]string) (*store.WorkPlan, error) {
+func isSchemaPlaceholder(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return true
+	}
+	lower := strings.ToLower(trimmed)
+	switch lower {
+	case "...", "…", "title", "goal", "package title", "measurable criterion", "specific measurable objective":
+		return true
+	}
+	if strings.HasPrefix(trimmed, "<") && strings.HasSuffix(trimmed, ">") {
+		return true
+	}
+	if strings.Trim(lower, ".…") == "" {
+		return true
+	}
+	return false
+}
+
+func sanitizeAcceptance(values []string) []string {
+	var out []string
+	for _, value := range values {
+		if isSchemaPlaceholder(value) {
+			continue
+		}
+		out = append(out, strings.TrimSpace(value))
+	}
+	return out
+}
+
+func packagesFromOutlines(goal string, outlines []intelligence.WorkPackageOutline) []store.WorkPackage {
+	goal = strings.TrimSpace(goal)
 	var pkgs []store.WorkPackage
-	for _, o := range outlines {
+	for i, o := range outlines {
+		title := strings.TrimSpace(o.Title)
+		pkgGoal := strings.TrimSpace(o.Goal)
+		if isSchemaPlaceholder(title) {
+			if !isSchemaPlaceholder(pkgGoal) {
+				title = pkgGoal
+			} else if goal != "" {
+				title = goal
+			} else {
+				title = fmt.Sprintf("Work step %d", i+1)
+			}
+		}
+		if isSchemaPlaceholder(pkgGoal) {
+			pkgGoal = goal
+			if pkgGoal == "" {
+				pkgGoal = title
+			}
+		}
+		priority := strings.TrimSpace(o.Priority)
+		if priority == "" || isSchemaPlaceholder(priority) {
+			priority = "HIGH"
+		}
+		role := strings.TrimSpace(o.Role)
+		if role == "" || isSchemaPlaceholder(role) {
+			role = "implementer"
+		}
 		pkgs = append(pkgs, store.WorkPackage{
-			ID: "pkg_" + ids.NewRuntimeID(), Title: o.Title, Goal: o.Goal, Priority: o.Priority,
-			Status: "READY", Dependencies: o.Dependencies, Role: o.Role,
+			ID: "pkg_" + ids.NewRuntimeID(), Title: title, Goal: pkgGoal, Priority: priority,
+			Status: "READY", Dependencies: append([]string(nil), o.Dependencies...), Role: role,
 			// Intelligence cannot mint Maestro skill/gate IDs. Maestro assignment is a separate explicit step.
-			MaestroGates: []string{}, AcceptanceCriteria: o.Acceptance,
+			MaestroGates: []string{}, AcceptanceCriteria: sanitizeAcceptance(o.Acceptance),
 		})
 	}
+	if len(pkgs) == 0 {
+		title := goal
+		if title == "" {
+			title = "Work step"
+		}
+		pkgs = []store.WorkPackage{{
+			ID: "pkg_" + ids.NewRuntimeID(), Title: title, Goal: goal, Priority: "HIGH",
+			Status: "READY", Role: "implementer", MaestroGates: []string{},
+		}}
+	}
+	byID := make(map[string]struct{}, len(pkgs))
+	byTitle := make(map[string]string, len(pkgs))
+	for _, pkg := range pkgs {
+		byID[pkg.ID] = struct{}{}
+		key := strings.ToLower(strings.TrimSpace(pkg.Title))
+		if key != "" {
+			if _, exists := byTitle[key]; !exists {
+				byTitle[key] = pkg.ID
+			}
+		}
+	}
+	for i := range pkgs {
+		seen := map[string]struct{}{}
+		var resolved []string
+		for _, dep := range pkgs[i].Dependencies {
+			dep = strings.TrimSpace(dep)
+			if dep == "" || isSchemaPlaceholder(dep) || dep == pkgs[i].ID {
+				continue
+			}
+			id := dep
+			if _, ok := byID[dep]; !ok {
+				mapped, ok := byTitle[strings.ToLower(dep)]
+				if !ok || mapped == pkgs[i].ID {
+					continue
+				}
+				id = mapped
+			}
+			if _, dup := seen[id]; dup {
+				continue
+			}
+			seen[id] = struct{}{}
+			resolved = append(resolved, id)
+		}
+		pkgs[i].Dependencies = resolved
+	}
+	return pkgs
+}
+
+func (n *Nexus) createPlanFromOutlines(ctx context.Context, projectID, goal string, intent *intelligence.IntentAnalysis, outlines []intelligence.WorkPackageOutline, facts map[string]string) (*store.WorkPlan, error) {
+	pkgs := packagesFromOutlines(goal, outlines)
 	phase := store.PlanPhase{ID: "phase_" + ids.NewRuntimeID(), Title: "Execution Phase", Order: 1, Packages: pkgs}
 	mergedFacts := map[string]string{}
 	for k, v := range facts {

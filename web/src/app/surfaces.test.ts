@@ -7,6 +7,12 @@ describe('workspace surfaces', () => {
     expect(s.id).toBe('project:prj_1:overview');
     expect(s.logicalKey).toBe('project:prj_1:overview');
     expect(s.viewId).toBe('view:project:prj_1:overview');
+    expect(s.closable).toBe(false);
+  });
+  it('pins Composer next to Overview and Terminals', () => {
+    expect(projectSurface('prj_1', 'work').closable).toBe(false);
+    expect(projectSurface('prj_1', 'terminals').closable).toBe(false);
+    expect(projectSurface('prj_1', 'missions').closable).toBe(true);
   });
   it('creates projects hub surface id', () => {
     const s = projectSurface('prj_1', 'projects');

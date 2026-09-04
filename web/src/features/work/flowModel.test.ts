@@ -99,6 +99,40 @@ describe('Flow editor compatibility model', () => {
     expect(executionWaves(flow)).toEqual([['A'],['B','C'],['D']]);
   });
 
+  it('drops schema placeholders so a copied CLI outline still renders', () => {
+    const plan: WorkPlan = {
+      ...fixture(),
+      phases: [{
+        id: 'p1', title: 'Execution Phase', order: 1, packages: [{
+          id: 'pkg_1', title: '...', goal: '...', priority: 'HIGH', status: 'READY',
+          dependencies: ['package title'], role: 'implementer', assignment_strategy: 'AUTO',
+          acceptance_criteria: ['measurable criterion'],
+        }],
+      }],
+    };
+    const flow = flowFromWorkPlan(plan);
+    expect(flow.steps[0].dependencies).toEqual([]);
+    expect(flow.steps[0].title).not.toBe('...');
+    expect(flow.steps[0].goal).not.toBe('...');
+    expect(() => executionWaves(flow)).not.toThrow();
+    expect(validateFlow(flow).some((item) => item.includes('unknown dependency'))).toBe(false);
+  });
+
+  it('resolves dependency titles to package ids', () => {
+    const plan: WorkPlan = {
+      ...fixture(),
+      phases: [{
+        id: 'p1', title: 'Build', order: 1, packages: [
+          { id: 'pkg_a', title: 'Foundation', goal: 'schema', priority: 'HIGH', status: 'READY', dependencies: [], role: 'architect', assignment_strategy: 'AUTO', acceptance_criteria: ['ok'] },
+          { id: 'pkg_b', title: 'API', goal: 'http', priority: 'HIGH', status: 'READY', dependencies: ['Foundation'], role: 'implementer', assignment_strategy: 'AUTO', acceptance_criteria: ['ok'] },
+        ],
+      }],
+    };
+    const flow = flowFromWorkPlan(plan);
+    expect(flow.steps.find((step) => step.id === 'pkg_b')?.dependencies).toEqual(['pkg_a']);
+    expect(() => executionWaves(flow)).not.toThrow();
+  });
+
   it('rejects cycles and unknown dependencies', () => {
     let flow = flowFromWorkPlan(fixture());
     flow = updateStepLocalized(flow, 'A', { dependencies:['D'] });

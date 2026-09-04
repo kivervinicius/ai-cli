@@ -95,3 +95,42 @@ func TestCLIProviderPlanIncludesProjectContext(t *testing.T) {
 		t.Fatalf("CLI plan prompt missing bounded project context: %s", prompt)
 	}
 }
+
+func TestCLIProviderPlanFromGoalOneshot(t *testing.T) {
+	var calls int
+	p := NewCLIProvider("codex", "default", true, func(_ context.Context, prompt string) (string, error) {
+		calls++
+		if !strings.Contains(prompt, `"unknowns"`) || !strings.Contains(prompt, `"packages"`) {
+			t.Fatalf("oneshot prompt missing combined schema: %s", prompt)
+		}
+		if strings.Contains(prompt, `"dependencies":["package title"]`) || strings.Contains(prompt, `"title":"..."`) {
+			t.Fatalf("schema placeholders teach the model to emit invalid packages: %s", prompt)
+		}
+		return `{
+			"intent":"ship auth",
+			"scope":"project",
+			"risk_level":"medium",
+			"identified_goals":["auth"],
+			"constraints":[],
+			"assumptions":[],
+			"unknowns":[{"key":"stack","level":"LOW_IMPACT","question":"stack?","rationale":"default ok","suggested_options":["go"],"default_choice":"go"}],
+			"packages":[{"title":"Auth","goal":"login","priority":"HIGH","dependencies":[],"role":"implementer","skills":["fake"],"acceptance":["ok"]}]
+		}`, nil
+	})
+	intent, unknowns, packages, err := p.PlanFromGoal(context.Background(), "ship auth", map[string]any{"probe": false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected 1 CLI call, got %d", calls)
+	}
+	if intent == nil || intent.Intent != "ship auth" {
+		t.Fatalf("unexpected intent %+v", intent)
+	}
+	if len(unknowns) != 1 || unknowns[0].Key != "stack" {
+		t.Fatalf("unexpected unknowns %+v", unknowns)
+	}
+	if len(packages) != 1 || packages[0].Title != "Auth" || packages[0].Skills != nil {
+		t.Fatalf("unexpected packages %+v", packages)
+	}
+}

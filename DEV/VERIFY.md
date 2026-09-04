@@ -229,7 +229,7 @@ All business logic lives in `internal/nexus/` (service layer). Web and TUI consu
 Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CURRENT_CODE_REVIEW.md).
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-04T03:04:12Z
+## Frontend gate — 2026-09-04T04:11:48Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
 

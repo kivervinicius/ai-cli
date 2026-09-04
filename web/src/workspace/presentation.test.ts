@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  commitMosaicMove,
   createPresentationState,
   focusDesktopWindow,
   migratePresentationState,
@@ -159,7 +160,7 @@ describe('workspace presentation', () => {
     expect(state.windows['view:a'].width).toBeGreaterThan(beforeA.width);
   });
 
-  it('resizes adjacent mosaic tiles and ignores free-float move', () => {
+  it('resizes adjacent mosaic tiles and supports free mosaic move/swap', () => {
     let state = setPresentationMode(
       syncDesktopWindows(
         { ...createPresentationState('DESKTOP'), canvas: { x: 0, y: 0, width: 800, height: 400 } },
@@ -169,11 +170,54 @@ describe('workspace presentation', () => {
     );
     const left = state.windows['view:a'];
     const right = state.windows['view:b'];
-    const moved = moveDesktopWindow(state, 'view:a', 40, 40);
-    expect(moved.windows['view:a'].x).toBe(left.x);
     state = resizeAdjacentDesktopWindows(state, 'view:a', 'view:b', 'vertical', 40);
     expect(state.windows['view:a'].width).toBe(left.width + 40);
     expect(state.windows['view:b'].width).toBe(right.width - 40);
+
+    const origin = {
+      x: state.windows['view:a'].x,
+      y: state.windows['view:a'].y,
+      width: state.windows['view:a'].width,
+      height: state.windows['view:a'].height,
+    };
+    const targetGeom = {
+      x: state.windows['view:b'].x,
+      y: state.windows['view:b'].y,
+      width: state.windows['view:b'].width,
+      height: state.windows['view:b'].height,
+    };
+    state = moveDesktopWindow(state, 'view:a', targetGeom.x + 10, targetGeom.y + 10);
+    state = commitMosaicMove(state, 'view:a', origin);
+    expect(state.windows['view:a'].x).toBe(targetGeom.x);
+    expect(state.windows['view:b'].x).toBe(origin.x);
+  });
+
+  it('persists mosaic chrome across migrate and pack', () => {
+    const migrated = migratePresentationState({
+      version: 2,
+      mode: 'MOSAIC',
+      windows: {
+        'view:a': {
+          viewId: 'view:a',
+          x: 0,
+          y: 0,
+          width: 400,
+          height: 400,
+          zIndex: 1,
+          minimized: false,
+          maximized: false,
+          customTitle: 'Ops',
+          accent: '#38bdf8',
+          icon: '⚡',
+        },
+      },
+      nextZ: 2,
+      canvas: { x: 0, y: 0, width: 800, height: 400 },
+      tiled: true,
+    });
+    expect(migrated.windows['view:a'].customTitle).toBe('Ops');
+    expect(migrated.windows['view:a'].accent).toBe('#38bdf8');
+    expect(migrated.windows['view:a'].icon).toBe('⚡');
   });
 
   it('migrates MOSAIC mode', () => {

@@ -79,6 +79,18 @@ type IntelligenceProvider interface {
 	GeneratePlanOutline(ctx context.Context, intent *IntentAnalysis, facts map[string]string, contextData map[string]any) ([]WorkPackageOutline, error)
 }
 
+// OneshotPlanner collapses intent + ambiguities + packages into a single model call.
+// CLI providers implement this to avoid three sequential headless execs.
+type OneshotPlanner interface {
+	PlanFromGoal(ctx context.Context, goal string, contextData map[string]any) (*IntentAnalysis, []AmbiguityItem, []WorkPackageOutline, error)
+}
+
+// PlanGenerationTimeout is the hard ceiling for Composer auto_plan (including CLI).
+const PlanGenerationTimeout = 90 * time.Second
+
+// IntelligenceProbeTimeout bounds the preflight round-trip before Refinar.
+const IntelligenceProbeTimeout = 20 * time.Second
+
 // WorkPackageOutline is the raw outline produced by an intelligence provider before optimization.
 type WorkPackageOutline struct {
 	Title        string   `json:"title"`

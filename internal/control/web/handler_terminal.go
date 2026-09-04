@@ -122,11 +122,13 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 	// broker. The command is deliberately sent over this connection *after*
 	// Attach so SessionHost can bind the lease to the exact streaming client,
 	// not to an unrelated RPC connection.
+	//
+	// Never demote CONTROL when the host write fails: the broker already
+	// granted the seat; the client can retry lease_acquire. Demoting here
+	// left the UI read-only even though no other writer held the lease.
 	effectiveRole := role
 	if role == "CONTROL" {
-		if err := sendAttachedCommand(rawConn, protocol.CmdLeaseAcquire, nil); err != nil {
-			effectiveRole = "VIEW_ONLY"
-		}
+		_ = sendAttachedCommandWithRetry(rawConn, protocol.CmdLeaseAcquire, nil, 3)
 	}
 	_ = safeWriteJSON(TerminalMessage{
 		Type: "lease",
@@ -284,9 +286,13 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 
 		switch msg.Type {
 		case "input":
-			// Authoritative writer check on Agent level (§45, A6)
+			// Authoritative writer check on Agent level (§45, A6).
+			// SessionHost streamAttachedInput is line-oriented for RPC framing;
+			// raw keystrokes have no trailing \n, so they must be sent as CmdInput
+			// JSON frames (newline-terminated) or they buffer forever and typing
+			// appears dead.
 			if broker.IsWriter(agentID, ws) && msg.Data != "" {
-				_, _ = rawConn.Write([]byte(msg.Data))
+				_ = sendAttachedCommand(rawConn, protocol.CmdInput, protocol.InputPayload{Data: msg.Data})
 			}
 
 		case "resize":
@@ -313,7 +319,7 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 					Type: "lease",
 					Role: "CONTROL",
 				})
-				_ = sendAttachedCommand(rawConn, protocol.CmdLeaseAcquire, nil)
+				_ = sendAttachedCommandWithRetry(rawConn, protocol.CmdLeaseAcquire, nil, 3)
 			}
 
 		case "lease_release":
@@ -337,6 +343,23 @@ func sendAttachedCommand(conn interface{ Write([]byte) (int, error) }, command p
 		return err
 	}
 	_, err = conn.Write(append(data, '\n'))
+	return err
+}
+
+func sendAttachedCommandWithRetry(conn interface{ Write([]byte) (int, error) }, command protocol.CommandType, payload any, attempts int) error {
+	if attempts < 1 {
+		attempts = 1
+	}
+	var err error
+	for i := 0; i < attempts; i++ {
+		err = sendAttachedCommand(conn, command, payload)
+		if err == nil {
+			return nil
+		}
+		if i+1 < attempts {
+			time.Sleep(40 * time.Millisecond)
+		}
+	}
 	return err
 }
 

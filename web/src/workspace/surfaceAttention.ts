@@ -41,15 +41,21 @@ export function statusSuffixFromRuntime(runtime?: RuntimeSession | null): string
  * Keep the agent name stable; status is a short suffix, never a full replacement.
  * dynamic_title may inform document title / secondary labels, not the surface title root.
  */
-export function surfaceTitleFromAgent(agentName: string, runtime?: RuntimeSession | null): {
+export function surfaceTitleFromAgent(
+  agentName: string,
+  runtime?: RuntimeSession | null,
+  customTitle?: string
+): {
   title: string;
   statusSuffix: string;
+  dynamicTitle: string;
   hasAttention: boolean;
   attentionKind: SurfaceAttentionKind;
   fingerprint: string;
 } {
-  const name = (agentName || '').trim() || 'Agent';
+  const name = (customTitle || agentName || '').trim() || 'Agent';
   const statusSuffix = statusSuffixFromRuntime(runtime);
+  const dynamicTitle = sanitizeAttentionText(runtime?.dynamic_title, '').trim();
   const kind = attentionKindFromRuntime(runtime);
   const hasAttention = kind === 'needs_user' || kind === 'completed' || kind === 'error';
   const fingerprint =
@@ -58,6 +64,7 @@ export function surfaceTitleFromAgent(agentName: string, runtime?: RuntimeSessio
   return {
     title: statusSuffix ? `${name} · ${statusSuffix}` : name,
     statusSuffix,
+    dynamicTitle,
     hasAttention,
     attentionKind: kind,
     fingerprint: hasAttention ? fingerprint : '',

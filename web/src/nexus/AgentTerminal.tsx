@@ -39,7 +39,8 @@ export const AgentTerminal: React.FC<{
   const wsRef = useRef<WebSocket | null>(null);
   const [connection, setConnection] = useState<'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('CONNECTING');
   const [message, setMessage] = useState('');
-  const [customTitle, setCustomTitle] = useState('');
+  const [role, setRole] = useState<TerminalRole>('VIEW_ONLY');
+  const [ptyTitle, setPtyTitle] = useState('');
   const [recovering, setRecovering] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [boundRuntimeId, setBoundRuntimeId] = useState(runtimeId || '');
@@ -83,6 +84,7 @@ export const AgentTerminal: React.FC<{
     let stopReconnect = false;
     const roleRef: { current: TerminalRole } = { current: 'VIEW_ONLY' };
     const kickoffRef = { current: normalizeInitialPrompt(initialPrompt), sent: false };
+    let termInstance: Terminal | null = null;
 
     (container as any).__triggerReconnect = () => {
       stopReconnect = false;
@@ -94,6 +96,14 @@ export const AgentTerminal: React.FC<{
       connect();
     };
 
+    (container as any).__takeControl = () => {
+      const ws = wsRef.current;
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'lease_acquire' }));
+      }
+      termInstance?.focus();
+    };
+
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 13,
@@ -102,6 +112,7 @@ export const AgentTerminal: React.FC<{
       theme: { background: '#090b10' },
       scrollback: 5000,
     });
+    termInstance = term;
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(container);
@@ -176,6 +187,7 @@ export const AgentTerminal: React.FC<{
       );
       wsRef.current = ws;
       roleRef.current = 'VIEW_ONLY';
+      setRole('VIEW_ONLY');
 
       ws.onopen = () => {
         openedOnce = true;
@@ -183,10 +195,14 @@ export const AgentTerminal: React.FC<{
         setConnection('CONNECTED');
         setModeAction((current) => current === 'Restarting' ? 'Ready' : current);
         setMessage((current) => current === 'Reiniciando runtime…' ? 'Pronto' : '');
-        // Lease is acquired by the web handler on Attach for the CONTROL
-        // broker seat. Do not spam lease_acquire here — older SessionHosts
-        // echoed those RPC frames into the PTY.
-        window.requestAnimationFrame(fitAndResize);
+        // Prefer CONTROL: request lease on attach (handler already tries; retry here).
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'lease_acquire' }));
+        }
+        window.requestAnimationFrame(() => {
+          fitAndResize();
+          term.focus();
+        });
       };
 
       ws.onmessage = (event) => {
@@ -198,17 +214,21 @@ export const AgentTerminal: React.FC<{
           } else if (payload.type === 'lease') {
             const next = normalizeTerminalRole(payload.role);
             roleRef.current = next;
+            setRole(next);
             setMessage(next === 'CONTROL' ? '' : 'Somente leitura — outro acesso está digitando neste runtime.');
+            if (next === 'CONTROL') {
+              window.requestAnimationFrame(() => term.focus());
+            }
             maybeSendKickoff();
           } else if (payload.type === 'runtime_changed') {
             setMessage('Runtime generation changed — rebinding terminal…');
             ws.close(1012, 'runtime generation changed');
           } else if (payload.type === 'title' && payload.data) {
-            setCustomTitle(payload.data);
+            setPtyTitle(String(payload.data));
           } else if (payload.type === 'attention') {
             // Push/sound are owned by the focused-project poll in NexusWorkspaceApp.
-            // WS only refreshes local chrome (title) to avoid multi-attach spam.
-            if (payload.dynamic_title) setCustomTitle(payload.dynamic_title);
+            // WS only refreshes the live PTY chip — never window identity.
+            if (payload.dynamic_title) setPtyTitle(String(payload.dynamic_title));
           } else if (payload.type === 'error') {
             const detail = String(payload.data ?? 'Terminal error');
             setMessage(detail);
@@ -239,9 +259,14 @@ export const AgentTerminal: React.FC<{
 
     const dataDisposable = term.onData((data) => {
       const ws = wsRef.current;
-      if (ws?.readyState === WebSocket.OPEN && roleRef.current === 'CONTROL') {
-        ws.send(JSON.stringify({ type: 'input', data }));
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      if (roleRef.current !== 'CONTROL') {
+        // Opportunistically reclaim the writer seat, then still drop this
+        // keystroke (broker would ignore it). Next keystrokes work after lease.
+        ws.send(JSON.stringify({ type: 'lease_acquire' }));
+        return;
       }
+      ws.send(JSON.stringify({ type: 'input', data }));
     });
 
     const observer = new ResizeObserver(() => window.requestAnimationFrame(fitAndResize));
@@ -391,9 +416,21 @@ export const AgentTerminal: React.FC<{
     }
   };
 
-  const displayName = customTitle || agentName || agentId;
+  const displayName = agentName || agentId;
   const isStaleOrDisconnected = connection === 'ERROR' || connection === 'DISCONNECTED';
   const windowChrome = chrome === 'window';
+
+  const takeControl = () => {
+    const host = containerRef.current as any;
+    if (typeof host?.__takeControl === 'function') {
+      host.__takeControl();
+      return;
+    }
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'lease_acquire' }));
+    }
+  };
 
   const modeButtons = (
     <div className="nx-agent-terminal__modes" role="group" aria-label="Modo de execução">
@@ -415,6 +452,21 @@ export const AgentTerminal: React.FC<{
 
   const terminalActions = (
     <div className="nx-agent-terminal__controls">
+      {role === 'CONTROL' ? (
+        <span className="nx-agent-terminal__lease" data-role="CONTROL">CONTROL</span>
+      ) : (
+        <>
+          <span className="nx-agent-terminal__lease" data-role="VIEW_ONLY">VIEW ONLY</span>
+          <button type="button" className="nx-agent-terminal__ask-btn" onClick={takeControl} title="Assumir controle do teclado">
+            Assumir controle
+          </button>
+        </>
+      )}
+      {ptyTitle && (
+        <span className="nx-agent-terminal__pty-title" title={ptyTitle}>
+          {ptyTitle}
+        </span>
+      )}
       {message && !isStaleOrDisconnected && (
         <span className="nx-terminal-message">
           {modeAction === 'Error' ? <ShieldAlert size={12} /> : <Unplug size={12} />}

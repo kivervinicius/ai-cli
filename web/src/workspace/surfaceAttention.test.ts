@@ -37,6 +37,13 @@ describe('surfaceAttention', () => {
     );
     expect(titled.title.startsWith('Frontend')).toBe(true);
     expect(titled.title).not.toContain('ai-chat');
+    expect(titled.dynamicTitle).toContain('ai-chat');
+  });
+
+  it('prefers customTitle as stable identity root', () => {
+    const titled = surfaceTitleFromAgent('Agent', runtime({ state: 'STOPPED' }), 'Shell A');
+    expect(titled.title.startsWith('Shell A')).toBe(true);
+    expect(titled.title).not.toContain('Agent');
   });
 
   it('maps completion and error suffixes', () => {

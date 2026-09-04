@@ -85,6 +85,16 @@ describe('workspace model', () => {
     expect(findStackContaining(ws.root, 'overview')?.activeId).toBe(before);
   });
 
+  it('pins an existing Composer tab without stealing focus', () => {
+    let ws = createWorkspace({ ...surface('overview'), type: 'overview', closable: false });
+    ws = openSurface(ws, { ...surface('work'), type: 'work', closable: true });
+    const before = findStackContaining(ws.root, 'overview')?.activeId;
+    ws = ensureSurface(ws, { ...surface('work'), type: 'work', closable: false });
+    const work = listSurfaces(ws.root).find((tab) => tab.id === 'work');
+    expect(work?.closable).toBe(false);
+    expect(findStackContaining(ws.root, 'overview')?.activeId).toBe(before);
+  });
+
   it('finds a migrated surface by legacy id and stable view id', () => {
     const ws = createWorkspace({ id: 'legacy-agent', viewId: 'view:agent:1', logicalKey: 'agent:1:terminal', type: 'terminal', title: 'Agent' });
     expect(findStackContaining(ws.root, 'legacy-agent')).not.toBeNull();

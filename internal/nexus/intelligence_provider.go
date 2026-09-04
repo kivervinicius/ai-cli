@@ -69,6 +69,28 @@ func (n *Nexus) IntelligenceStatus(ctx context.Context, projectID string) Intell
 	return status
 }
 
+// IntelligenceProbeResult is the secret-free outcome of a live provider round-trip.
+type IntelligenceProbeResult struct {
+	Provider string `json:"provider"`
+}
+
+// ProbeIntelligence proves the configured provider can answer before Composer Refinar.
+func (n *Nexus) ProbeIntelligence(ctx context.Context, projectID string) (IntelligenceProbeResult, error) {
+	provider, err := n.ConfiguredIntelligenceProvider(ctx, projectID)
+	if err != nil {
+		return IntelligenceProbeResult{}, err
+	}
+	engine := intelligence.NewNexusEngine(provider)
+	if err := engine.Probe(ctx); err != nil {
+		name := ""
+		if provider != nil {
+			name = provider.Name()
+		}
+		return IntelligenceProbeResult{Provider: name}, err
+	}
+	return IntelligenceProbeResult{Provider: provider.Name()}, nil
+}
+
 // ConfiguredIntelligenceProvider resolves the explicitly configured intelligence source.
 // Direct work never calls this function; Composer analysis/planning does.
 func (n *Nexus) ConfiguredIntelligenceProvider(ctx context.Context, projectID string) (intelligence.IntelligenceProvider, error) {

@@ -33,6 +33,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [customTitle, setCustomTitle] = useState(title || '');
+  const [ptyTitle, setPtyTitle] = useState('');
 
   useEffect(() => {
     setCustomTitle(title || '');
@@ -92,7 +93,9 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       safeFit();
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
+        ws.send(JSON.stringify({ type: 'lease_acquire' }));
       }
+      term.focus();
     };
 
     ws.onmessage = (event) => {
@@ -104,13 +107,12 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         } else if (msg.type === 'lease') {
           setRole(msg.role === 'CONTROL' ? 'CONTROL' : 'VIEW_ONLY');
         } else if (msg.type === 'title' && msg.data) {
-          setCustomTitle(msg.data);
-          if (onUpdateTitle) onUpdateTitle(runtimeId, msg.data);
+          setPtyTitle(String(msg.data));
         } else if (msg.type === 'attention') {
           // Push is owned by NexusWorkspaceApp poll (focused project only).
+          // OSC / dynamic_title only feeds the live chip — never identity.
           if (msg.dynamic_title) {
-            setCustomTitle(msg.dynamic_title);
-            if (onUpdateTitle) onUpdateTitle(runtimeId, msg.dynamic_title);
+            setPtyTitle(String(msg.dynamic_title));
           }
         } else if (msg.type === 'error') {
           setErrorMsg(msg.data);
@@ -216,6 +218,11 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
               </span>
               <Pencil className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100 transition" />
             </div>
+          )}
+          {ptyTitle && (
+            <span className="px-2 py-0.5 rounded-full border border-amber-700/60 bg-amber-950/40 text-amber-200 text-[10px] max-w-[220px] truncate" title={ptyTitle}>
+              {ptyTitle}
+            </span>
           )}
           <span className="text-slate-600">|</span>
           <span className="text-slate-400 uppercase text-[11px]">{provider}</span>

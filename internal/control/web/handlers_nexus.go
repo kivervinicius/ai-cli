@@ -1592,6 +1592,39 @@ func (h *NexusHandler) handleIntelligence(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// handleIntelligenceProbe POST /api/v1/intelligence/probe runs a short round-trip
+// so Composer can refuse Refinar before a long auto_plan hang.
+func (h *NexusHandler) handleIntelligenceProbe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	projectID := strings.TrimSpace(r.URL.Query().Get("project_id"))
+	result, err := h.nexus.ProbeIntelligence(r.Context(), projectID)
+	if err != nil {
+		if errors.Is(err, intelligence.ErrIntelligenceUnavailable) {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+				"ok":      false,
+				"error":   "intelligence_unavailable",
+				"detail":  err.Error(),
+				"provider": result.Provider,
+			})
+			return
+		}
+		writeJSON(w, http.StatusBadGateway, map[string]any{
+			"ok":       false,
+			"error":    "intelligence_probe_failed",
+			"detail":   err.Error(),
+			"provider": result.Provider,
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":       true,
+		"provider": result.Provider,
+	})
+}
+
 // handleClarification GET /api/v1/clarifications/{id}
 // POST /api/v1/clarifications/{id}/resolve continues the exact persisted analysis.
 func (h *NexusHandler) handleClarification(w http.ResponseWriter, r *http.Request) {

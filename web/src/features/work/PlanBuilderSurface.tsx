@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   Bot,
@@ -43,6 +43,12 @@ export const PlanBuilderSurface: React.FC<{
   const [_loading, setLoading] = useState(false);
   const [autoGoal, setAutoGoal] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [generateStage, setGenerateStage] = useState('');
+  const [generateProvider, setGenerateProvider] = useState('');
+  const [generateElapsedSec, setGenerateElapsedSec] = useState(0);
+  const [generateHeartbeat, setGenerateHeartbeat] = useState(false);
+  const generateAbortRef = useRef<AbortController | null>(null);
+  const GENERATE_BUDGET_SEC = 90;
   const [compiledPrompt, setCompiledPrompt] = useState<any>(null);
   const [activeRun, setActiveRun] = useState<MissionRun | null>(null);
   const [schedules, setSchedules] = useState<MissionSchedule[]>([]);
@@ -154,24 +160,89 @@ export const PlanBuilderSurface: React.FC<{
   const flowDirty = Boolean(flowDraft && baselineFlow && JSON.stringify(flowDraft) !== JSON.stringify(baselineFlow));
   const flowErrors = useMemo(() => flowDraft ? validateFlow(flowDraft) : [], [flowDraft]);
 
+  const cancelGenerate = useCallback(() => {
+    generateAbortRef.current?.abort();
+    generateAbortRef.current = null;
+    setGenerating(false);
+    setGenerateStage('');
+    setGenerateHeartbeat(false);
+    setPlanError('Geração cancelada.');
+  }, []);
+
+  useEffect(() => {
+    if (!generating) {
+      setGenerateElapsedSec(0);
+      setGenerateHeartbeat(false);
+      return;
+    }
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      const elapsed = Math.floor((Date.now() - started) / 1000);
+      setGenerateElapsedSec(elapsed);
+      if (elapsed >= 15 && generateStage.startsWith('Pedindo')) {
+        setGenerateHeartbeat(true);
+      }
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [generating, generateStage]);
+
   const handleGenerateAIPlan = async () => {
     if (!autoGoal.trim()) return;
+    generateAbortRef.current?.abort();
+    const controller = new AbortController();
+    generateAbortRef.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), (GENERATE_BUDGET_SEC + 10) * 1000);
     try {
       setGenerating(true);
       setPlanError('');
       setClarification(null);
+      setGenerateHeartbeat(false);
+      setGenerateProvider('');
+      setGenerateStage('Checando Intelligence…');
+
       const readiness = await nexusApi.getContextReadiness(project.id);
       const gate = composerGateForReadiness(readiness.state);
       if (!gate.canCompose) {
         setPlanError(gate.reason);
         return;
       }
-      const plan = await nexusApi.createPlan(project.id, {
-        goal: autoGoal,
-        auto_plan: true,
-      });
+
+      try {
+        const probe = await nexusApi.probeIntelligence(project.id, { signal: controller.signal });
+        setGenerateProvider(probe.provider || '');
+        if (!probe.ok) {
+          setPlanError(probe.detail || probe.error || 'Intelligence probe failed');
+          return;
+        }
+      } catch (probeErr) {
+        if (controller.signal.aborted) {
+          setPlanError('Geração cancelada.');
+          return;
+        }
+        const detail =
+          probeErr instanceof Error
+            ? probeErr.message
+            : String(probeErr);
+        setPlanError(`Intelligence indisponível: ${detail}`);
+        return;
+      }
+
+      setGenerateStage('Pedindo o rascunho ao modelo…');
+      const plan = await nexusApi.createPlan(
+        project.id,
+        {
+          goal: autoGoal,
+          auto_plan: true,
+        },
+        { signal: controller.signal }
+      );
+      setGenerateStage('Montando o Flow…');
       selectGeneratedPlan(plan);
     } catch (e) {
+      if (controller.signal.aborted) {
+        setPlanError('Geração cancelada ou tempo esgotado (~90s).');
+        return;
+      }
       const checkpoint = clarificationFromError(e);
       if (checkpoint) {
         setClarification(checkpoint);
@@ -180,7 +251,11 @@ export const PlanBuilderSurface: React.FC<{
         setPlanError(e instanceof Error ? e.message : String(e));
       }
     } finally {
+      window.clearTimeout(timeout);
+      if (generateAbortRef.current === controller) generateAbortRef.current = null;
       setGenerating(false);
+      setGenerateStage('');
+      setGenerateHeartbeat(false);
     }
   };
 
@@ -556,12 +631,31 @@ export const PlanBuilderSurface: React.FC<{
               style={{ flex: 1 }}
             />
             <Button tone="brand" disabled={!autoGoal.trim() || generating} onClick={handleGenerateAIPlan}>
-              <Sparkles size={14} /> {generating ? 'Gerando…' : 'Refinar'}
+              <Sparkles size={14} /> {generating ? 'Refinando…' : 'Refinar'}
             </Button>
+            {generating && (
+              <Button tone="default" onClick={cancelGenerate}>
+                Cancelar
+              </Button>
+            )}
             <Button tone="brand" disabled={!selectedPlan || !flowDraft || runBusy} onClick={() => void handleLaunchRun()}>
               <Play size={14} /> Approve & Run
             </Button>
           </div>
+          {generating && (
+            <div className="nx-composer-generate-status" role="status" aria-live="polite">
+              <strong>{generateStage || 'Preparando…'}</strong>
+              <div className="nx-composer-generate-status__meta">
+                {generateProvider && <span>Provedor: {generateProvider}</span>}
+                <span>
+                  {generateElapsedSec}s / ~{GENERATE_BUDGET_SEC}s
+                </span>
+              </div>
+              {generateHeartbeat && (
+                <span>Ainda aguardando o modelo (não travou). Pode levar até ~{GENERATE_BUDGET_SEC}s.</span>
+              )}
+            </div>
+          )}
           {goalChips.length > 0 && (
             <div className="nx-composer-goal-chips" aria-label="Objetivo refinado">
               {goalChips.map((chip) => (
@@ -645,9 +739,28 @@ export const PlanBuilderSurface: React.FC<{
             style={{ flex: 1 }}
           />
           <Button tone="brand" disabled={!autoGoal.trim() || generating} onClick={handleGenerateAIPlan}>
-            <Sparkles size={14} /> {generating ? 'Gerando…' : 'Generate Flow Draft'}
+            <Sparkles size={14} /> {generating ? 'Refinando…' : 'Generate Flow Draft'}
           </Button>
+          {generating && (
+            <Button tone="default" onClick={cancelGenerate}>
+              Cancelar
+            </Button>
+          )}
         </div>
+        {generating && (
+          <div className="nx-composer-generate-status" role="status" aria-live="polite">
+            <strong>{generateStage || 'Preparando…'}</strong>
+            <div className="nx-composer-generate-status__meta">
+              {generateProvider && <span>Provedor: {generateProvider}</span>}
+              <span>
+                {generateElapsedSec}s / ~{GENERATE_BUDGET_SEC}s
+              </span>
+            </div>
+            {generateHeartbeat && (
+              <span>Ainda aguardando o modelo (não travou). Pode levar até ~{GENERATE_BUDGET_SEC}s.</span>
+            )}
+          </div>
+        )}
       </Card>
 
       {planError && (

@@ -158,7 +158,12 @@ export function ensureSurface(model: WorkspaceModel, surface: WorkspaceSurface, 
   const existing = listSurfaces(model.root).find(
     (candidate) => isSurfaceMatch(candidate, normalized.id) || surfaceLogicalKey(candidate) === surfaceLogicalKey(normalized)
   );
-  if (existing) return model;
+  if (existing) {
+    if (normalized.closable === false && existing.closable !== false) {
+      return updateSurface(model, existing.id, { closable: false });
+    }
+    return model;
+  }
   const stacks = listStacks(model.root);
   const target = (targetStackId && findStackById(model.root, targetStackId)) || stacks[0];
   if (!target) return createWorkspace(surface);

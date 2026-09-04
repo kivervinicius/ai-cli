@@ -63,6 +63,29 @@ func (e *NexusEngine) Analyze(ctx context.Context, goal string, projectID string
 	return intent, unknowns, nil
 }
 
+// PlanFromGoal prefers a single-shot provider call when available (CLI), otherwise
+// falls back to Analyze + GeneratePlan (OpenAI-compatible multi-call).
+func (e *NexusEngine) PlanFromGoal(ctx context.Context, goal string, projectID string) (*IntentAnalysis, []AmbiguityItem, []WorkPackageOutline, error) {
+	if e.provider == nil || !e.provider.Available(ctx) {
+		return nil, nil, nil, ErrIntelligenceUnavailable
+	}
+	if oneshot, ok := e.provider.(OneshotPlanner); ok {
+		intent, unknowns, packages, err := oneshot.PlanFromGoal(ctx, goal, e.mergedContext(projectID))
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if len(packages) == 0 {
+			return intent, unknowns, nil, fmt.Errorf("intelligence provider %s returned an empty work plan", e.provider.Name())
+		}
+		return intent, unknowns, packages, nil
+	}
+	intent, unknowns, err := e.Analyze(ctx, goal, projectID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return intent, unknowns, nil, nil
+}
+
 // GeneratePlan asks the configured provider for a structured outline. It never
 // falls back to locally fabricated work packages.
 func (e *NexusEngine) GeneratePlan(ctx context.Context, intent *IntentAnalysis, facts map[string]string) ([]WorkPackageOutline, error) {
@@ -77,6 +100,17 @@ func (e *NexusEngine) GeneratePlan(ctx context.Context, intent *IntentAnalysis, 
 		return nil, fmt.Errorf("intelligence provider %s returned an empty work plan", e.provider.Name())
 	}
 	return packages, nil
+}
+
+// Probe runs a minimal AnalyzeIntent round-trip to prove the provider responds.
+func (e *NexusEngine) Probe(ctx context.Context) error {
+	if e.provider == nil || !e.provider.Available(ctx) {
+		return ErrIntelligenceUnavailable
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, IntelligenceProbeTimeout)
+	defer cancel()
+	_, err := e.provider.AnalyzeIntent(probeCtx, "ping", map[string]any{"probe": true})
+	return err
 }
 
 func (e *NexusEngine) ResolveClarification(state *ClarificationState, key string, answer string) {

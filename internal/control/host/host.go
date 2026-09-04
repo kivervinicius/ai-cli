@@ -332,30 +332,79 @@ func readBoundedLine(r *bufio.Reader, limit int) ([]byte, error) {
 
 func (sh *SessionHost) streamAttachedInput(conn net.Conn, reader *bufio.Reader) {
 	_ = conn.SetDeadline(time.Time{})
-	// Parse line-by-line so RPC frames (lease_acquire, resize, …) never leak
-	// into the PTY when a read spans a partial JSON object or mixes frames.
+	// Mix of newline-terminated RPC frames and raw PTY keystrokes on one
+	// stream. Raw bytes must be forwarded immediately — interactive shells
+	// send single keystrokes with no trailing \n (Enter is usually \r).
+	var jsonBuf []byte
+	inJSON := false
+
+	flushRaw := func(data []byte) {
+		if len(data) == 0 {
+			return
+		}
+		sh.processAttachedInput(conn, data)
+	}
+	resetJSON := func() {
+		jsonBuf = nil
+		inJSON = false
+	}
+	looksLikeProtocol := func(buf []byte) bool {
+		return bytes.HasPrefix(buf, []byte(`{"version"`)) ||
+			bytes.HasPrefix(buf, []byte(`{"command"`)) ||
+			bytes.HasPrefix(buf, []byte(`{"id"`))
+	}
+
 	for {
-		line, err := readBoundedLine(reader, MaxFrameSize)
+		b, err := reader.ReadByte()
 		if err != nil {
-			if err == errFrameTooLarge {
-				sh.broadcast([]byte("\r\n[Nexus Control] Error: oversized IPC frame rejected\r\n"))
+			if inJSON && len(jsonBuf) > 0 {
+				flushRaw(jsonBuf)
 			}
 			sh.removeClient(conn)
 			_ = conn.Close()
 			return
 		}
-		trimmed := bytes.TrimSpace(line)
-		if len(trimmed) == 0 {
-			continue
-		}
-		if bytes.HasPrefix(trimmed, []byte("{")) {
-			var req protocol.Request
-			if json.Unmarshal(trimmed, &req) == nil && req.Command != "" {
-				sh.handleRPCRequest(conn, req)
+
+		if !inJSON {
+			if b == '{' {
+				inJSON = true
+				jsonBuf = append(jsonBuf[:0], b)
 				continue
 			}
+			flushRaw([]byte{b})
+			continue
 		}
-		sh.processAttachedInput(conn, line)
+
+		jsonBuf = append(jsonBuf, b)
+		if len(jsonBuf) > MaxFrameSize {
+			flushRaw(jsonBuf)
+			resetJSON()
+			continue
+		}
+		// Enter (\r) mid-buffer means interactive typing, not an RPC frame.
+		if b == '\r' {
+			flushRaw(jsonBuf)
+			resetJSON()
+			continue
+		}
+		// Once long enough, reject buffers that cannot be protocol JSON.
+		if len(jsonBuf) >= 11 && !looksLikeProtocol(jsonBuf) {
+			flushRaw(jsonBuf)
+			resetJSON()
+			continue
+		}
+		if b != '\n' {
+			continue
+		}
+
+		trimmed := bytes.TrimSpace(jsonBuf)
+		var req protocol.Request
+		if json.Unmarshal(trimmed, &req) == nil && req.Command != "" {
+			sh.handleRPCRequest(conn, req)
+		} else {
+			flushRaw(jsonBuf)
+		}
+		resetJSON()
 	}
 }
 

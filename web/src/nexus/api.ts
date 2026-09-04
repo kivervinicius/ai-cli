@@ -200,6 +200,11 @@ export const nexus = {
     request<import('../types').IntelligenceStatus>(
       `/api/v1/intelligence${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`
     ),
+  probeIntelligence: (projectId?: string, init?: RequestInit) =>
+    request<{ ok: boolean; provider?: string; error?: string; detail?: string }>(
+      `/api/v1/intelligence/probe${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`,
+      { method: 'POST', body: '{}', ...init }
+    ),
   updateIntelligence: (
     data: Omit<import('../types').IntelligenceStatus, 'available' | 'error'>,
     projectId?: string
@@ -210,10 +215,10 @@ export const nexus = {
     ),
   getClarification: (id: string) =>
     request<import('../types').ClarificationCheckpoint>(`/api/v1/clarifications/${id}`),
-  resolveClarification: async (id: string, answers: Record<string, string>) => {
+  resolveClarification: async (id: string, answers: Record<string, string>, init?: RequestInit) => {
     const result = await request<{ plan: unknown; clarification: import('../types').ClarificationCheckpoint }>(
       `/api/v1/clarifications/${id}/resolve`,
-      { method: 'POST', body: JSON.stringify({ answers }) }
+      { method: 'POST', body: JSON.stringify({ answers }), ...init }
     );
     return { ...result, plan: normalizeWorkPlan(result.plan) };
   },
@@ -223,10 +228,15 @@ export const nexus = {
     const plans = await request<unknown>(`/api/v1/projects/${projectId}/plans`);
     return Array.isArray(plans) ? plans.map(normalizeWorkPlan) : [];
   },
-  createPlan: async (projectId: string, data: { title?: string; description?: string; goal?: string; auto_plan?: boolean; phases?: any[]; facts?: any }) =>
+  createPlan: async (
+    projectId: string,
+    data: { title?: string; description?: string; goal?: string; auto_plan?: boolean; phases?: any[]; facts?: any },
+    init?: RequestInit
+  ) =>
     normalizeWorkPlan(await request<unknown>(`/api/v1/projects/${projectId}/plans`, {
       method: 'POST',
       body: JSON.stringify(data),
+      ...init,
     })),
   getPlan: async (planId: string) => {
     const detail = await request<{ plan: unknown; revisions: import('../types').PlanRevision[] }>(`/api/v1/plans/${planId}`);

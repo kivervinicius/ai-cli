@@ -108,6 +108,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 
 	// WorkPlans & Intelligence (Phase C & D)
 	mux.HandleFunc("/api/v1/intelligence", s.authMiddleware(nexusHandler.handleIntelligence))
+	mux.HandleFunc("/api/v1/intelligence/probe", s.authMiddleware(nexusHandler.handleIntelligenceProbe))
 	mux.HandleFunc("/api/v1/clarifications/", s.authMiddleware(nexusHandler.handleClarification))
 	mux.HandleFunc("/api/v1/plans/", s.routePlan(nexusHandler))
 
@@ -182,7 +183,8 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	s.httpServer = &http.Server{
 		Handler:      s.withSecurityHeaders(mux),
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		// Composer auto_plan may take up to ~90s (CLI oneshot); keep headroom for JSON write.
+		WriteTimeout: 120 * time.Second,
 	}
 
 	return s, nil

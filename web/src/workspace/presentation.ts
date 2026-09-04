@@ -17,7 +17,15 @@ export interface DesktopWindowState {
   zIndex: number;
   minimized: boolean;
   maximized: boolean;
+  /** User-chosen identity label; never overwritten by PTY OSC titles. */
+  customTitle?: string;
+  /** Accent color token (css color). */
+  accent?: string;
+  /** Fixed icon key from the mosaic chrome palette. */
+  icon?: string;
 }
+
+export type MosaicResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
 export interface WorkspacePresentationState {
   version: 2;
@@ -151,6 +159,16 @@ function createCascadedWindow(
   };
 }
 
+function preserveChrome(previous: DesktopWindowState | undefined, next: DesktopWindowState): DesktopWindowState {
+  if (!previous) return next;
+  return {
+    ...next,
+    customTitle: previous.customTitle,
+    accent: previous.accent,
+    icon: previous.icon,
+  };
+}
+
 function visibleViewIds(state: WorkspacePresentationState, preferred?: string[]): string[] {
   const ids =
     preferred ??
@@ -174,16 +192,59 @@ export function tileMosaicWindows(
     const previous = windows[tile.viewId];
     const zIndex = previous?.zIndex ?? nextZ++;
     const geometry = clampWindow(state.canvas, tile);
-    windows[tile.viewId] = {
+    windows[tile.viewId] = preserveChrome(previous, {
       viewId: tile.viewId,
       ...geometry,
       zIndex,
       minimized: false,
       maximized: false,
-    };
+    });
     nextZ = Math.max(nextZ, zIndex + 1);
   });
   return { ...state, windows, nextZ, tiled: true };
+}
+
+/** Keep mosaic tiles covering the canvas without discarding relative sizes. */
+export function packMosaic(state: WorkspacePresentationState): WorkspacePresentationState {
+  if (state.mode !== 'MOSAIC') return state;
+  const visible = Object.values(state.windows).filter((win) => !win.minimized);
+  if (visible.length === 0) return { ...state, tiled: true };
+  if (visible.length === 1) {
+    const only = visible[0];
+    return {
+      ...state,
+      windows: {
+        ...state.windows,
+        [only.viewId]: preserveChrome(only, {
+          ...only,
+          x: state.canvas.x,
+          y: state.canvas.y,
+          width: state.canvas.width,
+          height: state.canvas.height,
+          maximized: false,
+        }),
+      },
+      tiled: true,
+    };
+  }
+  const scaled = scaleTilesToCanvas(visible, state.canvas, state.canvas);
+  // scale with identical canvas is a no-op geometrically; re-normalize against gaps via arrange when coverage is broken.
+  const area = visible.reduce((sum, win) => sum + win.width * win.height, 0);
+  const canvasArea = state.canvas.width * state.canvas.height;
+  if (area < canvasArea * 0.85) {
+    return tileMosaicWindows(state);
+  }
+  const windows = { ...state.windows };
+  scaled.forEach((tile) => {
+    const current = windows[tile.viewId];
+    if (!current) return;
+    windows[tile.viewId] = preserveChrome(current, {
+      ...current,
+      ...clampWindow(state.canvas, tile),
+      maximized: false,
+    });
+  });
+  return { ...state, windows, tiled: true };
 }
 
 /** Cascade (DESKTOP) or Smart tile (MOSAIC). */
@@ -238,7 +299,20 @@ export function setPresentationCanvas(
 
   const withCanvas = { ...state, canvas: nextCanvas };
   if (state.mode === 'MOSAIC') {
-    return tileMosaicWindows(withCanvas);
+    const visible = Object.values(state.windows).filter((win) => !win.minimized);
+    if (visible.length === 0) return { ...withCanvas, tiled: true };
+    const scaled = scaleTilesToCanvas(visible, state.canvas, nextCanvas);
+    const windows = { ...state.windows };
+    scaled.forEach((tile) => {
+      const current = windows[tile.viewId];
+      if (!current) return;
+      windows[tile.viewId] = preserveChrome(current, {
+        ...current,
+        ...clampWindow(nextCanvas, tile),
+        maximized: false,
+      });
+    });
+    return packMosaic({ ...withCanvas, windows, tiled: true });
   }
 
   const visible = Object.values(state.windows).filter((win) => !win.minimized && !win.maximized);
@@ -354,9 +428,15 @@ export function moveDesktopWindow(
   x: number,
   y: number
 ): WorkspacePresentationState {
-  if (state.mode === 'MOSAIC') return state;
   const current = state.windows[viewId];
   if (!current || current.maximized || current.minimized) return state;
+  if (state.mode === 'MOSAIC') {
+    // Preview only — commit via commitMosaicMove on pointer up.
+    return {
+      ...patchWindow(state, viewId, { x: Math.round(x), y: Math.round(y) }),
+      tiled: true,
+    };
+  }
   const geometry = clampWindow(state.canvas, {
     x,
     y,
@@ -367,6 +447,51 @@ export function moveDesktopWindow(
     ...patchWindow(state, viewId, { x: geometry.x, y: geometry.y }),
     tiled: false,
   };
+}
+
+/** Finish a mosaic drag: swap with the tile under the center, else retile nearest slot. */
+export function commitMosaicMove(
+  state: WorkspacePresentationState,
+  viewId: string,
+  origin: Pick<DesktopWindowState, 'x' | 'y' | 'width' | 'height'>
+): WorkspacePresentationState {
+  if (state.mode !== 'MOSAIC') return state;
+  const current = state.windows[viewId];
+  if (!current || current.minimized) return tileMosaicWindows(state);
+  const cx = current.x + current.width / 2;
+  const cy = current.y + current.height / 2;
+  const target = Object.values(state.windows).find(
+    (win) =>
+      win.viewId !== viewId &&
+      !win.minimized &&
+      cx >= win.x &&
+      cx <= win.x + win.width &&
+      cy >= win.y &&
+      cy <= win.y + win.height
+  );
+  if (target) {
+    const windows = {
+      ...state.windows,
+      [viewId]: preserveChrome(current, {
+        ...current,
+        x: target.x,
+        y: target.y,
+        width: target.width,
+        height: target.height,
+        maximized: false,
+      }),
+      [target.viewId]: preserveChrome(target, {
+        ...target,
+        x: origin.x,
+        y: origin.y,
+        width: origin.width,
+        height: origin.height,
+        maximized: false,
+      }),
+    };
+    return packMosaic({ ...state, windows, tiled: true, activePtyViewId: viewId });
+  }
+  return tileMosaicWindows({ ...state, activePtyViewId: viewId });
 }
 
 export function resizeDesktopWindow(
@@ -393,6 +518,137 @@ export function resizeDesktopWindow(
     }),
     tiled: false,
   };
+}
+
+function neighborsOnEdge(
+  state: WorkspacePresentationState,
+  viewId: string,
+  side: 'n' | 's' | 'e' | 'w'
+): DesktopWindowState[] {
+  const self = state.windows[viewId];
+  if (!self) return [];
+  const gap = 14;
+  return Object.values(state.windows).filter((win) => {
+    if (win.viewId === viewId || win.minimized) return false;
+    if (side === 'e') {
+      return (
+        Math.abs(self.x + self.width + 8 - win.x) <= gap &&
+        rangesOverlapY(self, win)
+      );
+    }
+    if (side === 'w') {
+      return (
+        Math.abs(win.x + win.width + 8 - self.x) <= gap &&
+        rangesOverlapY(self, win)
+      );
+    }
+    if (side === 's') {
+      return (
+        Math.abs(self.y + self.height + 8 - win.y) <= gap &&
+        rangesOverlapX(self, win)
+      );
+    }
+    return (
+      Math.abs(win.y + win.height + 8 - self.y) <= gap &&
+      rangesOverlapX(self, win)
+    );
+  });
+}
+
+function rangesOverlapX(a: DesktopWindowState, b: DesktopWindowState): boolean {
+  return a.x < b.x + b.width - 4 && b.x < a.x + a.width - 4;
+}
+
+function rangesOverlapY(a: DesktopWindowState, b: DesktopWindowState): boolean {
+  return a.y < b.y + b.height - 4 && b.y < a.y + a.height - 4;
+}
+
+function applyEdgeDelta(
+  state: WorkspacePresentationState,
+  viewId: string,
+  side: 'n' | 's' | 'e' | 'w',
+  delta: number
+): WorkspacePresentationState {
+  if (delta === 0) return state;
+  const self = state.windows[viewId];
+  if (!self) return state;
+  const neighbors = neighborsOnEdge(state, viewId, side);
+  let next = state;
+  if (neighbors.length === 0) {
+    // Grow/shrink against canvas edge only.
+    let patch: Partial<DesktopWindowState> = {};
+    if (side === 'e') {
+      const width = Math.max(MIN_W, self.width + delta);
+      patch = { width: Math.min(width, state.canvas.x + state.canvas.width - self.x) };
+    } else if (side === 'w') {
+      const nextX = Math.min(self.x + delta, self.x + self.width - MIN_W);
+      const clampedX = Math.max(state.canvas.x, nextX);
+      patch = { x: clampedX, width: self.width - (clampedX - self.x) };
+    } else if (side === 's') {
+      const height = Math.max(MIN_H, self.height + delta);
+      patch = { height: Math.min(height, state.canvas.y + state.canvas.height - self.y) };
+    } else {
+      const nextY = Math.min(self.y + delta, self.y + self.height - MIN_H);
+      const clampedY = Math.max(state.canvas.y, nextY);
+      patch = { y: clampedY, height: self.height - (clampedY - self.y) };
+    }
+    return { ...patchWindow(next, viewId, patch), tiled: true };
+  }
+  for (const neighbor of neighbors) {
+    const first = side === 'e' || side === 's' ? next.windows[viewId]! : neighbor;
+    const second = side === 'e' || side === 's' ? neighbor : next.windows[viewId]!;
+    const orientation = side === 'e' || side === 'w' ? 'vertical' : 'horizontal';
+    const signed = side === 'w' || side === 'n' ? -delta : delta;
+    const patched = applySharedEdgeDelta(first, second, orientation, signed);
+    if (!patched) continue;
+    const windows = { ...next.windows };
+    windows[first.viewId] = preserveChrome(windows[first.viewId], {
+      ...windows[first.viewId]!,
+      x: patched.first.x,
+      y: patched.first.y,
+      width: patched.first.width,
+      height: patched.first.height,
+      maximized: false,
+    });
+    windows[second.viewId] = preserveChrome(windows[second.viewId], {
+      ...windows[second.viewId]!,
+      x: patched.second.x,
+      y: patched.second.y,
+      width: patched.second.width,
+      height: patched.second.height,
+      maximized: false,
+    });
+    next = { ...next, windows, tiled: true };
+  }
+  return next;
+}
+
+/** Grow/shrink a mosaic tile; adjacent tiles on that edge absorb the delta. */
+export function resizeMosaicWindow(
+  state: WorkspacePresentationState,
+  viewId: string,
+  edge: MosaicResizeEdge,
+  deltaX: number,
+  deltaY: number
+): WorkspacePresentationState {
+  if (state.mode !== 'MOSAIC') return state;
+  const current = state.windows[viewId];
+  if (!current || current.minimized) return state;
+  let next = state;
+  if (edge.includes('e')) next = applyEdgeDelta(next, viewId, 'e', deltaX);
+  if (edge.includes('w')) next = applyEdgeDelta(next, viewId, 'w', deltaX);
+  if (edge.includes('s')) next = applyEdgeDelta(next, viewId, 's', deltaY);
+  if (edge.includes('n')) next = applyEdgeDelta(next, viewId, 'n', deltaY);
+  return packMosaic(next);
+}
+
+export function patchDesktopWindowChrome(
+  state: WorkspacePresentationState,
+  viewId: string,
+  chrome: Pick<DesktopWindowState, 'customTitle' | 'accent' | 'icon'>
+): WorkspacePresentationState {
+  if (!state.windows[viewId]) return state;
+  return patchWindow(state, viewId, chrome);
 }
 
 /** Shared-edge resize for MOSAIC splitters. No-op in DESKTOP/TABS. */
@@ -428,7 +684,7 @@ export function resizeAdjacentDesktopWindows(
       maximized: false,
     },
   };
-  return { ...state, windows, tiled: true };
+  return packMosaic({ ...state, windows, tiled: true });
 }
 
 export function toggleDesktopMinimize(state: WorkspacePresentationState, viewId: string): WorkspacePresentationState {

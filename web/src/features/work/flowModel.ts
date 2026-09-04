@@ -81,7 +81,7 @@ export function flowFromWorkPlan(plan: WorkPlan): FlowDraftModel {
     status: plan.status, revision: plan.current_revision, policy: rawPolicy === 'AUTONOMOUS' ? 'AUTONOMOUS' : 'GUIDED',
     policyStored: rawPolicy === 'GUIDED' || rawPolicy === 'AUTONOMOUS',
     phases: phases.map((phase) => ({ id: phase.id, title: phase.title, description: phase.description, order: phase.order })),
-    steps, structuredFacts: plan.structured_facts ? { ...plan.structured_facts } : undefined,
+    steps: normalizeFlowSteps(steps), structuredFacts: plan.structured_facts ? { ...plan.structured_facts } : undefined,
   };
 }
 
@@ -116,6 +116,50 @@ export function workPlanFromFlow(flow: FlowDraftModel, baseline: WorkPlan): Work
     }),
     structured_facts: Object.keys(facts).length ? facts : undefined,
   };
+}
+
+function isSchemaPlaceholder(value: string | undefined): boolean {
+  const trimmed = (value || '').trim();
+  if (!trimmed) return true;
+  const lower = trimmed.toLowerCase();
+  if (lower === '...' || lower === '…' || lower === 'title' || lower === 'goal' || lower === 'package title' || lower === 'measurable criterion' || lower === 'specific measurable objective') return true;
+  if (trimmed.startsWith('<') && trimmed.endsWith('>')) return true;
+  return trimmed.replace(/[.…]/g, '') === '';
+}
+
+function uniqueIds(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
+}
+
+function normalizeFlowSteps(steps: FlowStepModel[]): FlowStepModel[] {
+  const byId = new Set(steps.map((step) => step.id));
+  const byTitle = new Map<string, string>();
+  for (const step of steps) {
+    const key = (step.title || '').trim().toLowerCase();
+    if (key && !isSchemaPlaceholder(key) && !byTitle.has(key)) byTitle.set(key, step.id);
+  }
+  return steps.map((step, index) => {
+    const title = isSchemaPlaceholder(step.title)
+      ? (!isSchemaPlaceholder(step.goal) ? step.goal.trim() : `Work step ${index + 1}`)
+      : step.title;
+    const goal = isSchemaPlaceholder(step.goal) ? title : step.goal;
+    const dependencies = uniqueIds((step.dependencies || []).flatMap((dep) => {
+      const token = (dep || '').trim();
+      if (!token || isSchemaPlaceholder(token) || token === step.id) return [];
+      if (byId.has(token)) return [token];
+      const mapped = byTitle.get(token.toLowerCase());
+      return mapped && mapped !== step.id ? [mapped] : [];
+    }));
+    const acceptanceCriteria = (step.acceptanceCriteria || []).filter((item) => !isSchemaPlaceholder(item));
+    return { ...step, title, goal, dependencies, acceptanceCriteria };
+  });
 }
 
 function phaseOrder(flow: FlowDraftModel, phaseId: string): number { return (flow.phases || []).find((phase) => phase.id === phaseId)?.order ?? Number.MAX_SAFE_INTEGER; }
