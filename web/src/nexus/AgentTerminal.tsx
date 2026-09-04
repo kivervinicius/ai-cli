@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MessageSquare, Play, RefreshCw, Send, ShieldAlert, Sparkles, Unplug, X } from 'lucide-react';
+import { MessageSquare, Play, RefreshCw, Send, ShieldAlert, Sparkles, Trash2, Unplug, X } from 'lucide-react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { nexus } from './api';
@@ -9,13 +9,36 @@ import {
   isFatalTerminalAttachError,
   normalizeInitialPrompt,
   normalizeTerminalRole,
+  isRecoverAlreadyAlive,
+  shouldFallbackRecoverToStart,
   terminalAttachFailureMessage,
   terminalReconnectDelay,
   type TerminalRole,
 } from './agentTerminalModel';
-import { pushNotifications } from '../notifications/PushNotificationManager';
-import type { RuntimeSession } from '../types';
 import { TerminalActionDialog } from './TerminalActionDialog';
+import { scrubProtocolOutput } from './terminalProtocol';
+import type { RuntimeSession } from '../types';
+
+async function recoverOrStartAgent(agentId: string) {
+  try {
+    return await nexus.recoverAgent(agentId);
+  } catch (recoverErr) {
+    const recoverMsg = recoverErr instanceof Error ? recoverErr.message : String(recoverErr);
+    // Healthy runtime: soft-success so the caller rebinds/reconnects without killing the session.
+    if (isRecoverAlreadyAlive(recoverMsg)) {
+      return { runtime: undefined as unknown as RuntimeSession };
+    }
+    if (!shouldFallbackRecoverToStart(recoverMsg)) {
+      throw recoverErr;
+    }
+    try {
+      return await nexus.startAgent(agentId);
+    } catch (startErr) {
+      const startMsg = startErr instanceof Error ? startErr.message : String(startErr);
+      throw new Error(`${recoverMsg} · Start: ${startMsg}`);
+    }
+  }
+}
 
 export const AgentTerminal: React.FC<{
   agentId: string;
@@ -30,14 +53,15 @@ export const AgentTerminal: React.FC<{
   onRecover?: () => Promise<RuntimeSession | void> | RuntimeSession | void;
   onRestartWithMode?: (mode: 'Safe' | 'YOLO') => Promise<RuntimeSession | void> | RuntimeSession | void;
   onClose?: (stopRuntime: boolean) => void | Promise<void>;
-}> = ({ agentId, runtimeId, initialPrompt, provider, profile, mode = 'Safe', agentName, chrome = 'full', onRecover, onRestartWithMode, onClose }) => {
+  onDelete?: () => void | Promise<void>;
+}> = ({ agentId, runtimeId, initialPrompt, provider, profile, mode = 'Safe', agentName, chrome = 'full', onRecover, onRestartWithMode, onClose, onDelete }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const [role, setRole] = useState<TerminalRole>('VIEW_ONLY');
   const [connection, setConnection] = useState<'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('CONNECTING');
   const [message, setMessage] = useState('');
   const [customTitle, setCustomTitle] = useState('');
   const [recovering, setRecovering] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [boundRuntimeId, setBoundRuntimeId] = useState(runtimeId || '');
   const [connectNonce, setConnectNonce] = useState(0);
   const [askOpen, setAskOpen] = useState(false);
@@ -160,7 +184,6 @@ export const AgentTerminal: React.FC<{
       );
       wsRef.current = ws;
       roleRef.current = 'VIEW_ONLY';
-      setRole('VIEW_ONLY');
 
       ws.onopen = () => {
         openedOnce = true;
@@ -168,9 +191,9 @@ export const AgentTerminal: React.FC<{
         setConnection('CONNECTED');
         setModeAction((current) => current === 'Restarting' ? 'Ready' : current);
         setMessage((current) => current === 'Reiniciando runtime…' ? 'Pronto' : '');
-        // The backend still fences concurrent writers, but the normal single
-        // terminal flow should not require the user to operate a lease button.
-        ws.send(JSON.stringify({ type: 'lease_acquire' }));
+        // Lease is acquired by the web handler on Attach for the CONTROL
+        // broker seat. Do not spam lease_acquire here — older SessionHosts
+        // echoed those RPC frames into the PTY.
         window.requestAnimationFrame(fitAndResize);
       };
 
@@ -178,11 +201,11 @@ export const AgentTerminal: React.FC<{
         try {
           const payload = JSON.parse(event.data);
           if (payload.type === 'output' && payload.data) {
-            term.write(payload.data);
+            const cleaned = scrubProtocolOutput(String(payload.data));
+            if (cleaned) term.write(cleaned);
           } else if (payload.type === 'lease') {
             const next = normalizeTerminalRole(payload.role);
             roleRef.current = next;
-            setRole(next);
             setMessage(next === 'CONTROL' ? '' : 'Somente leitura — outro acesso está digitando neste runtime.');
             maybeSendKickoff();
           } else if (payload.type === 'runtime_changed') {
@@ -191,21 +214,9 @@ export const AgentTerminal: React.FC<{
           } else if (payload.type === 'title' && payload.data) {
             setCustomTitle(payload.data);
           } else if (payload.type === 'attention') {
+            // Push/sound are owned by the focused-project poll in NexusWorkspaceApp.
+            // WS only refreshes local chrome (title) to avoid multi-attach spam.
             if (payload.dynamic_title) setCustomTitle(payload.dynamic_title);
-            const context = String(payload.context || payload.attention_context || '').trim();
-            const promptKind = String(payload.prompt_kind || '');
-            if (context && promptKind !== 'none') {
-              pushNotifications.sendPush({
-                runtimeId: payload.runtime_id || runtimeId || agentId,
-                projectName: payload.project_name,
-                agentName: agentName || customTitle || undefined,
-                reason: payload.attention_reason || 'QUESTION',
-                context,
-                dynamicTitle: payload.dynamic_title,
-                fingerprint: payload.fingerprint || payload.attention_fingerprint,
-                promptKind,
-              });
-            }
           } else if (payload.type === 'error') {
             const detail = String(payload.data ?? 'Terminal error');
             setMessage(detail);
@@ -266,25 +277,42 @@ export const AgentTerminal: React.FC<{
     setRecovering(true);
     setMessage('Iniciando runtime do agente…');
     try {
+      let nextRuntimeId = '';
       if (onRecover) {
         const result = await onRecover();
-        if (result?.runtime_id) {
-          setBoundRuntimeId(result.runtime_id);
-          return;
-        }
+        nextRuntimeId = result?.runtime_id || '';
       } else {
-        const result = await nexus.recoverAgent(agentId).catch(() => nexus.startAgent(agentId));
-        if (result?.runtime?.runtime_id) setBoundRuntimeId(result.runtime.runtime_id);
+        const result = await recoverOrStartAgent(agentId);
+        nextRuntimeId = result?.runtime?.runtime_id || '';
       }
-      if (containerRef.current && (containerRef.current as any).__triggerReconnect) {
-        (containerRef.current as any).__triggerReconnect();
-      } else {
-        setConnectNonce((n) => n + 1);
+      if (nextRuntimeId) {
+        setBoundRuntimeId(nextRuntimeId);
+        setMessage('');
+        setConnection('CONNECTING');
+        return;
       }
+      setConnectNonce((n) => n + 1);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
+      setConnection('ERROR');
     } finally {
       setRecovering(false);
+    }
+  };
+
+  const handleDeleteAgent = async () => {
+    if (!onDelete || deleting) return;
+    const label = agentName || agentId;
+    if (!window.confirm(`Remover o agente "${label}"? A identidade e o terminal serão excluídos.`)) return;
+    setDeleting(true);
+    setMessage('Removendo agente…');
+    try {
+      await onDelete();
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : String(e));
+      setConnection('ERROR');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -405,7 +433,7 @@ export const AgentTerminal: React.FC<{
         <Sparkles size={13} />
         <span>Perguntar</span>
       </button>
-      {onClose && (
+      {onClose && !windowChrome && (
         <button type="button" onClick={() => setCloseConfirmOpen(true)} title="Escolher como fechar este terminal">
           Fechar terminal
         </button>
@@ -438,8 +466,7 @@ export const AgentTerminal: React.FC<{
         </header>
       )}
       {windowChrome && (
-        <div className="nx-agent-terminal__toolbar" aria-label="Terminal actions">
-          <div className="nx-agent-terminal__toolbar-group nx-agent-terminal__toolbar-group--identity"><strong>{displayName}</strong><span>{provider || 'provider n/d'}{profile && profile !== 'default' ? ` · ${profile}` : ''}</span><span data-state={connection}>{connection === 'CONNECTED' ? 'Conectado' : connection === 'CONNECTING' ? 'Conectando…' : 'Desconectado'}</span></div>
+        <div className="nx-agent-terminal__toolbar nx-agent-terminal__toolbar--actions" aria-label="Terminal actions">
           {modeButtons}
           {terminalActions}
         </div>
@@ -537,7 +564,7 @@ export const AgentTerminal: React.FC<{
         <div
           style={{
             position: 'absolute',
-            inset: windowChrome ? '32px 0 0 0' : '39px 0 0 0',
+            inset: windowChrome ? 0 : '39px 0 0 0',
             background: 'rgba(9, 11, 16, 0.88)',
             backdropFilter: 'blur(3px)',
             display: 'flex',
@@ -557,7 +584,24 @@ export const AgentTerminal: React.FC<{
           <p style={{ maxWidth: '420px', fontSize: '12px', color: 'var(--nx-muted)', margin: 0, lineHeight: 1.5 }}>
             O processo do agente não está rodando no momento ou foi finalizado. Inicie o runtime para anexar o terminal e executar comandos.
           </p>
-          <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+          {message && (
+            <p
+              style={{
+                maxWidth: '440px',
+                margin: 0,
+                padding: '8px 10px',
+                borderRadius: 6,
+                border: '1px solid color-mix(in srgb, var(--nx-danger) 40%, var(--nx-border))',
+                background: 'var(--nx-danger-soft)',
+                color: 'var(--nx-danger)',
+                fontSize: '12px',
+                lineHeight: 1.45,
+              }}
+            >
+              {message}
+            </p>
+          )}
+          <div style={{ display: 'flex', gap: '8px', marginTop: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
             <button
               type="button"
               className="nx-button"
@@ -584,6 +628,19 @@ export const AgentTerminal: React.FC<{
               <RefreshCw size={13} />
               <span>Tentar Conectar</span>
             </button>
+            {onDelete && (
+              <button
+                type="button"
+                className="nx-button"
+                data-tone="danger"
+                disabled={recovering || deleting}
+                onClick={() => void handleDeleteAgent()}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Trash2 size={13} />
+                <span>{deleting ? 'Removendo…' : 'Remover Agente'}</span>
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -22,6 +22,8 @@ export interface WorkspacePresentationState {
   canvas: ArrangeBounds;
   /** When true, next sync should re-run Smart instead of preserving free geometry. */
   tiled: boolean;
+  /** viewId of the PTY the user is viewing (inner tabs or desktop focus). */
+  activePtyViewId: string;
 }
 
 const DEFAULT_CANVAS: ArrangeBounds = { x: 8, y: 8, width: 1200, height: 720 };
@@ -32,7 +34,7 @@ export function isDesktopFloatingSurface(surface: WorkspaceSurface): boolean {
 }
 
 export function createPresentationState(mode: WorkspacePresentationMode = 'TABS'): WorkspacePresentationState {
-  return { version: 2, mode, windows: {}, nextZ: 1, canvas: { ...DEFAULT_CANVAS }, tiled: true };
+  return { version: 2, mode, windows: {}, nextZ: 1, canvas: { ...DEFAULT_CANVAS }, tiled: true, activePtyViewId: '' };
 }
 
 export function migratePresentationState(raw: unknown): WorkspacePresentationState {
@@ -59,6 +61,10 @@ export function migratePresentationState(raw: unknown): WorkspacePresentationSta
 
   // v1 cascade → re-tile on first Desktop paint.
   const wasV1 = Number(parsed.version) === 1;
+  const activePtyViewId =
+    typeof parsed.activePtyViewId === 'string' && parsed.activePtyViewId
+      ? parsed.activePtyViewId
+      : '';
   return {
     version: 2,
     mode,
@@ -66,6 +72,7 @@ export function migratePresentationState(raw: unknown): WorkspacePresentationSta
     nextZ,
     canvas,
     tiled: wasV1 ? true : parsed.tiled !== false,
+    activePtyViewId,
   };
 }
 
@@ -180,7 +187,10 @@ export function syncDesktopWindows(
   const removed = Object.keys(state.windows).filter((id) => !nextIds.includes(id));
   if (added.length === 0 && removed.length === 0) {
     // Still drop non-floating leftovers if any.
-    if (Object.keys(state.windows).every((id) => nextIds.includes(id))) return state;
+    if (Object.keys(state.windows).every((id) => nextIds.includes(id))) {
+      if (state.activePtyViewId && nextIds.includes(state.activePtyViewId)) return state;
+      return { ...state, activePtyViewId: nextIds[0] || '' };
+    }
   }
 
   const base: WorkspacePresentationState = { ...state, nextZ, tiled: true };
@@ -192,7 +202,12 @@ export function syncDesktopWindows(
       tiled.windows[id] = { ...preserved[id], maximized: false };
     }
   });
-  return tiled;
+  const activePtyViewId = added.length
+    ? added[added.length - 1]
+    : nextIds.includes(state.activePtyViewId)
+      ? state.activePtyViewId
+      : nextIds[0] || '';
+  return { ...tiled, activePtyViewId };
 }
 
 function patchWindow(
@@ -205,10 +220,22 @@ function patchWindow(
   return { ...state, windows: { ...state.windows, [viewId]: { ...current, ...patch } } };
 }
 
+export function setActivePtyView(state: WorkspacePresentationState, viewId: string): WorkspacePresentationState {
+  const next = (viewId || '').trim();
+  if (state.activePtyViewId === next) return state;
+  return { ...state, activePtyViewId: next };
+}
+
 export function focusDesktopWindow(state: WorkspacePresentationState, viewId: string): WorkspacePresentationState {
-  if (!state.windows[viewId]) return state;
+  if (!state.windows[viewId]) {
+    return setActivePtyView(state, viewId);
+  }
   const zIndex = state.nextZ;
-  return { ...patchWindow(state, viewId, { zIndex, minimized: false }), nextZ: zIndex + 1 };
+  return {
+    ...patchWindow(state, viewId, { zIndex, minimized: false }),
+    nextZ: zIndex + 1,
+    activePtyViewId: viewId,
+  };
 }
 
 export function moveDesktopWindow(

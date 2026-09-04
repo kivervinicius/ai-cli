@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseTerminalFrame } from './terminalProtocol';
+import { isProtocolControlLine, parseTerminalFrame, scrubProtocolOutput } from './terminalProtocol';
 
 describe('terminal protocol', () => {
   it('renders provider JSON as output when it is not a control envelope', () => {
@@ -45,5 +45,17 @@ describe('terminal protocol', () => {
       type: 'unknown',
       raw: '{"type":"output"}',
     });
+  });
+
+  it('scrubs lease_acquire frames from polluted PTY output', () => {
+    const polluted =
+      'welcome\n' +
+      '{"version":1,"id":"req-1","command":"lease_acquire","timestamp":"2026-01-01T00:00:00Z"}\n' +
+      'real line\n' +
+      '{"version":1,"ok":true,"data":"\\"lease_acquired\\""}\n' +
+      '{"note":"keep me"}\n';
+    expect(scrubProtocolOutput(polluted)).toBe('welcome\nreal line\n{"note":"keep me"}\n');
+    expect(scrubProtocolOutput('{"version":1,"command":"lease_acquire"}')).toBe('');
+    expect(isProtocolControlLine('hello')).toBe(false);
   });
 });

@@ -16,3 +16,9 @@ The following capabilities have been deliberately deferred from the current mile
 
 5. **Direct Public Cloud Token Proxy**:
    - *Rationale*: Storing or proxying third-party API tokens centrally introduces credential harvesting attack vectors. Credentials remain isolated in developer keyrings and official provider credential stores.
+
+6. **Codex app-server / structured attention events** (next attention milestone):
+   - *Status*: Deferred by design. Drivers still report `StructuredEvents` / `Approvals` as UNSUPPORTED and `ControlLevel=TERMINAL`.
+   - *Current honest fallback*: `AttentionDetector` scrapes PTY stdout **only** when `ControlLevel=TERMINAL`, provider is not `shell`, and no structured adapter is enabled. Attach WebSockets are display-only; browser push comes from the focused-project registry poll.
+   - *Target*: Enable a Codex app-server (JSON-RPC) adapter that publishes domain events (`APPROVAL_REQUIRED`, `AGENT_WAITING`, turn state) with `runtime_id` + `agent_id`. When that lands, set `StructuredEvents=SUPPORTED` (and/or `ControlLevel=EVENTS`) so PTY heuristics turn off automatically via `SetControlPolicy`.
+   - *Non-goal of the fallback*: Guessing agent turns from tool logs (`error:`, apt `[Y/n]`) is not a product contract — only a TERMINAL-mode safety net until the adapter exists.

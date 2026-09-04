@@ -86,8 +86,10 @@ export const WorkspaceSurfaceHost: React.FC<{
 
   const open = (kind: string) =>
     openSurface(projectSurface(project.id, kind as Parameters<typeof projectSurface>[1]));
-  const terminal = (target: Agent, initialPrompt = '', runtimeId = '') =>
+  const terminal = (target: Agent, initialPrompt = '', runtimeId = '') => {
     openSurface(agentTerminalSurface(target.id, target.name, initialPrompt, runtimeId));
+    openSurface(projectSurface(project.id, 'terminals'));
+  };
   const config = (target: Agent) => openSurface(agentConfigSurface(target.id, target.name));
 
   if (surface.type === 'projects') {
@@ -160,6 +162,7 @@ export const WorkspaceSurfaceHost: React.FC<{
         refresh={refreshAgents}
         onTerminal={terminal}
         onConfigure={config}
+        onRemoved={(agentId) => closeSurface(`agent:${agentId}:terminal`)}
       />
     );
 
@@ -187,12 +190,35 @@ export const WorkspaceSurfaceHost: React.FC<{
           onRecover={async () => {
             if (!surface.data?.agentId) return;
             try {
-              const result = await nexus.recoverAgent(surface.data.agentId).catch(() => nexus.startAgent(surface.data!.agentId!));
+              const result = await (async () => {
+                try {
+                  return await nexus.recoverAgent(surface.data!.agentId!);
+                } catch (recoverErr) {
+                  const recoverMsg = recoverErr instanceof Error ? recoverErr.message : String(recoverErr);
+                  const lower = recoverMsg.toLowerCase();
+                  // Healthy runtime — refresh and reconnect; never stop+start.
+                  if (lower.includes('already alive')) {
+                    return { runtime: undefined as unknown as RuntimeSession };
+                  }
+                  const canStart =
+                    lower.includes('no recoverable') ||
+                    lower.includes('use startagent') ||
+                    lower.includes('stopped') ||
+                    lower.includes('host did not accept') ||
+                    lower.includes('no longer responding');
+                  if (!canStart) throw recoverErr;
+                  return await nexus.startAgent(surface.data!.agentId!);
+                }
+              })();
               await refreshAgents();
               await refreshGlobal();
               return result?.runtime;
-            } catch {
-              throw new Error('Não foi possível iniciar ou recuperar o runtime do agente. Verifique o provedor e a conta configurados.');
+            } catch (err) {
+              throw new Error(
+                err instanceof Error
+                  ? err.message
+                  : 'Não foi possível iniciar ou recuperar o runtime do agente. Verifique o provedor e a conta configurados.'
+              );
             }
           }}
           onRestartWithMode={async (newMode: 'Safe' | 'YOLO') => {
@@ -227,6 +253,19 @@ export const WorkspaceSurfaceHost: React.FC<{
               else if (surface.data?.agentId) await nexus.stopAgent(surface.data.agentId);
               await refreshGlobal();
             }
+            closeSurface(surface.id);
+          }}
+          onDelete={async () => {
+            const agentId = surface.data?.agentId;
+            if (!agentId) return;
+            try {
+              await nexus.stopAgent(agentId);
+            } catch {
+              /* may already be dead / unreachable */
+            }
+            await nexus.deleteAgent(agentId);
+            await refreshAgents();
+            await refreshGlobal();
             closeSurface(surface.id);
           }}
         />

@@ -142,13 +142,82 @@ func TestAttentionDetectorOSNotifyOnlyOnEvidence(t *testing.T) {
 	}
 
 	detector.ProcessChunk([]byte("\r\nDeseja executar a migração? [y/N]\r\n"))
-	if len(rec.Payloads) != 1 {
-		t.Fatalf("expected one OS notify for real yn question, got %d", len(rec.Payloads))
+	if len(rec.Payloads) != 0 {
+		t.Fatalf("needs_user must not OS-notify (bus/UI only), got %d payloads", len(rec.Payloads))
+	}
+	if detector.lastKind != AttentionNeedsUser {
+		t.Fatalf("expected needs_user classification, got %q", detector.lastKind)
 	}
 
-	detector.ProcessChunk([]byte("\r\nDeseja executar a migração? [y/N]\r\n"))
+	detector.ProcessChunk([]byte("\r\nerror: build failed hard\r\n"))
+	if len(rec.Payloads) != 1 {
+		t.Fatalf("expected one OS notify for agent error, got %d", len(rec.Payloads))
+	}
+
+	detector.ProcessChunk([]byte("\r\nerror: build failed hard\r\n"))
 	if len(rec.Payloads) != 1 {
 		t.Fatalf("same fingerprint must not re-notify, got %d", len(rec.Payloads))
+	}
+}
+
+func TestAttentionDetectorShellIgnoresInteractivePrompts(t *testing.T) {
+	rec := &notify.Recorder{}
+	notify.SetDefault(rec)
+	t.Cleanup(func() { notify.SetDefault(nil) })
+
+	var gotReason string
+	detector := NewAttentionDetector("rt-shell", "shell", "default", "/workspace/project", func(reason, _, _ string, _ registry.RuntimeState) {
+		gotReason = reason
+	})
+	detector.ProcessChunk([]byte("\r\nDo you want to continue? [Y/n]\r\n"))
+	if gotReason == "QUESTION" || detector.lastKind == AttentionNeedsUser {
+		t.Fatal("project shell must not classify apt/npm-style prompts as needs_user")
+	}
+	if len(rec.Payloads) != 0 {
+		t.Fatalf("shell must not OS-notify, got %#v", rec.Payloads)
+	}
+	detector.ProcessChunk([]byte("\r\nerror: something broke\r\n"))
+	if len(rec.Payloads) != 0 {
+		t.Fatalf("shell must not OS-notify on error either, got %#v", rec.Payloads)
+	}
+}
+
+func TestAttentionDetectorEventsControlLevelDisablesPTYHeuristic(t *testing.T) {
+	var gotReason string
+	detector := NewAttentionDetector("rt-events", "codex", "default", "/workspace/project", func(reason, _, _ string, _ registry.RuntimeState) {
+		gotReason = reason
+	})
+	detector.SetControlPolicy(registry.ControlLevelEvents, false, "agent-1")
+	detector.ProcessChunk([]byte("\r\nDeseja executar a migração? [y/N]\r\n"))
+	if gotReason == "QUESTION" || detector.lastKind == AttentionNeedsUser {
+		t.Fatal("EVENTS control level must not scrape PTY for needs_user")
+	}
+}
+
+func TestAttentionDetectorStructuredEventsDisablesPTYHeuristic(t *testing.T) {
+	var gotReason string
+	detector := NewAttentionDetector("rt-struct", "codex", "default", "/workspace/project", func(reason, _, _ string, _ registry.RuntimeState) {
+		gotReason = reason
+	})
+	detector.SetControlPolicy(registry.ControlLevelTerminal, true, "agent-1")
+	detector.ProcessChunk([]byte("\r\nDeseja executar a migração? [y/N]\r\n"))
+	if gotReason == "QUESTION" || detector.lastKind == AttentionNeedsUser {
+		t.Fatal("structured events adapter must own attention; PTY heuristic must stay off")
+	}
+}
+
+func TestPtyHeuristicAllowed(t *testing.T) {
+	if !ptyHeuristicAllowed("codex", registry.ControlLevelTerminal, false) {
+		t.Fatal("codex TERMINAL without structured events should allow PTY fallback")
+	}
+	if ptyHeuristicAllowed("shell", registry.ControlLevelTerminal, false) {
+		t.Fatal("shell must never allow PTY agent heuristic")
+	}
+	if ptyHeuristicAllowed("codex", registry.ControlLevelAPI, false) {
+		t.Fatal("CONTROL_API must not scrape PTY")
+	}
+	if ptyHeuristicAllowed("codex", registry.ControlLevelTerminal, true) {
+		t.Fatal("structured events must disable PTY heuristic")
 	}
 }
 

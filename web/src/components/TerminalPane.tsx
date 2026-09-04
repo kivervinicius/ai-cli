@@ -2,13 +2,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { Shield, ShieldAlert, XSquare, Pencil, Check } from 'lucide-react';
-import { pushNotifications } from '../notifications/PushNotificationManager';
+import { scrubProtocolOutput } from '../nexus/terminalProtocol';
 
 interface TerminalPaneProps {
   runtimeId: string;
   title?: string;
   provider: string;
   profile: string;
+  /** Desktop mosaic titlebar already shows identity — skip the inner header. */
+  hideHeader?: boolean;
   onUpdateTitle?: (id: string, newTitle: string) => void;
   onClose?: () => void;
 }
@@ -18,6 +20,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   title,
   provider,
   profile,
+  hideHeader = false,
   onUpdateTitle,
   onClose,
 }) => {
@@ -96,29 +99,18 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'output' && msg.data) {
-          term.write(msg.data);
+          const cleaned = scrubProtocolOutput(String(msg.data));
+          if (cleaned) term.write(cleaned);
         } else if (msg.type === 'lease') {
           setRole(msg.role === 'CONTROL' ? 'CONTROL' : 'VIEW_ONLY');
         } else if (msg.type === 'title' && msg.data) {
           setCustomTitle(msg.data);
           if (onUpdateTitle) onUpdateTitle(runtimeId, msg.data);
         } else if (msg.type === 'attention') {
+          // Push is owned by NexusWorkspaceApp poll (focused project only).
           if (msg.dynamic_title) {
             setCustomTitle(msg.dynamic_title);
             if (onUpdateTitle) onUpdateTitle(runtimeId, msg.dynamic_title);
-          }
-          const context = String(msg.context || msg.attention_context || '').trim();
-          const promptKind = String(msg.prompt_kind || '');
-          if (context && promptKind !== 'none') {
-            pushNotifications.sendPush({
-              runtimeId,
-              projectName: msg.project_name,
-              reason: msg.attention_reason || 'QUESTION',
-              context,
-              dynamicTitle: msg.dynamic_title,
-              fingerprint: msg.fingerprint || msg.attention_fingerprint,
-              promptKind,
-            });
           }
         } else if (msg.type === 'error') {
           setErrorMsg(msg.data);
@@ -190,8 +182,9 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#090d16] border border-slate-800 rounded-lg overflow-hidden shadow-xl">
+    <div className="flex flex-col h-full bg-[#090d16] border border-slate-800 rounded-lg overflow-hidden shadow-xl" data-chrome={hideHeader ? 'window' : 'full'}>
       {/* Terminal Toolbar */}
+      {!hideHeader && (
       <div className="flex items-center justify-between px-3 py-2 bg-slate-900 border-b border-slate-800 text-xs font-mono select-none">
         <div className="flex items-center space-x-2">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -275,6 +268,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           )}
         </div>
       </div>
+      )}
 
       {/* xterm container */}
       <div className="flex-1 w-full p-2 overflow-hidden" ref={containerRef} />

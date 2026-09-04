@@ -3,7 +3,9 @@ import {
   clampRatio,
   closeSurface,
   createWorkspace,
+  ensureSurface,
   findStackContaining,
+  listSurfaces,
   moveSurface,
   openSurface,
   setActiveSurface,
@@ -69,6 +71,17 @@ describe('workspace model', () => {
     expect(stack?.tabs).toHaveLength(1);
     expect(surfaceLogicalKey(stack!.tabs[0])).toBe('project:p1:overview');
     expect(surfaceViewId(stack!.tabs[0])).toBe('view:overview');
+  });
+
+  it('ensures a surface without stealing the active tab', () => {
+    let ws = createWorkspace({ ...surface('overview'), type: 'overview', closable: false });
+    ws = ensureSurface(ws, { ...surface('terminals'), type: 'terminals', closable: false });
+    const stack = findStackContaining(ws.root, 'overview');
+    expect(stack?.activeId).toBe('overview');
+    expect(listSurfaces(ws.root).some((tab) => tab.id === 'terminals')).toBe(true);
+    const before = stack?.activeId;
+    ws = ensureSurface(ws, { ...surface('terminals'), type: 'terminals', closable: false });
+    expect(findStackContaining(ws.root, 'overview')?.activeId).toBe(before);
   });
 
   it('finds a migrated surface by legacy id and stable view id', () => {

@@ -5,6 +5,7 @@ export type ProjectSurfaceKind =
   | 'overview'
   | 'work'
   | 'missions'
+  | 'terminals'
   | 'agents'
   | 'maestro'
   | 'sessions'
@@ -19,6 +20,7 @@ const labels: Record<ProjectSurfaceKind, string> = {
   overview: 'Overview',
   work: 'Composer',
   missions: 'Flow Runs',
+  terminals: 'Terminals',
   agents: 'Agents',
   maestro: 'Maestro',
   sessions: 'Sessions',
@@ -49,9 +51,17 @@ export function projectSurface(projectId: string, kind: ProjectSurfaceKind): Wor
     type: kind,
     title: labels[kind],
     titleKey,
-    closable: kind !== 'overview',
+    closable: kind !== 'overview' && kind !== 'terminals',
     data: { projectId },
   };
+}
+
+export function isPtySurface(surface: WorkspaceSurface): boolean {
+  return surface.type === 'terminal' || surface.type === 'project-shell';
+}
+
+export function isProductSurface(surface: WorkspaceSurface): boolean {
+  return !isPtySurface(surface);
 }
 
 export function agentTerminalSurface(

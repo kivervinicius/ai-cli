@@ -470,8 +470,11 @@ func (n *Nexus) stopRuntime(runtimeID string) {
 	_ = n.launcher.Stop(runtimeID)
 }
 
-// runtimeAlive reports whether a runtime's process is currently alive,
-// consulting the live runtime registry (PID + host generation protection).
+// runtimeAlive reports whether a runtime is currently usable: the process is
+// alive (with host-generation protection against PID recycle) AND the control
+// host still accepts a ping. A zombie PID or a dead host counts as not alive
+// so Recover/Delete/Start can proceed. Mock transports (unit tests) skip the
+// host ping because they never open a SessionHost endpoint.
 func (n *Nexus) runtimeAlive(runtimeID string) bool {
 	if runtimeID == "" {
 		return false
@@ -480,7 +483,41 @@ func (n *Nexus) runtimeAlive(runtimeID string) bool {
 	if !ok {
 		return false
 	}
-	return registry.IsProcessAlive(sess.PID)
+	if sess.HostGeneration > 0 {
+		if !registry.IsProcessAliveWithGeneration(sess.PID, sess.HostGeneration) {
+			return false
+		}
+	} else if !registry.IsProcessAlive(sess.PID) {
+		return false
+	}
+	if sess.Transport == "mock" {
+		return true
+	}
+	return n.runtimeHostReachable(runtimeID)
+}
+
+// runtimeHostReachable probes the SessionHost control endpoint with a short ping.
+func (n *Nexus) runtimeHostReachable(runtimeID string) bool {
+	client, err := protocol.NewClient(runtimeID)
+	if err != nil {
+		return false
+	}
+	defer client.Close()
+	_ = client.RawConn().SetDeadline(time.Now().Add(800 * time.Millisecond))
+	if err := client.Ping(); err != nil {
+		return false
+	}
+	return true
+}
+
+// stopStaleRuntime best-effort stops a registry entry whose process or host is
+// no longer usable, so a subsequent Recover/Start can launch a new generation.
+func (n *Nexus) stopStaleRuntime(runtimeID string) {
+	if runtimeID == "" {
+		return
+	}
+	_ = n.launcher.Stop(runtimeID)
+	_ = registry.DefaultRegistry().Delete(runtimeID)
 }
 
 // EffectiveAgentState derives the honest, live agent state: an agent whose
@@ -527,8 +564,15 @@ func (n *Nexus) RecoverAgent(ctx context.Context, agentID string) (*registry.Run
 	}
 
 	gen, gerr := st.CurrentGeneration(agentID)
-	if gerr == nil && n.runtimeAlive(gen.RuntimeID) {
-		return nil, fmt.Errorf("agent runtime is already alive (no recovery needed)")
+	if gerr == nil && gen.RuntimeID != "" {
+		if n.runtimeAlive(gen.RuntimeID) {
+			return nil, fmt.Errorf("agent runtime is already alive (no recovery needed)")
+		}
+		// Registry may still list a zombie/unreachable runtime — clear it so
+		// Launch can register a new generation.
+		if _, ok := registry.DefaultRegistry().Get(gen.RuntimeID); ok {
+			n.stopStaleRuntime(gen.RuntimeID)
+		}
 	}
 
 	// Without a prior generation, recovery is impossible (P1).
@@ -613,6 +657,20 @@ func (n *Nexus) RecoverAgent(ctx context.Context, agentID string) (*registry.Run
 		return nil, fmt.Errorf("recover agent runtime: %w", err)
 	}
 
+	// Do not mark WORKING until the host accepts attach/ping (skip for mock transports).
+	if sess.Transport != "mock" {
+		if err := protocol.WaitForEndpoint(ctx, sess.RuntimeID, 8*time.Second); err != nil || !n.runtimeHostReachable(sess.RuntimeID) {
+			n.stopRuntime(sess.RuntimeID)
+			agent.Status = store.AgentRecoverable
+			_ = st.UpdateAgent(agent)
+			n.notifyAgentState(agentID, "RECOVERABLE")
+			if err == nil {
+				err = fmt.Errorf("recovered runtime host did not accept attach")
+			}
+			return nil, fmt.Errorf("recover agent runtime: %w", err)
+		}
+	}
+
 	gen2 := store.RuntimeGeneration{
 		AgentID:         agentID,
 		RevisionID:      rev.ID,
@@ -646,7 +704,8 @@ func (n *Nexus) RecoverAgent(ctx context.Context, agentID string) (*registry.Run
 }
 
 // DeleteAgent safely removes an agent. If the agent has a live runtime, the
-// deletion is refused to prevent orphaned provider processes.
+// deletion is refused to prevent orphaned provider processes. Zombie / host-
+// unreachable runtimes are stopped first, then deleted.
 func (n *Nexus) DeleteAgent(agentID, projectID string) error {
 	st, err := n.OpenProject()
 	if err != nil {
@@ -658,8 +717,13 @@ func (n *Nexus) DeleteAgent(agentID, projectID string) error {
 	}
 	// Check for a live runtime generation.
 	gen, gerr := st.CurrentGeneration(agentID)
-	if gerr == nil && n.runtimeAlive(gen.RuntimeID) {
-		return fmt.Errorf("cannot delete agent %q: runtime %s is live (stop the agent first)", agent.Name, gen.RuntimeID)
+	if gerr == nil && gen.RuntimeID != "" {
+		if n.runtimeAlive(gen.RuntimeID) {
+			return fmt.Errorf("cannot delete agent %q: runtime %s is live (stop the agent first)", agent.Name, gen.RuntimeID)
+		}
+		if _, ok := registry.DefaultRegistry().Get(gen.RuntimeID); ok {
+			n.stopStaleRuntime(gen.RuntimeID)
+		}
 	}
 	return st.DeleteAgent(agentID, projectID)
 }

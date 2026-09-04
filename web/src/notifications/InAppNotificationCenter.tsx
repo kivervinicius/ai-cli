@@ -10,15 +10,20 @@ const DISMISS_AFTER_MS = 7_000;
 
 export const InAppNotificationCenter: React.FC<{
   runtimes: RuntimeSession[];
+  focusedProjectId?: string;
   onFocusRuntime: (runtimeId: string) => void;
-}> = ({ runtimes, onFocusRuntime }) => {
+}> = ({ runtimes, focusedProjectId, onFocusRuntime }) => {
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
   const observed = useRef(new Set<string>());
   const initialized = useRef(false);
 
   useEffect(() => {
     if (!loadNotificationPrefs().notificationsEnabled) return;
-    const next = runtimes
+    const scoped = focusedProjectId
+      ? runtimes.filter((runtime) => runtime.project_id === focusedProjectId)
+      : [];
+    const next = scoped
+      .filter((runtime) => (runtime.provider_id || runtime.provider || '').toLowerCase() !== 'shell')
       .map(notificationFromRuntime)
       .filter((notification): notification is InAppNotification => notification !== null);
 
@@ -32,7 +37,7 @@ export const InAppNotificationCenter: React.FC<{
     if (fresh.length === 0) return;
     fresh.forEach((notification) => observed.current.add(notification.id));
     setNotifications((current) => [...fresh, ...current].slice(0, 3));
-  }, [runtimes]);
+  }, [runtimes, focusedProjectId]);
 
   useEffect(() => {
     if (notifications.length === 0) return;

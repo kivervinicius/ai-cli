@@ -101,6 +101,9 @@ func NewSessionHost(cfg Config) (*SessionHost, error) {
 			sh.mu.Unlock()
 		},
 	)
+	// PTY regex is TERMINAL fallback only. EVENTS/CONTROL_API (future structured
+	// adapters) must not scrape stdout for agent attention.
+	sh.detector.SetControlPolicy(cfg.Session.ControlLevel, false, cfg.Session.AgentID)
 
 	return sh, nil
 }
@@ -171,20 +174,77 @@ func (sh *SessionHost) Start() error {
 
 func (sh *SessionHost) streamReader(r io.Reader) {
 	buf := make([]byte, 4096)
+	var pending []byte
 	for {
 		n, err := r.Read(buf)
 		if n > 0 {
-			chunk := buf[:n]
-			sh.ringBuffer.Write(chunk)
-			sh.broadcast(chunk)
-			if sh.detector != nil {
-				sh.detector.ProcessChunk(chunk)
+			pending = append(pending, buf[:n]...)
+			for {
+				idx := bytes.IndexByte(pending, '\n')
+				if idx < 0 {
+					// Flush non-JSON partials so interactive output stays live.
+					if len(pending) > 0 && pending[0] != '{' {
+						chunk := pending
+						pending = nil
+						sh.ringBuffer.Write(chunk)
+						sh.broadcast(chunk)
+						if sh.detector != nil {
+							sh.detector.ProcessChunk(chunk)
+						}
+					} else if len(pending) > MaxFrameSize {
+						chunk := pending
+						pending = nil
+						sh.ringBuffer.Write(chunk)
+						sh.broadcast(chunk)
+						if sh.detector != nil {
+							sh.detector.ProcessChunk(chunk)
+						}
+					}
+					break
+				}
+				line := pending[:idx+1]
+				pending = pending[idx+1:]
+				if isHostProtocolControlFrame(line) {
+					continue
+				}
+				sh.ringBuffer.Write(line)
+				sh.broadcast(line)
+				if sh.detector != nil {
+					sh.detector.ProcessChunk(line)
+				}
 			}
 		}
 		if err != nil {
+			if len(pending) > 0 && !isHostProtocolControlFrame(pending) {
+				sh.ringBuffer.Write(pending)
+				sh.broadcast(pending)
+				if sh.detector != nil {
+					sh.detector.ProcessChunk(pending)
+				}
+			}
 			break
 		}
 	}
+}
+
+// isHostProtocolControlFrame detects Nexus Control RPC lines that must never
+// enter the ring buffer / fanout (e.g. lease_acquire echoed into the PTY).
+func isHostProtocolControlFrame(data []byte) bool {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return false
+	}
+	var probe map[string]json.RawMessage
+	if json.Unmarshal(trimmed, &probe) != nil {
+		return false
+	}
+	if _, hasCommand := probe["command"]; hasCommand {
+		return true
+	}
+	if _, hasOK := probe["ok"]; hasOK {
+		return true
+	}
+	return false
 }
 
 func (sh *SessionHost) broadcast(data []byte) {

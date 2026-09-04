@@ -27,3 +27,21 @@ func TestMergePrependsGuardPathAndPreservesDriverPATH(t *testing.T) {
 		t.Fatalf("unexpected PATH %q", path)
 	}
 }
+
+func TestMergeProtectsIsolationHomes(t *testing.T) {
+	got := Merge(
+		[]string{"HOME=/profile/home", "CODEX_HOME=/profile/home", "PATH=/bin"},
+		map[string]string{"HOME": "/host/home", "CODEX_HOME": "/host/.codex", "FOO": "bar"},
+		nil,
+	)
+	joined := strings.Join(got, "\n")
+	if strings.Contains(joined, "HOME=/host/home") || strings.Contains(joined, "CODEX_HOME=/host/.codex") {
+		t.Fatalf("isolation homes were overridden: %v", got)
+	}
+	if !strings.Contains(joined, "HOME=/profile/home") || !strings.Contains(joined, "CODEX_HOME=/profile/home") {
+		t.Fatalf("driver isolation homes missing: %v", got)
+	}
+	if !strings.Contains(joined, "FOO=bar") {
+		t.Fatalf("non-isolation override missing: %v", got)
+	}
+}

@@ -54,6 +54,14 @@ describe('workspace presentation', () => {
     state = focusDesktopWindow(state, 'view:a');
     expect(state.windows['view:a'].viewId).toBe(before);
     expect(state.windows['view:a'].zIndex).toBeGreaterThan(0);
+    expect(state.activePtyViewId).toBe('view:a');
+  });
+
+  it('promotes newly synced PTYs to activePtyViewId', () => {
+    let state = syncDesktopWindows(createPresentationState('DESKTOP'), [surface('a')]);
+    expect(state.activePtyViewId).toBe('view:a');
+    state = syncDesktopWindows(state, [surface('a'), surface('b')]);
+    expect(state.activePtyViewId).toBe('view:b');
   });
 
   it('ignores free-float moves in tiling v1', () => {

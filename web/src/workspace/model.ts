@@ -134,6 +134,25 @@ export function openSurface(model: WorkspaceModel, surface: WorkspaceSurface, ta
   return { ...model, root: replaceStack(model.root, target.id, nextStack) };
 }
 
+/** Add a surface if missing, without changing the active tab. */
+export function ensureSurface(model: WorkspaceModel, surface: WorkspaceSurface, targetStackId?: string): WorkspaceModel {
+  const normalized = normalizeSurface(surface);
+  const existing = listSurfaces(model.root).find(
+    (candidate) => isSurfaceMatch(candidate, normalized.id) || surfaceLogicalKey(candidate) === surfaceLogicalKey(normalized)
+  );
+  if (existing) return model;
+  const stacks = listStacks(model.root);
+  const target = (targetStackId && findStackById(model.root, targetStackId)) || stacks[0];
+  if (!target) return createWorkspace(surface);
+  const nextStack: WorkspaceStack = {
+    ...target,
+    tabs: [...target.tabs, normalized],
+    // Keep current focus — Terminais must exist without stealing Overview.
+    activeId: target.activeId || normalized.id,
+  };
+  return { ...model, root: replaceStack(model.root, target.id, nextStack) };
+}
+
 function removeSurface(node: WorkspaceNode, surfaceId: string): { node: WorkspaceNode | null; removed?: WorkspaceSurface } {
   if (node.kind === 'stack') {
     const removed = node.tabs.find((tab) => isSurfaceMatch(tab, surfaceId));

@@ -67,7 +67,7 @@ func (d *CodexDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effect
 			Status:          CapabilityUnsupported,
 			ProviderVersion: version,
 			Mechanism:       "codex app-server adapter",
-			Reason:          "Structured app-server adapter disabled; running in truthful TERMINAL mode",
+			Reason:          "Structured app-server adapter deferred; see DEV/AI_CONTROL_DEFERRED.md. Running in truthful TERMINAL mode with PTY heuristic fallback only",
 			Tested:          false,
 		},
 		Sessions: CapabilityEvidence{
@@ -102,7 +102,7 @@ func (d *CodexDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effect
 		},
 		Approvals: CapabilityEvidence{
 			Status: CapabilityUnsupported,
-			Reason: "Structured approvals require app-server adapter; interact via terminal prompt",
+			Reason: "Structured approvals require Codex app-server adapter (deferred; DEV/AI_CONTROL_DEFERRED.md); interact via terminal prompt",
 			Tested: false,
 		},
 		NativeUIAttach: CapabilityEvidence{

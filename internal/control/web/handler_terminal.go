@@ -116,13 +116,16 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 		}()
 	}
 
-	// Initial ring buffer history
+	// Initial ring buffer history. Older hosts may have echoed lease_acquire
+	// into the PTY (and thus the ring); scrub so attach never floods xterm.
 	var history string
 	if json.Unmarshal(resp.Data, &history) == nil && history != "" {
-		_ = safeWriteJSON(TerminalMessage{
-			Type: "output",
-			Data: history,
-		})
+		if cleaned := scrubProtocolFramesFromOutput(history); cleaned != "" {
+			_ = safeWriteJSON(TerminalMessage{
+				Type: "output",
+				Data: cleaned,
+			})
+		}
 	}
 
 	// Send initial dynamic title and attention if available
@@ -327,4 +330,31 @@ func isProtocolControlFrame(data []byte) bool {
 		return true
 	}
 	return false
+}
+
+// scrubProtocolFramesFromOutput removes complete Nexus Control RPC lines from
+// a PTY output blob (ring-buffer replay or mixed chunks). Non-protocol text is
+// preserved byte-for-byte, including newlines.
+func scrubProtocolFramesFromOutput(data string) string {
+	if data == "" {
+		return ""
+	}
+	raw := []byte(data)
+	var out bytes.Buffer
+	for len(raw) > 0 {
+		idx := bytes.IndexByte(raw, '\n')
+		if idx < 0 {
+			if !isProtocolControlFrame(raw) {
+				out.Write(raw)
+			}
+			break
+		}
+		line := raw[:idx+1]
+		raw = raw[idx+1:]
+		if isProtocolControlFrame(line) {
+			continue
+		}
+		out.Write(line)
+	}
+	return out.String()
 }

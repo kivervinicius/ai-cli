@@ -50,3 +50,22 @@ export function terminalAttachFailureMessage(detail?: string): string {
   if (trimmed) return trimmed;
   return 'Não foi possível anexar ao runtime do Agente. Use Recover/Start em Agentes e reabra o terminal.';
 }
+
+/** Recover refused because the runtime is healthy — reconnect, do not stop+start. */
+export function isRecoverAlreadyAlive(message: string): boolean {
+  return (message || '').toLowerCase().includes('already alive');
+}
+
+/** Whether a recover failure should fall through to StartAgent. */
+export function shouldFallbackRecoverToStart(message: string): boolean {
+  const lower = (message || '').toLowerCase();
+  if (isRecoverAlreadyAlive(lower)) return false;
+  return (
+    lower.includes('no recoverable runtime') ||
+    lower.includes('use startagent') ||
+    lower.includes('agent is stopped') ||
+    lower.includes('host did not accept') ||
+    lower.includes('no longer responding') ||
+    lower.includes('runtime not found')
+  );
+}

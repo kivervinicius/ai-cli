@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Play, Plus, RotateCcw, TerminalSquare } from 'lucide-react';
-import { Badge, Button, Card, Dialog, EmptyState, Progress } from '../../design-system';
+import { Play, RotateCcw, TerminalSquare } from 'lucide-react';
+import { Badge, Button, Card, Dialog, EmptyState } from '../../design-system';
 import { nexus } from '../../nexus/api';
 import { ResourcePicker } from '../../nexus/ResourcePicker';
 import type { Agent, Project, RuntimeSession } from '../../types';
@@ -119,17 +119,6 @@ export const ProjectOverviewSurface: React.FC<{
           <p>{project.canonical_path} · <code style={{ color: 'var(--nx-accent-text)' }}>{project.default_branch || 'main'}</code></p>
         </div>
         <div className="nx-page-header__actions">
-          {onNewAgent && (
-            <Button tone="brand" onClick={onNewAgent}>
-              <Plus size={14} /> Novo Agente
-            </Button>
-          )}
-          <Button tone={onNewAgent ? 'default' : 'brand'} onClick={onNewAISession}>
-            <TerminalSquare size={14} /> {t('overview.newAISession')}
-          </Button>
-          <Button onClick={onProjectShell}>
-            <TerminalSquare size={14} /> {t('overview.projectShell')}
-          </Button>
           {onOpenComposer ? (
             <Button tone="ghost" onClick={onOpenComposer}>
               {t('overview.openComposer')}
@@ -165,6 +154,15 @@ export const ProjectOverviewSurface: React.FC<{
             icon={<TerminalSquare size={36} />}
             title={t('overview.noAgents')}
             hint={t('overview.noAgentsHint')}
+            action={(
+              <div className="nx-project-create-actions" data-size="md" style={{ marginTop: 4, justifyContent: 'center' }}>
+                {onNewAgent && (
+                  <Button tone="brand" onClick={onNewAgent}>Novo Agente</Button>
+                )}
+                <Button onClick={onNewAISession}>{t('overview.newAISession')}</Button>
+                <Button onClick={onProjectShell}>{t('overview.projectShell')}</Button>
+              </div>
+            )}
           />
         ) : (
           <div className="nx-agent-grid">

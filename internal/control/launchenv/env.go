@@ -5,6 +5,21 @@ import (
 	"strings"
 )
 
+// Isolation keys must stay under driver control. Agent Environment must never
+// point Codex/Claude/etc. back at the host home (broken plugins, credential bleed).
+var protectedIsolationKeys = map[string]struct{}{
+	"HOME":             {},
+	"CODEX_HOME":       {},
+	"CODEX_CONFIG_DIR": {},
+	"CURSOR_HOME":      {},
+	"GEMINI_CLI_HOME":  {},
+	"OPENCODE_HOME":    {},
+	"XDG_DATA_HOME":    {},
+	"XDG_CONFIG_HOME":  {},
+	"XDG_STATE_HOME":   {},
+	"XDG_CACHE_HOME":   {},
+}
+
 // Merge canonicalizes environment overrides and optionally prepends directories
 // to the PATH already produced by a provider driver. This avoids duplicate keys
 // whose precedence differs across operating systems/process launchers.
@@ -26,6 +41,9 @@ func Merge(base []string, overrides map[string]string, pathPrepend []string) []s
 	}
 	for key, value := range overrides {
 		if key == "" {
+			continue
+		}
+		if _, protected := protectedIsolationKeys[key]; protected {
 			continue
 		}
 		if !seen[key] {

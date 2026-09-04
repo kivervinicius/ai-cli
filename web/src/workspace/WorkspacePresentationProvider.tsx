@@ -7,6 +7,7 @@ import {
   rearrangeSmart,
   resizeAdjacentDesktopWindows,
   resizeDesktopWindow,
+  setActivePtyView,
   setPresentationCanvas,
   syncDesktopWindows,
   toggleDesktopMaximize,
@@ -24,6 +25,7 @@ interface ContextValue {
   setMode: (mode: WorkspacePresentationMode) => void;
   sync: (surfaces: WorkspaceSurface[]) => void;
   focus: (viewId: string) => void;
+  setActivePty: (viewId: string) => void;
   move: (viewId: string, x: number, y: number) => void;
   resize: (viewId: string, width: number, height: number) => void;
   resizeAdjacent: (
@@ -42,6 +44,7 @@ type Action =
   | { type: 'mode'; mode: WorkspacePresentationMode }
   | { type: 'sync'; surfaces: WorkspaceSurface[] }
   | { type: 'focus'; viewId: string }
+  | { type: 'setActivePty'; viewId: string }
   | { type: 'move'; viewId: string; x: number; y: number }
   | { type: 'resize'; viewId: string; width: number; height: number }
   | {
@@ -61,6 +64,7 @@ function reducer(state: WorkspacePresentationState, action: Action): WorkspacePr
     case 'mode': return { ...state, mode: action.mode };
     case 'sync': return syncDesktopWindows(state, action.surfaces);
     case 'focus': return focusDesktopWindow(state, action.viewId);
+    case 'setActivePty': return setActivePtyView(state, action.viewId);
     case 'move': return moveDesktopWindow(state, action.viewId, action.x, action.y);
     case 'resize': return resizeDesktopWindow(state, action.viewId, action.width, action.height);
     case 'resizeAdjacent':
@@ -98,6 +102,7 @@ export const WorkspacePresentationProvider: React.FC<{ projectId: string; childr
     setMode: (mode) => dispatch({ type: 'mode', mode }),
     sync: (surfaces) => dispatch({ type: 'sync', surfaces }),
     focus: (viewId) => dispatch({ type: 'focus', viewId }),
+    setActivePty: (viewId) => dispatch({ type: 'setActivePty', viewId }),
     move: (viewId, x, y) => dispatch({ type: 'move', viewId, x, y }),
     resize: (viewId, width, height) => dispatch({ type: 'resize', viewId, width, height }),
     resizeAdjacent: (firstId, secondId, orientation, delta) =>

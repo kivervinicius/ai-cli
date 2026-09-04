@@ -4,9 +4,9 @@ import { setNexusCSRF, nexus } from '../nexus/api';
 import { Spinner } from '../design-system';
 import { ThemeProvider } from '../design-system';
 import { WorkspaceProvider, useWorkspace } from '../workspace/WorkspaceProvider';
-import { WorkspacePresentationProvider } from '../workspace/WorkspacePresentationProvider';
+import { WorkspacePresentationProvider, useWorkspacePresentation } from '../workspace/WorkspacePresentationProvider';
 import { WorkspaceRenderer } from '../workspace/WorkspaceRenderer';
-import { createWorkspace, isSurfaceMatch, listStacks, listSurfaces, type WorkspaceSurface } from '../workspace/model';
+import { createWorkspace, isSurfaceMatch, listStacks, listSurfaces, surfaceViewId, type WorkspaceSurface } from '../workspace/model';
 import { serializeWorkspace } from '../workspace/state';
 import { ProjectRail } from '../features/projects/ProjectRail';
 import { ProjectHub } from '../features/projects/ProjectHub';
@@ -32,6 +32,7 @@ import {
   playAttentionSound,
 } from '../notifications/notificationPrefs';
 import { formatAttentionPushBody } from '../notifications/attentionPushCopy';
+import { isPtyAttentionFocused } from '../notifications/attentionDelivery';
 import { TerminalActionDialog } from '../nexus/TerminalActionDialog';
 
 const selectedProjectKey = 'iapro:nexus:selected-project:v1';
@@ -214,6 +215,7 @@ const WorkspaceCoordinator: React.FC<{
 }> = ({ project, setProject, data, popout }) => {
   const { t, i18n } = useTranslation();
   const workspace = useWorkspace();
+  const presentation = useWorkspacePresentation();
   const [railOpen, setRailOpen] = useState(false);
   const [palette, setPalette] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
@@ -258,13 +260,17 @@ const WorkspaceCoordinator: React.FC<{
     }
   };
   const openKind = (kind: string) => open(projectSurface(project.id, kind as any));
+  const openTerminals = () => open(projectSurface(project.id, 'terminals'));
   const openNewAISession = () => {
     openKind('work');
     // The Work surface owns the launcher. Queue the event until React has
     // mounted that surface; dispatching synchronously loses it on first open.
     window.setTimeout(() => window.dispatchEvent(new CustomEvent('nexus:new-ai-session')), 0);
   };
-  const terminal = (agent: Agent) => open(agentTerminalSurface(agent.id, agent.name));
+  const terminal = (agent: Agent) => {
+    open(agentTerminalSurface(agent.id, agent.name));
+    openTerminals();
+  };
   const config = (agent: Agent) => open(agentConfigSurface(agent.id, agent.name));
   const shell = useCallback(async () => {
     if (shellInFlight.current) return;
@@ -275,6 +281,7 @@ const WorkspaceCoordinator: React.FC<{
       workspace.open(
         projectShellSurface(project.id, result.runtime.runtime_id, result.runtime.title || 'Terminal')
       );
+      workspace.open(projectSurface(project.id, 'terminals'));
       await data.refreshGlobal().catch(() => undefined);
     } catch (error) {
       setShellError(error instanceof Error ? error.message : String(error));
@@ -282,6 +289,11 @@ const WorkspaceCoordinator: React.FC<{
       shellInFlight.current = false;
     }
   }, [project.id, workspace, data]);
+
+  // Ensure the Terminais product tab always exists without stealing Overview focus.
+  useEffect(() => {
+    workspace.ensure(projectSurface(project.id, 'terminals'));
+  }, [project.id, workspace]);
 
   useEffect(() => {
     const handleNewAgentEvent = () => setNewAgentOpen(true);
@@ -307,6 +319,7 @@ const WorkspaceCoordinator: React.FC<{
     () => [
       { id: 'projects', label: t('commands.open', { name: t('projectManager.desktopsTitle') }), group: t('commands.project'), keywords: ['workspace', 'desktops', 'hub'], run: () => openKind('projects') },
       { id: 'overview', label: t('commands.open', { name: t('nav.overview') }), group: t('commands.project'), keywords: ['home'], run: () => openKind('overview') },
+      { id: 'terminals', label: t('commands.open', { name: t('nav.terminals') }), group: t('commands.project'), keywords: ['pty', 'mosaic', 'shell'], run: () => openKind('terminals') },
       { id: 'new-ai-session', label: 'New AI Session', group: t('commands.project'), keywords: ['agent', 'session', 'direct', 'create', 'terminal'], run: openNewAISession },
       { id: 'project-shell', label: 'New Terminal', group: t('commands.project'), keywords: ['shell', 'terminal', 'bash', 'powershell'], run: () => void shell() },
       { id: 'agents', label: t('commands.open', { name: t('nav.agents') }), group: t('commands.project'), keywords: ['fleet', 'workers', 'terminals'], run: () => openKind('agents') },
@@ -387,6 +400,11 @@ const WorkspaceCoordinator: React.FC<{
       )}
       popoutSurface={popoutSurface}
       onRequestClose={requestCloseSurface}
+      createActions={{
+        onNewAgent: () => setNewAgentOpen(true),
+        onNewAISession: openNewAISession,
+        onProjectShell: () => { void shell(); },
+      }}
     />
   );
 
@@ -437,8 +455,10 @@ const WorkspaceCoordinator: React.FC<{
       for (const action of openActions) {
         if (action.type === 'open-agent-terminal') {
           open(agentTerminalSurface(action.agentId, action.title, '', action.runtimeId || ''));
+          open(projectSurface(project.id, 'terminals'));
         } else if (action.type === 'open-project-shell') {
           open(projectShellSurface(action.projectId, action.runtimeId, action.title));
+          open(projectSurface(action.projectId, 'terminals'));
         } else if (action.type === 'refresh-agents') {
           void data.refreshAgents(action.projectId).catch(() => undefined);
         }
@@ -476,6 +496,8 @@ const WorkspaceCoordinator: React.FC<{
     const allSurfaces = listSurfaces(workspace.model.root);
     const stacks = listStacks(workspace.model.root);
     const focusedIds = new Set(stacks.map((stack) => stack.activeId));
+    const terminalsProductId = projectSurface(project.id, 'terminals').id;
+    const activePtyViewId = presentation.state.activePtyViewId;
 
     data.agents.forEach((agent) => {
       const surfaceId = `agent:${agent.id}:terminal`;
@@ -484,7 +506,12 @@ const WorkspaceCoordinator: React.FC<{
       if (!surface) return;
 
       const next = surfaceTitleFromAgent(agent.name, runtime);
-      const focused = focusedIds.has(surface.id);
+      const focused = isPtyAttentionFocused({
+        terminalsProductSurfaceId: terminalsProductId,
+        agentViewId: surfaceViewId(surface),
+        stackActiveIds: focusedIds,
+        activePtyViewId,
+      });
       const previousFingerprint = surface.data?.attentionFingerprint || '';
       const previousUnread = surface.data?.unreadAttention === 'true';
       let unread = previousUnread;
@@ -538,9 +565,9 @@ const WorkspaceCoordinator: React.FC<{
     });
 
     document.title = buildDocumentTitle(project.name, data.runtimes);
-  }, [data.runtimes, data.agents, project.name, project.id, workspace.model.root]);
+  }, [data.runtimes, data.agents, project.name, project.id, workspace.model.root, presentation.state.activePtyViewId]);
 
-  // Global attention watcher (cross-project): toast/push/sound without requiring a mounted WS.
+  // Attention watcher for the focused project only (radar remains global).
   useEffect(() => {
     const prefs = prefsRef.current;
     if (!prefs.notificationsEnabled && !prefs.soundEnabled) return;
@@ -548,8 +575,14 @@ const WorkspaceCoordinator: React.FC<{
     const stacks = listStacks(workspace.model.root);
     const focusedIds = new Set(stacks.map((stack) => stack.activeId));
     const allSurfaces = listSurfaces(workspace.model.root);
+    const terminalsProductId = projectSurface(project.id, 'terminals').id;
+    const activePtyViewId = presentation.state.activePtyViewId;
 
     for (const runtime of data.runtimes) {
+      if (runtime.project_id && runtime.project_id !== project.id) continue;
+      const provider = (runtime.provider_id || runtime.provider || '').toLowerCase();
+      if (provider === 'shell') continue;
+
       const reason = runtime.attention_reason;
       if (reason !== 'QUESTION' && reason !== 'APPROVAL' && reason !== 'TASK_COMPLETED' && reason !== 'ERROR') {
         continue;
@@ -563,8 +596,15 @@ const WorkspaceCoordinator: React.FC<{
       const agentSurface = allSurfaces.find(
         (surface) => surface.type === 'terminal' && surface.data?.agentId && surface.data.agentId === runtime.agent_id
       );
-      const focused = agentSurface ? focusedIds.has(agentSurface.id) : false;
-      if (focused && runtime.project_id === project.id) {
+      const focused = agentSurface
+        ? isPtyAttentionFocused({
+            terminalsProductSurfaceId: terminalsProductId,
+            agentViewId: surfaceViewId(agentSurface),
+            stackActiveIds: focusedIds,
+            activePtyViewId,
+          })
+        : false;
+      if (focused) {
         notifiedFingerprints.current.add(fingerprint);
         continue;
       }
@@ -582,7 +622,7 @@ const WorkspaceCoordinator: React.FC<{
         promptKind: runtime.prompt_kind,
         agentName,
         projectName: runtime.project_name || project.name,
-        rich: runtime.project_id !== project.id,
+        rich: false,
       });
       if (!body) continue;
 
@@ -607,7 +647,7 @@ const WorkspaceCoordinator: React.FC<{
         });
       }
     }
-  }, [data.runtimes, data.agents, project.id, project.name, workspace.model.root]);
+  }, [data.runtimes, data.agents, project.id, project.name, workspace.model.root, presentation.state.activePtyViewId]);
 
   return (
     <>
@@ -624,6 +664,8 @@ const WorkspaceCoordinator: React.FC<{
         onOpenMaestroControl={() => setMaestroControlOpen(true)}
         onSettings={() => openKind('settings')}
         onNewAgent={() => setNewAgentOpen(true)}
+        onNewAISession={openNewAISession}
+        onProjectShell={() => { void shell(); }}
         onFocusRuntime={handleFocusRuntime}
         onFocusAttention={handleFocusAttention}
       >

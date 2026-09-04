@@ -5,6 +5,8 @@ import {
   isFatalTerminalAttachError,
   normalizeInitialPrompt,
   normalizeTerminalRole,
+  isRecoverAlreadyAlive,
+  shouldFallbackRecoverToStart,
   terminalAttachFailureMessage,
   terminalReconnectDelay,
 } from './agentTerminalModel';
@@ -45,5 +47,14 @@ describe('Agent terminal model', () => {
     expect(isFatalTerminalAttachError('Runtime host is not running (dial timeout)')).toBe(true);
     expect(isFatalTerminalAttachError('temporary blip')).toBe(false);
     expect(terminalAttachFailureMessage('runtime not found: rt_x')).toContain('Recover/Start');
+  });
+  it('falls back recover→start for recoverable host failures', () => {
+    expect(shouldFallbackRecoverToStart('agent is STOPPED (use StartAgent to restart)')).toBe(true);
+    expect(shouldFallbackRecoverToStart('REQUIRED_RESOURCE_SELECTION')).toBe(false);
+  });
+
+  it('treats already-alive recover as soft success, not stop+start', () => {
+    expect(isRecoverAlreadyAlive('agent runtime is already alive (no recovery needed)')).toBe(true);
+    expect(shouldFallbackRecoverToStart('agent runtime is already alive (no recovery needed)')).toBe(false);
   });
 });

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Bot,
   FolderGit2,
   Gauge,
   History,
@@ -27,7 +26,7 @@ export const ProjectRail: React.FC<{
   onSelect: (project: Project) => void;
   onCreated: (project: Project) => void;
   onOpenGlobal: (
-    kind: 'projects' | 'overview' | 'agents' | 'resources' | 'maestro' | 'sessions' | 'settings' | 'work' | 'missions'
+    kind: 'projects' | 'overview' | 'agents' | 'resources' | 'maestro' | 'sessions' | 'settings' | 'work' | 'missions' | 'terminals'
   ) => void;
   agents?: Agent[];
   onOpenAgent?: (agent: Agent) => void;
@@ -53,6 +52,7 @@ export const ProjectRail: React.FC<{
 
   const optionalTools = [
     { id: 'overview', label: t('nav.overview'), icon: Home },
+    { id: 'terminals', label: t('nav.terminals'), icon: TerminalSquare },
     { id: 'work', label: 'Composer', icon: Layers },
     { id: 'missions', label: 'Flow Runs', icon: Workflow },
     { id: 'resources', label: t('nav.resources'), icon: Gauge },
@@ -84,8 +84,8 @@ export const ProjectRail: React.FC<{
           </IconButton>
         </div>
 
-        {/* Primary Workspace Quick Actions */}
-        <div style={{ padding: '8px 8px 4px', display: 'grid', gap: '4px' }}>
+        {/* Primary Workspace Quick Actions — pinned so they never scroll away */}
+        <div className="nx-project-rail__actions">
           <button
             type="button"
             className="nx-button"

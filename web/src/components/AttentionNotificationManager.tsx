@@ -18,14 +18,15 @@ export const AttentionNotificationManager: React.FC<AttentionNotificationManager
   const [dismissedFingerprints, setDismissedFingerprints] = useState<string[]>([]);
   const activeToastIds = useRef<Map<string, string | number>>(new Map());
 
-  // Toast only for honest needs_user with context, preferably for non-focused projects.
+  // Toast only for honest needs_user in the focused project (radar stays global).
   const attentionRuntimes = runtimes.filter((runtime) => {
     if (!shouldRenderAttentionCard(runtime)) return false;
-    const fingerprint = attentionMessageKey(runtime);
-    if (dismissedFingerprints.includes(fingerprint)) return false;
-    if (focusedProjectId && runtime.project_id && runtime.project_id === focusedProjectId) {
+    if ((runtime.provider_id || runtime.provider || '').toLowerCase() === 'shell') return false;
+    if (!focusedProjectId || !runtime.project_id || runtime.project_id !== focusedProjectId) {
       return false;
     }
+    const fingerprint = attentionMessageKey(runtime);
+    if (dismissedFingerprints.includes(fingerprint)) return false;
     return true;
   });
 

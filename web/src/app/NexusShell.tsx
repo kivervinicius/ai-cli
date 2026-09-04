@@ -10,12 +10,12 @@ import {
   Menu,
   MoonStar,
   Network,
-  Plus,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Badge, IconButton } from '../design-system';
 import { LanguagePicker } from './components/LanguagePicker';
 import { WorkspaceTaskbar } from '../workspace/WorkspaceTaskbar';
+import { ProjectCreateActions } from '../features/projects/ProjectCreateActions';
 import { nexus } from '../nexus/api';
 import { AttentionIntermediationBanner } from '../components/AttentionIntermediationBanner';
 import { GlobalAttentionRadar } from '../components/GlobalAttentionRadar';
@@ -38,6 +38,8 @@ export const NexusShell: React.FC<{
   onOpenMaestroControl: () => void;
   onSettings: () => void;
   onNewAgent?: () => void;
+  onNewAISession?: () => void;
+  onProjectShell?: () => void;
   onFocusRuntime?: (runtimeId: string) => void;
   onFocusAttention?: (item: RadarRuntimeItem) => void;
 }> = ({
@@ -54,6 +56,8 @@ export const NexusShell: React.FC<{
   onOpenMaestroControl,
   onSettings,
   onNewAgent,
+  onNewAISession,
+  onProjectShell,
   onFocusRuntime,
   onFocusAttention,
 }) => {
@@ -139,20 +143,13 @@ export const NexusShell: React.FC<{
               {project.canonical_path}
             </span>
 
-            {onNewAgent && (
-              <button
-                type="button"
-                className="nx-button"
-                data-tone="brand"
-                data-size="sm"
-                onClick={onNewAgent}
-                style={{ height: '28px', padding: '0 8px', gap: '4px', fontSize: '11.5px', marginLeft: '6px' }}
-                title="Criar novo Agente no Projeto"
-              >
-                <Plus size={12} />
-                <span>Novo Agente</span>
-              </button>
-            )}
+            <ProjectCreateActions
+              onNewAgent={onNewAgent}
+              onNewAISession={onNewAISession}
+              onProjectShell={onProjectShell}
+              size="sm"
+              className="nx-topbar__create"
+            />
 
             <GlobalAttentionRadar
               runtimes={runtimes}
@@ -295,6 +292,7 @@ export const NexusShell: React.FC<{
       </div>
       <InAppNotificationCenter
         runtimes={runtimes}
+        focusedProjectId={project.id}
         onFocusRuntime={(runtimeId) => onFocusRuntime?.(runtimeId)}
       />
     </div>

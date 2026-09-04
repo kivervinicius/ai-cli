@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useReducer } from
 import {
   closeSurface,
   createWorkspace,
+  ensureSurface,
   moveSurface,
   openSurface,
   setActiveSurface,
@@ -19,6 +20,7 @@ import { deserializeWorkspace, serializeWorkspace, workspaceStorageKey } from '.
 interface WorkspaceContextValue {
   model: WorkspaceModel;
   open: (surface: WorkspaceSurface, targetStackId?: string) => void;
+  ensure: (surface: WorkspaceSurface, targetStackId?: string) => void;
   activate: (surfaceId: string) => void;
   close: (surfaceId: string) => void;
   updateSurface: (surfaceId: string, patch: Partial<WorkspaceSurface>) => void;
@@ -32,6 +34,7 @@ interface WorkspaceContextValue {
 type Action =
   | { type: 'replace'; model: WorkspaceModel }
   | { type: 'open'; surface: WorkspaceSurface; stackId?: string }
+  | { type: 'ensure'; surface: WorkspaceSurface; stackId?: string }
   | { type: 'activate'; surfaceId: string }
   | { type: 'close'; surfaceId: string }
   | { type: 'updateSurface'; surfaceId: string; patch: Partial<WorkspaceSurface> }
@@ -44,6 +47,7 @@ function reducer(model: WorkspaceModel, action: Action): WorkspaceModel {
   switch (action.type) {
     case 'replace': return action.model;
     case 'open': return openSurface(model, action.surface, action.stackId);
+    case 'ensure': return ensureSurface(model, action.surface, action.stackId);
     case 'activate': return setActiveSurface(model, action.surfaceId);
     case 'close': return closeSurface(model, action.surfaceId);
     case 'updateSurface': return updateSurface(model, action.surfaceId, action.patch);
@@ -96,6 +100,7 @@ export const WorkspaceProvider: React.FC<{
   const value = useMemo<WorkspaceContextValue>(() => ({
     model,
     open: (surface, stackId) => dispatch({ type: 'open', surface, stackId }),
+    ensure: (surface, stackId) => dispatch({ type: 'ensure', surface, stackId }),
     activate: (surfaceId) => dispatch({ type: 'activate', surfaceId }),
     close: (surfaceId) => {
       const surface = listSurfaces(model.root).find((candidate) =>

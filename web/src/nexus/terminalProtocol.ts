@@ -52,6 +52,40 @@ export function frameString(payload: Record<string, unknown>, key: string): stri
   return typeof payload[key] === 'string' ? payload[key] as string : undefined;
 }
 
+/** True when a PTY line is a Nexus Control RPC request/response that must not render. */
+export function isProtocolControlLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('{')) return false;
+  try {
+    const value = JSON.parse(trimmed) as Record<string, unknown>;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    return 'command' in value || 'ok' in value;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Strip Nexus Control RPC frames that leaked into PTY output (ring replay or
+ * echo from older SessionHosts). Preserves ordinary provider JSON and text.
+ */
+export function scrubProtocolOutput(data: string): string {
+  if (!data) return '';
+  let out = '';
+  let start = 0;
+  for (let i = 0; i < data.length; i += 1) {
+    if (data[i] !== '\n') continue;
+    const line = data.slice(start, i + 1);
+    if (!isProtocolControlLine(line)) out += line;
+    start = i + 1;
+  }
+  if (start < data.length) {
+    const rest = data.slice(start);
+    if (!isProtocolControlLine(rest)) out += rest;
+  }
+  return out;
+}
+
 export interface AttentionNotificationPayload {
   runtimeId: string;
   projectId?: string;

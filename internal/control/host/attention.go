@@ -93,23 +93,28 @@ func ExtractOSCTitle(raw string) string {
 }
 
 // AttentionDetector monitors stream chunks for a runtime session and emits dynamic updates.
+// PTY regex is only a TERMINAL-mode fallback: when ControlLevel is EVENTS/CONTROL_API
+// (structured provider events), ProcessChunk is a no-op for classification.
 type AttentionDetector struct {
-	mu              sync.Mutex
-	runtimeID       string
-	providerID      string
-	profileID       string
-	workspace       string
-	projectID       string
-	projectName     string
-	buffer          strings.Builder
-	lastState       registry.RuntimeState
-	lastReason      string
-	lastKind        string
-	lastPrompt      string
-	lastTitle       string
-	lastFingerprint string
-	lastUpdateAt    time.Time
-	onAttention     func(reason, context, dynamicTitle string, state registry.RuntimeState)
+	mu                 sync.Mutex
+	runtimeID          string
+	providerID         string
+	profileID          string
+	workspace          string
+	projectID          string
+	projectName        string
+	agentID            string
+	controlLevel       registry.ControlLevel
+	structuredEvents   bool
+	buffer             strings.Builder
+	lastState          registry.RuntimeState
+	lastReason         string
+	lastKind           string
+	lastPrompt         string
+	lastTitle          string
+	lastFingerprint    string
+	lastUpdateAt       time.Time
+	onAttention        func(reason, context, dynamicTitle string, state registry.RuntimeState)
 }
 
 // NewAttentionDetector creates an attention detector for a session.
@@ -128,16 +133,54 @@ func NewAttentionDetectorWithProject(runtimeID, providerID, profileID, workspace
 	}
 
 	return &AttentionDetector{
-		runtimeID:   runtimeID,
-		providerID:  providerID,
-		profileID:   profileID,
-		workspace:   workspace,
-		projectID:   projectID,
-		projectName: name,
-		lastState:   registry.StateRunning,
-		lastKind:    AttentionIdle,
-		lastPrompt:  PromptKindNone,
-		onAttention: onAttention,
+		runtimeID:    runtimeID,
+		providerID:   providerID,
+		profileID:    profileID,
+		workspace:    workspace,
+		projectID:    projectID,
+		projectName:  name,
+		controlLevel: registry.ControlLevelTerminal, // default: honest TERMINAL fallback
+		lastState:    registry.StateRunning,
+		lastKind:     AttentionIdle,
+		lastPrompt:   PromptKindNone,
+		onAttention:  onAttention,
+	}
+}
+
+// SetControlPolicy configures whether PTY heuristics may emit agent attention events.
+// StructuredEvents=true (or ControlLevel above TERMINAL) disables stdout scraping.
+func (d *AttentionDetector) SetControlPolicy(level registry.ControlLevel, structuredEvents bool, agentID string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if level != "" {
+		d.controlLevel = level
+	}
+	d.structuredEvents = structuredEvents
+	d.agentID = strings.TrimSpace(agentID)
+}
+
+// isShellProvider reports Project Shell / non-agent PTYs that must not emit
+// interactive attention (needs_user, completed toasts, OS notify).
+func isShellProvider(providerID string) bool {
+	switch strings.ToLower(strings.TrimSpace(providerID)) {
+	case "shell", "project-shell", "project_shell":
+		return true
+	default:
+		return false
+	}
+}
+
+// ptyHeuristicAllowed is true only for AI agents supervised in TERMINAL mode
+// without a structured event adapter. Shell and EVENTS/API levels never scrape.
+func ptyHeuristicAllowed(providerID string, level registry.ControlLevel, structuredEvents bool) bool {
+	if isShellProvider(providerID) || structuredEvents {
+		return false
+	}
+	switch level {
+	case "", registry.ControlLevelTerminal:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -145,6 +188,10 @@ func NewAttentionDetectorWithProject(runtimeID, providerID, profileID, workspace
 func (d *AttentionDetector) ProcessChunk(chunk []byte) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+
+	if !ptyHeuristicAllowed(d.providerID, d.controlLevel, d.structuredEvents) {
+		return
+	}
 
 	raw := string(chunk)
 	d.buffer.WriteString(raw)
@@ -273,28 +320,30 @@ func (d *AttentionDetector) ProcessChunk(chunk []byte) {
 	})
 
 	if kind == AttentionNeedsUser && fingerprint != "" && fingerprint != prevFingerprint {
+		// Browser/UI consume the bus + registry poll. Skip OS notify here to
+		// avoid duplicate desktop + browser toasts for the same question.
+		data := map[string]any{
+			"project_id":       d.projectID,
+			"project_name":     d.projectName,
+			"attention_reason": reason,
+			"attention_kind":   kind,
+			"prompt_kind":      promptKind,
+			"context":          attentionCtx,
+			"dynamic_title":    dynamicTitle,
+			"fingerprint":      fingerprint,
+			"source":           "pty_heuristic",
+		}
+		if d.agentID != "" {
+			data["agent_id"] = d.agentID
+		}
 		events.DefaultBus().Publish(events.NewEvent(
 			d.runtimeID,
 			d.providerID,
 			d.profileID,
 			events.EventApprovalRequired,
 			"["+d.projectName+"] "+attentionCtx,
-			map[string]any{
-				"project_id":       d.projectID,
-				"project_name":     d.projectName,
-				"attention_reason": reason,
-				"attention_kind":   kind,
-				"prompt_kind":      promptKind,
-				"context":          attentionCtx,
-				"dynamic_title":    dynamicTitle,
-				"fingerprint":      fingerprint,
-			},
+			data,
 		))
-		_ = notify.Default().Notify(notify.Payload{
-			Title: "Nexus · " + d.projectName,
-			Body:  formatDesktopAttentionBody(promptKind, attentionCtx),
-			Tag:   fingerprint,
-		})
 	} else if kind == AttentionError && fingerprint != "" && fingerprint != prevFingerprint {
 		_ = notify.Default().Notify(notify.Payload{
 			Title: "Nexus · " + d.projectName,
@@ -302,20 +351,25 @@ func (d *AttentionDetector) ProcessChunk(chunk []byte) {
 			Tag:   fingerprint,
 		})
 	} else if reason == "TASK_COMPLETED" {
+		data := map[string]any{
+			"project_id":       d.projectID,
+			"project_name":     d.projectName,
+			"attention_reason": reason,
+			"attention_kind":   kind,
+			"context":          attentionCtx,
+			"dynamic_title":    dynamicTitle,
+			"source":           "pty_heuristic",
+		}
+		if d.agentID != "" {
+			data["agent_id"] = d.agentID
+		}
 		events.DefaultBus().Publish(events.NewEvent(
 			d.runtimeID,
 			d.providerID,
 			d.profileID,
 			events.EventToolFinished,
 			"["+d.projectName+"] "+attentionCtx,
-			map[string]any{
-				"project_id":       d.projectID,
-				"project_name":     d.projectName,
-				"attention_reason": reason,
-				"attention_kind":   kind,
-				"context":          attentionCtx,
-				"dynamic_title":    dynamicTitle,
-			},
+			data,
 		))
 	}
 
