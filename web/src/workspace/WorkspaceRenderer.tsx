@@ -1,19 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AppWindow, Gauge, History, Home, Layers, LayoutGrid, Maximize2, Minimize2, Minus, Paintbrush, PanelsTopLeft, Settings, Sparkles, TerminalSquare, Workflow, X } from 'lucide-react';
-import { IconButton } from '../design-system';
+import { IconButton, ContextMenu, contextMenuFromEvent, type ContextMenuItem, type ContextMenuPoint } from '../design-system';
 import { listStacks, listSurfaces, surfaceViewId, type WorkspaceStack, type WorkspaceSurface } from './model';
 import { useWorkspace } from './WorkspaceProvider';
 import { useWorkspacePresentation } from './WorkspacePresentationProvider';
 import { useTranslation } from 'react-i18next';
 import { isPtySurface } from '../app/surfaces';
 import { findTileSplitters } from './arrange';
-import { isWindowedPresentationMode } from './presentation';
+import { isWindowedPresentationMode, mosaicDropTargetViewId } from './presentation';
 
 const WINDOW_ACCENTS = ['#38bdf8', '#22c55e', '#f59e0b', '#f472b6', '#a78bfa', '#fb7185'];
 const WINDOW_ICONS = ['⌘', '⚡', '◆', '●', '★', '◎'];
 
-const PRODUCT_TAB_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
+const PRODUCT_TAB_ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: number }>> = {
   overview: Home,
   terminals: TerminalSquare,
   work: Sparkles,
@@ -36,10 +36,11 @@ const WindowChromeMenu: React.FC<{
   accent: string;
   icon: string;
   onPatch: (chrome: { customTitle?: string; accent?: string; icon?: string }) => void;
-}> = ({ open, onOpenChange, customTitle, accent, icon, onPatch }) => {
+  position?: ContextMenuPoint | null;
+}> = ({ open, onOpenChange, customTitle, accent, icon, onPatch, position }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState(customTitle);
-  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right?: number; left?: number } | null>(null);
 
   useEffect(() => {
     setDraft(customTitle);
@@ -50,13 +51,17 @@ const WindowChromeMenu: React.FC<{
       setMenuPos(null);
       return;
     }
-    const anchor = rootRef.current?.querySelector('button');
-    if (anchor) {
-      const rect = anchor.getBoundingClientRect();
-      setMenuPos({
-        top: rect.bottom + 6,
-        right: Math.max(8, window.innerWidth - rect.right),
-      });
+    if (position) {
+      setMenuPos({ top: position.y, left: position.x });
+    } else {
+      const anchor = rootRef.current?.querySelector('button');
+      if (anchor) {
+        const rect = anchor.getBoundingClientRect();
+        setMenuPos({
+          top: rect.bottom + 6,
+          right: Math.max(8, window.innerWidth - rect.right),
+        });
+      }
     }
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null;
@@ -68,13 +73,16 @@ const WindowChromeMenu: React.FC<{
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onOpenChange(false);
     };
-    window.addEventListener('pointerdown', onPointerDown, true);
+    const listen = window.setTimeout(() => {
+      window.addEventListener('pointerdown', onPointerDown, true);
+    }, 0);
     window.addEventListener('keydown', onKey);
     return () => {
+      window.clearTimeout(listen);
       window.removeEventListener('pointerdown', onPointerDown, true);
       window.removeEventListener('keydown', onKey);
     };
-  }, [open, onOpenChange]);
+  }, [open, onOpenChange, position]);
 
   const commitTitle = () => {
     onPatch({ customTitle: draft.trim() });
@@ -87,7 +95,7 @@ const WindowChromeMenu: React.FC<{
             className="nx-desktop-window__chrome-menu"
             role="dialog"
             aria-label="Personalizar janela"
-            style={{ top: menuPos.top, right: menuPos.right }}
+            style={{ top: menuPos.top, ...(menuPos.left != null ? { left: menuPos.left } : { right: menuPos.right }) }}
             onPointerDown={(event) => event.stopPropagation()}
           >
             <label>
@@ -241,6 +249,7 @@ const WorkspaceStackView: React.FC<{
   const { t } = useTranslation();
   const { activate, close, move } = useWorkspace();
   const [draggedSurface, setDraggedSurface] = useState<string | null>(null);
+  const [tabMenu, setTabMenu] = useState<{ surface: WorkspaceSurface; point: ContextMenuPoint } | null>(null);
   const productTabs = useMemo(() => {
     const pinnedOrder = ['overview', 'terminals', 'work'];
     return [...stack.tabs.filter((tab) => !isPtySurface(tab))].sort((a, b) => {
@@ -322,9 +331,13 @@ const WorkspaceStackView: React.FC<{
                 event.dataTransfer.effectAllowed = 'move';
               }}
               onClick={() => activate(surface.id)}
+              onContextMenu={(event) => {
+                if (surface.closable === false) return;
+                setTabMenu({ surface, point: contextMenuFromEvent(event) });
+              }}
             >
               <span className="nx-workspace-tab__icon" aria-hidden="true">
-                <TabIcon size={14} />
+                <TabIcon size={16} strokeWidth={2.25} />
               </span>
               {(surface.data?.hasAttention === 'true' || surface.data?.unreadAttention === 'true') && (
                 <span
@@ -360,6 +373,25 @@ const WorkspaceStackView: React.FC<{
           </div>
         )}
       </header>
+      <ContextMenu
+        open={tabMenu?.point ?? null}
+        onClose={() => setTabMenu(null)}
+        label={t('workspace.menu')}
+        items={
+          tabMenu && tabMenu.surface.closable !== false
+            ? [
+                {
+                  type: 'item',
+                  id: 'close',
+                  label: t('workspace.closeNamed', { name: displayTitle(tabMenu.surface) }),
+                  danger: true,
+                  icon: <X size={13} />,
+                  onSelect: () => closeSurface(tabMenu.surface),
+                },
+              ]
+            : []
+        }
+      />
       <div className="nx-workspace-stack__body">
         {productTabs.map((surface) => (
           <div
@@ -395,11 +427,15 @@ const TerminalsHost: React.FC<{
 }> = ({ ptySurfaces, renderSurface, onRequestClose, active }) => {
   const { t } = useTranslation();
   const presentation = useWorkspacePresentation();
+  const [tabMenu, setTabMenu] = useState<{ surface: WorkspaceSurface; point: ContextMenuPoint } | null>(null);
+  const [chromeMenuViewId, setChromeMenuViewId] = useState<string | null>(null);
+  const [chromeMenuPoint, setChromeMenuPoint] = useState<ContextMenuPoint | null>(null);
   const focusedPtyId =
     ptySurfaces.find((s) => surfaceViewId(s) === presentation.state.activePtyViewId)?.id ||
     ptySurfaces[0]?.id ||
     '';
   const windowed = isWindowedPresentationMode(presentation.state.mode);
+  const minimizedPtys = ptySurfaces.filter((surface) => presentation.state.windows[surfaceViewId(surface)]?.minimized);
 
   useEffect(() => {
     const activePtyViewId = presentation.state.activePtyViewId;
@@ -461,6 +497,31 @@ const TerminalsHost: React.FC<{
             <span>Mosaico</span>
           </button>
         </div>
+        {windowed && minimizedPtys.length > 0 && (
+          <div className="nx-minimized-chips" aria-label={t('workspace.minimizedShelf')}>
+            <span className="nx-minimized-chips__label">{t('workspace.minimizedShelf')}</span>
+            {minimizedPtys.map((surface) => {
+              const viewId = surfaceViewId(surface);
+              const win = presentation.state.windows[viewId];
+              const label = win?.customTitle || surface.data?.agentName || surface.title;
+              return (
+                <button
+                  key={viewId}
+                  type="button"
+                  title={t('workspace.restoreNamed', { name: label })}
+                  data-unread={surface.data?.unreadAttention === 'true' ? 'true' : undefined}
+                  onClick={() => {
+                    presentation.minimize(viewId);
+                    presentation.focus(viewId);
+                  }}
+                >
+                  {win?.icon ? <span aria-hidden="true">{win.icon}</span> : <Minus size={11} />}
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </header>
       <div className="nx-terminals-host__body">
         {ptySurfaces.length === 0 ? (
@@ -473,33 +534,74 @@ const TerminalsHost: React.FC<{
           <DesktopWorkspace surfaces={ptySurfaces} renderSurface={renderSurface} onRequestClose={onRequestClose} />
         ) : (
           <div className="nx-terminals-inner-tabs">
-            <div className="nx-workspace-tabs" role="tablist" aria-label="PTY tabs">
-              {ptySurfaces.map((surface) => (
-                <button
-                  key={surface.id}
-                  type="button"
-                  role="tab"
-                  className="nx-workspace-tab"
-                  data-active={focusedPtyId === surface.id ? 'true' : 'false'}
-                  data-attention={surface.data?.hasAttention === 'true' ? 'true' : undefined}
-                  data-unread={surface.data?.unreadAttention === 'true' ? 'true' : undefined}
-                  onClick={() => focusPty(surface)}
-                >
-                  <span>{surface.data?.agentName || surface.title}</span>
-                  {surface.closable !== false && onRequestClose && (
-                    <span
-                      className="nx-workspace-tab__close"
-                      role="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onRequestClose(surface);
+            <div className="nx-workspace-tabs nx-pty-tabs" role="tablist" aria-label="PTY tabs">
+              {ptySurfaces.map((surface) => {
+                const viewId = surfaceViewId(surface);
+                const win = presentation.state.windows[viewId];
+                const tabLabel = win?.customTitle || surface.data?.agentName || surface.title;
+                const accent = win?.accent || '';
+                const icon = win?.icon || '';
+                return (
+                  <div
+                    key={surface.id}
+                    className="nx-pty-tab"
+                    data-active={focusedPtyId === surface.id ? 'true' : 'false'}
+                    data-accented={accent ? 'true' : undefined}
+                    style={accent ? ({ ['--nx-window-accent' as string]: accent } as React.CSSProperties) : undefined}
+                  >
+                    <button
+                      type="button"
+                      role="tab"
+                      className="nx-workspace-tab"
+                      data-active={focusedPtyId === surface.id ? 'true' : 'false'}
+                      data-attention={surface.data?.hasAttention === 'true' ? 'true' : undefined}
+                      data-unread={surface.data?.unreadAttention === 'true' ? 'true' : undefined}
+                      aria-selected={focusedPtyId === surface.id}
+                      onClick={() => {
+                        setChromeMenuViewId(null);
+                        focusPty(surface);
+                      }}
+                      onContextMenu={(event) => {
+                        focusPty(surface);
+                        setChromeMenuViewId(null);
+                        setTabMenu({ surface, point: contextMenuFromEvent(event) });
                       }}
                     >
-                      <X size={11} />
-                    </span>
-                  )}
-                </button>
-              ))}
+                      {icon ? (
+                        <span className="nx-pty-tab__glyph" aria-hidden="true">
+                          {icon}
+                        </span>
+                      ) : null}
+                      <span className="nx-workspace-tab__label">{tabLabel}</span>
+                    </button>
+                    <WindowChromeMenu
+                      viewId={viewId}
+                      open={chromeMenuViewId === viewId}
+                      position={chromeMenuViewId === viewId ? chromeMenuPoint : null}
+                      onOpenChange={(next) => {
+                        setChromeMenuPoint(null);
+                        setChromeMenuViewId(next ? viewId : null);
+                      }}
+                      customTitle={win?.customTitle || ''}
+                      accent={accent}
+                      icon={icon}
+                      onPatch={(chrome) => presentation.patchChrome(viewId, chrome)}
+                    />
+                    {surface.closable !== false && onRequestClose && (
+                      <span
+                        className="nx-workspace-tab__close"
+                        role="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onRequestClose(surface);
+                        }}
+                      >
+                        <X size={11} />
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <div className="nx-terminals-inner-panels">
               {ptySurfaces.map((surface) => (
@@ -513,6 +615,46 @@ const TerminalsHost: React.FC<{
                 </div>
               ))}
             </div>
+            <ContextMenu
+              open={tabMenu?.point ?? null}
+              onClose={() => setTabMenu(null)}
+              label={t('workspace.menu')}
+              items={
+                tabMenu
+                  ? ([
+                      {
+                        type: 'item',
+                        id: 'customize',
+                        label: t('workspace.windowCustomize'),
+                        icon: <Paintbrush size={13} />,
+                        onSelect: () => {
+                          const viewId = surfaceViewId(tabMenu.surface);
+                          setChromeMenuPoint(tabMenu.point);
+                          setChromeMenuViewId(viewId);
+                        },
+                      },
+                      ...(tabMenu.surface.closable !== false && onRequestClose
+                        ? ([
+                            { type: 'separator', id: 'sep-close' },
+                            {
+                              type: 'item',
+                              id: 'close',
+                              label: t('workspace.closeNamed', {
+                                name:
+                                  presentation.state.windows[surfaceViewId(tabMenu.surface)]?.customTitle ||
+                                  tabMenu.surface.data?.agentName ||
+                                  tabMenu.surface.title,
+                              }),
+                              danger: true,
+                              icon: <X size={13} />,
+                              onSelect: () => onRequestClose(tabMenu.surface),
+                            },
+                          ] satisfies ContextMenuItem[])
+                        : []),
+                    ] satisfies ContextMenuItem[])
+                  : []
+              }
+            />
           </div>
         )}
       </div>
@@ -525,18 +667,44 @@ const DesktopWorkspace: React.FC<{
   renderSurface: (surface: WorkspaceSurface) => React.ReactNode;
   onRequestClose?: (surface: WorkspaceSurface) => void;
 }> = ({ surfaces, renderSurface, onRequestClose }) => {
+  const { t } = useTranslation();
   const workspace = useWorkspace();
   const presentation = useWorkspacePresentation();
   const hostRef = useRef<HTMLDivElement>(null);
   const [chromeMenuViewId, setChromeMenuViewId] = useState<string | null>(null);
+  const [chromeMenuPoint, setChromeMenuPoint] = useState<ContextMenuPoint | null>(null);
+  const [windowMenu, setWindowMenu] = useState<{
+    viewId: string;
+    surface: WorkspaceSurface;
+    point: ContextMenuPoint;
+  } | null>(null);
+  const [mosaicDrag, setMosaicDrag] = useState<{
+    viewId: string;
+    origin: { x: number; y: number; width: number; height: number };
+    ghost: { x: number; y: number };
+    pointer: { x: number; y: number };
+  } | null>(null);
   const closeSurface = (surface: WorkspaceSurface) => (onRequestClose ? onRequestClose(surface) : workspace.close(surface.id));
   const terminalSurfaces = surfaces.filter(isPtySurface);
   const mosaic = presentation.state.mode === 'MOSAIC';
+  const activeViewId = presentation.state.activePtyViewId;
+  const [layoutMotion, setLayoutMotion] = useState(false);
+  const previousMode = useRef(presentation.state.mode);
+
+  useEffect(() => {
+    if (previousMode.current === presentation.state.mode) return;
+    previousMode.current = presentation.state.mode;
+    setLayoutMotion(true);
+    const timer = window.setTimeout(() => setLayoutMotion(false), 340);
+    return () => window.clearTimeout(timer);
+  }, [presentation.state.mode]);
 
   const windows = terminalSurfaces
     .map((surface) => ({ surface, win: presentation.state.windows[surfaceViewId(surface)] }))
     .filter((item) => Boolean(item.win))
-    .sort((a, b) => (a.win?.zIndex ?? 0) - (b.win?.zIndex ?? 0));
+    .sort((a, b) => surfaceViewId(a.surface).localeCompare(surfaceViewId(b.surface)));
+  const mosaicDropViewId =
+    mosaic && mosaicDrag ? mosaicDropTargetViewId(presentation.state, mosaicDrag.viewId, mosaicDrag.pointer) : '';
 
   const splitters = useMemo(() => {
     if (!mosaic) return [];
@@ -574,13 +742,32 @@ const DesktopWorkspace: React.FC<{
     const startX = event.clientX;
     const startY = event.clientY;
     const origin = { x: win.x, y: win.y, width: win.width, height: win.height };
+    let dragged = false;
+    const pointInWorkspace = (move: PointerEvent) => {
+      const host = hostRef.current;
+      if (!host) return { x: move.clientX, y: move.clientY };
+      const rect = host.getBoundingClientRect();
+      return { x: move.clientX - rect.left, y: move.clientY - rect.top };
+    };
     const onMove = (move: PointerEvent) => {
+      if (!dragged && Math.abs(move.clientX - startX) + Math.abs(move.clientY - startY) < 4) return;
+      dragged = true;
+      if (mosaic) {
+        setMosaicDrag({
+          viewId,
+          origin,
+          ghost: { x: origin.x + (move.clientX - startX), y: origin.y + (move.clientY - startY) },
+          pointer: pointInWorkspace(move),
+        });
+        return;
+      }
       presentation.move(viewId, origin.x + (move.clientX - startX), origin.y + (move.clientY - startY));
     };
-    const onUp = () => {
+    const onUp = (up: PointerEvent) => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      if (mosaic) presentation.commitMove(viewId, origin);
+      setMosaicDrag(null);
+      if (mosaic && dragged) presentation.commitMove(viewId, origin, pointInWorkspace(up));
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp, { once: true });
@@ -599,33 +786,6 @@ const DesktopWorkspace: React.FC<{
     const originH = win.height;
     const onMove = (move: PointerEvent) => {
       presentation.resize(viewId, originW + (move.clientX - startX), originH + (move.clientY - startY));
-    };
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp, { once: true });
-  };
-
-  const startMosaicEdge = (
-    viewId: string,
-    edge: 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw',
-    event: React.PointerEvent
-  ) => {
-    if (!mosaic || event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    presentation.focus(viewId);
-    let lastX = event.clientX;
-    let lastY = event.clientY;
-    const onMove = (move: PointerEvent) => {
-      const dx = move.clientX - lastX;
-      const dy = move.clientY - lastY;
-      lastX = move.clientX;
-      lastY = move.clientY;
-      if (dx === 0 && dy === 0) return;
-      presentation.resizeMosaic(viewId, edge, dx, dy);
     };
     const onUp = () => {
       window.removeEventListener('pointermove', onMove);
@@ -664,6 +824,7 @@ const DesktopWorkspace: React.FC<{
       className="nx-desktop-workspace"
       data-tour="terminals-windows"
       data-presentation={mosaic ? 'mosaic' : 'desktop'}
+      data-layout-motion={layoutMotion ? 'true' : undefined}
     >
       {windows.map(({ surface, win }) => {
         if (!win || win.minimized) return null;
@@ -678,14 +839,14 @@ const DesktopWorkspace: React.FC<{
         const accent = win.accent || '';
         const icon = win.icon || '';
         const style: React.CSSProperties = {
-          ...(win.maximized
+          ...(win.maximized && !mosaic
             ? { inset: 8, zIndex: win.zIndex }
             : {
                 left: win.x,
                 top: win.y,
                 width: win.width,
                 height: win.height,
-                zIndex: win.zIndex,
+                zIndex: mosaic ? 1 : mosaicDrag?.viewId === viewId ? 10_000 : win.zIndex,
               }),
           ...(accent ? ({ ['--nx-window-accent' as string]: accent } as React.CSSProperties) : {}),
         };
@@ -696,6 +857,9 @@ const DesktopWorkspace: React.FC<{
             data-view-id={viewId}
             data-maximized={win.maximized ? 'true' : 'false'}
             data-mosaic={mosaic ? 'true' : undefined}
+            data-active={activeViewId === viewId ? 'true' : undefined}
+            data-dragging={mosaicDrag?.viewId === viewId ? 'true' : undefined}
+            data-drop-target={mosaicDropViewId === viewId ? 'true' : undefined}
             data-accented={accent ? 'true' : undefined}
             data-attention={attention ? 'true' : undefined}
             data-unread={unread ? 'true' : undefined}
@@ -711,8 +875,13 @@ const DesktopWorkspace: React.FC<{
               className="nx-desktop-window__titlebar"
               data-accented={accent ? 'true' : undefined}
               onPointerDown={(event) => {
-                setChromeMenuViewId(null);
+                if (event.button === 0) setChromeMenuViewId(null);
                 startMove(viewId, event);
+              }}
+              onContextMenu={(event) => {
+                presentation.focus(viewId);
+                setChromeMenuViewId(null);
+                setWindowMenu({ viewId, surface, point: contextMenuFromEvent(event) });
               }}
             >
               <div className="nx-desktop-window__title">
@@ -742,7 +911,11 @@ const DesktopWorkspace: React.FC<{
                 <WindowChromeMenu
                   viewId={viewId}
                   open={chromeMenuViewId === viewId}
-                  onOpenChange={(next) => setChromeMenuViewId(next ? viewId : null)}
+                  position={chromeMenuViewId === viewId ? chromeMenuPoint : null}
+                  onOpenChange={(next) => {
+                    setChromeMenuPoint(null);
+                    setChromeMenuViewId(next ? viewId : null);
+                  }}
                   customTitle={win.customTitle || ''}
                   accent={win.accent || ''}
                   icon={win.icon || ''}
@@ -774,30 +947,47 @@ const DesktopWorkspace: React.FC<{
                 onPointerDown={(event) => startResize(viewId, event)}
               />
             )}
-            {mosaic &&
-              (
-                [
-                  ['n', 'ns-resize'],
-                  ['s', 'ns-resize'],
-                  ['e', 'ew-resize'],
-                  ['w', 'ew-resize'],
-                  ['ne', 'nesw-resize'],
-                  ['nw', 'nwse-resize'],
-                  ['se', 'nwse-resize'],
-                  ['sw', 'nesw-resize'],
-                ] as const
-              ).map(([edge, cursor]) => (
-                <div
-                  key={edge}
-                  className={`nx-desktop-window__grip nx-desktop-window__grip--${edge}`}
-                  style={{ cursor }}
-                  aria-hidden="true"
-                  onPointerDown={(event) => startMosaicEdge(viewId, edge, event)}
-                />
-              ))}
           </section>
         );
       })}
+      {mosaic && mosaicDrag && (
+        <>
+          <div
+            className="nx-desktop-mosaic-slot"
+            data-kind="origin"
+            aria-hidden="true"
+            style={{
+              left: mosaicDrag.origin.x,
+              top: mosaicDrag.origin.y,
+              width: mosaicDrag.origin.width,
+              height: mosaicDrag.origin.height,
+            }}
+          />
+          {mosaicDropViewId && presentation.state.windows[mosaicDropViewId] && (
+            <div
+              className="nx-desktop-mosaic-slot"
+              data-kind="drop"
+              aria-hidden="true"
+              style={{
+                left: presentation.state.windows[mosaicDropViewId].x,
+                top: presentation.state.windows[mosaicDropViewId].y,
+                width: presentation.state.windows[mosaicDropViewId].width,
+                height: presentation.state.windows[mosaicDropViewId].height,
+              }}
+            />
+          )}
+          <div
+            className="nx-desktop-mosaic-ghost"
+            aria-hidden="true"
+            style={{
+              left: mosaicDrag.ghost.x,
+              top: mosaicDrag.ghost.y,
+              width: mosaicDrag.origin.width,
+              height: mosaicDrag.origin.height,
+            }}
+          />
+        </>
+      )}
       {mosaic &&
         splitters.map((splitter) => {
           const style: React.CSSProperties =
@@ -826,29 +1016,111 @@ const DesktopWorkspace: React.FC<{
             />
           );
         })}
-      <div className="nx-desktop-dock" aria-label="Minimized terminals">
+      {mosaic &&
+        windows.length > 0 &&
+        windows.every(({ win }) => win?.minimized) && (
+          <div className="nx-mosaic-all-minimized">
+            <Minus size={18} />
+            <strong>{t('workspace.minimizedShelf')}</strong>
+            <p>{t('workspace.mosaicAllMinimized')}</p>
+          </div>
+        )}
+      <div
+        className="nx-desktop-dock"
+        data-kind={mosaic ? 'shelf' : 'float'}
+        hidden={windows.every(({ win }) => !win?.minimized)}
+        aria-label={t('workspace.minimizedShelf')}
+      >
+        {mosaic && <span className="nx-desktop-dock__label">{t('workspace.minimizedShelf')}</span>}
         {windows
           .filter(({ win }) => win?.minimized)
-          .map(({ surface }) => {
+          .map(({ surface, win }) => {
             const viewId = surfaceViewId(surface);
             const unread = surface.data?.unreadAttention === 'true';
-            const label = surface.data?.agentName || surface.title;
+            const label = win?.customTitle || surface.data?.agentName || surface.title;
             return (
               <button
                 type="button"
                 key={viewId}
+                title={t('workspace.restoreNamed', { name: label })}
                 data-unread={unread ? 'true' : undefined}
                 onClick={() => {
                   presentation.minimize(viewId);
                   presentation.focus(viewId);
                 }}
+                onContextMenu={(event) => {
+                  setWindowMenu({ viewId, surface, point: contextMenuFromEvent(event) });
+                }}
               >
                 {unread && <span className="nx-desktop-window__attention-dot" data-unread="true" />}
+                {win?.icon ? <span aria-hidden="true">{win.icon}</span> : null}
                 {label}
               </button>
             );
           })}
       </div>
+      <ContextMenu
+        open={windowMenu?.point ?? null}
+        onClose={() => setWindowMenu(null)}
+        label={t('workspace.menu')}
+        items={(() => {
+          if (!windowMenu) return [];
+          const win = presentation.state.windows[windowMenu.viewId];
+          const items: ContextMenuItem[] = [
+            {
+              type: 'item',
+              id: 'customize',
+              label: t('workspace.windowCustomize'),
+              icon: <Paintbrush size={13} />,
+              onSelect: () => {
+                setChromeMenuPoint(windowMenu.point);
+                setChromeMenuViewId(windowMenu.viewId);
+              },
+            },
+          ];
+          if (win?.minimized) {
+            items.push({
+              type: 'item',
+              id: 'restore',
+              label: t('workspace.windowRestore'),
+              icon: <Minimize2 size={13} />,
+              onSelect: () => {
+                presentation.minimize(windowMenu.viewId);
+                presentation.focus(windowMenu.viewId);
+              },
+            });
+          } else {
+            items.push({
+              type: 'item',
+              id: 'min',
+              label: t('workspace.windowMinimize'),
+              icon: <Minus size={13} />,
+              onSelect: () => presentation.minimize(windowMenu.viewId),
+            });
+            if (!mosaic) {
+              items.push({
+                type: 'item',
+                id: 'max',
+                label: win?.maximized ? t('workspace.windowRestore') : t('workspace.windowMaximize'),
+                icon: win?.maximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />,
+                onSelect: () => presentation.maximize(windowMenu.viewId),
+              });
+            }
+          }
+          if (windowMenu.surface.closable !== false) {
+            items.push({ type: 'separator', id: 'sep-close' });
+            items.push({
+              type: 'item',
+              id: 'close',
+              label: t('workspace.windowClose'),
+              danger: true,
+              icon: <X size={13} />,
+              onSelect: () => closeSurface(windowMenu.surface),
+            });
+          }
+          return items;
+        })()}
+      />
     </div>
   );
 };

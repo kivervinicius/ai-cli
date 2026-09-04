@@ -16,6 +16,7 @@ import { ProductTour } from './tour/ProductTour';
 import { WelcomeModal } from './modals/WelcomeModal';
 import { MaestroControlModal } from './modals/MaestroControlModal';
 import { NewAgentModal } from '../features/agents/NewAgentModal';
+import { DirectSessionLauncher, type DirectSessionRequest } from '../features/work/DirectSessionLauncher';
 import { NexusShell } from './NexusShell';
 import { WorkspaceSurfaceHost } from './WorkspaceSurfaceHost';
 import { agentConfigSurface, agentTerminalSurface, flowRunSurface, projectShellSurface, projectSurface } from './surfaces';
@@ -117,8 +118,9 @@ export const NexusWorkspaceApp: React.FC<{ popoutSurface?: WorkspaceSurface }> =
             }}>N</div>
             <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Sessão Expirada ou Não Autenticada</h2>
             <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: 1.5, marginBottom: '24px' }}>
-              Em <code>127.0.0.1</code>/<code>localhost</code>, reabra o mesmo link <strong>Bootstrap</strong> impresso no terminal do <code>nexus web</code> — o token local pode ser reutilizado enquanto o servidor estiver no ar.
-              Se o link não estiver mais disponível (ou se o bind não for loopback), encerre com <code>Ctrl+C</code>, rode <code>nexus web</code> de novo e abra a URL exibida.
+              Neste computador o cookie local sobrevive ao restart do <code>nexus web</code>. Recarregue esta página.
+              Se ainda falhar, em qualquer terminal rode <code>nexus web open</code> — não é preciso achar o PTY onde o serviço subiu.
+              Bind remoto continua exigindo o link Bootstrap daquele processo.
             </p>
             <button
               type="button"
@@ -221,11 +223,11 @@ const WorkspaceCoordinator: React.FC<{
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [maestroControlOpen, setMaestroControlOpen] = useState(false);
   const [newAgentOpen, setNewAgentOpen] = useState(false);
+  const [directSession, setDirectSession] = useState<DirectSessionRequest | null>(null);
   const [tour, setTour] = useState(false);
   const [shellError, setShellError] = useState('');
   const [flowRuns, setFlowRuns] = useState<MissionRun[]>([]);
   const [closeTarget, setCloseTarget] = useState<WorkspaceSurface | null>(null);
-  const [closingSurface, setClosingSurface] = useState(false);
   const shellInFlight = useRef(false);
 
   useEffect(() => {
@@ -243,30 +245,28 @@ const WorkspaceCoordinator: React.FC<{
   const open = (surface: WorkspaceSurface) => workspace.open(surface);
   const requestCloseSurface = (surface: WorkspaceSurface) => setCloseTarget(surface);
   const closeConfirmed = async (stopRuntime: boolean) => {
-    if (!closeTarget || closingSurface) return;
-    setClosingSurface(true);
-    try {
-      if (stopRuntime && closeTarget.type === 'project-shell' && closeTarget.data?.runtimeId) {
-        await api.stopRuntime(closeTarget.data.runtimeId);
-        await data.refreshGlobal().catch(() => undefined);
-      } else if (stopRuntime && closeTarget.type === 'terminal' && closeTarget.data?.agentId) {
-        await nexus.stopAgent(closeTarget.data.agentId);
+    if (!closeTarget) return;
+    const target = closeTarget;
+    const runtimeId = target.data?.runtimeId;
+    const agentId = target.data?.agentId;
+    setCloseTarget(null);
+    workspace.close(target.id);
+    if (!stopRuntime) return;
+    void (async () => {
+      try {
+        if (target.type === 'project-shell' && runtimeId) {
+          await api.stopRuntime(runtimeId);
+        } else if (target.type === 'terminal' && agentId) {
+          await nexus.stopAgent(agentId);
+        }
+      } finally {
         await data.refreshGlobal().catch(() => undefined);
       }
-      workspace.close(closeTarget.id);
-      setCloseTarget(null);
-    } finally {
-      setClosingSurface(false);
-    }
+    })();
   };
   const openKind = (kind: string) => open(projectSurface(project.id, kind as any));
   const openTerminals = () => open(projectSurface(project.id, 'terminals'));
-  const openNewAISession = () => {
-    openKind('work');
-    // The Work surface owns the launcher. Queue the event until React has
-    // mounted that surface; dispatching synchronously loses it on first open.
-    window.setTimeout(() => window.dispatchEvent(new CustomEvent('nexus:new-ai-session')), 0);
-  };
+  const openNewAISession = () => setDirectSession({ mode: 'direct', prompt: '' });
   const terminal = (agent: Agent) => {
     open(agentTerminalSurface(agent.id, agent.name));
     openTerminals();
@@ -301,10 +301,13 @@ const WorkspaceCoordinator: React.FC<{
     const handleProjectShellEvent = () => {
       void shell();
     };
+    const handleNewAISession = () => setDirectSession({ mode: 'direct', prompt: '' });
     window.addEventListener('nexus:new-agent', handleNewAgentEvent);
+    window.addEventListener('nexus:new-ai-session', handleNewAISession);
     window.addEventListener('nexus:project-shell', handleProjectShellEvent);
     return () => {
       window.removeEventListener('nexus:new-agent', handleNewAgentEvent);
+      window.removeEventListener('nexus:new-ai-session', handleNewAISession);
       window.removeEventListener('nexus:project-shell', handleProjectShellEvent);
     };
   }, [shell]);
@@ -694,6 +697,18 @@ const WorkspaceCoordinator: React.FC<{
         }}
       />
 
+      <DirectSessionLauncher
+        open={!!directSession}
+        project={project}
+        request={directSession}
+        onClose={() => setDirectSession(null)}
+        refreshAgents={() => data.refreshAgents(project.id)}
+        onStarted={(created, prompt) => {
+          open(agentTerminalSurface(created.id, created.name, prompt));
+          openTerminals();
+        }}
+      />
+
       <ProductTour
         open={tour}
         onClose={() => {
@@ -705,7 +720,6 @@ const WorkspaceCoordinator: React.FC<{
         <TerminalActionDialog
           close
           shell={closeTarget.type === 'project-shell'}
-          busy={closingSurface}
           onCancel={() => setCloseTarget(null)}
           onCloseTab={() => void closeConfirmed(false)}
           onStopRuntime={() => void closeConfirmed(true)}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -34,6 +35,7 @@ type Server struct {
 	terminal   *TerminalHub
 	bootstrap  string
 	url        string
+	pid        int
 }
 
 func NewServer(opts ServerOptions) (*Server, error) {
@@ -58,7 +60,13 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	tcpAddr := l.Addr().(*net.TCPAddr)
 	portStr := strconv.Itoa(tcpAddr.Port)
 
-	auth, bootstrapToken, err := NewAuthManager(opts.Host, portStr)
+	storeDir := ""
+	loopback := isLoopbackHost(opts.Host)
+	if loopback {
+		storeDir = loopbackAuthStoreDir()
+	}
+
+	auth, bootstrapToken, err := NewAuthManagerWithStore(opts.Host, portStr, storeDir)
 	if err != nil {
 		_ = l.Close()
 		return nil, fmt.Errorf("failed to initialize auth manager: %w", err)
@@ -76,6 +84,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		terminal:  terminalHub,
 		bootstrap: bootstrapToken,
 		url:       fmt.Sprintf("http://%s:%d", opts.Host, tcpAddr.Port),
+		pid:       os.Getpid(),
 	}
 
 	mux := http.NewServeMux()
@@ -181,10 +190,19 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	})
 
 	s.httpServer = &http.Server{
-		Handler:      s.withSecurityHeaders(mux),
-		ReadTimeout:  15 * time.Second,
+		Handler:     s.withSecurityHeaders(mux),
+		ReadTimeout: 15 * time.Second,
 		// Composer auto_plan may take up to ~90s (CLI oneshot); keep headroom for JSON write.
 		WriteTimeout: 120 * time.Second,
+	}
+
+	if err := writeListenState(ListenState{
+		URL:          s.url,
+		BootstrapURL: s.BootstrapURL(),
+		PID:          s.pid,
+		Loopback:     loopback,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "nexus web: failed to write listen state: %v\n", err)
 	}
 
 	return s, nil
@@ -560,6 +578,7 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	removeListenState(s.pid)
 	return s.httpServer.Shutdown(ctx)
 }
 

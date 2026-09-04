@@ -131,7 +131,7 @@ export function arrangeSmart(bounds: ArrangeBounds, viewIds: string[]): TileRect
   const ids = viewIds.filter(Boolean);
   if (ids.length === 0) return [];
   if (bounds.width < MIN_W || bounds.height < MIN_H) {
-    return ids.map((viewId, index) =>
+    return ids.map((viewId) =>
       roundRect({
         viewId,
         x: bounds.x,
@@ -270,28 +270,39 @@ export function applySharedEdgeDelta(
   orientation: 'vertical' | 'horizontal',
   delta: number
 ): { first: RectLike; second: RectLike } | null {
-  if (orientation === 'vertical') {
-    const nextFirstW = first.width + delta;
-    const nextSecondW = second.width - delta;
-    if (nextFirstW < MIN_W || nextSecondW < MIN_W) return null;
-    return {
-      first: { ...first, width: Math.round(nextFirstW) },
-      second: {
-        ...second,
-        x: Math.round(second.x + delta),
-        width: Math.round(nextSecondW),
-      },
+  const vertical = orientation === 'vertical';
+  const leading = vertical
+    ? first.x <= second.x
+      ? first
+      : second
+    : first.y <= second.y
+      ? first
+      : second;
+  const trailing = leading.viewId === first.viewId ? second : first;
+  if (vertical) {
+    const nextLeadingW = leading.width + delta;
+    const nextTrailingW = trailing.width - delta;
+    if (nextLeadingW < MIN_W || nextTrailingW < MIN_W) return null;
+    const nextLeading = { ...leading, width: Math.round(nextLeadingW) };
+    const nextTrailing = {
+      ...trailing,
+      x: Math.round(trailing.x + delta),
+      width: Math.round(nextTrailingW),
     };
+    return leading.viewId === first.viewId
+      ? { first: nextLeading, second: nextTrailing }
+      : { first: nextTrailing, second: nextLeading };
   }
-  const nextFirstH = first.height + delta;
-  const nextSecondH = second.height - delta;
-  if (nextFirstH < MIN_H || nextSecondH < MIN_H) return null;
-  return {
-    first: { ...first, height: Math.round(nextFirstH) },
-    second: {
-      ...second,
-      y: Math.round(second.y + delta),
-      height: Math.round(nextSecondH),
-    },
+  const nextLeadingH = leading.height + delta;
+  const nextTrailingH = trailing.height - delta;
+  if (nextLeadingH < MIN_H || nextTrailingH < MIN_H) return null;
+  const nextLeading = { ...leading, height: Math.round(nextLeadingH) };
+  const nextTrailing = {
+    ...trailing,
+    y: Math.round(trailing.y + delta),
+    height: Math.round(nextTrailingH),
   };
+  return leading.viewId === first.viewId
+    ? { first: nextLeading, second: nextTrailing }
+    : { first: nextTrailing, second: nextLeading };
 }

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { toast, Toaster } from 'sonner';
 import type { RuntimeSession } from '../types';
 import { attentionMessageKey } from '../app/documentTitle';
@@ -82,17 +83,21 @@ export const AttentionNotificationManager: React.FC<AttentionNotificationManager
     });
   }, [toastRuntimes, onFocusRuntime]);
 
-  return (
-    <Toaster
-      position="top-right"
-      expand
-      richColors={false}
-      gap={12}
-      visibleToasts={4}
-      toastOptions={{
-        className: 'nx-sonner-toast-wrapper',
-        unstyled: true,
-      }}
-    />
+  return createPortal(
+    <div className="nx-attention-toaster-root">
+      <Toaster
+        position="top-right"
+        expand
+        richColors={false}
+        gap={12}
+        visibleToasts={4}
+        offset={{ top: 52, right: 16 }}
+        toastOptions={{
+          className: 'nx-sonner-toast-wrapper',
+          unstyled: true,
+        }}
+      />
+    </div>,
+    document.body,
   );
 };

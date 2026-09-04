@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"testing"
@@ -70,6 +71,44 @@ func TestSessionRotateRouteReplacesSessionAndCSRF(t *testing.T) {
 	}
 	if payload.CSRFToken == "" || payload.CSRFToken == oldCSRF {
 		t.Fatalf("expected fresh CSRF token, old=%q new=%q", oldCSRF, payload.CSRFToken)
+	}
+}
+
+func TestServer_LoopbackCookieSurvivesRestart(t *testing.T) {
+	t.Setenv("NEXUS_DATA_DIR", t.TempDir())
+	first, err := NewServer(ServerOptions{Host: "127.0.0.1", Port: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = first.Start() }()
+	time.Sleep(20 * time.Millisecond)
+	client, _ := authenticatedTestClient(t, first)
+	port := first.listener.Addr().(*net.TCPAddr).Port
+	if err := first.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := NewServer(ServerOptions{Host: "127.0.0.1", Port: port})
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = second.Start() }()
+	t.Cleanup(func() { _ = second.Shutdown(context.Background()) })
+	time.Sleep(20 * time.Millisecond)
+
+	sessResp, err := client.Get(second.URL() + "/api/v1/session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sessResp.Body.Close()
+	var payload struct {
+		Authenticated bool `json:"authenticated"`
+	}
+	if err := json.NewDecoder(sessResp.Body).Decode(&payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.Authenticated {
+		t.Fatal("browser cookie must still authenticate after nexus web restart on loopback")
 	}
 }
 

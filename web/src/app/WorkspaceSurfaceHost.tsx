@@ -20,7 +20,6 @@ import { ProjectOverviewSurface } from '../features/overview/ProjectOverviewSurf
 import { WorkSurface } from '../features/work/WorkSurface';
 import { FlowRunSurface } from '../features/work/FlowRunSurface';
 import { FlowRunsHistorySurface } from '../features/work/FlowRunsHistorySurface';
-import { DirectSessionLauncher, type DirectSessionRequest } from '../features/work/DirectSessionLauncher';
 import { AgentsSurface } from '../features/agents/AgentsSurface';
 import { AgentConfigurationSurface } from '../features/agents/AgentConfigurationSurface';
 import { SessionsSurface } from '../features/sessions/SessionsSurface';
@@ -77,13 +76,6 @@ export const WorkspaceSurfaceHost: React.FC<{
   const [showStart, setShowStart] = useState(false);
   const [handoff, setHandoff] = useState<RuntimeSession | null>(null);
   const [cont, setCont] = useState<RuntimeSession | null>(null);
-  const [directSession, setDirectSession] = useState<DirectSessionRequest | null>(null);
-
-  React.useEffect(() => {
-    const onNewSession = () => setDirectSession({ mode: 'direct', prompt: '' });
-    window.addEventListener('nexus:new-ai-session', onNewSession);
-    return () => window.removeEventListener('nexus:new-ai-session', onNewSession);
-  }, []);
 
   const open = (kind: string) =>
     openSurface(projectSurface(project.id, kind as Parameters<typeof projectSurface>[1]));
@@ -116,12 +108,7 @@ export const WorkspaceSurfaceHost: React.FC<{
         refreshAgents={refreshAgents}
         onNewAgent={() => window.dispatchEvent(new CustomEvent('nexus:new-agent'))}
         onConfigureAgent={config}
-        onNewAISession={() => {
-          open('work');
-          // WorkSurface mounts after open(); defer so its launcher listener is
-          // present before receiving the request.
-          window.setTimeout(() => window.dispatchEvent(new CustomEvent('nexus:new-ai-session')), 0);
-        }}
+        onNewAISession={() => window.dispatchEvent(new CustomEvent('nexus:new-ai-session'))}
         onProjectShell={() => window.dispatchEvent(new CustomEvent('nexus:project-shell'))}
         onOpenComposer={() => open('work')}
         onOpenFlow={undefined}
@@ -130,22 +117,12 @@ export const WorkspaceSurfaceHost: React.FC<{
 
   if (surface.type === 'work')
     return (
-      <>
-        <WorkSurface
-          project={project}
-          agents={agents}
-          onDirect={terminal}
-          onFlowRun={(run) => openSurface(flowRunSurface(run.id, `Flow Run · ${(run.id || '').slice(-6)}`))}
-        />
-        <DirectSessionLauncher
-          open={!!directSession}
-          project={project}
-          request={directSession}
-          onClose={() => setDirectSession(null)}
-          refreshAgents={refreshAgents}
-          onStarted={(created, prompt) => terminal(created, prompt)}
-        />
-      </>
+      <WorkSurface
+        project={project}
+        agents={agents}
+        onDirect={terminal}
+        onFlowRun={(run) => openSurface(flowRunSurface(run.id, `Flow Run · ${(run.id || '').slice(-6)}`))}
+      />
     );
 
   if (surface.type === 'flow-run')

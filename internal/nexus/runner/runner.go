@@ -192,6 +192,16 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 		pkg.State = StateCompiling
 	case StateCompiling:
 		if capsuleErr := r.ensureContextCapsule(opCtx, run, pkg); capsuleErr != nil {
+			if errors.Is(capsuleErr, ErrInfrastructureFailure) {
+				// Evidence persistence is an infrastructure boundary. Fail closed
+				// without retrying implementation work or invoking a provider.
+				pkg.State = StateFailed
+				pkg.ErrorMessage = "SCHEMA_UNAVAILABLE"
+				run.State = StateFailed
+				run.UpdatedAt = time.Now().UTC()
+				_ = r.saveRun(ctx, run)
+				return run, false, capsuleErr
+			}
 			return r.packageFailureFrom(ctx, run, pkg, StateCompiling, fmt.Errorf("prepare context capsule: %w", capsuleErr))
 		}
 		artifact, compileErr := r.executor.Compile(opCtx, run, pkg)

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, CheckCircle2, Terminal, XCircle } from 'lucide-react';
 import type { RuntimeSession } from '../types';
 import { sanitizeAttentionText } from '../components/attentionText';
@@ -49,7 +50,7 @@ export const InAppNotificationCenter: React.FC<{
 
   if (notifications.length === 0) return null;
 
-  return (
+  return createPortal(
     <section className="nx-notification-center" aria-label="Notificações recentes" aria-live="polite">
       {notifications.map((notification) => (
         <article className="nx-notification-toast" data-tone={notification.tone} key={notification.id} role="status">
@@ -75,6 +76,7 @@ export const InAppNotificationCenter: React.FC<{
           </IconButton>
         </article>
       ))}
-    </section>
+    </section>,
+    document.body,
   );
 };

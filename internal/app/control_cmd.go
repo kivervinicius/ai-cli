@@ -107,6 +107,8 @@ SUBCOMMANDS:
   web [--port <port>] [--no-open] [--listen <ip>] [--remote]
                                 Open browser-based Web Workspace OS
                                 Default port: 3000 (override with NEXUS_WEB_PORT env var)
+  web open                      Reopen the running Web UI from any terminal
+  web url                       Print the current Web UI URL (with auth token if needed)
 
 FLAGS:
   --json                        Output in machine-readable JSON format
@@ -115,6 +117,15 @@ FLAGS:
 }
 
 func controlWebCmd(args []string) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "open":
+			return controlWebReopenCmd(false)
+		case "url":
+			return controlWebReopenCmd(true)
+		}
+	}
+
 	var port int
 	var host string = "127.0.0.1"
 	var noOpen bool
@@ -160,6 +171,7 @@ func controlWebCmd(args []string) error {
 	fmt.Printf("URL:       %s\n", srv.URL())
 	fmt.Printf("Bootstrap: %s\n\n", bootstrapURL)
 	fmt.Println("Press Ctrl+C to stop the Web Control Center.")
+	fmt.Printf("Reopen from any terminal: %s web open\n", progName())
 
 	if !noOpen {
 		go func() {
@@ -181,6 +193,27 @@ func controlWebCmd(args []string) error {
 	}()
 
 	return srv.Start()
+}
+
+func controlWebReopenCmd(printOnly bool) error {
+	state, err := web.ReadListenState()
+	if err != nil {
+		return fmt.Errorf("nexus web não está em execução neste usuário. Inicie com `%s web` e, se o browser não abrir, rode `%s web open`", progName(), progName())
+	}
+	target := state.BootstrapURL
+	if target == "" {
+		target = state.URL
+	}
+	if printOnly {
+		fmt.Println(target)
+		return nil
+	}
+	if err := web.OpenBrowser(target); err != nil {
+		fmt.Println(target)
+		return fmt.Errorf("não foi possível abrir o browser: %w", err)
+	}
+	fmt.Printf("Opened %s\n", state.URL)
+	return nil
 }
 
 // controlHostCmd is the internal background daemon worker running as: ai __control-host --runtime <runtime-id>

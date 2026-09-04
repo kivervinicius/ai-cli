@@ -13,7 +13,7 @@ import {
   Workflow,
   X,
 } from 'lucide-react';
-import { Button, IconButton } from '../../design-system';
+import { Button, IconButton, ContextMenu, contextMenuFromEvent, type ContextMenuPoint } from '../../design-system';
 import { AddProjectModal } from './AddProjectModal';
 import type { Agent, Project } from '../../types';
 import { useTranslation } from 'react-i18next';
@@ -49,6 +49,11 @@ export const ProjectRail: React.FC<{
 }) => {
   const { t } = useTranslation();
   const [addOpen, setAddOpen] = useState(false);
+  const [railMenu, setRailMenu] = useState<
+    | { kind: 'project'; project: Project; point: ContextMenuPoint }
+    | { kind: 'agent'; agent: Agent; point: ContextMenuPoint }
+    | null
+  >(null);
 
   const optionalTools = [
     { id: 'overview', label: t('nav.overview'), icon: Home },
@@ -150,6 +155,7 @@ export const ProjectRail: React.FC<{
                 onSelect(project);
                 onClose();
               }}
+              onContextMenu={(event) => setRailMenu({ kind: 'project', project, point: contextMenuFromEvent(event) })}
               title={project.canonical_path}
             >
               <span className="nx-project-avatar">
@@ -184,6 +190,7 @@ export const ProjectRail: React.FC<{
                 if (onOpenAgent) onOpenAgent(agent);
                 onClose();
               }}
+              onContextMenu={(event) => setRailMenu({ kind: 'agent', agent, point: contextMenuFromEvent(event) })}
               title={`${agent.name} · ${agent.role || 'developer'} (${agent.status})`}
             >
               <span
@@ -246,6 +253,38 @@ export const ProjectRail: React.FC<{
           </Button>
         </div>
       </aside>
+      <ContextMenu
+        open={railMenu?.point ?? null}
+        onClose={() => setRailMenu(null)}
+        label={t('workspace.menu')}
+        items={
+          railMenu?.kind === 'project'
+            ? [
+                {
+                  type: 'item',
+                  id: 'open-project',
+                  label: t('workspace.openProject'),
+                  onSelect: () => {
+                    onSelect(railMenu.project);
+                    onClose();
+                  },
+                },
+              ]
+            : railMenu?.kind === 'agent'
+              ? [
+                  {
+                    type: 'item',
+                    id: 'open-agent',
+                    label: t('workspace.openAgent'),
+                    onSelect: () => {
+                      if (onOpenAgent) onOpenAgent(railMenu.agent);
+                      onClose();
+                    },
+                  },
+                ]
+              : []
+        }
+      />
 
       <div
         className="nx-project-rail-overlay"

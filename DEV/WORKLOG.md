@@ -1114,3 +1114,24 @@ Verificação final: `go test ./...`, `go vet ./...`, race nos módulos crítico
 `make web-verify`, builds Linux/macOS/Windows, `npm audit --offline` e
 `git diff --check` passaram. `make build` instalou `v0.5.0-beta.23` e o Web foi
 subido novamente em `http://127.0.0.1:3000`.
+
+## 2026-09-04 — Reparo estrutural de evidências do Flow Runner
+
+Adicionada validação estrutural do SQLite na abertura do Store, independente do
+número registrado em `schema_migrations`. O contrato de `flow_context_capsules`
+e `flow_work_receipts` agora é reparado de forma idempotente; tabelas legadas
+incompatíveis são preservadas com nome versionado e seus recibos conhecidos são
+copiados para o formato canônico. Falhas de persistência de cápsula são
+classificadas como `SCHEMA_UNAVAILABLE`, encerram o run como `FAILED` e não
+consomem tentativas de implementação.
+
+Verificação: `go test ./internal/nexus/...` PASS.
+
+## 2026-09-04 — Continuidade do Composer
+
+O Composer passou a preservar localmente, por Project, o rascunho em edição e
+as últimas solicitações usadas. Ao reabrir a superfície, o objetivo reaparece e
+solicitações recentes podem ser retomadas por atalhos, sem criar Flow ou sessão
+de Agent automaticamente.
+
+Verificação: `make web-verify` PASS.

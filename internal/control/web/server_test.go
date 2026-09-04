@@ -16,6 +16,7 @@ func TestMain(m *testing.M) {
 	testDir, err := os.MkdirTemp("", "ai-control-web-test-*")
 	if err == nil {
 		defer os.RemoveAll(testDir)
+		_ = os.Setenv("NEXUS_DATA_DIR", testDir)
 		_ = os.Setenv("AI_MANAGER_DATA_DIR", testDir)
 		_ = os.Setenv("AI_CLI_DATA_DIR", testDir)
 	}

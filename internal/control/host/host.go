@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/control/events"
@@ -696,15 +697,32 @@ func (sh *SessionHost) Wait() {
 func (sh *SessionHost) Stop() error {
 	sh.stopOnce.Do(func() { close(sh.stopChan) })
 	sh.mu.Lock()
-	_ = sh.termBackend.Signal(os.Interrupt)
+	provider := sh.session.ProviderID
+	_ = sh.termBackend.Signal(gracefulStopSignal(provider))
 	sh.mu.Unlock()
 
 	select {
 	case <-sh.doneChan:
 		return nil
-	case <-time.After(3 * time.Second):
+	case <-time.After(gracefulStopWait(provider)):
 		return sh.Terminate()
 	}
+}
+
+func gracefulStopWait(providerID string) time.Duration {
+	if strings.EqualFold(strings.TrimSpace(providerID), "shell") {
+		// Interactive shells ignore SIGINT at an idle prompt, so a 3s Ctrl+C
+		// wait just stalls the Close dialog. TERM then a short kill is enough.
+		return 250 * time.Millisecond
+	}
+	return 3 * time.Second
+}
+
+func gracefulStopSignal(providerID string) os.Signal {
+	if strings.EqualFold(strings.TrimSpace(providerID), "shell") {
+		return syscall.SIGTERM
+	}
+	return os.Interrupt
 }
 
 // Terminate forcefully kills the supervised process.

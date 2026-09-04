@@ -278,7 +278,11 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       )}
 
       {/* xterm container */}
-      <div className="flex-1 w-full p-2 overflow-hidden" ref={containerRef} />
+      <div
+        className="flex-1 w-full p-2 overflow-hidden"
+        ref={containerRef}
+        onPointerDown={() => termRef.current?.focus()}
+      />
     </div>
   );
 };

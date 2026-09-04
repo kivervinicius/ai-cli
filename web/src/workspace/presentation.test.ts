@@ -4,7 +4,10 @@ import {
   createPresentationState,
   focusDesktopWindow,
   migratePresentationState,
+  mosaicDropTargetViewId,
+  MOSAIC_MINIMIZED_SHELF_H,
   moveDesktopWindow,
+  patchDesktopWindowChrome,
   rearrangeSmart,
   resizeAdjacentDesktopWindows,
   resizeDesktopWindow,
@@ -74,6 +77,13 @@ describe('workspace presentation', () => {
     expect(state.windows['view:a'].viewId).toBe(before);
     expect(state.windows['view:a'].zIndex).toBeGreaterThan(0);
     expect(state.activePtyViewId).toBe('view:a');
+  });
+
+  it('does not bump z-index when the window is already active and on top', () => {
+    let state = syncDesktopWindows(createPresentationState('DESKTOP'), [surface('a'), surface('b')]);
+    state = focusDesktopWindow(state, 'view:a');
+    const again = focusDesktopWindow(state, 'view:a');
+    expect(again).toBe(state);
   });
 
   it('promotes newly synced PTYs to activePtyViewId', () => {
@@ -158,6 +168,12 @@ describe('workspace presentation', () => {
     state = toggleDesktopMinimize(state, 'view:b');
     expect(state.windows['view:b'].minimized).toBe(true);
     expect(state.windows['view:a'].width).toBeGreaterThan(beforeA.width);
+    expect(state.windows['view:a'].height).toBe(state.canvas.height - MOSAIC_MINIMIZED_SHELF_H);
+    state = toggleDesktopMinimize(state, 'view:b');
+    expect(state.windows['view:b'].minimized).toBe(false);
+    expect(state.windows['view:a'].y + state.windows['view:a'].height).toBeLessThanOrEqual(
+      state.canvas.y + state.canvas.height
+    );
   });
 
   it('resizes adjacent mosaic tiles and supports free mosaic move/swap', () => {
@@ -173,6 +189,10 @@ describe('workspace presentation', () => {
     state = resizeAdjacentDesktopWindows(state, 'view:a', 'view:b', 'vertical', 40);
     expect(state.windows['view:a'].width).toBe(left.width + 40);
     expect(state.windows['view:b'].width).toBe(right.width - 40);
+    const reversed = resizeAdjacentDesktopWindows(state, 'view:b', 'view:a', 'vertical', 20);
+    expect(reversed.windows['view:a'].width).toBe(left.width + 60);
+    expect(reversed.windows['view:b'].width).toBe(right.width - 60);
+    expect(reversed.windows['view:a'].x).toBeLessThan(reversed.windows['view:b'].x);
 
     const origin = {
       x: state.windows['view:a'].x,
@@ -186,10 +206,45 @@ describe('workspace presentation', () => {
       width: state.windows['view:b'].width,
       height: state.windows['view:b'].height,
     };
-    state = moveDesktopWindow(state, 'view:a', targetGeom.x + 10, targetGeom.y + 10);
-    state = commitMosaicMove(state, 'view:a', origin);
+    const pointer = { x: targetGeom.x + 10, y: targetGeom.y + 10 };
+    const parked = moveDesktopWindow(state, 'view:a', targetGeom.x + 10, targetGeom.y + 10);
+    expect(parked.windows['view:a'].x).toBe(origin.x);
+    expect(mosaicDropTargetViewId(state, 'view:a', pointer)).toBe('view:b');
+    state = commitMosaicMove(state, 'view:a', origin, pointer);
     expect(state.windows['view:a'].x).toBe(targetGeom.x);
     expect(state.windows['view:b'].x).toBe(origin.x);
+  });
+
+  it('names the mosaic drop target from the pointer, not by stacking tiles', () => {
+    const state = setPresentationMode(
+      syncDesktopWindows(
+        { ...createPresentationState('DESKTOP'), canvas: { x: 0, y: 0, width: 800, height: 400 } },
+        [surface('a'), surface('b')]
+      ),
+      'MOSAIC'
+    );
+    const target = state.windows['view:b'];
+    const before = { ...state.windows['view:a'] };
+    expect(mosaicDropTargetViewId(state, 'view:a', { x: target.x + 10, y: target.y + 10 })).toBe('view:b');
+    expect(state.windows['view:a'].x).toBe(before.x);
+    expect(state.windows['view:a'].y).toBe(before.y);
+  });
+
+  it('selects a mosaic tile without raising it over neighbors', () => {
+    let state = setPresentationMode(
+      syncDesktopWindows(
+        { ...createPresentationState('DESKTOP'), canvas: { x: 0, y: 0, width: 800, height: 400 } },
+        [surface('a'), surface('b')]
+      ),
+      'MOSAIC'
+    );
+    const zA = state.windows['view:a'].zIndex;
+    const zB = state.windows['view:b'].zIndex;
+    state = focusDesktopWindow(state, 'view:b');
+    expect(state.activePtyViewId).toBe('view:b');
+    expect(state.windows['view:a'].zIndex).toBe(zA);
+    expect(state.windows['view:b'].zIndex).toBe(zB);
+    expect(state.windows['view:a'].x).not.toBe(state.windows['view:b'].x);
   });
 
   it('persists mosaic chrome across migrate and pack', () => {
@@ -223,5 +278,50 @@ describe('workspace presentation', () => {
   it('migrates MOSAIC mode', () => {
     const migrated = migratePresentationState({ version: 2, mode: 'MOSAIC', windows: {}, nextZ: 1 });
     expect(migrated.mode).toBe('MOSAIC');
+    expect(migrated.desktopLayout.windows).toEqual({});
+    expect(migrated.mosaicLayout.windows).toEqual({});
+  });
+
+  it('cascades when leaving mosaic for windows and restores both layouts on toggle', () => {
+    let state = setPresentationMode(
+      syncDesktopWindows(
+        { ...createPresentationState('DESKTOP'), canvas: { x: 0, y: 0, width: 800, height: 400 } },
+        [surface('a'), surface('b')]
+      ),
+      'MOSAIC'
+    );
+    state = resizeAdjacentDesktopWindows(state, 'view:a', 'view:b', 'vertical', 60);
+    const mosaicA = { ...state.windows['view:a'] };
+    const mosaicB = { ...state.windows['view:b'] };
+
+    state = setPresentationMode(state, 'DESKTOP');
+    expect(state.tiled).toBe(false);
+    expect(state.windows['view:a'].width).toBe(640);
+    expect(state.windows['view:b'].x).toBeGreaterThan(state.windows['view:a'].x);
+    expect(state.windows['view:a'].width).not.toBe(mosaicA.width);
+    expect(state.windows['view:b'].width).not.toBe(mosaicB.width);
+    const floated = moveDesktopWindow(state, 'view:a', 120, 64);
+    const desktopA = { ...floated.windows['view:a'] };
+
+    state = setPresentationMode(floated, 'MOSAIC');
+    expect(state.windows['view:a'].width).toBe(mosaicA.width);
+    expect(state.windows['view:a'].x).toBe(mosaicA.x);
+    expect(state.windows['view:b'].width).toBe(mosaicB.width);
+
+    state = setPresentationMode(state, 'DESKTOP');
+    expect(state.windows['view:a'].x).toBe(desktopA.x);
+    expect(state.windows['view:a'].y).toBe(desktopA.y);
+    expect(state.windows['view:a'].width).toBe(desktopA.width);
+  });
+
+  it('keeps window chrome in TABS and after switching presentation', () => {
+    let state = syncDesktopWindows(createPresentationState('TABS'), [surface('a')]);
+    state = patchDesktopWindowChrome(state, 'view:a', { customTitle: 'Ops', accent: '#38bdf8', icon: '⚡' });
+    expect(state.windows['view:a'].customTitle).toBe('Ops');
+    state = setPresentationMode(state, 'DESKTOP');
+    expect(state.windows['view:a'].customTitle).toBe('Ops');
+    expect(state.windows['view:a'].icon).toBe('⚡');
+    state = setPresentationMode(state, 'MOSAIC');
+    expect(state.windows['view:a'].customTitle).toBe('Ops');
   });
 });

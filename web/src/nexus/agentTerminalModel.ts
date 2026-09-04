@@ -37,9 +37,25 @@ export function isFatalTerminalAttachError(message: string): boolean {
     lower.includes('runtime not found') ||
     lower.includes('runtime host is not running') ||
     lower.includes('no longer responding') ||
+    lower.includes('is not live') ||
     lower.includes('authentication required') ||
     lower.includes('invalid origin')
   );
+}
+
+export function nextBoundRuntimeId(current: string, incoming?: string): string {
+  const next = (incoming || '').trim();
+  return next || (current || '').trim();
+}
+
+/** HTTP 404/host-down must recover the agent instead of looping "Reconnecting…". */
+export function shouldAutoRecoverAgentTerminal(openedOnce: boolean, lastError?: string): boolean {
+  const detail = (lastError || '').trim();
+  const lower = detail.toLowerCase();
+  if (lower.includes('authentication required') || lower.includes('invalid origin')) return false;
+  if (detail && isFatalTerminalAttachError(detail)) return true;
+  if (openedOnce) return false;
+  return true;
 }
 
 export function terminalAttachFailureMessage(detail?: string): string {

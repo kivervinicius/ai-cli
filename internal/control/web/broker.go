@@ -72,6 +72,9 @@ func (b *AgentTerminalBroker) Attach(agentID string, conn *websocket.Conn, hasRu
 		}
 		b.agents[agentID] = state
 	}
+	if state.runtimeChanged == nil {
+		state.runtimeChanged = make(chan struct{})
+	}
 
 	role := "VIEW_ONLY"
 	if state.writerConn == nil && hasRuntime {
@@ -113,10 +116,6 @@ func (b *AgentTerminalBroker) Detach(agentID string, conn *websocket.Conn) {
 	}
 
 	if len(state.connections) == 0 {
-		if state.runtimeChanged != nil {
-			close(state.runtimeChanged)
-			state.runtimeChanged = nil
-		}
 		delete(b.agents, agentID)
 	}
 
@@ -226,12 +225,15 @@ func (b *AgentTerminalBroker) Writer(agentID string) *websocket.Conn {
 // WatchRuntimeChanged returns a channel that is closed when the runtime
 // generation changes for the given agent. Returns nil if agent has no state.
 func (b *AgentTerminalBroker) WatchRuntimeChanged(agentID string) <-chan struct{} {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	state, ok := b.agents[agentID]
 	if !ok {
 		return nil
+	}
+	if state.runtimeChanged == nil {
+		state.runtimeChanged = make(chan struct{})
 	}
 	return state.runtimeChanged
 }

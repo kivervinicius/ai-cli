@@ -247,11 +247,11 @@ func (h *APIHandler) handleRuntimeDetail(w http.ResponseWriter, r *http.Request)
 				_ = client.Stop()
 				_ = client.Close()
 			}
-			// Wait for the process to actually exit before reporting STOPPED.
+			// Wait briefly for the host to reap the child (shells SIGKILL after 250ms).
 			if s, ok := h.reg.Get(runtimeID); ok {
-				deadline := time.Now().Add(5 * time.Second)
+				deadline := time.Now().Add(1500 * time.Millisecond)
 				for time.Now().Before(deadline) && s.PID > 0 && registry.IsProcessAlive(s.PID) {
-					time.Sleep(100 * time.Millisecond)
+					time.Sleep(25 * time.Millisecond)
 					s, _ = h.reg.Get(runtimeID)
 				}
 			}

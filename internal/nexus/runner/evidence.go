@@ -21,6 +21,10 @@ import (
 var ErrMissingContextCapsule = errors.New("Flow Step context capsule is missing")
 var ErrEvidenceRepositoryUnavailable = errors.New("mission evidence repository is unavailable")
 
+// ErrInfrastructureFailure marks failures that must not consume implementation
+// retries (for example an unavailable SQLite evidence table).
+var ErrInfrastructureFailure = errors.New("mission infrastructure failure")
+
 const (
 	maxCapsuleStrings = 64
 	maxReceiptFiles   = 256
@@ -295,7 +299,9 @@ func (r *MissionRunner) ensureContextCapsule(ctx context.Context, run *MissionRu
 		Step:          ContextCapsuleStep{ID: pkg.PackageID, Title: pkg.Title, Goal: pkg.Goal, Role: pkg.Role, Dependencies: capStrings(pkg.Dependencies, maxCapsuleStrings), AssignmentStrategy: pkg.AssignmentStrategy, VerificationRequirements: capStrings(pkg.VerificationRequirements, maxCapsuleStrings)},
 		RelevantPaths: capStrings(pkg.RelevantPaths, maxCapsuleStrings), DurableContextRefs: durableContextRefs(pkg.Workspace), DependencyReceipts: r.directDependencyReceipts(ctx, run, pkg), MaestroSkills: capStrings(pkg.MaestroSkills, maxCapsuleStrings), AcceptanceCriteria: capStrings(pkg.AcceptanceCriteria, maxCapsuleStrings), Constraints: capsuleConstraints(run.Contract), BaselineWorkspaceSnapshot: baseline, CreatedAt: time.Now().UTC()}
 	if err := evidence.SaveContextCapsule(ctx, capsule); err != nil {
-		return fmt.Errorf("persist context capsule: %w", err)
+		// Keep storage/SQL details out of the user-facing error while retaining
+		// an errors.Is classification for the runner and telemetry.
+		return fmt.Errorf("%w: SCHEMA_UNAVAILABLE", ErrInfrastructureFailure)
 	}
 	pkg.ContextCapsule = capsule
 	return nil

@@ -67,6 +67,31 @@ export const PlanBuilderSurface: React.FC<{
   const [stepComparison, setStepComparison] = useState('');
   const [goalChips, setGoalChips] = useState<string[]>([]);
 
+  const composerDraftKey = `nexus:composer:draft:${project.id}`;
+  const composerHistoryKey = `nexus:composer:history:${project.id}`;
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(composerDraftKey);
+      if (saved) setAutoGoal((current) => current || saved);
+    } catch { /* localStorage may be unavailable in private/webview contexts */ }
+  }, [composerDraftKey]);
+
+  useEffect(() => {
+    try {
+      const history = JSON.parse(window.localStorage.getItem(composerHistoryKey) || '[]');
+      if (Array.isArray(history)) setGoalChips((current) => current.length ? current : history.slice(0, 5));
+    } catch { /* ignore malformed client-side history */ }
+  }, [composerHistoryKey]);
+
+  useEffect(() => {
+    const value = autoGoal.trim();
+    try {
+      if (value) window.localStorage.setItem(composerDraftKey, value);
+      else window.localStorage.removeItem(composerDraftKey);
+    } catch { /* best effort persistence */ }
+  }, [autoGoal, composerDraftKey]);
+
   useEffect(() => { if (initialGoal.trim()) setAutoGoal((current) => current || initialGoal.trim()); }, [initialGoal]);
 
   const loadPlans = useCallback(async () => {
@@ -188,6 +213,12 @@ export const PlanBuilderSurface: React.FC<{
 
   const handleGenerateAIPlan = async () => {
     if (!autoGoal.trim()) return;
+    try {
+      const previous = JSON.parse(window.localStorage.getItem(composerHistoryKey) || '[]');
+      const history = [autoGoal.trim(), ...(Array.isArray(previous) ? previous : [])].filter((item, index, all) => all.indexOf(item) === index).slice(0, 8);
+      window.localStorage.setItem(composerHistoryKey, JSON.stringify(history));
+      setGoalChips((current) => current.length ? current : history.slice(0, 5));
+    } catch { /* best effort persistence */ }
     generateAbortRef.current?.abort();
     const controller = new AbortController();
     generateAbortRef.current = controller;
@@ -642,6 +673,14 @@ export const PlanBuilderSurface: React.FC<{
               <Play size={14} /> Approve & Run
             </Button>
           </div>
+          {goalChips.length > 0 && !selectedPlan && (
+            <div className="nx-composer-goal-chips" aria-label="Solicitações recentes">
+              <small style={{ color: 'var(--nx-muted)' }}>Continuar uma solicitação recente:</small>
+              {goalChips.slice(0, 5).map((goal) => (
+                <button key={goal} type="button" className="nx-composer-goal-chip" onClick={() => setAutoGoal(goal)} title={goal}>{goal.length > 72 ? `${goal.slice(0, 69)}…` : goal}</button>
+              ))}
+            </div>
+          )}
           {generating && (
             <div className="nx-composer-generate-status" role="status" aria-live="polite">
               <strong>{generateStage || 'Preparando…'}</strong>

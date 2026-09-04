@@ -37,23 +37,36 @@ type AuthManager struct {
 	sessions       map[string]*Session
 	listenHost     string
 	listenPort     string
+	storeDir       string
+	lastPersist    time.Time
 	entropy        io.Reader
 }
 
 func NewAuthManager(listenHost, listenPort string) (*AuthManager, string, error) {
+	return NewAuthManagerWithStore(listenHost, listenPort, "")
+}
+
+// NewAuthManagerWithStore restores loopback sessions from storeDir so a
+// browser cookie survives `nexus web` restart on this machine.
+func NewAuthManagerWithStore(listenHost, listenPort, storeDir string) (*AuthManager, string, error) {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
 		return nil, "", err
 	}
 	bootstrapToken := hex.EncodeToString(bytes)
 
-	return &AuthManager{
+	auth := &AuthManager{
 		bootstrapToken: bootstrapToken,
 		sessions:       make(map[string]*Session),
 		listenHost:     listenHost,
 		listenPort:     listenPort,
+		storeDir:       strings.TrimSpace(storeDir),
 		entropy:        rand.Reader,
-	}, bootstrapToken, nil
+	}
+	auth.mu.Lock()
+	auth.loadPersistedLocked()
+	auth.mu.Unlock()
+	return auth, bootstrapToken, nil
 }
 
 // CheckOrigin verifies that browser-originated requests target the exact Host
@@ -107,6 +120,7 @@ func (a *AuthManager) CreateSession() (*Session, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.sessions[sessID] = sess
+	_ = a.persistLocked()
 	return sess, nil
 }
 
@@ -128,10 +142,14 @@ func (a *AuthManager) AuthenticateRequest(r *http.Request) *Session {
 	// Check absolute expiry and idle TTL (A8 security requirement)
 	if now.After(sess.ExpiresAt) || now.Sub(sess.LastActiveAt) > sessionIdleTTL {
 		delete(a.sessions, cookie.Value)
+		_ = a.persistLocked()
 		return nil
 	}
 
 	sess.LastActiveAt = now
+	if a.storeDir != "" && now.Sub(a.lastPersist) >= sessionPersistMinGap {
+		_ = a.persistLocked()
+	}
 	return sess
 }
 
@@ -140,6 +158,7 @@ func (a *AuthManager) RevokeSession(sessionID string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	delete(a.sessions, sessionID)
+	_ = a.persistLocked()
 }
 
 // RotateSession atomically creates a new session ID/CSRF token and deletes the old one.
@@ -169,6 +188,7 @@ func (a *AuthManager) RotateSession(oldSessionID string) (*Session, error) {
 	}
 	delete(a.sessions, oldSessionID)
 	a.sessions[sessID] = sess
+	_ = a.persistLocked()
 	return sess, nil
 }
 
@@ -211,16 +231,21 @@ func (a *AuthManager) ExchangeBootstrapToken(token string) (*Session, bool) {
 		a.usedBootstrap = true
 	}
 	a.sessions[sessID] = sess
+	_ = a.persistLocked()
 	return sess, true
 }
 
-func (a *AuthManager) isLoopbackListen() bool {
-	host := strings.TrimSpace(a.listenHost)
+func isLoopbackHost(host string) bool {
+	host = strings.TrimSpace(host)
 	if host == "" || strings.EqualFold(host, "localhost") {
 		return true
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+func (a *AuthManager) isLoopbackListen() bool {
+	return isLoopbackHost(a.listenHost)
 }
 
 func (a *AuthManager) entropyReader() io.Reader {

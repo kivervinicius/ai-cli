@@ -9,7 +9,9 @@ import {
   isFatalTerminalAttachError,
   normalizeInitialPrompt,
   normalizeTerminalRole,
+  nextBoundRuntimeId,
   runtimeIdFromRecoverResult,
+  shouldAutoRecoverAgentTerminal,
   terminalAttachFailureMessage,
   terminalReconnectDelay,
   type TerminalRole,
@@ -36,6 +38,7 @@ export const AgentTerminal: React.FC<{
   onDelete?: () => void | Promise<void>;
 }> = ({ agentId, runtimeId, initialPrompt, provider, profile, mode = 'Safe', agentName, chrome = 'full', onRecover, onRestartWithMode, onClose, onDelete }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const termRef = useRef<Terminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [connection, setConnection] = useState<'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('CONNECTING');
   const [message, setMessage] = useState('');
@@ -57,14 +60,18 @@ export const AgentTerminal: React.FC<{
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [needsResourceSelection, setNeedsResourceSelection] = useState(false);
+  const autoRecoveredRef = useRef(false);
+  const onRecoverRef = useRef(onRecover);
+  onRecoverRef.current = onRecover;
 
   useEffect(() => {
-    setBoundRuntimeId(runtimeId || '');
+    setBoundRuntimeId((current) => nextBoundRuntimeId(current, runtimeId));
   }, [runtimeId]);
 
   const rebindTerminal = (nextRuntimeId?: string) => {
     const trimmed = (nextRuntimeId || '').trim();
     if (trimmed) setBoundRuntimeId(trimmed);
+    autoRecoveredRef.current = false;
     setNeedsResourceSelection(false);
     setMessage('');
     setConnection('CONNECTING');
@@ -84,11 +91,14 @@ export const AgentTerminal: React.FC<{
     let stopReconnect = false;
     const roleRef: { current: TerminalRole } = { current: 'VIEW_ONLY' };
     const kickoffRef = { current: normalizeInitialPrompt(initialPrompt), sent: false };
+    let lastError = '';
+    let leased = false;
     let termInstance: Terminal | null = null;
 
     (container as any).__triggerReconnect = () => {
       stopReconnect = false;
       reconnectAttempt = 0;
+      lastError = '';
       if (reconnectTimer !== undefined) {
         window.clearTimeout(reconnectTimer);
         reconnectTimer = undefined;
@@ -113,6 +123,7 @@ export const AgentTerminal: React.FC<{
       scrollback: 5000,
     });
     termInstance = term;
+    termRef.current = term;
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(container);
@@ -177,10 +188,59 @@ export const AgentTerminal: React.FC<{
       }, delay);
     };
 
+    const recoverMissingRuntime = async (detail?: string) => {
+      stopReconnect = true;
+      if (reconnectTimer !== undefined) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = undefined;
+      }
+      if (autoRecoveredRef.current) {
+        failPermanently(detail);
+        return;
+      }
+      autoRecoveredRef.current = true;
+      setConnection('CONNECTING');
+      setMessage('Runtime do agente ausente — recuperando…');
+      try {
+        const result = onRecoverRef.current
+          ? await onRecoverRef.current()
+          : await recoverOrStartAgent(agentId);
+        if (disposed) return;
+        const nextId = runtimeIdFromRecoverResult(result);
+        setBoundRuntimeId(nextId);
+        stopReconnect = false;
+        reconnectAttempt = 0;
+        lastError = '';
+        leased = false;
+        setConnectNonce((n) => n + 1);
+      } catch (error) {
+        if (isRequiredResourceError(error)) {
+          setNeedsResourceSelection(true);
+          setMessage('Selecione um provedor/conta para iniciar o runtime deste agente.');
+          setConnection('ERROR');
+          return;
+        }
+        failPermanently(error instanceof Error ? error.message : detail);
+      }
+    };
+
     const connect = async () => {
       if (disposed || stopReconnect) return;
       setConnection('CONNECTING');
       if (!openedOnce) setMessage('');
+      lastError = '';
+      leased = false;
+
+      const previous = wsRef.current;
+      if (previous) {
+        previous.onclose = null;
+        previous.onerror = null;
+        previous.onmessage = null;
+        if (previous.readyState === WebSocket.OPEN || previous.readyState === WebSocket.CONNECTING) {
+          previous.close();
+        }
+        if (wsRef.current === previous) wsRef.current = null;
+      }
 
       const ws = new WebSocket(
         agentTerminalWebSocketURL(window.location.protocol, window.location.host, agentId, boundRuntimeId)
@@ -191,11 +251,9 @@ export const AgentTerminal: React.FC<{
 
       ws.onopen = () => {
         openedOnce = true;
-        reconnectAttempt = 0;
         setConnection('CONNECTED');
         setModeAction((current) => current === 'Restarting' ? 'Ready' : current);
         setMessage((current) => current === 'Reiniciando runtime…' ? 'Pronto' : '');
-        // Prefer CONTROL: request lease on attach (handler already tries; retry here).
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'lease_acquire' }));
         }
@@ -213,6 +271,8 @@ export const AgentTerminal: React.FC<{
             if (cleaned) term.write(cleaned);
           } else if (payload.type === 'lease') {
             const next = normalizeTerminalRole(payload.role);
+            leased = true;
+            reconnectAttempt = 0;
             roleRef.current = next;
             setRole(next);
             setMessage(next === 'CONTROL' ? '' : 'Somente leitura — outro acesso está digitando neste runtime.');
@@ -226,14 +286,13 @@ export const AgentTerminal: React.FC<{
           } else if (payload.type === 'title' && payload.data) {
             setPtyTitle(String(payload.data));
           } else if (payload.type === 'attention') {
-            // Push/sound are owned by the focused-project poll in NexusWorkspaceApp.
-            // WS only refreshes the live PTY chip — never window identity.
             if (payload.dynamic_title) setPtyTitle(String(payload.dynamic_title));
           } else if (payload.type === 'error') {
             const detail = String(payload.data ?? 'Terminal error');
+            lastError = detail;
             setMessage(detail);
             if (isFatalTerminalAttachError(detail)) {
-              failPermanently(detail);
+              void recoverMissingRuntime(detail);
               ws.close(1011, 'fatal attach error');
             }
           }
@@ -252,8 +311,15 @@ export const AgentTerminal: React.FC<{
       ws.onclose = () => {
         if (wsRef.current === ws) wsRef.current = null;
         if (disposed || stopReconnect) return;
-        setConnection('DISCONNECTED');
-        scheduleReconnect();
+        if (!leased) {
+          if (shouldAutoRecoverAgentTerminal(openedOnce, lastError)) {
+            void recoverMissingRuntime(lastError || 'agent has no active runtime');
+            return;
+          }
+          scheduleReconnect(lastError);
+          return;
+        }
+        scheduleReconnect(lastError);
       };
     };
 
@@ -286,9 +352,10 @@ export const AgentTerminal: React.FC<{
       document.removeEventListener('visibilitychange', visibility);
       dataDisposable.dispose();
       wsRef.current?.close();
+      termRef.current = null;
       term.dispose();
     };
-  }, [agentId, runtimeId, boundRuntimeId, initialPrompt, connectNonce]);
+  }, [agentId, boundRuntimeId, initialPrompt, connectNonce]);
 
   const handleManualStartOrRecover = async () => {
     setRecovering(true);
@@ -613,7 +680,11 @@ export const AgentTerminal: React.FC<{
         onCancel={() => setPendingMode(null)}
         onConfirmMode={() => void handleModeChange()}
       />
-      <div ref={containerRef} className="nx-agent-terminal__xterm" />
+      <div
+        ref={containerRef}
+        className="nx-agent-terminal__xterm"
+        onPointerDown={() => termRef.current?.focus()}
+      />
 
       {isStaleOrDisconnected && (
         <div

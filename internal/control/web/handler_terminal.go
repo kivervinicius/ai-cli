@@ -70,7 +70,8 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 	// Connect to runtime SessionHost via local IPC
 	client, err := protocol.NewClient(runtimeID)
 	if err != nil {
-		_ = reg.UpdateState(runtimeID, registry.StateStopped)
+		// Do not mark STOPPED: a transient socket miss must not race Recover/Start
+		// into tearing down a still-running project agent.
 		_ = safeWriteJSON(TerminalMessage{
 			Type: "error",
 			Data: "Runtime host is not running (" + err.Error() + "). The process has exited or the socket was closed.",
@@ -92,7 +93,7 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 	// Attach to host
 	resp, err := client.Send(protocol.CmdAttach, nil)
 	if err != nil {
-		_ = reg.UpdateState(runtimeID, registry.StateStopped)
+		// Same as NewClient: attach timeout is not proof the child exited.
 		_ = safeWriteJSON(TerminalMessage{
 			Type: "error",
 			Data: "Failed to attach: runtime host is no longer responding (" + err.Error() + ").",
@@ -137,8 +138,11 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 
 	if ch := DefaultBroker().WatchRuntimeChanged(agentID); ch != nil {
 		go func() {
-			<-ch
-			stop()
+			select {
+			case <-ch:
+				stop()
+			case <-stopChan:
+			}
 		}()
 	}
 

@@ -427,6 +427,7 @@ func usage() {
 	body := fmt.Sprintf(`
   %s                              Open Web Workspace OS (default)
   %s web [flags]                  Launch IAPro Nexus Workspace OS (Web UI)
+  %s web open                     Reopen the running Web UI from any terminal
   %s control [subcmd]             Nexus Supervised Agent Runtimes (alias: %s ui)
   %s start <provider> [flags]     Start supervised agent runtime & attach
   %s stop <runtime-id>            Stop running supervised runtime
@@ -477,7 +478,7 @@ Universal Canonical Aliases (translated to native options for all providers):
 Merged Help:
   %s <provider> --help            Show Nexus canonical aliases merged with official CLI help
 `,
-		p, p, p, p, p, p, p, p, p, p, p, p,
+		p, p, p, p, p, p, p, p, p, p, p, p, p,
 		p, p, p, p, p,
 		p, p, p, p, p, p, p, p, p,
 		p, p, p, p, p, p, p, p, p, p, p, p, p, p,

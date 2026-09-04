@@ -34,7 +34,8 @@ interface ContextValue {
   move: (viewId: string, x: number, y: number) => void;
   commitMove: (
     viewId: string,
-    origin: { x: number; y: number; width: number; height: number }
+    origin: { x: number; y: number; width: number; height: number },
+    pointer?: { x: number; y: number }
   ) => void;
   resize: (viewId: string, width: number, height: number) => void;
   resizeMosaic: (viewId: string, edge: MosaicResizeEdge, deltaX: number, deltaY: number) => void;
@@ -64,6 +65,7 @@ type Action =
       type: 'commitMove';
       viewId: string;
       origin: { x: number; y: number; width: number; height: number };
+      pointer?: { x: number; y: number };
     }
   | { type: 'resize'; viewId: string; width: number; height: number }
   | {
@@ -97,7 +99,8 @@ function reducer(state: WorkspacePresentationState, action: Action): WorkspacePr
     case 'focus': return focusDesktopWindow(state, action.viewId);
     case 'setActivePty': return setActivePtyView(state, action.viewId);
     case 'move': return moveDesktopWindow(state, action.viewId, action.x, action.y);
-    case 'commitMove': return commitMosaicMove(state, action.viewId, action.origin);
+    case 'commitMove':
+      return commitMosaicMove(state, action.viewId, action.origin, action.pointer);
     case 'resize': return resizeDesktopWindow(state, action.viewId, action.width, action.height);
     case 'resizeMosaic':
       return resizeMosaicWindow(state, action.viewId, action.edge, action.deltaX, action.deltaY);
@@ -139,7 +142,7 @@ export const WorkspacePresentationProvider: React.FC<{ projectId: string; childr
     focus: (viewId) => dispatch({ type: 'focus', viewId }),
     setActivePty: (viewId) => dispatch({ type: 'setActivePty', viewId }),
     move: (viewId, x, y) => dispatch({ type: 'move', viewId, x, y }),
-    commitMove: (viewId, origin) => dispatch({ type: 'commitMove', viewId, origin }),
+    commitMove: (viewId, origin, pointer) => dispatch({ type: 'commitMove', viewId, origin, pointer }),
     resize: (viewId, width, height) => dispatch({ type: 'resize', viewId, width, height }),
     resizeMosaic: (viewId, edge, deltaX, deltaY) =>
       dispatch({ type: 'resizeMosaic', viewId, edge, deltaX, deltaY }),

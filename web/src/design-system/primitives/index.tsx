@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertCircle, CheckCircle2, Info, LoaderCircle, Search, TriangleAlert, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -69,7 +70,13 @@ export const Dialog: React.FC<{ open: boolean; title: string; onClose: () => voi
     return () => { window.removeEventListener('keydown', onKey); previousFocus.current?.focus?.(); };
   }, [open, onClose]);
   if (!open) return null;
-  return <div className="nx-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className="nx-dialog" data-wide={wide ? 'true' : 'false'}><header><h2 id={titleId}>{title}</h2><IconButton label={t('common.closeDialog')} onClick={onClose}><X size={15} /></IconButton></header><div className="nx-dialog__body">{children}</div></div></div>;
+  return createPortal(
+    <div className="nx-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className="nx-dialog" data-wide={wide ? 'true' : 'false'}><header><h2 id={titleId}>{title}</h2><IconButton label={t('common.closeDialog')} onClick={onClose}><X size={15} /></IconButton></header><div className="nx-dialog__body">{children}</div></div></div>,
+    document.body,
+  );
 };
 
 export const SearchInput: React.FC<{ value: string; onChange: (value: string) => void; placeholder?: string; autoFocus?: boolean }> = ({ value, onChange, placeholder, autoFocus }) => { const { t } = useTranslation(); return <label className="nx-search-input"><Search size={15} aria-hidden="true" /><input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder ?? t('common.search')} autoFocus={autoFocus} /></label>; };
+
+export { ContextMenu, clampMenuPosition, contextMenuFromEvent } from './ContextMenu';
+export type { ContextMenuItem, ContextMenuPoint } from './ContextMenu';

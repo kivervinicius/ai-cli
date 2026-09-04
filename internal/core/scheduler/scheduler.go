@@ -235,7 +235,8 @@ func (s *Selector) EvaluateAll(provider string, workspace string, candidates []m
 		}
 
 		// Check quota availability via QuotaView.
-		// An agent with ANY exhausted window (0% remaining) is unavailable.
+		// A resource is unavailable only when every known model pool is
+		// exhausted; providers such as AGY expose independent pools.
 		qv := quota.BuildQuotaView(snap, acc.Email, acc.Plan)
 		if !qv.IsAvailable() {
 			ev.Eligible = false

@@ -8,7 +8,9 @@ import {
   isRecoverAlreadyAlive,
   isRequiredResourceSelection,
   runtimeIdFromRecoverResult,
+  shouldAutoRecoverAgentTerminal,
   shouldFallbackRecoverToStart,
+  nextBoundRuntimeId,
   terminalAttachFailureMessage,
   terminalReconnectDelay,
 } from './agentTerminalModel';
@@ -43,6 +45,19 @@ describe('Agent terminal model', () => {
   it('normalizes a direct-session kickoff prompt exactly once-ready for terminal input', () => {
     expect(normalizeInitialPrompt('  fix the failing tests  ')).toBe('fix the failing tests\n');
     expect(normalizeInitialPrompt('   ')).toBe('');
+  });
+  it('keeps the last live runtime id when the poll briefly omits the agent', () => {
+    expect(nextBoundRuntimeId('rt_live', '')).toBe('rt_live');
+    expect(nextBoundRuntimeId('rt_live', 'rt_next')).toBe('rt_next');
+    expect(nextBoundRuntimeId('', 'rt_1')).toBe('rt_1');
+  });
+
+  it('auto-recovers missing agent runtimes instead of looping reconnect', () => {
+    expect(shouldAutoRecoverAgentTerminal(false, '')).toBe(true);
+    expect(shouldAutoRecoverAgentTerminal(false, 'agent has no active runtime: not live')).toBe(true);
+    expect(shouldAutoRecoverAgentTerminal(true, 'Runtime host is not running (eof)')).toBe(true);
+    expect(shouldAutoRecoverAgentTerminal(true, '')).toBe(false);
+    expect(shouldAutoRecoverAgentTerminal(false, 'authentication required')).toBe(false);
   });
   it('detects fatal attach errors that must stop reconnect loops', () => {
     expect(isFatalTerminalAttachError('agent has no active runtime: not found')).toBe(true);

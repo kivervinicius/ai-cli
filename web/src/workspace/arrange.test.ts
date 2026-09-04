@@ -69,6 +69,15 @@ describe('applySharedEdgeDelta', () => {
     expect(next!.second.x).toBe(tiles[1].x + 40);
   });
 
+  it('keeps growing the geometric left tile even if ids are reversed', () => {
+    const tiles = arrangeSmart(bounds, ['a', 'b']);
+    const next = applySharedEdgeDelta(tiles[1], tiles[0], 'vertical', 40);
+    expect(next).not.toBeNull();
+    expect(next!.second.width).toBe(tiles[0].width + 40);
+    expect(next!.first.width).toBe(tiles[1].width - 40);
+    expect(next!.first.x).toBe(tiles[1].x + 40);
+  });
+
   it('rejects deltas that violate min size', () => {
     const tiles = arrangeSmart(bounds, ['a', 'b']);
     expect(applySharedEdgeDelta(tiles[0], tiles[1], 'vertical', 900)).toBeNull();

@@ -17,6 +17,25 @@ export function buildDirectAgentName(prompt: string, provider: string): string {
   return `${label} · ${short}`;
 }
 
+export function directAccountTitle(resource: { display_name?: string; provider: string; profile: string }): string {
+  const name = (resource.display_name || '').trim();
+  if (name) return name;
+  const profile = (resource.profile || '').trim();
+  if (!profile || profile === 'default') return resource.provider;
+  return `${resource.provider} (${profile})`;
+}
+
+export function directQuotaPercent(resource: {
+  quota_remaining?: number;
+  avail_reasons?: { unknown_quota?: boolean };
+  quota_view?: { status?: string };
+}): number | null {
+  const known = !resource.avail_reasons?.unknown_quota && resource.quota_view?.status !== 'UNKNOWN';
+  if (!known || !Number.isFinite(resource.quota_remaining)) return null;
+  const raw = resource.quota_remaining ?? 0;
+  return Math.round(raw * (raw <= 1 ? 100 : 1));
+}
+
 export function eligibleDirectResources<T extends DirectResourceLike>(accounts: T[], preferProvider = ''): T[] {
   const preferred = preferProvider.trim().toLowerCase();
   return accounts
