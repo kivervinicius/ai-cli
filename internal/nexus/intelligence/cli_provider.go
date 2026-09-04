@@ -143,11 +143,21 @@ func extractJSONObject(out string) ([]byte, error) {
 		if end := strings.LastIndex(trimmed, "```"); end >= 0 {
 			trimmed = trimmed[:end]
 		}
+		trimmed = strings.TrimSpace(trimmed)
 	}
 	start := strings.Index(trimmed, "{")
-	end := strings.LastIndex(trimmed, "}")
-	if start < 0 || end < start {
+	if start < 0 {
 		return nil, fmt.Errorf("no JSON object in provider output")
 	}
-	return []byte(trimmed[start : end+1]), nil
+	// Decode the first top-level JSON value so trailing prose (e.g. "OK ... {hint}")
+	// cannot poison Unmarshal with "invalid character 'O' after top-level value".
+	dec := json.NewDecoder(strings.NewReader(trimmed[start:]))
+	var raw json.RawMessage
+	if err := dec.Decode(&raw); err != nil {
+		return nil, fmt.Errorf("no JSON object in provider output: %w", err)
+	}
+	if len(raw) == 0 || raw[0] != '{' {
+		return nil, fmt.Errorf("no JSON object in provider output")
+	}
+	return []byte(raw), nil
 }

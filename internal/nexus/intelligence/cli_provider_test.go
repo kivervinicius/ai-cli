@@ -2,6 +2,7 @@ package intelligence
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -37,6 +38,28 @@ func TestCLIProviderAnalyzeParsesJSONEnvelope(t *testing.T) {
 		t.Fatal("expected a compiled CLI prompt")
 	}
 }
+
+func TestExtractJSONObjectIgnoresTrailingProseWithBraces(t *testing.T) {
+	payload, err := extractJSONObject(`{"intent":"quero ideias","scope":"project","risk_level":"low","identified_goals":["ideas"],"constraints":[],"assumptions":[]}
+OK. Prefer {option A} over {option B}.`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result IntentAnalysis
+	if err := json.Unmarshal(payload, &result); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if result.Intent != "quero ideias" {
+		t.Fatalf("unexpected intent %q", result.Intent)
+	}
+}
+
+func TestExtractJSONObjectRejectsNonObject(t *testing.T) {
+	if _, err := extractJSONObject(`OK no json here`); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 
 func TestHeadlessPromptArgsMatchSupportedProviderCLIs(t *testing.T) {
 	cases := []struct {

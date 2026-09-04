@@ -9,6 +9,7 @@ import { HandoffModal } from '../components/HandoffModal';
 import { ContinueModal } from '../components/ContinueModal';
 import { TerminalPane } from '../components/TerminalPane';
 import { AgentTerminal } from '../nexus/AgentTerminal';
+import { recoverOrStartAgent } from '../nexus/agentRecover';
 import { ResourcePicker } from '../nexus/ResourcePicker';
 import { nexus } from '../nexus/api';
 import { api } from '../api';
@@ -68,7 +69,7 @@ export const WorkspaceSurfaceHost: React.FC<{
 }) => {
   const { t } = useTranslation();
   const presentation = useWorkspacePresentation();
-  const terminalChrome = presentation.state.mode === 'DESKTOP' ? 'window' : 'full';
+  const terminalChrome = presentation.state.mode === 'DESKTOP' || presentation.state.mode === 'MOSAIC' ? 'window' : 'full';
   const agent = useMemo(
     () => agents.find((item) => item.id === surface.data?.agentId),
     [agents, surface.data?.agentId]
@@ -190,35 +191,16 @@ export const WorkspaceSurfaceHost: React.FC<{
           onRecover={async () => {
             if (!surface.data?.agentId) return;
             try {
-              const result = await (async () => {
-                try {
-                  return await nexus.recoverAgent(surface.data!.agentId!);
-                } catch (recoverErr) {
-                  const recoverMsg = recoverErr instanceof Error ? recoverErr.message : String(recoverErr);
-                  const lower = recoverMsg.toLowerCase();
-                  // Healthy runtime — refresh and reconnect; never stop+start.
-                  if (lower.includes('already alive')) {
-                    return { runtime: undefined as unknown as RuntimeSession };
-                  }
-                  const canStart =
-                    lower.includes('no recoverable') ||
-                    lower.includes('use startagent') ||
-                    lower.includes('stopped') ||
-                    lower.includes('host did not accept') ||
-                    lower.includes('no longer responding');
-                  if (!canStart) throw recoverErr;
-                  return await nexus.startAgent(surface.data!.agentId!);
-                }
-              })();
+              const result = await recoverOrStartAgent(surface.data.agentId);
               await refreshAgents();
               await refreshGlobal();
               return result?.runtime;
             } catch (err) {
-              throw new Error(
-                err instanceof Error
-                  ? err.message
-                  : 'Não foi possível iniciar ou recuperar o runtime do agente. Verifique o provedor e a conta configurados.'
-              );
+              throw err instanceof Error
+                ? err
+                : new Error(
+                    'Não foi possível iniciar ou recuperar o runtime do agente. Verifique o provedor e a conta configurados.'
+                  );
             }
           }}
           onRestartWithMode={async (newMode: 'Safe' | 'YOLO') => {
@@ -241,7 +223,7 @@ export const WorkspaceSurfaceHost: React.FC<{
                 extra_args: extraArgs,
               },
             });
-            const result = await nexus.recoverAgent(agent.id).catch(() => nexus.startAgent(agent.id));
+            const result = await recoverOrStartAgent(agent.id);
             await refreshAgents();
             await refreshGlobal();
             return result.runtime;

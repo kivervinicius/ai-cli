@@ -9,6 +9,7 @@ import {
   moveSurface,
   openSurface,
   setActiveSurface,
+  flattenToSingleStack,
   splitWithSurface,
   surfaceLogicalKey,
   surfaceViewId,
@@ -95,5 +96,14 @@ describe('workspace model', () => {
     expect(clampRatio(0.01)).toBe(0.2);
     expect(clampRatio(0.5)).toBe(0.5);
     expect(clampRatio(0.99)).toBe(0.8);
+  });
+
+  it('flattens split layouts into a single stack and drops maximize', () => {
+    let ws = splitWithSurface(createWorkspace(surface('home')), 'home', surface('terminal:a'), 'horizontal');
+    ws = { ...ws, maximizedSurfaceId: 'home' };
+    const flat = flattenToSingleStack(ws);
+    expect(flat.root.kind).toBe('stack');
+    expect(flat.maximizedSurfaceId).toBeUndefined();
+    expect(listSurfaces(flat.root).map((tab) => tab.id).sort()).toEqual(['home', 'terminal:a']);
   });
 });

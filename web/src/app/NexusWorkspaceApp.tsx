@@ -308,18 +308,11 @@ const WorkspaceCoordinator: React.FC<{
     };
   }, [shell]);
 
-  const popoutSurface = (surface: WorkspaceSurface) => {
-    const encoded = encodeURIComponent(
-      JSON.stringify({ ...surface, data: { ...surface.data, projectId: project.id } })
-    );
-    window.open(`${window.location.pathname}?popout=${encoded}`, '_blank', 'popup=yes,width=1200,height=800');
-  };
-
   const commands = useMemo<NexusCommand[]>(
     () => [
       { id: 'projects', label: t('commands.open', { name: t('projectManager.desktopsTitle') }), group: t('commands.project'), keywords: ['workspace', 'desktops', 'hub'], run: () => openKind('projects') },
       { id: 'overview', label: t('commands.open', { name: t('nav.overview') }), group: t('commands.project'), keywords: ['home'], run: () => openKind('overview') },
-      { id: 'terminals', label: t('commands.open', { name: t('nav.terminals') }), group: t('commands.project'), keywords: ['pty', 'mosaic', 'shell'], run: () => openKind('terminals') },
+      { id: 'terminals', label: t('commands.open', { name: t('nav.terminals') }), group: t('commands.project'), keywords: ['pty', 'shell'], run: () => openKind('terminals') },
       { id: 'new-ai-session', label: 'New AI Session', group: t('commands.project'), keywords: ['agent', 'session', 'direct', 'create', 'terminal'], run: openNewAISession },
       { id: 'project-shell', label: 'New Terminal', group: t('commands.project'), keywords: ['shell', 'terminal', 'bash', 'powershell'], run: () => void shell() },
       { id: 'agents', label: t('commands.open', { name: t('nav.agents') }), group: t('commands.project'), keywords: ['fleet', 'workers', 'terminals'], run: () => openKind('agents') },
@@ -398,7 +391,6 @@ const WorkspaceCoordinator: React.FC<{
           onTour={() => setWelcomeOpen(true)}
         />
       )}
-      popoutSurface={popoutSurface}
       onRequestClose={requestCloseSurface}
       createActions={{
         onNewAgent: () => setNewAgentOpen(true),

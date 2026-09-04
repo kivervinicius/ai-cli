@@ -6,7 +6,21 @@ Nexus was rebuilt from the current source and installed at `/home/desenvolvedor/
 
 ## Verification
 
-Fresh `zsh` verification and focused Nexus Go tests passed. No `nexus web` process is currently running.
+Fresh `zsh` verification and focused Nexus Go tests passed. The rebuilt
+`nexus web` process is currently active on `http://127.0.0.1:3000`.
+
+## Revisão atual — 2026-09-04
+
+Revisão técnica registrada em [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CURRENT_CODE_REVIEW.md).
+O estado é **aprovado para uso local individual em loopback**. O frontend evita
+polling concorrente e polling em background; o handler de terminal encerra
+recursos de forma idempotente e limita resize concorrente. Build final instalado:
+`nexus v0.5.0-beta.23`; Web ativo em `http://127.0.0.1:3000`.
+
+Riscos que continuam explícitos: `--remote` usa HTTP sem TLS (risco aceito para
+LAN privada), verificações de missão executam shell confiado sem sandbox hostil,
+e macOS/Windows/Safari só têm evidência de compilação/configuração, não execução
+local nesta máquina. Não há app nativo iOS.
 
 Os controles dos terminais agora exibem estados de aplicação/reinício/pronto/erro,
 feedback de lease e confirmação explícita para fechar mantendo ou parando o

@@ -9,36 +9,16 @@ import {
   isFatalTerminalAttachError,
   normalizeInitialPrompt,
   normalizeTerminalRole,
-  isRecoverAlreadyAlive,
-  shouldFallbackRecoverToStart,
+  runtimeIdFromRecoverResult,
   terminalAttachFailureMessage,
   terminalReconnectDelay,
   type TerminalRole,
 } from './agentTerminalModel';
+import { isRequiredResourceError, recoverOrStartAgent } from './agentRecover';
+import { ResourcePicker } from './ResourcePicker';
 import { TerminalActionDialog } from './TerminalActionDialog';
 import { scrubProtocolOutput } from './terminalProtocol';
 import type { RuntimeSession } from '../types';
-
-async function recoverOrStartAgent(agentId: string) {
-  try {
-    return await nexus.recoverAgent(agentId);
-  } catch (recoverErr) {
-    const recoverMsg = recoverErr instanceof Error ? recoverErr.message : String(recoverErr);
-    // Healthy runtime: soft-success so the caller rebinds/reconnects without killing the session.
-    if (isRecoverAlreadyAlive(recoverMsg)) {
-      return { runtime: undefined as unknown as RuntimeSession };
-    }
-    if (!shouldFallbackRecoverToStart(recoverMsg)) {
-      throw recoverErr;
-    }
-    try {
-      return await nexus.startAgent(agentId);
-    } catch (startErr) {
-      const startMsg = startErr instanceof Error ? startErr.message : String(startErr);
-      throw new Error(`${recoverMsg} · Start: ${startMsg}`);
-    }
-  }
-}
 
 export const AgentTerminal: React.FC<{
   agentId: string;
@@ -75,10 +55,22 @@ export const AgentTerminal: React.FC<{
   const [pendingMode, setPendingMode] = useState<'Safe' | 'YOLO' | null>(null);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [needsResourceSelection, setNeedsResourceSelection] = useState(false);
 
   useEffect(() => {
     setBoundRuntimeId(runtimeId || '');
   }, [runtimeId]);
+
+  const rebindTerminal = (nextRuntimeId?: string) => {
+    const trimmed = (nextRuntimeId || '').trim();
+    if (trimmed) setBoundRuntimeId(trimmed);
+    setNeedsResourceSelection(false);
+    setMessage('');
+    setConnection('CONNECTING');
+    // Always bump nonce — parent may already have synced the same runtime_id,
+    // so boundRuntimeId alone would not remount the WebSocket effect.
+    setConnectNonce((n) => n + 1);
+  };
 
   useEffect(() => {
     const container = containerRef.current;
@@ -275,23 +267,38 @@ export const AgentTerminal: React.FC<{
 
   const handleManualStartOrRecover = async () => {
     setRecovering(true);
+    setNeedsResourceSelection(false);
     setMessage('Iniciando runtime do agente…');
     try {
       let nextRuntimeId = '';
       if (onRecover) {
         const result = await onRecover();
-        nextRuntimeId = result?.runtime_id || '';
+        nextRuntimeId = runtimeIdFromRecoverResult(result);
       } else {
         const result = await recoverOrStartAgent(agentId);
-        nextRuntimeId = result?.runtime?.runtime_id || '';
+        nextRuntimeId = runtimeIdFromRecoverResult(result);
       }
-      if (nextRuntimeId) {
-        setBoundRuntimeId(nextRuntimeId);
-        setMessage('');
-        setConnection('CONNECTING');
-        return;
+      rebindTerminal(nextRuntimeId);
+    } catch (e) {
+      if (isRequiredResourceError(e)) {
+        setNeedsResourceSelection(true);
+        setMessage('Selecione um provedor/conta para iniciar o runtime deste agente.');
+        setConnection('ERROR');
+      } else {
+        setMessage(e instanceof Error ? e.message : String(e));
+        setConnection('ERROR');
       }
-      setConnectNonce((n) => n + 1);
+    } finally {
+      setRecovering(false);
+    }
+  };
+
+  const handleResourceSelected = async () => {
+    setRecovering(true);
+    setMessage('Iniciando runtime com o recurso selecionado…');
+    try {
+      const result = await nexus.startAgent(agentId);
+      rebindTerminal(runtimeIdFromRecoverResult(result));
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
       setConnection('ERROR');
@@ -365,11 +372,7 @@ export const AgentTerminal: React.FC<{
       const nextRuntime = await onRestartWithMode(nextMode);
       setModeAction('Restarting');
       setMessage('Reiniciando runtime…');
-      if (nextRuntime?.runtime_id) {
-        setBoundRuntimeId(nextRuntime.runtime_id);
-      } else {
-        setConnectNonce((nonce) => nonce + 1);
-      }
+      rebindTerminal(nextRuntime?.runtime_id);
       setSelectedMode(nextMode);
     } catch (error) {
       setModeAction('Error');
@@ -601,13 +604,29 @@ export const AgentTerminal: React.FC<{
               {message}
             </p>
           )}
+          {needsResourceSelection && (
+            <div
+              style={{
+                width: 'min(520px, 100%)',
+                maxHeight: '40vh',
+                overflow: 'auto',
+                textAlign: 'left',
+                border: '1px solid var(--nx-border)',
+                borderRadius: 8,
+                padding: 10,
+                background: 'var(--nx-bg-elevated)',
+              }}
+            >
+              <ResourcePicker agentId={agentId} preferProvider={provider} onSelected={() => void handleResourceSelected()} />
+            </div>
+          )}
           <div style={{ display: 'flex', gap: '8px', marginTop: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
             <button
               type="button"
               className="nx-button"
               data-tone="brand"
               disabled={recovering}
-              onClick={handleManualStartOrRecover}
+              onClick={() => void handleManualStartOrRecover()}
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
               {recovering ? <RefreshCw size={13} className="nx-spin-slow" /> : <Play size={13} />}
@@ -616,7 +635,10 @@ export const AgentTerminal: React.FC<{
             <button
               type="button"
               className="nx-button"
+              title="Reabre só o WebSocket; não relança o processo do agente"
               onClick={() => {
+                setMessage('Reconectando transporte…');
+                setConnection('CONNECTING');
                 if (containerRef.current && (containerRef.current as any).__triggerReconnect) {
                   (containerRef.current as any).__triggerReconnect();
                 } else {
@@ -626,7 +648,7 @@ export const AgentTerminal: React.FC<{
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
               <RefreshCw size={13} />
-              <span>Tentar Conectar</span>
+              <span>Reconectar WS</span>
             </button>
             {onDelete && (
               <button

@@ -391,6 +391,9 @@ func controlStatusCmd(args []string) error {
 	fmt.Printf("Control Level:      %s\n", st.ControlLevel)
 	fmt.Printf("Workspace:          %s\n", st.Workspace)
 	fmt.Printf("Started At:         %s\n", st.StartedAt.Format(time.RFC3339))
+	if st.DroppedOutputChunks > 0 {
+		fmt.Printf("Dropped Output:     %d chunks (slow consumer)\n", st.DroppedOutputChunks)
+	}
 	return nil
 }
 

@@ -629,10 +629,14 @@ func TestMissionRunnerPersistsDispatchIntentBeforeProviderExecution(t *testing.T
 	contract.VerificationCommands = []string{"true"}
 	plan := PlanSpec{ID: "dispatch-intent", ProjectID: "proj", Revision: 1, Packages: []PackageSpec{{ID: "pkg", Title: "P", Goal: "G"}}}
 	run, err := r.StartMissionRun(context.Background(), plan, t.TempDir(), contract, "")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < 4; i++ {
 		updated, _, stepErr := r.ExecuteNextStep(context.Background(), run.ID)
-		if stepErr != nil { t.Fatal(stepErr) }
+		if stepErr != nil {
+			t.Fatal(stepErr)
+		}
 		run = updated
 	}
 	if !exec.intentPersisted {
@@ -651,11 +655,15 @@ func TestMissionRunnerRestartRefusesUnknownInFlightDispatch(t *testing.T) {
 	contract.VerificationCommands = []string{"true"}
 	plan := PlanSpec{ID: "dispatch-restart", ProjectID: "proj", Revision: 1, Packages: []PackageSpec{{ID: "pkg", Title: "P", Goal: "G"}}}
 	run, err := r.StartMissionRun(context.Background(), plan, t.TempDir(), contract, "")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	run.PackageRuns[0].State = StateExecuting
 	run.PackageRuns[0].DispatchID = "dispatch-crash-window"
 	run.PackageRuns[0].DispatchState = DispatchIntent
-	if err := repo.SaveRun(context.Background(), run); err != nil { t.Fatal(err) }
+	if err := repo.SaveRun(context.Background(), run); err != nil {
+		t.Fatal(err)
+	}
 
 	restarted := NewMissionRunner(repo, exec)
 	updated, _, err := restarted.ExecuteNextStep(context.Background(), run.ID)
@@ -682,12 +690,18 @@ func TestMissionRunnerParallelGroupPersistsAllDispatchIntentsBeforeLaunch(t *tes
 		{ID: "api", Title: "API", ParallelGroup: "build"},
 	}}
 	run, err := r.StartMissionRun(context.Background(), plan, t.TempDir(), contract, "")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < 7; i++ {
 		updated, _, stepErr := r.ExecuteNextStep(context.Background(), run.ID)
-		if stepErr != nil { t.Fatal(stepErr) }
+		if stepErr != nil {
+			t.Fatal(stepErr)
+		}
 		run = updated
-		if exec.executedCount() > 0 { break }
+		if exec.executedCount() > 0 {
+			break
+		}
 	}
 	if !exec.allGroupPersisted {
 		t.Fatal("all parallel dispatch intents must be persisted before any provider goroutine launches")

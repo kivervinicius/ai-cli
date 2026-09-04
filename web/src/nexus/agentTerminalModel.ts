@@ -56,16 +56,35 @@ export function isRecoverAlreadyAlive(message: string): boolean {
   return (message || '').toLowerCase().includes('already alive');
 }
 
+/** Start/Recover needs an explicit provider allocation first. */
+export function isRequiredResourceSelection(message: string): boolean {
+  return (message || '').toLowerCase().includes('required_resource_selection');
+}
+
 /** Whether a recover failure should fall through to StartAgent. */
 export function shouldFallbackRecoverToStart(message: string): boolean {
   const lower = (message || '').toLowerCase();
   if (isRecoverAlreadyAlive(lower)) return false;
+  if (isRequiredResourceSelection(lower)) return false;
   return (
     lower.includes('no recoverable runtime') ||
     lower.includes('use startagent') ||
     lower.includes('agent is stopped') ||
     lower.includes('host did not accept') ||
     lower.includes('no longer responding') ||
-    lower.includes('runtime not found')
+    lower.includes('runtime not found') ||
+    lower.includes('not live')
   );
+}
+
+/** Extract runtime_id from Recover/Start API shapes used by the terminal overlay. */
+export function runtimeIdFromRecoverResult(result: unknown): string {
+  if (!result || typeof result !== 'object') return '';
+  const record = result as { runtime_id?: unknown; runtime?: { runtime_id?: unknown } };
+  const direct = typeof record.runtime_id === 'string' ? record.runtime_id.trim() : '';
+  if (direct) return direct;
+  const nested = record.runtime && typeof record.runtime.runtime_id === 'string'
+    ? record.runtime.runtime_id.trim()
+    : '';
+  return nested;
 }

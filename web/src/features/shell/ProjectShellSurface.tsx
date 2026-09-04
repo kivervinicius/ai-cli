@@ -9,9 +9,13 @@ export const ProjectShellSurface: React.FC<{
   onRuntimeChanged?: () => void | Promise<void>;
 }> = ({ runtimeId, title = 'Project Shell', onRuntimeChanged }) => {
   const presentation = useWorkspacePresentation();
-  const hideHeader = presentation.state.mode === 'DESKTOP';
+  const hideHeader = presentation.state.mode === 'DESKTOP' || presentation.state.mode === 'MOSAIC';
   return (
-    <div className="nx-agent-terminal-surface nx-project-shell-surface" data-runtime-id={runtimeId} data-chrome={hideHeader ? 'window' : 'full'}>
+    <div
+      className="nx-agent-terminal-surface nx-project-shell-surface"
+      data-runtime-id={runtimeId}
+      data-chrome={hideHeader ? 'window' : 'full'}
+    >
       <TerminalPane
         runtimeId={runtimeId}
         title={title}

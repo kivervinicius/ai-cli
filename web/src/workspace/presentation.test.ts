@@ -7,6 +7,7 @@ import {
   rearrangeSmart,
   resizeAdjacentDesktopWindows,
   resizeDesktopWindow,
+  setPresentationMode,
   syncDesktopWindows,
   toggleDesktopMaximize,
   toggleDesktopMinimize,
@@ -39,13 +40,30 @@ describe('workspace presentation', () => {
     expect(Object.keys(state.windows).sort()).toEqual(['view:a', 'view:shell']);
   });
 
-  it('tiles new windows with Smart layout instead of cascade', () => {
+  it('cascades new windows instead of Smart tiling', () => {
     let state = createPresentationState('DESKTOP');
     state = { ...state, canvas: { x: 8, y: 8, width: 1000, height: 600 } };
     state = syncDesktopWindows(state, [surface('a'), surface('b')]);
     expect(state.windows['view:a'].x).toBe(8);
+    expect(state.windows['view:a'].y).toBe(8);
     expect(state.windows['view:b'].x).toBeGreaterThan(state.windows['view:a'].x);
-    expect(state.tiled).toBe(true);
+    expect(state.windows['view:b'].y).toBeGreaterThan(state.windows['view:a'].y);
+    expect(state.tiled).toBe(false);
+  });
+
+  it('preserves existing geometry when syncing additional PTYs', () => {
+    let state = syncDesktopWindows(
+      { ...createPresentationState('DESKTOP'), canvas: { x: 8, y: 8, width: 1000, height: 600 } },
+      [surface('a')]
+    );
+    state = moveDesktopWindow(state, 'view:a', 200, 140);
+    const before = { ...state.windows['view:a'] };
+    state = syncDesktopWindows(state, [surface('a'), surface('b')]);
+    expect(state.windows['view:a'].x).toBe(before.x);
+    expect(state.windows['view:a'].y).toBe(before.y);
+    expect(state.windows['view:a'].width).toBe(before.width);
+    expect(state.windows['view:b']).toBeDefined();
+    expect(state.windows['view:b'].x).not.toBe(before.x);
   });
 
   it('focuses without changing logical view identity', () => {
@@ -64,55 +82,47 @@ describe('workspace presentation', () => {
     expect(state.activePtyViewId).toBe('view:b');
   });
 
-  it('ignores free-float moves in tiling v1', () => {
+  it('persists free-float moves', () => {
     let state = syncDesktopWindows(createPresentationState('DESKTOP'), [surface('a')]);
-    const before = { ...state.windows['view:a'] };
     state = moveDesktopWindow(state, 'view:a', 120, 80);
-    expect(state.windows['view:a'].x).toBe(before.x);
-    expect(state.windows['view:a'].y).toBe(before.y);
+    expect(state.windows['view:a'].x).toBe(120);
+    expect(state.windows['view:a'].y).toBe(80);
+    expect(state.tiled).toBe(false);
   });
 
-  it('records custom resize as non-tiled geometry', () => {
+  it('records custom resize as free-float geometry', () => {
     let state = syncDesktopWindows(createPresentationState('DESKTOP'), [surface('a')]);
     state = resizeDesktopWindow(state, 'view:a', 900, 640);
     expect(state.windows['view:a']).toMatchObject({ width: 900, height: 640 });
     expect(state.tiled).toBe(false);
   });
 
-  it('persists adjacent splitter deltas', () => {
-    let state = {
-      ...createPresentationState('DESKTOP'),
-      canvas: { x: 8, y: 8, width: 1000, height: 600 },
-    };
-    state = syncDesktopWindows(state, [surface('a'), surface('b')]);
-    const beforeA = state.windows['view:a'].width;
-    const beforeB = state.windows['view:b'].width;
-    state = resizeAdjacentDesktopWindows(state, 'view:a', 'view:b', 'vertical', 50);
-    expect(state.windows['view:a'].width).toBe(beforeA + 50);
-    expect(state.windows['view:b'].width).toBe(beforeB - 50);
-    expect(state.tiled).toBe(false);
-  });
-
-  it('minimizes and maximizes as presentation-only state', () => {
-    let state = syncDesktopWindows(createPresentationState('DESKTOP'), [surface('a'), surface('b')]);
+  it('minimizes without rearranging siblings', () => {
+    let state = syncDesktopWindows(
+      { ...createPresentationState('DESKTOP'), canvas: { x: 8, y: 8, width: 1000, height: 600 } },
+      [surface('a'), surface('b')]
+    );
+    state = moveDesktopWindow(state, 'view:b', 300, 200);
+    const beforeB = { ...state.windows['view:b'] };
     state = toggleDesktopMinimize(state, 'view:a');
     expect(state.windows['view:a'].minimized).toBe(true);
-    expect(state.windows['view:b'].minimized).toBe(false);
+    expect(state.windows['view:b'].x).toBe(beforeB.x);
+    expect(state.windows['view:b'].y).toBe(beforeB.y);
     state = toggleDesktopMaximize(state, 'view:b');
     expect(state.windows['view:b'].maximized).toBe(true);
   });
 
-  it('rearranges visible windows with Smart', () => {
+  it('rearranges visible windows with cascade helper', () => {
     let state = syncDesktopWindows(
       { ...createPresentationState('DESKTOP'), canvas: { x: 0, y: 0, width: 800, height: 600 } },
       [surface('a'), surface('b'), surface('c')]
     );
     state = rearrangeSmart(state);
     expect(Object.keys(state.windows)).toHaveLength(3);
-    expect(state.tiled).toBe(true);
+    expect(state.tiled).toBe(false);
   });
 
-  it('migrates v1 cascade state to tiled v2', () => {
+  it('preserves DESKTOP mode on migrate and disables tiled mosaic', () => {
     const migrated = migratePresentationState({
       version: 1,
       mode: 'DESKTOP',
@@ -122,7 +132,8 @@ describe('workspace presentation', () => {
       nextZ: 2,
     });
     expect(migrated.version).toBe(2);
-    expect(migrated.tiled).toBe(true);
+    expect(migrated.mode).toBe('DESKTOP');
+    expect(migrated.tiled).toBe(false);
     expect(migrated.canvas.width).toBeGreaterThan(0);
   });
 
@@ -131,5 +142,42 @@ describe('workspace presentation', () => {
     state = syncDesktopWindows(state, [surface('a')]);
     expect(state.windows['view:a']).toBeDefined();
     expect(state.windows['view:b']).toBeUndefined();
+  });
+
+  it('tiles visible windows in MOSAIC and retile on minimize', () => {
+    let state = syncDesktopWindows(
+      { ...createPresentationState('MOSAIC'), canvas: { x: 8, y: 8, width: 1000, height: 600 } },
+      [surface('a'), surface('b')]
+    );
+    state = setPresentationMode(state, 'MOSAIC');
+    expect(state.mode).toBe('MOSAIC');
+    expect(state.tiled).toBe(true);
+    expect(state.windows['view:a'].width + state.windows['view:b'].width).toBeGreaterThan(500);
+    const beforeA = { ...state.windows['view:a'] };
+    state = toggleDesktopMinimize(state, 'view:b');
+    expect(state.windows['view:b'].minimized).toBe(true);
+    expect(state.windows['view:a'].width).toBeGreaterThan(beforeA.width);
+  });
+
+  it('resizes adjacent mosaic tiles and ignores free-float move', () => {
+    let state = setPresentationMode(
+      syncDesktopWindows(
+        { ...createPresentationState('DESKTOP'), canvas: { x: 0, y: 0, width: 800, height: 400 } },
+        [surface('a'), surface('b')]
+      ),
+      'MOSAIC'
+    );
+    const left = state.windows['view:a'];
+    const right = state.windows['view:b'];
+    const moved = moveDesktopWindow(state, 'view:a', 40, 40);
+    expect(moved.windows['view:a'].x).toBe(left.x);
+    state = resizeAdjacentDesktopWindows(state, 'view:a', 'view:b', 'vertical', 40);
+    expect(state.windows['view:a'].width).toBe(left.width + 40);
+    expect(state.windows['view:b'].width).toBe(right.width - 40);
+  });
+
+  it('migrates MOSAIC mode', () => {
+    const migrated = migratePresentationState({ version: 2, mode: 'MOSAIC', windows: {}, nextZ: 1 });
+    expect(migrated.mode).toBe('MOSAIC');
   });
 });

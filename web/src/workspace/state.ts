@@ -1,4 +1,4 @@
-import { normalizeSurface, surfaceLogicalKey, type WorkspaceModel, type WorkspaceNode, type WorkspaceSurface } from './model';
+import { flattenToSingleStack, normalizeSurface, surfaceLogicalKey, type WorkspaceModel, type WorkspaceNode, type WorkspaceSurface } from './model';
 
 function validNode(node: unknown): node is WorkspaceNode {
   if (!node || typeof node !== 'object') return false;
@@ -117,14 +117,12 @@ function pruneNode(node: WorkspaceNode): WorkspaceNode | null {
   return { ...node, first, second };
 }
 
-function migrate(root: WorkspaceNode, fallback: WorkspaceModel, projectId?: string, maximizedSurfaceId?: string): WorkspaceModel {
+function migrate(root: WorkspaceNode, fallback: WorkspaceModel, projectId?: string): WorkspaceModel {
   const seen = new Set<string>();
   const normalizedRoot = normalizeNode(root, seen, projectId);
   const pruned = pruneNode(normalizedRoot);
   if (!pruned) return fallback;
-  const result: WorkspaceModel = { version: 2, root: pruned };
-  if (maximizedSurfaceId) result.maximizedSurfaceId = maximizedSurfaceId;
-  return result;
+  return flattenToSingleStack({ version: 2, root: pruned });
 }
 
 export function deserializeWorkspace(raw: string | null | undefined, fallback: WorkspaceModel, projectId?: string): WorkspaceModel {
@@ -133,7 +131,7 @@ export function deserializeWorkspace(raw: string | null | undefined, fallback: W
     const parsed = JSON.parse(raw) as { version?: number; root?: WorkspaceNode; maximizedSurfaceId?: string };
     const effectiveProj = projectId || (fallback.root.kind === 'stack' ? fallback.root.tabs[0]?.data?.projectId : undefined);
     if ((parsed.version === 1 || parsed.version === 2) && validNode(parsed.root)) {
-      return migrate(parsed.root, fallback, effectiveProj, parsed.maximizedSurfaceId);
+      return migrate(parsed.root, fallback, effectiveProj);
     }
     return fallback;
   } catch { return fallback; }

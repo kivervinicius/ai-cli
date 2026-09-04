@@ -9,6 +9,7 @@ import {
   resizeDesktopWindow,
   setActivePtyView,
   setPresentationCanvas,
+  setPresentationMode,
   syncDesktopWindows,
   toggleDesktopMaximize,
   toggleDesktopMinimize,
@@ -61,7 +62,7 @@ type Action =
 
 function reducer(state: WorkspacePresentationState, action: Action): WorkspacePresentationState {
   switch (action.type) {
-    case 'mode': return { ...state, mode: action.mode };
+    case 'mode': return setPresentationMode(state, action.mode);
     case 'sync': return syncDesktopWindows(state, action.surfaces);
     case 'focus': return focusDesktopWindow(state, action.viewId);
     case 'setActivePty': return setActivePtyView(state, action.viewId);

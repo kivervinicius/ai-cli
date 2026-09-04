@@ -79,6 +79,16 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 	}
 	defer client.Close()
 
+	stopChan := make(chan struct{})
+	var stopOnce sync.Once
+	stop := func() {
+		stopOnce.Do(func() {
+			close(stopChan)
+			_ = ws.Close()
+		})
+	}
+	defer stop()
+
 	// Attach to host
 	resp, err := client.Send(protocol.CmdAttach, nil)
 	if err != nil {
@@ -92,7 +102,21 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 	_ = client.ClearDeadline()
 
 	rawConn := client.RawConn()
-	stopChan := make(chan struct{})
+	resizeRequests := make(chan [2]int, 1)
+	go func() {
+		for {
+			select {
+			case <-stopChan:
+				return
+			case size := <-resizeRequests:
+				rpcClient, err := protocol.NewClient(runtimeID)
+				if err == nil {
+					_ = rpcClient.Resize(size[0], size[1])
+					_ = rpcClient.Close()
+				}
+			}
+		}
+	}()
 
 	// Keep the SessionHost writer authority aligned with the Agent-level
 	// broker. The command is deliberately sent over this connection *after*
@@ -112,7 +136,7 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 	if ch := DefaultBroker().WatchRuntimeChanged(agentID); ch != nil {
 		go func() {
 			<-ch
-			_ = ws.Close()
+			stop()
 		}()
 	}
 
@@ -243,6 +267,7 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 							Data: string(pending),
 						})
 					}
+					stop()
 					return
 				}
 			}
@@ -253,7 +278,7 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 	for {
 		var msg TerminalMessage
 		if err := ws.ReadJSON(&msg); err != nil {
-			close(stopChan)
+			stop()
 			return
 		}
 
@@ -266,13 +291,20 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 
 		case "resize":
 			if msg.Rows > 0 && msg.Cols > 0 {
-				go func(r, c int) {
-					rpcClient, err := protocol.NewClient(runtimeID)
-					if err == nil {
-						_ = rpcClient.Resize(r, c)
-						_ = rpcClient.Close()
+				size := [2]int{msg.Rows, msg.Cols}
+				select {
+				case resizeRequests <- size:
+				default:
+					// Keep only the newest dimensions while the RPC worker is busy.
+					select {
+					case <-resizeRequests:
+					default:
 					}
-				}(msg.Rows, msg.Cols)
+					select {
+					case resizeRequests <- size:
+					default:
+					}
+				}
 			}
 
 		case "lease_acquire":

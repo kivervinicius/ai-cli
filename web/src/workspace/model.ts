@@ -74,6 +74,24 @@ export function createWorkspace(surface: WorkspaceSurface): WorkspaceModel {
   return { version: 2, root: createStack(surface) };
 }
 
+/** Collapse split/maximize layouts into one tab stack so PTYs stay under Terminais. */
+export function flattenToSingleStack(model: WorkspaceModel): WorkspaceModel {
+  const tabs = listSurfaces(model.root);
+  if (model.root.kind === 'stack' && !model.maximizedSurfaceId) return model;
+  const stacks = listStacks(model.root);
+  const preferredActive =
+    stacks.map((stack) => stack.activeId).find((id) => tabs.some((tab) => tab.id === id)) || tabs[0]?.id || '';
+  return {
+    version: 2,
+    root: {
+      kind: 'stack',
+      id: model.root.kind === 'stack' ? model.root.id : nextId('stack'),
+      tabs,
+      activeId: preferredActive,
+    },
+  };
+}
+
 export function clampRatio(ratio: number): number {
   return Math.min(0.8, Math.max(0.2, Number.isFinite(ratio) ? ratio : 0.5));
 }

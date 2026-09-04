@@ -247,6 +247,25 @@ func TestRecoverWithoutGenerationFails(t *testing.T) {
 	}
 }
 
+func TestRecoverAlreadyAliveReturnsSession(t *testing.T) {
+	n := openTestNexus(t)
+	st, _ := n.OpenProject()
+	proj, _ := st.CreateProject(store.Project{Name: "P", CanonicalPath: t.TempDir()})
+	agent, _ := st.CreateAgent(store.Agent{ProjectID: proj.ID, Name: "Dev"})
+
+	started, err := n.StartAgent(context.Background(), agent.ID, "fake", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := n.RecoverAgent(context.Background(), agent.ID)
+	if err != nil {
+		t.Fatalf("RecoverAgent while alive: %v", err)
+	}
+	if recovered == nil || recovered.RuntimeID != started.RuntimeID {
+		t.Fatalf("expected idempotent recover to return live session %s, got %#v", started.RuntimeID, recovered)
+	}
+}
+
 // --- Recover stopped agent ---
 
 func TestRecoverStoppedAgentFails(t *testing.T) {

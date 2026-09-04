@@ -36,22 +36,22 @@ type Config struct {
 
 // SessionHost manages a single supervised process runtime and its IPC listener.
 type SessionHost struct {
-	mu           sync.RWMutex
-	session      registry.RuntimeSession
-	cfg          Config
-	cmd          *exec.Cmd
-	termBackend  terminal.Backend
-	ringBuffer   *RingBuffer
-	fanout       *BoundedFanout
-	listener     net.Listener
-	clients      map[net.Conn]bool
-	activeWriter net.Conn
+	mu                    sync.RWMutex
+	session               registry.RuntimeSession
+	cfg                   Config
+	cmd                   *exec.Cmd
+	termBackend           terminal.Backend
+	ringBuffer            *RingBuffer
+	fanout                *BoundedFanout
+	listener              net.Listener
+	clients               map[net.Conn]bool
+	activeWriter          net.Conn
 	pendingControlCommand string
-	stopChan     chan struct{}
-	doneChan     chan struct{}
-	prefixRouter *SlashPrefixRouter
-	detector     *AttentionDetector
-	stopOnce     sync.Once
+	stopChan              chan struct{}
+	doneChan              chan struct{}
+	prefixRouter          *SlashPrefixRouter
+	detector              *AttentionDetector
+	stopOnce              sync.Once
 }
 
 // NewSessionHost creates a new SessionHost for a given runtime.
@@ -382,16 +382,18 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		resp, _ = protocol.NewResponse("pong")
 
 	case protocol.CmdStatus:
+		fanoutStats := sh.fanout.Stats()
 		resp, _ = protocol.NewResponse(protocol.StatusData{
-			RuntimeID:         sh.session.RuntimeID,
-			ProviderID:        sh.session.ProviderID,
-			ProfileID:         sh.session.ProfileID,
-			ProviderSessionID: sh.session.ProviderSessionID,
-			Workspace:         sh.session.Workspace,
-			PID:               sh.session.PID,
-			State:             string(sh.session.State),
-			ControlLevel:      string(sh.session.ControlLevel),
-			StartedAt:         sh.session.StartedAt,
+			RuntimeID:           sh.session.RuntimeID,
+			ProviderID:          sh.session.ProviderID,
+			ProfileID:           sh.session.ProfileID,
+			ProviderSessionID:   sh.session.ProviderSessionID,
+			Workspace:           sh.session.Workspace,
+			PID:                 sh.session.PID,
+			State:               string(sh.session.State),
+			ControlLevel:        string(sh.session.ControlLevel),
+			StartedAt:           sh.session.StartedAt,
+			DroppedOutputChunks: fanoutStats.DroppedChunks,
 		})
 
 	case protocol.CmdAttach:

@@ -566,7 +566,12 @@ func (n *Nexus) RecoverAgent(ctx context.Context, agentID string) (*registry.Run
 	gen, gerr := st.CurrentGeneration(agentID)
 	if gerr == nil && gen.RuntimeID != "" {
 		if n.runtimeAlive(gen.RuntimeID) {
-			return nil, fmt.Errorf("agent runtime is already alive (no recovery needed)")
+			// Idempotent recover: return the live session so clients can rebind
+			// the terminal without stop+start or an opaque 409.
+			if sess, ok := registry.DefaultRegistry().Get(gen.RuntimeID); ok {
+				cp := sess
+				return &cp, nil
+			}
 		}
 		// Registry may still list a zombie/unreachable runtime — clear it so
 		// Launch can register a new generation.

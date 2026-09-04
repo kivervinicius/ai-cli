@@ -96,25 +96,25 @@ func ExtractOSCTitle(raw string) string {
 // PTY regex is only a TERMINAL-mode fallback: when ControlLevel is EVENTS/CONTROL_API
 // (structured provider events), ProcessChunk is a no-op for classification.
 type AttentionDetector struct {
-	mu                 sync.Mutex
-	runtimeID          string
-	providerID         string
-	profileID          string
-	workspace          string
-	projectID          string
-	projectName        string
-	agentID            string
-	controlLevel       registry.ControlLevel
-	structuredEvents   bool
-	buffer             strings.Builder
-	lastState          registry.RuntimeState
-	lastReason         string
-	lastKind           string
-	lastPrompt         string
-	lastTitle          string
-	lastFingerprint    string
-	lastUpdateAt       time.Time
-	onAttention        func(reason, context, dynamicTitle string, state registry.RuntimeState)
+	mu               sync.Mutex
+	runtimeID        string
+	providerID       string
+	profileID        string
+	workspace        string
+	projectID        string
+	projectName      string
+	agentID          string
+	controlLevel     registry.ControlLevel
+	structuredEvents bool
+	buffer           strings.Builder
+	lastState        registry.RuntimeState
+	lastReason       string
+	lastKind         string
+	lastPrompt       string
+	lastTitle        string
+	lastFingerprint  string
+	lastUpdateAt     time.Time
+	onAttention      func(reason, context, dynamicTitle string, state registry.RuntimeState)
 }
 
 // NewAttentionDetector creates an attention detector for a session.

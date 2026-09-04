@@ -6,6 +6,8 @@ import {
   normalizeInitialPrompt,
   normalizeTerminalRole,
   isRecoverAlreadyAlive,
+  isRequiredResourceSelection,
+  runtimeIdFromRecoverResult,
   shouldFallbackRecoverToStart,
   terminalAttachFailureMessage,
   terminalReconnectDelay,
@@ -56,5 +58,13 @@ describe('Agent terminal model', () => {
   it('treats already-alive recover as soft success, not stop+start', () => {
     expect(isRecoverAlreadyAlive('agent runtime is already alive (no recovery needed)')).toBe(true);
     expect(shouldFallbackRecoverToStart('agent runtime is already alive (no recovery needed)')).toBe(false);
+  });
+
+  it('detects required resource selection and extracts runtime ids', () => {
+    expect(isRequiredResourceSelection('REQUIRED_RESOURCE_SELECTION: agent x')).toBe(true);
+    expect(shouldFallbackRecoverToStart('REQUIRED_RESOURCE_SELECTION: agent x')).toBe(false);
+    expect(runtimeIdFromRecoverResult({ runtime_id: 'rt_1' })).toBe('rt_1');
+    expect(runtimeIdFromRecoverResult({ runtime: { runtime_id: 'rt_2' } })).toBe('rt_2');
+    expect(runtimeIdFromRecoverResult({})).toBe('');
   });
 });

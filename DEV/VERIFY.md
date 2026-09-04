@@ -215,8 +215,21 @@ All business logic lives in `internal/nexus/` (service layer). Web and TUI consu
 - Full E2E verification with live providers
 - Performance benchmarks
 
+## Review final — 2026-09-04
+
+- `go test -count=1 ./...`: PASS
+- `go vet ./...`: PASS
+- `go test -race -count=1 ./internal/control/... ./internal/nexus/... ./internal/core/security/... ./internal/core/session/...`: PASS
+- `make web-verify`: PASS (typecheck, lint, null-arrays, 188 testes, build, embed-sync, ui-markers)
+- `npm audit --offline --omit=dev --audit-level=high`: 0 vulnerabilidades
+- Cross-build `linux/amd64`, `darwin/amd64`, `windows/amd64`: PASS
+- `git diff --check`: PASS
+- Smoke final `/api/v1/health`: HTTP 200; bootstrap: HTTP 302; servidor ativo em `127.0.0.1:3000`
+
+Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CURRENT_CODE_REVIEW.md).
+
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-04T00:18:11Z
+## Frontend gate — 2026-09-04T03:04:12Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/buildinfo"
+	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	coreconfig "github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/nexus"
 	"github.com/kivervinicius/ai-cli/internal/nexus/intelligence"
@@ -488,7 +489,9 @@ func (h *NexusHandler) handleAgentRecover(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]any{"runtime": sess})
 }
 
-// resolveAgentRuntimeID maps an agent to its current runtime generation ID.
+// resolveAgentRuntimeID maps an agent to its current live runtime ID.
+// A DB generation alone is not enough: after nexus web restart the generation
+// may still point at a dead id. Only return ids present in the live registry.
 func (h *NexusHandler) resolveAgentRuntimeID(agentID string) (string, error) {
 	st, err := h.nexus.OpenProject()
 	if err != nil {
@@ -497,6 +500,12 @@ func (h *NexusHandler) resolveAgentRuntimeID(agentID string) (string, error) {
 	gen, err := st.CurrentGeneration(agentID)
 	if err != nil {
 		return "", err
+	}
+	if gen.RuntimeID == "" {
+		return "", fmt.Errorf("empty runtime generation")
+	}
+	if _, ok := registry.DefaultRegistry().Get(gen.RuntimeID); !ok {
+		return "", fmt.Errorf("runtime generation %s is not live", gen.RuntimeID)
 	}
 	return gen.RuntimeID, nil
 }

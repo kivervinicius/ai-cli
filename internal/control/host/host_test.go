@@ -439,27 +439,43 @@ func TestSessionHost_SubmitPromptBypassesSlashRouterWithoutStealingWriterLease(t
 	runtimeID := "rt-submit-prompt-test"
 	sess := registry.RuntimeSession{RuntimeID: runtimeID, ProviderID: "test", ProfileID: "default", Workspace: os.TempDir(), State: registry.StateStarting, ControlLevel: registry.ControlLevelTerminal}
 	sh, err := NewSessionHost(Config{Session: sess, Binary: "cat", Env: os.Environ(), Cwd: os.TempDir()})
-	if err != nil { t.Fatalf("failed to create SessionHost: %v", err) }
-	if err := sh.Start(); err != nil { t.Fatalf("failed to start SessionHost: %v", err) }
+	if err != nil {
+		t.Fatalf("failed to create SessionHost: %v", err)
+	}
+	if err := sh.Start(); err != nil {
+		t.Fatalf("failed to start SessionHost: %v", err)
+	}
 	defer sh.Stop()
 	time.Sleep(100 * time.Millisecond)
 
 	writer, err := protocol.NewClient(runtimeID)
-	if err != nil { t.Fatalf("writer connect: %v", err) }
+	if err != nil {
+		t.Fatalf("writer connect: %v", err)
+	}
 	defer writer.Close()
-	if _, err := writer.Send(protocol.CmdAttach, nil); err != nil { t.Fatalf("attach writer: %v", err) }
+	if _, err := writer.Send(protocol.CmdAttach, nil); err != nil {
+		t.Fatalf("attach writer: %v", err)
+	}
 	_ = writer.ClearDeadline()
 
 	submitter, err := protocol.NewClient(runtimeID)
-	if err != nil { t.Fatalf("submitter connect: %v", err) }
+	if err != nil {
+		t.Fatalf("submitter connect: %v", err)
+	}
 	defer submitter.Close()
-	if err := submitter.SubmitPrompt("/ai status should reach provider literally"); err != nil { t.Fatalf("SubmitPrompt: %v", err) }
+	if err := submitter.SubmitPrompt("/ai status should reach provider literally"); err != nil {
+		t.Fatalf("SubmitPrompt: %v", err)
+	}
 
 	_ = writer.RawConn().SetReadDeadline(time.Now().Add(2 * time.Second))
 	buf := make([]byte, 2048)
 	n, err := writer.RawConn().Read(buf)
-	if err != nil { t.Fatalf("read submitted prompt echo: %v", err) }
-	if !strings.Contains(string(buf[:n]), "/ai status should reach provider literally") { t.Fatalf("prompt was intercepted or lost, got %q", string(buf[:n])) }
+	if err != nil {
+		t.Fatalf("read submitted prompt echo: %v", err)
+	}
+	if !strings.Contains(string(buf[:n]), "/ai status should reach provider literally") {
+		t.Fatalf("prompt was intercepted or lost, got %q", string(buf[:n]))
+	}
 }
 
 func TestSessionHost_AttachedLeaseAcquireDoesNotLeakToPTY(t *testing.T) {

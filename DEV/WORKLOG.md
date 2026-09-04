@@ -1096,3 +1096,21 @@ principais do projeto.
 
 Verificação: `make web-verify` PASS, `make build` PASS, `git diff --check` PASS,
 HTTP do Web validado e servidor reiniciado com o binário instalado.
+
+## 2026-09-04 — Revisão técnica, contenção de carga e rebuild final
+
+Foi concluída a revisão de código, segurança, concorrência, memória, contratos
+de domínio e cobertura de plataforma. O refresh global Web passou a ser
+single-flight e suspende polling em abas ocultas. O terminal passou a encerrar
+WebSocket/IPC de forma idempotente quando o runtime cai e a compactar resize em
+uma fila limitada, evitando handlers/goroutines presos e tempestades de RPC.
+
+Parecer detalhado: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CURRENT_CODE_REVIEW.md).
+O parecer é aprovado para uso local em loopback, mas mantém como riscos
+explícitos o HTTP remoto sem TLS, comandos de verificação shell em workspaces
+confiados e a ausência de execução real em macOS/Windows/Safari.
+
+Verificação final: `go test ./...`, `go vet ./...`, race nos módulos críticos,
+`make web-verify`, builds Linux/macOS/Windows, `npm audit --offline` e
+`git diff --check` passaram. `make build` instalou `v0.5.0-beta.23` e o Web foi
+subido novamente em `http://127.0.0.1:3000`.

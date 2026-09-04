@@ -109,4 +109,35 @@ describe('workspace persistence', () => {
   it('scopes local layout keys by project', () => {
     expect(workspaceStorageKey('prj_1')).toBe('iapro:nexus:workspace:prj_1:v2');
   });
+
+  it('flattens persisted splits so PTYs live in one Terminais stack', () => {
+    const fallback = createWorkspace({ id: 'home', type: 'overview', title: 'Overview' });
+    const raw = JSON.stringify({
+      version: 2,
+      maximizedSurfaceId: 'home',
+      root: {
+        kind: 'split',
+        id: 'split-1',
+        direction: 'horizontal',
+        ratio: 0.5,
+        first: {
+          kind: 'stack',
+          id: 'stack-a',
+          activeId: 'home',
+          tabs: [{ id: 'home', type: 'overview', title: 'Overview' }],
+        },
+        second: {
+          kind: 'stack',
+          id: 'stack-b',
+          activeId: 'agent:agt_1:terminal',
+          tabs: [{ id: 'agent:agt_1:terminal', type: 'terminal', title: 'Agent', data: { agentId: 'agt_1' } }],
+        },
+      },
+    });
+    const migrated = deserializeWorkspace(raw, fallback);
+    expect(migrated.root.kind).toBe('stack');
+    expect(migrated.maximizedSurfaceId).toBeUndefined();
+    if (migrated.root.kind !== 'stack') throw new Error('expected stack');
+    expect(migrated.root.tabs.map((tab) => tab.type)).toEqual(['overview', 'terminal']);
+  });
 });

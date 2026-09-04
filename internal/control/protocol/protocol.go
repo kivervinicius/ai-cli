@@ -109,17 +109,18 @@ type ContinuityStatePayload struct {
 
 // StatusData contains runtime status reported by SessionHost.
 type StatusData struct {
-	RuntimeID         string    `json:"runtime_id"`
-	ProviderID        string    `json:"provider_id"`
-	ProfileID         string    `json:"profile_id"`
-	ProviderSessionID string    `json:"provider_session_id,omitempty"`
-	Workspace         string    `json:"workspace"`
-	PID               int       `json:"pid"`
-	State             string    `json:"state"`
-	ControlLevel      string    `json:"control_level"`
-	StartedAt         time.Time `json:"started_at"`
-	QuotaStatus       string    `json:"quota_status,omitempty"`
-	QuotaPercent      float64   `json:"quota_percent,omitempty"`
+	RuntimeID           string    `json:"runtime_id"`
+	ProviderID          string    `json:"provider_id"`
+	ProfileID           string    `json:"profile_id"`
+	ProviderSessionID   string    `json:"provider_session_id,omitempty"`
+	Workspace           string    `json:"workspace"`
+	PID                 int       `json:"pid"`
+	State               string    `json:"state"`
+	ControlLevel        string    `json:"control_level"`
+	StartedAt           time.Time `json:"started_at"`
+	QuotaStatus         string    `json:"quota_status,omitempty"`
+	QuotaPercent        float64   `json:"quota_percent,omitempty"`
+	DroppedOutputChunks uint64    `json:"dropped_output_chunks,omitempty"`
 }
 
 // NewRequest creates a standard request.
