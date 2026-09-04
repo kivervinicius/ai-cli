@@ -14,7 +14,8 @@ import (
 // launchEnvelope keeps opaque provider arguments out of the runtime registry.
 // It is private, one-time-use material consumed only by the detached host.
 type launchEnvelope struct {
-	Args []string `json:"args"`
+	Args          []string `json:"args"`
+	CustomCommand bool     `json:"custom_command,omitempty"`
 }
 
 func launchEnvelopePath(runtimeID string) (string, error) {
@@ -28,7 +29,7 @@ func launchEnvelopePath(runtimeID string) (string, error) {
 	return filepath.Join(dataDir, "runtime", "launches", runtimeID+".json"), nil
 }
 
-func createLaunchEnvelope(runtimeID string, args []string) error {
+func createLaunchEnvelope(runtimeID string, args []string, customCommand bool) error {
 	path, err := launchEnvelopePath(runtimeID)
 	if err != nil {
 		return err
@@ -36,7 +37,7 @@ func createLaunchEnvelope(runtimeID string, args []string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	raw, err := json.Marshal(launchEnvelope{Args: args})
+	raw, err := json.Marshal(launchEnvelope{Args: args, CustomCommand: customCommand})
 	if err != nil {
 		return err
 	}
@@ -57,23 +58,23 @@ func createLaunchEnvelope(runtimeID string, args []string) error {
 }
 
 // ConsumeLaunchEnvelope reads and removes an envelope before launching a host.
-func ConsumeLaunchEnvelope(runtimeID string) ([]string, error) {
+func ConsumeLaunchEnvelope(runtimeID string) ([]string, bool, error) {
 	path, err := launchEnvelopePath(runtimeID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := os.Remove(path); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	var envelope launchEnvelope
 	if err := json.Unmarshal(raw, &envelope); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return envelope.Args, nil
+	return envelope.Args, envelope.CustomCommand, nil
 }
 
 func removeLaunchEnvelope(runtimeID string) {

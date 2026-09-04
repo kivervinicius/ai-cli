@@ -367,6 +367,7 @@ export interface WorkPlan {
   created_at: string;
   updated_at: string;
 }
+export interface FlowLeaderPolicy { role: string; preferred_agent_id?: string; strategy: 'EXISTING' | 'AUTO'; skills?: string[]; why?: string; }
 
 export type IntelligenceMode = 'OFF' | 'CLI' | 'OPENAI_COMPATIBLE';
 
@@ -381,6 +382,22 @@ export interface IntelligenceStatus {
   available: boolean;
   error?: string;
 }
+
+export type ComposerState = 'EXPLORING' | 'READY_WITH_GAPS' | 'READY' | 'FINALIZED';
+export interface ComposerSession {
+  id: string;
+  project_id: string;
+  title: string;
+  state: ComposerState;
+  context_fingerprint: string;
+  brief_json: string;
+  created_at: string;
+  updated_at: string;
+}
+export interface ComposerTurn { id: string; session_id: string; sequence: number; role: 'USER' | 'ASSISTANT'; content: string; created_at: string; }
+export interface ComposerSkillProposal { session_id: string; skill_id: string; state: 'SUGGESTED' | 'SELECTED' | 'REJECTED' | 'UNAVAILABLE'; reason: string; applicability: string; risk: string; updated_at: string; }
+export interface PromptArtifact { id: string; session_id: string; version: number; content: string; hash: string; context_json: string; skill_ids_json: string; created_at: string; }
+export interface ComposerSessionView { session: ComposerSession; brief: { goal: string; context?: string[]; constraints?: string[]; decisions?: string[]; assumptions?: string[]; alternatives?: string[]; risks?: string[]; success_criteria?: string[]; open_questions?: string[]; }; turns: ComposerTurn[]; skills: ComposerSkillProposal[]; artifacts?: PromptArtifact[]; }
 
 export interface ClarificationUnknown {
   key: string;

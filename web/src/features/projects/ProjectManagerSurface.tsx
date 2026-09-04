@@ -24,7 +24,8 @@ import {
   Terminal,
   Code2,
 } from 'lucide-react';
-import { Button, Card, Dialog, EmptyState, IconButton, Input, Badge, Segmented, Select, InlineAlert, Spinner } from '../../design-system';
+import { Button, Card, ConfirmDialog, Dialog, EmptyState, IconButton, Input, Badge, Segmented, Select, InlineAlert, Spinner } from '../../design-system';
+import { toast } from 'sonner';
 import { nexus } from '../../nexus/api';
 import type { Agent, Project } from '../../types';
 import { AddProjectModal } from './AddProjectModal';
@@ -58,6 +59,7 @@ export const ProjectManagerSurface: React.FC<{
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [dirPickerOpen, setDirPickerOpen] = useState(false);
   const [scanModalOpen, setScanModalOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [newPath, setNewPath] = useState('');
   const [newName, setNewName] = useState('');
 
@@ -156,20 +158,25 @@ export const ProjectManagerSurface: React.FC<{
         setConfigProject(null);
       }, 800);
     } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setCfgBusy(false);
     }
   };
 
-  const handleDelete = async (p: Project) => {
-    if (window.confirm(t('projectManager.confirmRemove'))) {
-      try {
-        await nexus.deleteProject(p.id);
-        window.location.reload();
-      } catch (err) {
-        alert(err instanceof Error ? err.message : String(err));
-      }
+  const handleDelete = (p: Project) => {
+    setProjectToDelete(p);
+  };
+
+  const executeDelete = async () => {
+    if (!projectToDelete) return;
+    const p = projectToDelete;
+    setProjectToDelete(null);
+    try {
+      await nexus.deleteProject(p.id);
+      window.location.reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -674,6 +681,14 @@ export const ProjectManagerSurface: React.FC<{
           onSelectProject(proj);
           setScanModalOpen(false);
         }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(projectToDelete)}
+        title={t('projectManager.confirmRemoveTitle', 'Excluir Projeto')}
+        description={t('projectManager.confirmRemove')}
+        onConfirm={executeDelete}
+        onCancel={() => setProjectToDelete(null)}
       />
     </div>
   );

@@ -89,6 +89,14 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 		return nil, fmt.Errorf("failed to build command for %s:%s: %w", opts.ProviderID, opts.ProfileID, err)
 	}
 	env = launchenv.Merge(env, opts.Environment, opts.PathPrepend)
+	customCommand := false
+	if template, ok := opts.Options["command_template"].(string); ok && strings.TrimSpace(template) != "" {
+		bin, extraArgs, err = ResolveCommandTemplate(template, opts.Workspace, configuredArgs)
+		if err != nil {
+			return nil, fmt.Errorf("invalid command template: %w", err)
+		}
+		customCommand = true
+	}
 
 	title := opts.Title
 	if strings.TrimSpace(title) == "" {
@@ -147,7 +155,7 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 			return nil, fmt.Errorf("failed to start SessionHost: %w", err)
 		}
 	} else {
-		if err := createLaunchEnvelope(opts.RuntimeID, configuredArgs); err != nil {
+		if err := createLaunchEnvelope(opts.RuntimeID, extraArgs, customCommand); err != nil {
 			_ = l.reg.UpdateState(opts.RuntimeID, registry.StateFailed)
 			return nil, fmt.Errorf("failed to create private launch envelope: %w", err)
 		}

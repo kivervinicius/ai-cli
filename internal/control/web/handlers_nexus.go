@@ -1287,6 +1287,97 @@ func (h *NexusHandler) handleProjectPlans(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// handleProjectComposerSessions creates or lists durable prompt elaborations.
+func (h *NexusHandler) handleProjectComposerSessions(w http.ResponseWriter, r *http.Request) {
+	projectID := projectIDFromPath(r.URL.Path)
+	if projectID == "" {
+		writeError(w, http.StatusNotFound, "missing project id")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		items, err := h.nexus.ListComposerSessions(r.Context(), projectID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if items == nil {
+			items = []store.ComposerSession{}
+		}
+		writeJSON(w, http.StatusOK, items)
+	case http.MethodPost:
+		var body struct {
+			Goal string `json:"goal"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid body")
+			return
+		}
+		view, err := h.nexus.CreateComposerSession(r.Context(), projectID, body.Goal)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, view)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+// handleComposerSession exposes one conversation, adds turns and finalizes its prompt.
+func (h *NexusHandler) handleComposerSession(w http.ResponseWriter, r *http.Request) {
+	id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/composer-sessions/"), "/")
+	if id == "" {
+		writeError(w, http.StatusNotFound, "missing composer session id")
+		return
+	}
+	if strings.HasSuffix(id, "/turns") {
+		id = strings.TrimSuffix(id, "/turns")
+		var body struct {
+			Content string `json:"content"`
+		}
+		if r.Method != http.MethodPost || json.NewDecoder(r.Body).Decode(&body) != nil {
+			writeError(w, http.StatusBadRequest, "content is required")
+			return
+		}
+		view, err := h.nexus.AddComposerTurn(r.Context(), id, store.ComposerUser, body.Content)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, view)
+		return
+	}
+	if strings.HasSuffix(id, "/finalize") {
+		id = strings.TrimSuffix(id, "/finalize")
+		var body struct {
+			SkillIDs    []string `json:"skill_ids"`
+			ConfirmGaps bool     `json:"confirm_gaps"`
+		}
+		if r.Method != http.MethodPost || json.NewDecoder(r.Body).Decode(&body) != nil {
+			writeError(w, http.StatusBadRequest, "invalid body")
+			return
+		}
+		artifact, err := h.nexus.FinalizeComposerSession(r.Context(), id, body.SkillIDs, body.ConfirmGaps)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, artifact)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	view, err := h.nexus.GetComposerSession(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
 // handlePlanDetail GET/PUT/DELETE /api/v1/plans/{id}
 func (h *NexusHandler) handlePlanDetail(w http.ResponseWriter, r *http.Request) {
 	planID := strings.TrimPrefix(r.URL.Path, "/api/v1/plans/")
@@ -1372,6 +1463,59 @@ func (h *NexusHandler) handlePlanCompile(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, compiled)
+}
+
+func (h *NexusHandler) handleFlowLeader(w http.ResponseWriter, r *http.Request) {
+	planID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/v1/plans/"), "/leader")
+	if planID == "" {
+		writeError(w, http.StatusBadRequest, "plan id is required")
+		return
+	}
+	if r.Method == http.MethodGet {
+		policy, err := h.nexus.GetFlowLeaderPolicy(r.Context(), planID)
+		if err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, policy)
+		return
+	}
+	if r.Method != http.MethodPut {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var policy nexus.FlowLeaderPolicy
+	if err := json.NewDecoder(r.Body).Decode(&policy); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	plan, err := h.nexus.SetFlowLeaderPolicy(r.Context(), planID, policy)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"plan": plan, "leader": policy})
+}
+
+func (h *NexusHandler) handleFlowClone(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	planID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/v1/plans/"), "/clone")
+	var body struct {
+		ProjectID string `json:"project_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.ProjectID) == "" {
+		writeError(w, http.StatusBadRequest, "destination project_id is required")
+		return
+	}
+	clone, err := h.nexus.CloneFlowToProject(r.Context(), planID, body.ProjectID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, clone)
 }
 
 // handlePlanRun POST /api/v1/plans/{id}/run
@@ -1604,9 +1748,9 @@ func (h *NexusHandler) handleIntelligenceProbe(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		if errors.Is(err, intelligence.ErrIntelligenceUnavailable) {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
-				"ok":      false,
-				"error":   "intelligence_unavailable",
-				"detail":  err.Error(),
+				"ok":       false,
+				"error":    "intelligence_unavailable",
+				"detail":   err.Error(),
 				"provider": result.Provider,
 			})
 			return

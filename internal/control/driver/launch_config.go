@@ -49,6 +49,15 @@ func ApplyLaunchConfiguration(provider, model string, options map[string]any, ba
 		case "mode":
 			// UI-only Safe/Plan/YOLO marker. Flags live in extra_args.
 			continue
+		case "command_template":
+			if _, ok := value.(string); !ok {
+				return nil, fmt.Errorf("provider option command_template must be a string")
+			}
+			// Resolved by launcher after provider arguments are normalized.
+			continue
+		case "execution_adapter", "origin", "role_type":
+			// Agent metadata retained in its immutable config revision.
+			continue
 		default:
 			return nil, fmt.Errorf("provider option %q is not supported by the supervised launcher", key)
 		}

@@ -10,6 +10,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { Dialog, Button, Input, Badge, Card } from '../../design-system';
+import { toast } from 'sonner';
 import { nexus } from '../../nexus/api';
 import type { FSScanResult, Project } from '../../types';
 
@@ -51,7 +52,7 @@ export const ProjectScanModal: React.FC<{
         current.map((r) => (r.path === item.path ? { ...r, is_imported: true } : r))
       );
     } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setImportingPath(null);
     }

@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { Badge, Button, Card, InlineAlert, Input } from '../../design-system';
 import { nexusApi } from '../../nexus/api';
-import type { Agent, ClarificationCheckpoint, MissionRun, MissionSchedule, PlanPhase, PlanRevision, PlanRevisionDiff, Project, WorkPackage, WorkPlan } from '../../types';
+import type { Agent, ClarificationCheckpoint, FlowLeaderPolicy, MissionRun, MissionSchedule, PlanPhase, PlanRevision, PlanRevisionDiff, Project, WorkPackage, WorkPlan } from '../../types';
 import { clarificationFromError, unresolvedBlocking } from './clarificationModel';
 import { composerGateForReadiness } from './composerModel';
 import { FlowCanvas } from './FlowCanvas';
@@ -66,6 +66,7 @@ export const PlanBuilderSurface: React.FC<{
   const [flowNotice, setFlowNotice] = useState('');
   const [stepComparison, setStepComparison] = useState('');
   const [goalChips, setGoalChips] = useState<string[]>([]);
+  const [leader, setLeader] = useState<FlowLeaderPolicy>({ role: 'orchestrator', strategy: 'AUTO' });
 
   const composerDraftKey = `nexus:composer:draft:${project.id}`;
   const composerHistoryKey = `nexus:composer:history:${project.id}`;
@@ -128,6 +129,11 @@ export const PlanBuilderSurface: React.FC<{
       if (detail.plan.current_revision !== selectedPlan.current_revision) setSelectedPlan(normalizeWorkPlan(detail.plan));
     }).catch((error) => console.error('Failed to load plan revisions:', error));
   }, [selectedPlan?.id, selectedPlan?.current_revision]);
+
+  useEffect(() => {
+    if (!selectedPlan) return;
+    nexusApi.getFlowLeader(selectedPlan.id).then(setLeader).catch(() => setLeader({ role: 'orchestrator', strategy: 'AUTO' }));
+  }, [selectedPlan?.id]);
 
   useEffect(() => {
     if (!selectedPlan) { setFlowDraft(null); setSelectedStepId(''); return; }
@@ -539,6 +545,17 @@ export const PlanBuilderSurface: React.FC<{
     }
   };
 
+  const saveLeader = async () => {
+    if (!selectedPlan) return;
+    try {
+      const result = await nexusApi.setFlowLeader(selectedPlan.id, leader);
+      const plan = normalizeWorkPlan(result.plan);
+      setSelectedPlan(plan);
+      setPlans((previous) => previous.map((item) => item.id === plan.id ? plan : item));
+      setFlowNotice('Líder sugerido salvo nesta revisão do Flow.');
+    } catch (err) { setPlanError(err instanceof Error ? err.message : String(err)); }
+  };
+
   const handleTakeControl = async () => {
     if (!activeRun) return;
     try {
@@ -701,6 +718,20 @@ export const PlanBuilderSurface: React.FC<{
                 <span key={chip} className="nx-composer-goal-chip">{chip}</span>
               ))}
             </div>
+          )}
+          {flowDraft && selectedPlan && (
+            <Card style={{ marginTop: 12, padding: 12 }}>
+              <strong>Agent líder sugerido</strong>
+              <p className="nx-muted-copy" style={{ margin: '4px 0 10px' }}>Coordena as ondas do DAG e recebe os recibos. A sugestão é exclusiva deste Flow.</p>
+              <div className="nx-composer-goal-bar__row">
+                <Input value={leader.role} onChange={(role) => setLeader((current) => ({ ...current, role }))} placeholder="Especialidade do líder" style={{ flex: 1 }} />
+                <select value={leader.strategy} onChange={(event) => setLeader((current) => ({ ...current, strategy: event.target.value as FlowLeaderPolicy['strategy'], preferred_agent_id: event.target.value === 'AUTO' ? undefined : current.preferred_agent_id }))}>
+                  <option value="AUTO">Sugerir automaticamente</option><option value="EXISTING">Agent cadastrado</option>
+                </select>
+                {leader.strategy === 'EXISTING' && <select value={leader.preferred_agent_id || ''} onChange={(event) => setLeader((current) => ({ ...current, preferred_agent_id: event.target.value }))}><option value="">Escolha o líder</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.role}</option>)}</select>}
+                <Button size="sm" onClick={() => void saveLeader()}>Salvar líder</Button>
+              </div>
+            </Card>
           )}
         </Card>
 

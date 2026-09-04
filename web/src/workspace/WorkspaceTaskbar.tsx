@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FolderGit2, GitBranch, Wifi, BrainCircuit, AlertTriangle } from 'lucide-react';
+import { FolderGit2, GitBranch, Wifi, AlertTriangle } from 'lucide-react';
 import { nexus } from '../nexus/api';
 import { BranchSwitcherModal } from '../features/projects/BranchSwitcherModal';
+import { Tooltip } from '../design-system';
 import type { Agent, Project } from '../types';
 
 export const WorkspaceTaskbar: React.FC<{
@@ -40,19 +41,22 @@ export const WorkspaceTaskbar: React.FC<{
       <div className="nx-statusbar-left">
         {project && (
           <>
-            <span className="nx-statusbar-item" title={project.canonical_path}>
-              <FolderGit2 size={12} />
-              <span>{project.name}</span>
-            </span>
-            <button
-              type="button"
-              className="nx-statusbar-item nx-statusbar-branch nx-statusbar-btn"
-              onClick={() => setBranchModalOpen(true)}
-              title={t('git.switchBranchTooltip', 'Clique para alternar ou criar branches Git')}
-            >
-              <GitBranch size={11} />
-              <span>{currentBranch || project.default_branch || 'unknown'}</span>
-            </button>
+            <Tooltip content={project.canonical_path} side="top">
+              <span className="nx-statusbar-item">
+                <FolderGit2 size={12} />
+                <span>{project.name}</span>
+              </span>
+            </Tooltip>
+            <Tooltip content={t('git.switchBranchTooltip', 'Clique para alternar ou criar branches Git')} side="top">
+              <button
+                type="button"
+                className="nx-statusbar-item nx-statusbar-branch nx-statusbar-btn"
+                onClick={() => setBranchModalOpen(true)}
+              >
+                <GitBranch size={11} />
+                <span>{currentBranch || project.default_branch || 'unknown'}</span>
+              </button>
+            </Tooltip>
 
             <BranchSwitcherModal
               open={branchModalOpen}
@@ -86,13 +90,11 @@ export const WorkspaceTaskbar: React.FC<{
 
       {/* Right: Versions & Connection */}
       <div className="nx-statusbar-right">
-        <span className="nx-statusbar-item nx-statusbar-version" title="Nexus Core">
-          <strong>Nexus</strong> v{sysInfo?.nexus_version || 'unknown'}
-        </span>
-        <span className="nx-statusbar-item nx-statusbar-version" title="Orquestrador Maestro">
-          <BrainCircuit size={11} />
-          <strong>Maestro</strong> v{sysInfo?.maestro_version || 'unavailable'}
-        </span>
+        <Tooltip content="Nexus Core Runtime" side="top">
+          <span className="nx-statusbar-item nx-statusbar-version">
+            <strong>Nexus</strong> v{sysInfo?.nexus_version || 'unknown'}
+          </span>
+        </Tooltip>
         <span className="nx-statusbar-item nx-statusbar-local">
           <Wifi size={11} />
           <span>{t('statusBar.local')}</span>

@@ -1135,3 +1135,22 @@ solicitações recentes podem ser retomadas por atalhos, sem criar Flow ou sess�
 de Agent automaticamente.
 
 Verificação: `make web-verify` PASS.
+
+## 2026-09-04 — Composer deliberativo e execução OpenCode customizada
+
+Adicionada a base durável do Composer: sessões por Project, histórico limitado
+e redigível, briefing vivo, sugestões de skills, finalização explícita e
+artefatos de prompt imutáveis. A superfície Web mantém a elaboração separada
+do Flow; o Flow só aparece após a escolha explícita de transformação. Também
+foi adicionada a política de líder por Flow e a cópia segura de Flow para outro
+Project como rascunho sem bindings locais.
+
+O cadastro de Agente customizado agora é funcional no runtime. O template
+`docker exec -it -w "{cwd}" vpn-dev-workspace-terminal-1 opencode {args}` é
+expandido sem shell e transportado de forma privada ao host destacado.
+OpenCode deixou de iniciar `auth` sem argumentos: ele informa corretamente que
+a autenticação é do provider escolhido, via `opencode auth login <provider>`
+no mesmo ambiente em que será executado.
+
+Verificação: testes Go de launcher/driver/app/nexus PASS, `make web-verify`
+PASS e `make build` PASS.

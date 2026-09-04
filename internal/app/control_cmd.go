@@ -241,7 +241,7 @@ func controlHostCmd(args []string) error {
 	}
 
 	p := model.Profile{Name: sess.ProfileID, Provider: sess.ProviderID}
-	launchArgs, envelopeErr := launcher.ConsumeLaunchEnvelope(runtimeID)
+	launchArgs, customCommand, envelopeErr := launcher.ConsumeLaunchEnvelope(runtimeID)
 	if envelopeErr != nil {
 		// Compatibility for runtimes created before private launch envelopes.
 		launchArgs = sess.Args
@@ -249,9 +249,12 @@ func controlHostCmd(args []string) error {
 			return fmt.Errorf("failed to consume private launch envelope: %w", envelopeErr)
 		}
 	}
-	bin, cmdArgs, env, err := d.BuildCommand(context.Background(), p, launchArgs)
-	if err != nil {
-		return fmt.Errorf("failed to build runtime command: %w", err)
+	bin, cmdArgs, env := sess.Binary, launchArgs, sess.Env
+	if !customCommand {
+		bin, cmdArgs, env, err = d.BuildCommand(context.Background(), p, launchArgs)
+		if err != nil {
+			return fmt.Errorf("failed to build runtime command: %w", err)
+		}
 	}
 
 	sh, err := host.NewSessionHost(host.Config{

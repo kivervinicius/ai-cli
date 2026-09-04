@@ -119,6 +119,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	mux.HandleFunc("/api/v1/intelligence", s.authMiddleware(nexusHandler.handleIntelligence))
 	mux.HandleFunc("/api/v1/intelligence/probe", s.authMiddleware(nexusHandler.handleIntelligenceProbe))
 	mux.HandleFunc("/api/v1/clarifications/", s.authMiddleware(nexusHandler.handleClarification))
+	mux.HandleFunc("/api/v1/composer-sessions/", s.authMiddleware(nexusHandler.handleComposerSession))
 	mux.HandleFunc("/api/v1/plans/", s.routePlan(nexusHandler))
 
 	// Autonomous Mission Runs (Phase F & H)
@@ -345,6 +346,8 @@ func (s *Server) routeProject(h *NexusHandler) http.HandlerFunc {
 			}
 		case strings.HasSuffix(r.URL.Path, "/plans"):
 			h.handleProjectPlans(w, r)
+		case strings.HasSuffix(r.URL.Path, "/composer-sessions"):
+			h.handleProjectComposerSessions(w, r)
 		case strings.HasSuffix(r.URL.Path, "/context/prepare"):
 			h.handleProjectContextPrepare(w, r)
 		case strings.HasSuffix(r.URL.Path, "/context"):
@@ -391,6 +394,10 @@ func (s *Server) routePlan(h *NexusHandler) http.HandlerFunc {
 			h.handlePlanRestore(w, r)
 		case strings.HasSuffix(r.URL.Path, "/diff"):
 			h.handlePlanDiff(w, r)
+		case strings.HasSuffix(r.URL.Path, "/leader"):
+			h.handleFlowLeader(w, r)
+		case strings.HasSuffix(r.URL.Path, "/clone"):
+			h.handleFlowClone(w, r)
 		default:
 			h.handlePlanDetail(w, r)
 		}

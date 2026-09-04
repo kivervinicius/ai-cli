@@ -3,7 +3,6 @@ import {
   ArrowUpCircle,
   Bell,
   BellRing,
-  BrainCircuit,
   ChevronDown,
   CircleHelp,
   Command,
@@ -35,7 +34,6 @@ export const NexusShell: React.FC<{
   onCommand: () => void;
   onOpenWelcome: () => void;
   onOpenProjectManager: () => void;
-  onOpenMaestroControl: () => void;
   onSettings: () => void;
   onNewAgent?: () => void;
   onNewAISession?: () => void;
@@ -53,7 +51,6 @@ export const NexusShell: React.FC<{
   onCommand,
   onOpenWelcome,
   onOpenProjectManager,
-  onOpenMaestroControl,
   onSettings,
   onNewAgent,
   onNewAISession,
@@ -92,19 +89,6 @@ export const NexusShell: React.FC<{
     return () => window.removeEventListener('nexus:system-updates', load);
   }, []);
 
-  const maestroBadge = (() => {
-    if (!sysInfo) return { tone: 'default' as const, label: 'Maestro' };
-    if (!sysInfo.maestro_available) {
-      return { tone: 'warning' as const, label: t('maestroControl.badgeMissing') };
-    }
-    if (sysInfo.update_available) {
-      return { tone: 'warning' as const, label: t('maestroControl.badgeUpdate') };
-    }
-    return {
-      tone: 'brand' as const,
-      label: t('maestroControl.badgeOk', { version: sysInfo.maestro_version }),
-    };
-  })();
 
   return (
     <div className="nx-os-shell">
@@ -209,18 +193,6 @@ export const NexusShell: React.FC<{
                 </div>
               )}
             </div>
-
-            <button
-              type="button"
-              className="nx-maestro-badge-btn"
-              onClick={onOpenMaestroControl}
-              title={t('maestroControl.title')}
-            >
-              <Badge tone={maestroBadge.tone}>
-                <BrainCircuit size={10} />
-                <span>{maestroBadge.label}</span>
-              </Badge>
-            </button>
 
             {/* System Versions Pill */}
             <div className="nx-topbar-version-pill" title="Nexus Version" style={{ display: 'none' }}>

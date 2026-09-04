@@ -1,5 +1,4 @@
-import React, { useEffect, useId, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import React from 'react';
 import { AlertCircle, CheckCircle2, Info, LoaderCircle, Search, TriangleAlert, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -55,28 +54,115 @@ export const InlineAlert: React.FC<{ tone?: 'info' | 'success' | 'warning' | 'da
   return <div className="nx-inline-alert" data-tone={tone} role={tone === 'danger' ? 'alert' : 'status'}><Icon size={15} aria-hidden="true" /><div>{title && <strong>{title}</strong>}<span>{children}</span></div></div>;
 };
 
+export { ContextMenu, clampMenuPosition, contextMenuFromEvent } from './ContextMenu';
+export type { ContextMenuItem, ContextMenuPoint } from './ContextMenu';
+
+import * as RadixDialog from '@radix-ui/react-dialog';
+import * as RadixAlertDialog from '@radix-ui/react-alert-dialog';
+import * as RadixTooltip from '@radix-ui/react-tooltip';
+import * as RadixDropdownMenu from '@radix-ui/react-dropdown-menu';
+
 export const Dialog: React.FC<{ open: boolean; title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }> = ({ open, title, onClose, children, wide }) => {
   const { t } = useTranslation();
-  const titleId = useId();
-  const panelRef = useRef<HTMLDivElement>(null);
-  const previousFocus = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    previousFocus.current = document.activeElement as HTMLElement | null;
-    const panel = panelRef.current;
-    panel?.focus();
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => { window.removeEventListener('keydown', onKey); previousFocus.current?.focus?.(); };
-  }, [open, onClose]);
-  if (!open) return null;
-  return createPortal(
-    <div className="nx-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className="nx-dialog" data-wide={wide ? 'true' : 'false'}><header><h2 id={titleId}>{title}</h2><IconButton label={t('common.closeDialog')} onClick={onClose}><X size={15} /></IconButton></header><div className="nx-dialog__body">{children}</div></div></div>,
-    document.body,
+  return (
+    <RadixDialog.Root open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
+      <RadixDialog.Portal>
+        <RadixDialog.Overlay className="nx-dialog-backdrop" />
+        <RadixDialog.Content className="nx-dialog" data-wide={wide ? 'true' : 'false'}>
+          <header>
+            <RadixDialog.Title asChild>
+              <h2>{title}</h2>
+            </RadixDialog.Title>
+            <RadixDialog.Close asChild>
+              <IconButton label={t('common.closeDialog')} onClick={onClose}>
+                <X size={15} />
+              </IconButton>
+            </RadixDialog.Close>
+          </header>
+          <div className="nx-dialog__body">{children}</div>
+        </RadixDialog.Content>
+      </RadixDialog.Portal>
+    </RadixDialog.Root>
   );
 };
 
-export const SearchInput: React.FC<{ value: string; onChange: (value: string) => void; placeholder?: string; autoFocus?: boolean }> = ({ value, onChange, placeholder, autoFocus }) => { const { t } = useTranslation(); return <label className="nx-search-input"><Search size={15} aria-hidden="true" /><input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder ?? t('common.search')} autoFocus={autoFocus} /></label>; };
+export interface ConfirmDialogProps {
+  open: boolean;
+  title: string;
+  description?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  tone?: Tone;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
 
-export { ContextMenu, clampMenuPosition, contextMenuFromEvent } from './ContextMenu';
-export type { ContextMenuItem, ContextMenuPoint } from './ContextMenu';
+export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
+  open,
+  title,
+  description,
+  confirmLabel,
+  cancelLabel,
+  tone = 'danger',
+  onConfirm,
+  onCancel,
+}) => {
+  const { t } = useTranslation();
+  return (
+    <RadixAlertDialog.Root open={open} onOpenChange={(isOpen) => { if (!isOpen) onCancel(); }}>
+      <RadixAlertDialog.Portal>
+        <RadixAlertDialog.Overlay className="nx-dialog-backdrop" />
+        <RadixAlertDialog.Content className="nx-dialog nx-dialog--confirm">
+          <header>
+            <RadixAlertDialog.Title asChild>
+              <h2>{title}</h2>
+            </RadixAlertDialog.Title>
+          </header>
+          <div className="nx-dialog__body">
+            {description && (
+              <RadixAlertDialog.Description asChild>
+                <p className="nx-confirm-desc">{description}</p>
+              </RadixAlertDialog.Description>
+            )}
+            <div className="nx-dialog-actions">
+              <RadixAlertDialog.Cancel asChild>
+                <Button onClick={onCancel}>{cancelLabel ?? t('common.cancel', 'Cancelar')}</Button>
+              </RadixAlertDialog.Cancel>
+              <RadixAlertDialog.Action asChild>
+                <Button tone={tone} onClick={onConfirm}>{confirmLabel ?? t('common.confirm', 'Confirmar')}</Button>
+              </RadixAlertDialog.Action>
+            </div>
+          </div>
+        </RadixAlertDialog.Content>
+      </RadixAlertDialog.Portal>
+    </RadixAlertDialog.Root>
+  );
+};
+
+export const TooltipProvider = RadixTooltip.Provider;
+
+export const Tooltip: React.FC<{
+  content: React.ReactNode;
+  children: React.ReactElement;
+  side?: 'top' | 'right' | 'bottom' | 'left';
+  delayDuration?: number;
+}> = ({ content, children, side = 'top', delayDuration = 300 }) => {
+  if (!content) return children;
+  return (
+    <RadixTooltip.Provider delayDuration={delayDuration}>
+      <RadixTooltip.Root delayDuration={delayDuration}>
+        <RadixTooltip.Trigger asChild>{children}</RadixTooltip.Trigger>
+        <RadixTooltip.Portal>
+          <RadixTooltip.Content side={side} className="nx-tooltip-content" sideOffset={5}>
+            {content}
+            <RadixTooltip.Arrow className="nx-tooltip-arrow" />
+          </RadixTooltip.Content>
+        </RadixTooltip.Portal>
+      </RadixTooltip.Root>
+    </RadixTooltip.Provider>
+  );
+};
+
+export { RadixDropdownMenu as DropdownMenu };
+
+export const SearchInput: React.FC<{ value: string; onChange: (value: string) => void; placeholder?: string; autoFocus?: boolean }> = ({ value, onChange, placeholder, autoFocus }) => { const { t } = useTranslation(); return <label className="nx-search-input"><Search size={15} aria-hidden="true" /><input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder ?? t('common.search')} autoFocus={autoFocus} /></label>; };

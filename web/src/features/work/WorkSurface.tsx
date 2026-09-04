@@ -4,6 +4,7 @@ import { Badge, Button, Card } from '../../design-system';
 import type { Agent, ContextReadiness, ContextReadinessState, MissionRun, Project } from '../../types';
 import { nexus } from '../../nexus/api';
 import { PlanBuilderSurface } from './PlanBuilderSurface';
+import { ComposerSurface } from './ComposerSurface';
 import { composerGateForReadiness } from './composerModel';
 
 const readinessTone = (state: ContextReadinessState) =>
@@ -23,6 +24,7 @@ export const WorkSurface: React.FC<{
   const [readinessBusy, setReadinessBusy] = useState(false);
   const [error, setError] = useState('');
   const [intelligence, setIntelligence] = useState<{ available: boolean; provider?: string; error?: string } | null>(null);
+  const [flowPrompt, setFlowPrompt] = useState('');
 
   const refreshContext = useCallback(async () => {
     try {
@@ -113,13 +115,8 @@ export const WorkSurface: React.FC<{
       {error && <div className="nx-inline-error">{error}</div>}
 
       <div className="nx-composer-flow-region" data-gate={gate.canCompose ? 'ready' : 'blocked'}>
-        <PlanBuilderSurface
-          project={project}
-          agents={agents}
-          onOpenAgent={onDirect}
-          onRunCreated={onFlowRun}
-          compactGoal
-        />
+        <ComposerSurface project={project} onTransformFlow={setFlowPrompt} />
+        {flowPrompt && <PlanBuilderSurface project={project} agents={agents} onOpenAgent={onDirect} onRunCreated={onFlowRun} initialGoal={flowPrompt} compactGoal />}
       </div>
     </div>
   );

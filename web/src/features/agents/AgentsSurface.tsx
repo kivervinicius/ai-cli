@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Bot, MessageSquareText, Play, Plus, RotateCcw, Settings2, Square, TerminalSquare, Trash2 } from 'lucide-react';
-import { Badge, Button, Card, Dialog, EmptyState, Input } from '../../design-system';
+import { Badge, Button, Card, ConfirmDialog, Dialog, EmptyState, Input } from '../../design-system';
 import { nexus } from '../../nexus/api';
 import { ResourcePicker } from '../../nexus/ResourcePicker';
 import type { Agent, Project } from '../../types';
@@ -30,6 +30,7 @@ export const AgentsSurface: React.FC<{
   const [busy, setBusy] = useState('');
   const [resourceAgent, setResourceAgent] = useState<Agent | null>(null);
   const [askAgent, setAskAgent] = useState<Agent | null>(null);
+  const [agentToDelete, setAgentToDelete] = useState<Agent | null>(null);
   const [error, setError] = useState('');
 
   const create = async () => {
@@ -61,8 +62,14 @@ export const AgentsSurface: React.FC<{
     }
   };
 
-  const remove = async (agent: Agent) => {
-    if (!window.confirm(t('agents.confirmRemove', { name: agent.name || agent.id }))) return;
+  const remove = (agent: Agent) => {
+    setAgentToDelete(agent);
+  };
+
+  const executeRemove = async () => {
+    if (!agentToDelete) return;
+    const agent = agentToDelete;
+    setAgentToDelete(null);
     setBusy(agent.id);
     setError('');
     try {
@@ -181,6 +188,13 @@ export const AgentsSurface: React.FC<{
       >
         <ResourcePicker agentId={resourceAgent?.id} onSelected={allocateAndStart} />
       </Dialog>
+      <ConfirmDialog
+        open={Boolean(agentToDelete)}
+        title={t('agents.confirmRemoveTitle', 'Remover Agente')}
+        description={t('agents.confirmRemove', { name: agentToDelete?.name || agentToDelete?.id })}
+        onConfirm={executeRemove}
+        onCancel={() => setAgentToDelete(null)}
+      />
     </div>
   );
 };

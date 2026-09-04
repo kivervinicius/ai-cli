@@ -48,6 +48,11 @@ export const nexus = {
   getLayout: (projectId: string) => request<{ layout: string }>(`/api/v1/projects/${projectId}/layout`),
   getContextReadiness: (projectId: string) => request<import('../types').ContextReadiness>(`/api/v1/projects/${projectId}/context`),
   prepareContext: (projectId: string, createContext = false) => request<import('../types').ContextReadiness>(`/api/v1/projects/${projectId}/context/prepare`, { method: 'POST', body: JSON.stringify({ create_context: createContext }) }),
+  listComposerSessions: (projectId: string) => request<import('../types').ComposerSession[]>(`/api/v1/projects/${projectId}/composer-sessions`),
+  createComposerSession: (projectId: string, goal: string) => request<import('../types').ComposerSessionView>(`/api/v1/projects/${projectId}/composer-sessions`, { method: 'POST', body: JSON.stringify({ goal }) }),
+  getComposerSession: (id: string) => request<import('../types').ComposerSessionView>(`/api/v1/composer-sessions/${id}`),
+  addComposerTurn: (id: string, content: string) => request<import('../types').ComposerSessionView>(`/api/v1/composer-sessions/${id}/turns`, { method: 'POST', body: JSON.stringify({ content }) }),
+  finalizeComposerSession: (id: string, skillIds: string[] = [], confirmGaps = false) => request<import('../types').PromptArtifact>(`/api/v1/composer-sessions/${id}/finalize`, { method: 'POST', body: JSON.stringify({ skill_ids: skillIds, confirm_gaps: confirmGaps }) }),
   saveLayout: (projectId: string, layout: string) =>
     request<{ status: string }>(`/api/v1/projects/${projectId}/layout`, {
       method: 'PUT',
@@ -259,6 +264,9 @@ export const nexus = {
   },
   diffPlanRevisions: (planId: string, from: number, to: number) =>
     request<import('../types').PlanRevisionDiff>(`/api/v1/plans/${planId}/diff?from=${from}&to=${to}`),
+  getFlowLeader: (planId: string) => request<import('../types').FlowLeaderPolicy>(`/api/v1/plans/${planId}/leader`),
+  setFlowLeader: (planId: string, leader: import('../types').FlowLeaderPolicy) => request<{ plan: unknown; leader: import('../types').FlowLeaderPolicy }>(`/api/v1/plans/${planId}/leader`, { method: 'PUT', body: JSON.stringify(leader) }),
+  cloneFlow: (planId: string, projectId: string) => request<import('../types').WorkPlan>(`/api/v1/plans/${planId}/clone`, { method: 'POST', body: JSON.stringify({ project_id: projectId }) }),
   compilePackagePrompt: (planId: string, packageId: string, phaseId?: string) =>
     request<any>(`/api/v1/plans/${planId}/compile`, {
       method: 'POST',

@@ -659,7 +659,6 @@ const WorkspaceCoordinator: React.FC<{
         onCommand={() => setPalette(true)}
         onOpenWelcome={() => setWelcomeOpen(true)}
         onOpenProjectManager={() => openKind('projects')}
-        onOpenMaestroControl={() => setMaestroControlOpen(true)}
         onSettings={() => openKind('settings')}
         onNewAgent={() => setNewAgentOpen(true)}
         onNewAISession={openNewAISession}

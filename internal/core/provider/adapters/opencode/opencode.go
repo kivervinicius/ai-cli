@@ -3,6 +3,7 @@ package opencode
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,8 +28,9 @@ func (a *Adapter) Name() string         { return "OpenCode" }
 
 func (a *Adapter) Capabilities() model.Capabilities {
 	return model.Capabilities{
-		Login:              true,
-		Logout:             true,
+		// OpenCode delegates authentication to its configured model provider.
+		Login:              false,
+		Logout:             false,
 		Usage:              true,
 		Conversations:      true,
 		Resume:             true,
@@ -108,8 +110,7 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 }
 
 func (a *Adapter) Login(ctx context.Context, p model.Profile) error {
-	_, err := a.Run(ctx, p, []string{"auth"})
-	return err
+	return fmt.Errorf("OpenCode authentication is provider-specific; run `opencode auth login <provider>` in the runtime where OpenCode will execute")
 }
 
 func (a *Adapter) Logout(ctx context.Context, p model.Profile) error {

@@ -182,7 +182,7 @@ export const NewAgentModal: React.FC<{
           profile: 'default',
           options: configOptions,
         }
-      ).catch(() => undefined);
+      );
 
       onCreated(created);
       onClose();
@@ -314,7 +314,7 @@ export const NewAgentModal: React.FC<{
                 placeholder='docker exec -it -w "{cwd}" vpn-dev-workspace-terminal-1 opencode {args}'
               />
               <small style={{ fontSize: '11px', color: 'var(--nx-subtle)' }}>
-                O Nexus resolve os caminhos canônicos e aplica supervisão de ciclo de vida (start/recover/stop).
+                Use <code>{'{args}'}</code> como argumento separado. O Nexus não executa shell: operadores como <code>|</code> e <code>;</code> são bloqueados. Para OpenCode no Docker, a autenticação deve existir dentro do mesmo container (<code>opencode auth login &lt;provider&gt;</code>).
               </small>
             </div>
           )}

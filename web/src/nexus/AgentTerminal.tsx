@@ -20,6 +20,7 @@ import { isRequiredResourceError, recoverOrStartAgent } from './agentRecover';
 import { ResourcePicker } from './ResourcePicker';
 import { TerminalActionDialog } from './TerminalActionDialog';
 import { scrubProtocolOutput } from './terminalProtocol';
+import { ConfirmDialog, Tooltip } from '../design-system';
 import type { RuntimeSession } from '../types';
 
 export const AgentTerminal: React.FC<{
@@ -58,6 +59,7 @@ export const AgentTerminal: React.FC<{
   const [selectedMode, setSelectedMode] = useState<'Safe' | 'YOLO'>(mode === 'YOLO' ? 'YOLO' : 'Safe');
   const [pendingMode, setPendingMode] = useState<'Safe' | 'YOLO' | null>(null);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [needsResourceSelection, setNeedsResourceSelection] = useState(false);
   const autoRecoveredRef = useRef(false);
@@ -399,10 +401,14 @@ export const AgentTerminal: React.FC<{
     }
   };
 
-  const handleDeleteAgent = async () => {
+  const handleDeleteAgent = () => {
     if (!onDelete || deleting) return;
-    const label = agentName || agentId;
-    if (!window.confirm(`Remover o agente "${label}"? A identidade e o terminal serão excluídos.`)) return;
+    setDeleteConfirmOpen(true);
+  };
+
+  const executeDeleteAgent = async () => {
+    setDeleteConfirmOpen(false);
+    if (!onDelete || deleting) return;
     setDeleting(true);
     setMessage('Removendo agente…');
     try {
@@ -524,9 +530,11 @@ export const AgentTerminal: React.FC<{
       ) : (
         <>
           <span className="nx-agent-terminal__lease" data-role="VIEW_ONLY">VIEW ONLY</span>
-          <button type="button" className="nx-agent-terminal__ask-btn" onClick={takeControl} title="Assumir controle do teclado">
-            Assumir controle
-          </button>
+          <Tooltip content="Assumir controle do teclado">
+            <button type="button" className="nx-agent-terminal__ask-btn" onClick={takeControl}>
+              Assumir controle
+            </button>
+          </Tooltip>
         </>
       )}
       {ptyTitle && (
@@ -540,25 +548,28 @@ export const AgentTerminal: React.FC<{
           {message}
         </span>
       )}
-      <button
-        type="button"
-        className="nx-agent-terminal__ask-btn"
-        onClick={() => {
-          const next = !askOpen;
-          setAskOpen(next);
-          if (next && availableSkills.length === 0) {
-            void loadSkills();
-          }
-        }}
-        title="Perguntar ao Agente / Sugerir skills"
-      >
-        <Sparkles size={13} />
-        <span>Perguntar</span>
-      </button>
-      {onClose && !windowChrome && (
-        <button type="button" onClick={() => setCloseConfirmOpen(true)} title="Escolher como fechar este terminal">
-          Fechar terminal
+      <Tooltip content="Perguntar ao Agente / Sugerir skills">
+        <button
+          type="button"
+          className="nx-agent-terminal__ask-btn"
+          onClick={() => {
+            const next = !askOpen;
+            setAskOpen(next);
+            if (next && availableSkills.length === 0) {
+              void loadSkills();
+            }
+          }}
+        >
+          <Sparkles size={13} />
+          <span>Perguntar</span>
         </button>
+      </Tooltip>
+      {onClose && !windowChrome && (
+        <Tooltip content="Escolher como fechar este terminal">
+          <button type="button" onClick={() => setCloseConfirmOpen(true)}>
+            Fechar terminal
+          </button>
+        </Tooltip>
       )}
     </div>
   );
@@ -571,7 +582,7 @@ export const AgentTerminal: React.FC<{
             <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', background: 'var(--nx-accent)', color: 'white', fontWeight: 700 }}>
               AGENT
             </span>
-            <strong style={{ fontSize: '12px', color: 'var(--nx-text-primary)' }} title={agentId}>
+            <strong style={{ fontSize: '12px', color: 'var(--nx-text)' }} title={agentId}>
               {displayName}
             </strong>
             {provider && (
@@ -789,6 +800,13 @@ export const AgentTerminal: React.FC<{
           </div>
         </div>
       )}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Remover Agente"
+        description={`Remover o agente "${agentName || agentId}"? A identidade e o terminal serão excluídos.`}
+        onConfirm={() => void executeDeleteAgent()}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
     </section>
   );
 };

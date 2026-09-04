@@ -650,6 +650,11 @@ func addCmd(args []string) error {
 	if noLogin {
 		return nil
 	}
+	if providerName == "opencode" {
+		fmt.Println("OpenCode does not have a Nexus-managed login. Authenticate its chosen provider in the same runtime, for example:")
+		fmt.Println("  opencode auth login <provider>")
+		return nil
+	}
 	fmt.Printf("Starting official authentication flow for %s:%s...\n", providerName, name)
 	if authProv, ok := pAdapter.(provider.AuthProvider); ok {
 		return authProv.Login(context.Background(), p)

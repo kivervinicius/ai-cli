@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { RuntimeSession, ProfileInfo } from '../types';
 import { api } from '../api';
-import { X, ArrowRightLeft } from 'lucide-react';
+import { Button, Dialog } from '../design-system';
 
 interface HandoffModalProps {
   runtime: RuntimeSession;
   profiles: ProfileInfo[];
   onClose: () => void;
   onSuccess: (newSession: RuntimeSession) => void;
+  open?: boolean;
 }
 
 export const HandoffModal: React.FC<HandoffModalProps> = ({
@@ -15,6 +16,7 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
   profiles,
   onClose,
   onSuccess,
+  open = true,
 }) => {
   const runtimeProvider = runtime.provider_id || runtime.provider || '';
   const runtimeProfile = runtime.profile_id || runtime.profile || '';
@@ -44,21 +46,9 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div className="flex items-center space-x-2">
-            <ArrowRightLeft className="w-5 h-5 text-sky-400" />
-            <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider font-mono">
-              Account Handoff
-            </h3>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="text-xs text-slate-300 space-y-2 font-mono">
+    <Dialog open={open} onClose={onClose} title="Account Handoff">
+      <div className="space-y-4 font-mono">
+        <div className="text-xs text-slate-300 space-y-2">
           <div className="bg-slate-950 p-3 rounded border border-slate-800">
             <div><span className="text-slate-500">Source:</span> <span className="uppercase font-bold text-slate-200">{runtimeProvider}</span> ({runtimeProfile})</div>
             <div className="mt-1"><span className="text-slate-500">Runtime:</span> {runtime.runtime_id}</div>
@@ -69,16 +59,16 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
         </div>
 
         {availableProfiles.length === 0 ? (
-          <div className="p-4 bg-amber-950/40 border border-amber-800/60 rounded text-amber-300 text-xs font-mono">
+          <div className="p-4 bg-amber-950/40 border border-amber-800/60 rounded text-amber-300 text-xs">
             No alternative profiles found for provider {runtimeProvider}. Add more accounts via <code>nexus add {runtimeProvider}</code>.
           </div>
         ) : (
-          <div className="space-y-2">
-            <label className="text-xs font-mono text-slate-400">Target Profile:</label>
+          <div className="space-y-2 text-xs">
+            <label className="text-xs text-slate-400">Target Profile:</label>
             <select
               value={selectedProfile}
               onChange={(e) => setSelectedProfile(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-sky-500"
+              className="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-sky-500"
             >
               {availableProfiles.map((p) => (
                 <option key={p.name} value={p.name}>
@@ -90,27 +80,22 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
         )}
 
         {error && (
-          <div className="p-3 bg-rose-950/50 border border-rose-800 rounded text-rose-300 text-xs font-mono">
+          <div className="p-3 bg-rose-950/50 border border-rose-800 rounded text-rose-300 text-xs">
             {error}
           </div>
         )}
 
-        <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-800">
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 rounded text-xs font-medium text-slate-400 hover:text-white"
-          >
-            Cancel
-          </button>
-          <button
+        <div className="nx-dialog-actions">
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            tone="brand"
             disabled={loading || availableProfiles.length === 0}
             onClick={handleHandoff}
-            className="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white rounded text-xs font-semibold shadow-md shadow-sky-900/30 transition"
           >
             {loading ? 'Performing Handoff...' : 'Execute Handoff'}
-          </button>
+          </Button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 };

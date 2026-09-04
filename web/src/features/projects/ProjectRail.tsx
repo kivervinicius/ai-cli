@@ -13,7 +13,7 @@ import {
   Workflow,
   X,
 } from 'lucide-react';
-import { Button, IconButton, ContextMenu, contextMenuFromEvent, type ContextMenuPoint } from '../../design-system';
+import { Button, IconButton, ContextMenu, contextMenuFromEvent, Tooltip, type ContextMenuPoint } from '../../design-system';
 import { AddProjectModal } from './AddProjectModal';
 import type { Agent, Project } from '../../types';
 import { useTranslation } from 'react-i18next';
@@ -78,7 +78,7 @@ export const ProjectRail: React.FC<{
           <span className="nx-brand-mark">N</span>
           <span>
             <strong>IAPro Nexus</strong>
-            <small>{t('rail.maestroMention')}</small>
+            <small>Workspace OS</small>
           </span>
           <IconButton
             className="nx-project-rail__mobile-close"
@@ -106,34 +106,36 @@ export const ProjectRail: React.FC<{
             <span>Novo Agente</span>
           </button>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-            <button
-              type="button"
-              className="nx-button"
-              data-size="sm"
-              style={{ fontSize: '11px', padding: '0 6px', justifyContent: 'center' }}
-              onClick={() => {
-                if (onNewAISession) onNewAISession();
-                onClose();
-              }}
-              title="Nova sessão de IA"
-            >
-              <Sparkles size={11} />
-              <span>Sessão IA</span>
-            </button>
-            <button
-              type="button"
-              className="nx-button"
-              data-size="sm"
-              style={{ fontSize: '11px', padding: '0 6px', justifyContent: 'center' }}
-              onClick={() => {
-                if (onProjectShell) onProjectShell();
-                onClose();
-              }}
-              title="Terminal"
-            >
-              <TerminalSquare size={11} />
-              <span>Terminal</span>
-            </button>
+            <Tooltip content="Nova sessão de IA" side="bottom">
+              <button
+                type="button"
+                className="nx-button"
+                data-size="sm"
+                style={{ fontSize: '11px', padding: '0 6px', justifyContent: 'center' }}
+                onClick={() => {
+                  if (onNewAISession) onNewAISession();
+                  onClose();
+                }}
+              >
+                <Sparkles size={11} />
+                <span>Sessão IA</span>
+              </button>
+            </Tooltip>
+            <Tooltip content="Terminal do projeto" side="bottom">
+              <button
+                type="button"
+                className="nx-button"
+                data-size="sm"
+                style={{ fontSize: '11px', padding: '0 6px', justifyContent: 'center' }}
+                onClick={() => {
+                  if (onProjectShell) onProjectShell();
+                  onClose();
+                }}
+              >
+                <TerminalSquare size={11} />
+                <span>Terminal</span>
+              </button>
+            </Tooltip>
           </div>
         </div>
 
