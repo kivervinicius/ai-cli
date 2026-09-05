@@ -62,3 +62,17 @@
   - `npm --prefix web run quality:full` (53 test files / 264 Vitest tests passed, clean build).
   - `npm --prefix web run test:e2e` (All 6 breakpoints, accordion, radios, and density checks passed).
 
+## Wave 6: CI nativo e install smoke por plataforma (VERIFIED)
+- Cross-Platform matrix compilation verified:
+  - Linux: `amd64`, `arm64` (`.tar.gz`, `.deb`, `.rpm` via nFPM)
+  - Darwin: `amd64`, `arm64` (`.tar.gz`)
+  - Windows: `amd64`, `arm64` (`.zip`)
+- Script syntax and naming consistency:
+  - `install.sh` / `uninstall.sh` / `scripts/package-linux-beta.sh` validated with `bash -n`.
+  - `install.ps1` validated against GoReleaser output naming patterns.
+  - Added `internal/release/installer_test.go` verifying archive patterns and script integrity.
+- Quality gates:
+  - `go test -v ./internal/release/...` passed.
+  - `go test -race ./internal/...` passed.
+
+
