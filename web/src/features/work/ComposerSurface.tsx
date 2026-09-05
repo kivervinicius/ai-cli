@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, ClipboardCopy, FileText, Layers, Lightbulb, MessageCircle, Plus, RefreshCw, Send, Sparkles } from 'lucide-react';
-import { Badge, Button, Card, Input } from '../../design-system';
+import { Badge, Button, Card, Input, Select } from '../../design-system';
 import { nexus } from '../../nexus/api';
 import type { ComposerSession, ComposerSessionView, PromptArtifact, PromptReadinessCheck, Project } from '../../types';
 import { selectResumableComposerSession } from './composerSessionModel';
@@ -77,15 +77,17 @@ export const ComposerSurface: React.FC<{ project: Project; onTransformFlow: (art
   };
 
   const send = async () => {
-    if (!view || !message.trim()) return;
+    if (!view || !message.trim() || busy) return;
+    const textToSend = message.trim();
     setBusy(true);
     setError('');
     try {
-      setView(await nexus.addComposerTurn(view.session.id, message.trim()));
+      setView(await nexus.addComposerTurn(view.session.id, textToSend));
       setMessage('');
       await refreshSessions();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      // message is preserved because setMessage('') was only called on success!
     } finally {
       setBusy(false);
     }
@@ -237,12 +239,10 @@ export const ComposerSurface: React.FC<{ project: Project; onTransformFlow: (art
         {sessions.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--nx-border)' }}>
             <small style={{ color: 'var(--nx-muted)' }}>Elaborações anteriores:</small>
-            <select
-              className="nx-select"
-              style={{ fontSize: 12, padding: '2px 8px', borderRadius: 6, background: 'var(--nx-surface)', color: 'var(--nx-text)' }}
-              defaultValue=""
-              onChange={async (e) => {
-                const id = e.target.value;
+            <Select
+              placeholder="Retomar uma sessão salva…"
+              value=""
+              onChange={async (id) => {
                 if (!id) return;
                 setBusy(true);
                 setError('');
@@ -254,14 +254,12 @@ export const ComposerSurface: React.FC<{ project: Project; onTransformFlow: (art
                   setBusy(false);
                 }
               }}
-            >
-              <option value="">Retomar uma sessão salva…</option>
-              {sessions.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.title || `Sessão ${s.id.slice(-6)}`} · {s.state}
-                </option>
-              ))}
-            </select>
+              options={sessions.map((s) => ({
+                value: s.id,
+                label: `${s.title || `Sessão ${s.id.slice(-6)}`} · ${s.state}`,
+              }))}
+              selectStyle={{ fontSize: 12, height: 28 }}
+            />
           </div>
         )}
         {error && <div className="nx-inline-error">{error}</div>}
@@ -276,7 +274,6 @@ export const ComposerSurface: React.FC<{ project: Project; onTransformFlow: (art
     <div className="nx-composer-deliberative">
       <div className="nx-composer-deliberative__header">
         <div>
-          <span className="nx-eyebrow"><Sparkles size={13} /> COMPOSER</span>
           <h2>{view.session.title || 'Elaboração'}</h2>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -286,12 +283,9 @@ export const ComposerSurface: React.FC<{ project: Project; onTransformFlow: (art
             </Badge>
           )}
           {sessions.length > 1 && (
-            <select
-              className="nx-select"
-              style={{ fontSize: 12, padding: '3px 8px', borderRadius: 6, background: 'var(--nx-surface)', color: 'var(--nx-text)' }}
+            <Select
               value={view.session.id}
-              onChange={async (e) => {
-                const id = e.target.value;
+              onChange={async (id) => {
                 if (!id || id === view.session.id) return;
                 setBusy(true);
                 setError('');
@@ -304,13 +298,12 @@ export const ComposerSurface: React.FC<{ project: Project; onTransformFlow: (art
                   setBusy(false);
                 }
               }}
-            >
-              {sessions.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.title || `Sessão ${s.id.slice(-6)}`} ({s.state})
-                </option>
-              ))}
-            </select>
+              options={sessions.map((s) => ({
+                value: s.id,
+                label: `${s.title || `Sessão ${s.id.slice(-6)}`} (${s.state})`,
+              }))}
+              selectStyle={{ fontSize: 12, height: 28 }}
+            />
           )}
           <Badge tone={view.session.state === 'FINALIZED' ? 'success' : 'brand'}>{view.session.state}</Badge>
           <Button size="sm" disabled={busy} onClick={() => { setView(null); setArtifact(null); }}>
@@ -335,15 +328,36 @@ export const ComposerSurface: React.FC<{ project: Project; onTransformFlow: (art
             )}
           </div>
           {view.session.state !== 'FINALIZED' && (
-            <div className="nx-composer-goal-bar__row">
-              <Input
+            <div className="nx-composer-goal-bar__row" style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginTop: 12 }}>
+              <textarea
+                className="nx-textarea"
                 value={message}
-                onChange={setMessage}
-                placeholder="Adicione requisito, decisão ou resposta a uma lacuna…"
-                style={{ flex: 1 }}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    void send();
+                  }
+                }}
+                placeholder="Adicione requisito, decisão ou resposta a uma lacuna… (Enter envia, Shift+Enter pula linha)"
+                rows={2}
+                style={{
+                  flex: 1,
+                  minHeight: 48,
+                  maxHeight: 180,
+                  resize: 'vertical',
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  background: 'var(--nx-bg-elevated)',
+                  border: '1px solid var(--nx-border)',
+                  color: 'var(--nx-text)',
+                  fontSize: 13,
+                  lineHeight: 1.45,
+                  fontFamily: 'inherit',
+                }}
                 disabled={busy}
               />
-              <Button tone="brand" disabled={!message.trim() || busy} onClick={() => void send()}>
+              <Button tone="brand" disabled={!message.trim() || busy} onClick={() => void send()} style={{ height: 48, alignSelf: 'stretch' }}>
                 <Send size={14} /> {busy ? 'Enviando…' : 'Enviar'}
               </Button>
             </div>

@@ -1,9 +1,128 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-05 — Redesign de Alta Densidade e Seções Retráteis no Rail Lateral (ProjectRail)
+
+- **Objetivo**: Redesenhar a barra lateral (`ProjectRail.tsx` e `workspace-os.css`) para acomodar e escalar confortavelmente com muitos itens (projetos, agentes e ferramentas) sem encavalar, sem esgotar o espaço vertical e permitindo busca instantânea.
+- **Alterações Realizadas**:
+  1. **Seções Retráteis com Acordeão e Memória (`web/src/features/projects/ProjectRail.tsx`)**:
+     - Seções `Projetos`, `Agentes` e `Ferramentas` agora possuem cabeçalhos clicáveis retráteis com chevron (`▾` / `▸`), contadores automáticos e persistência no `localStorage` (`nx_rail_projects_open`, `nx_rail_agents_open`, `nx_rail_tools_open`).
+  2. **Micro-Busca e Filtro Instantâneo (`nx-project-rail__search-wrap`)**:
+     - Campo de busca compacto ativado automaticamente quando o usuário possui múltiplos itens ou digita uma consulta, filtrando projetos e agentes por nome/caminho/role em tempo real.
+  3. **Itens de Alta Densidade (Compact Rows ~30px)**:
+     - Projetos e agentes compactados para 30px com avatares/status-dots reduzidos e tipografia otimizada, permitindo exibir mais de 15 itens sem rolagem desconfortável.
+  4. **Grade Compacta de Ferramentas (2 Colunas)**:
+     - As 8 ferramentas de navegação secundárias foram reorganizadas em grade de 2 colunas (`nx-rail-tools-grid`), reduzindo o consumo de espaço de 272px para apenas ~115px e liberando altura útil diretamente para os agentes e projetos em execução.
+  5. **Validação Rigorosa e Verificação**:
+     - `make web-verify`: 8/8 gates PASS (typecheck, lint, null-arrays, test, i18n, build, embed-sync, ui-markers).
+     - `npm --prefix web run test:e2e-hardening`: 6/6 viewports PASS (320px a 1440px) com zero obstrução.
+     - Binário `nexus` v0.5.0-beta.23 recompilado com assets web embutidos e reinstalado em `/home/desenvolvedor/.local/bin/nexus`. Servidor ativo reiniciado na porta 3000.
+
+## 2026-09-04 — Eliminação de Redundâncias no Topbar e Deslocamento para o Dashboard Local (Opções A e C)
+
+- **Objetivo**: Resolver o encavalamento de elementos na Topbar e evitar o esmagamento/ocultação do Projeto Switcher (`.nx-topbar__project-btn`), eliminando redundâncias da barra superior mantendo-a em 1 linha inteligente (Opção A) e movendo ações de criação completas e banner de atualizações para o Dash Local do Projeto (`ProjectOverviewSurface.tsx`, Opção C).
+- **Alterações Realizadas**:
+  1. **Topbar Limpa & Inteligente em 1 Linha (`web/src/app/NexusShell.tsx`)**:
+     - Removida a barra de 3 botões duplicados do Topbar (`+ Novo Agente`, `Sessão IA`), mantendo apenas o acesso rápido dedicado ao `Terminal` (`data-testid="topbar-terminal-btn"`, `nx-button--terminal`) com hit-target protegido (>= 32x28px).
+     - Compactado o badge extenso de manutenção ("Atualizações e manutenção" ~210px) para um badge compacto (`<ArrowUpCircle size={13} /> Updates`), ocupando apenas ~30px em telas menores.
+     - Garantida a visibilidade contínua do seletor de projeto (`.nx-topbar__project-btn`) com avatar, nome e branch sem esmagamento nem truncamento indevido.
+  2. **Dashboard Local Enriquecido (`web/src/features/overview/ProjectOverviewSurface.tsx`)**:
+     - Integrado o grupo de ações completas do projeto (`ProjectCreateActions`: `+ Novo Agente`, `Sessão IA`, `Terminal`) no header da página (`nx-page-header__actions`).
+     - Adicionado card informativo de Atualizações do Sistema quando disponíveis (`updateInfo?.update_available`), com botão direto "Ver Detalhes" abrindo a aba de Settings (`onOpenSettings`).
+  3. **Proteção E2E e Responsividade (`web/src/features/projects/ProjectCreateActions.tsx` & `web/src/app/workspace-os.css`)**:
+     - `ProjectCreateActions.tsx`: botão do Terminal configurado com `data-testid="topbar-terminal-btn"` e classe `nx-button--terminal`.
+     - `workspace-os.css`: regras responsivas para 320px, 390px, 768px, 1024px, 1280px e 1440px garantindo zero colisão e prioridade máxima do Terminal e do Switcher.
+  4. **Validação e Rebuild**:
+     - `npm --prefix web run build`: PASS
+     - `npm --prefix web test`: 51/51 arquivos, 249/249 testes PASS
+     - `npm --prefix web run test:e2e-hardening`: 6/6 viewports PASS com validação física via `document.elementFromPoint`
+     - `make web-verify`: 8/8 gates PASS
+     - Rebuild Go do binário nexus instalado com os novos assets embutidos em `/home/desenvolvedor/.local/bin/nexus`.
+     - Servidor Nexus Web reiniciado em segundo plano na porta 3000.
+
+## 2026-09-04 — Hardening de Topbar, Terminal Protegido, Densidade Dinâmica e Seletor de Temas em Accordion
+
+- **Problemas Endereçados**:
+  1. **Acesso Crítico ao Terminal Bloqueado em 1280px / Telas Médias**:
+     - Sintoma: Botão "Terminal" no Topbar ficava empurrado para fora ou encavalado por `GlobalAttentionRadar` e ações secundárias.
+     - Causa: `GlobalAttentionRadar` estava alocado dentro de `.nx-topbar__context` no lado esquerdo do Topbar, colidindo com o seletor de projeto e o path truncate. Além disso, regras CSS destrutivas `@media (max-width: 1100px) { display: none !important; }` ocultavam ações do Topbar.
+     - Correção:
+       - Substituída a barra secundária `ProjectCreateActions` por ações nativas `topbar-actions`.
+       - Botão "Terminal" posicionado com prioridade máxima (`flex-shrink: 0 !important; min-width: 32px; min-height: 32px; order: 1;`), associado diretamente ao dispatch canônico `nexus:project-shell`.
+       - Movido `GlobalAttentionRadar` para o container direito de status (`.nx-topbar__status`), eliminando qualquer colisão com a rota e nome do projeto.
+       - Configurado `.nx-topbar__path` com largura inteligente via `clamp(80px, 14vw, 180px)` e `overflow: hidden; text-overflow: ellipsis`.
+  2. **Controles Conflitantes e Redundantes no Card de Tema**:
+     - Sintoma: Botões de modo e acento competiam visualmente com presets de temas; usuário solicitou interface em Accordion com amostras de cor (swatches) e sem redundância.
+     - Correção:
+       - Implementado componente `ThemeAccordionSelector` acessível (WAI-ARIA accordion/radiogroup) categorizando os 10 presets em "Temas Escuros & Noturnos", "Temas Claros & Clean", e "Acessibilidade & Alto Contraste (WCAG AAA)".
+       - Cada preset exibe uma amostra real de 4 cores (`bg`, `surface`, `accent`, `text`) com `role="radio"` e `aria-checked`.
+       - Sobrescritas manuais de esquema e acento foram isoladas dentro de gaveta sanfonada colapsável ("Ajustes Avançados"), sem poluir a visão padrão.
+  3. **Densidade Inoperante ("compacta e confortavel não muda nada")**:
+     - Sintoma: A alternância entre "Compacto" e "Confortável" não alterava alturas reais de cartões, botões e tabelas devido a dimensões `px` estáticas no CSS.
+     - Correção:
+       - Declarados tokens CSS dinâmicos em `:root[data-density="compact"]` e `:root[data-density="comfortable"]`: `--nx-density-pad-card`, `--nx-density-pad-btn`, `--nx-density-btn-h`, `--nx-density-row-h`, `--nx-density-gap`, `--nx-density-font-body`.
+       - Vinculados `.nx-card`, `.nx-button`, tabelas e linhas aos tokens de densidade.
+       - Comprovada redução de altura mensurável em cartões e botões (e.g. 497px -> 481px no Settings Card; 36px -> 28px nos botões compactos).
+  4. **Precedência e Limpeza de Variáveis CSS no ThemeProvider**:
+     - Criado `MANAGED_THEME_COLOR_VARS` e função pura `resolveThemeStyleVariables`.
+     - `ThemeProvider.tsx` agora remove explicitamente todas as variáveis de temas anteriores antes de injetar as novas variáveis, garantindo fidelidade cromática estrita sem contaminação residual entre trocas de preset.
+  5. **Suporte a Porta Efêmera no CLI Go**:
+     - `internal/app/control_cmd.go`: alterada validação de porta de `p > 0` para `p >= 0`, viabilizando `--port 0` para alocação determinística de portas efêmeras pelo kernel em testes E2E.
+- **Validação Automatizada & Gates**:
+  - **Vitest**: Adicionados testes de serialização, precedência de customização e validação de contraste WCAG AA/AAA (W3C relative luminance) para todos os 10 presets (`npm --prefix web test` — 51 arquivos, 249 testes PASS).
+  - **Playwright E2E Determinístico**: Criado `web/scripts/e2e-hardening-verify.mjs` testando 6 resoluções (320x568, 390x844, 768x1024, 1024x768, 1280x800, 1440x900). Teste confirmou visibilidade sem colisão do botão Terminal e delta real de densidade compact vs comfortable.
+  - **Qualidade Global**: `make web-verify` 8/8 gates PASS (TypeScript, ESLint, null-arrays, Vitest, i18n, build, embed-sync, ui-markers).
+  - **Rebuild Binário**: Executável recompilado e atualizado em `/home/desenvolvedor/.local/bin/nexus`.
+
+
+- **Problemas Identificados**:
+  1. **Inicialização do Shell Terminal nos Perfis Isolados**:
+     - Sintoma: `.zshrc:source:79: no such file or directory: .../.oh-my-zsh/oh-my-zsh.sh` e `.../.local/bin/env` nos ambientes isolados (`ai-manager/profiles/*/*/home/.zshrc`).
+     - Causa: Os perfis assumiam `$HOME/.oh-my-zsh` local quando a instalação real residia em `/home/desenvolvedor/.oh-my-zsh`.
+     - Correção: Atualizados os scripts `.zshrc` dos 4 perfis (`agy/kiveromegasistemas`, `agy/kivervinicius-gmail`, `codex/kiver.omegasistemas`, `codex/kivergmail`) com fallbacks seguros para `$ZSH` e verificação condicional de existência de arquivos antes de executar `source` ou `.`.
+  2. **Duplo Botão de Fechar na Aba Ativa (`WorkspaceRenderer.tsx`)**:
+     - Sintoma: A aba ativa de produto/configurações continha o botão `×` na própria aba (`.nx-workspace-tab__close`) E um segundo botão `×` duplicado no canto superior direito do stack header (`.nx-workspace-stack__actions`).
+     - Correção: Removida a ação redundante no header da stack mantendo o fechamento direto na aba e no menu de contexto.
+  3. **Redundâncias Visuais na Superfície de Configurações (`SettingsSurface.tsx`)**:
+     - No card "Tema", os controles manuais de esquema e destaque disputavam com o seletor de "Tema Preset". Reorganizado de forma lógica: Preset como seleção principal no topo, seguido de seletores de esquema e destaque rotulados com clareza.
+     - No card "Notificações", o texto com ícone *"Ambos ligados por padrão"* repetia o estado evidente dos dois switches já ativados.
+  4. **Redundâncias na Superfície de Composer (`ComposerSurface.tsx` / `WorkSurface.tsx`)**:
+     - No header do Composer, o badge com o nome do projeto repetia o nome já exibido com destaque no Topbar, Taskbar e Rail.
+     - No cabeçalho da sessão deliberativa do Composer, a eyebrow repetia desnecessariamente o título da seção superior.
+  5. **Redundâncias no Rail de Navegação (`ProjectRail.tsx`)**:
+     - Botão duplicado de adicionar projeto no rodapé do rail (`Add local Project`), quando o cabeçalho "Projetos" já possui o botão `+` e o modal de gerenciador de projetos possui ação de adição.
+- **Validação**:
+  - `make web-verify` 8/8 gates aprovados (typecheck, lint, null-arrays, test, i18n, build, embed-sync, ui-markers).
+  - `make build` concluído com sucesso.
+  - Screenshots reais capturadas com Playwright em todas as abas e modais confirmando layout limpo e sem redundâncias.
+
+## 2026-09-04 — Fix: Null-Safe ConfigImpact (`changed_fields.length` crash)
+
+- **Sintoma**: `Uncaught TypeError: Cannot read properties of null (reading 'length')` no bundle frontend (`AgentConfigurationSurface`).
+- **Causa Raiz**: `AnalyzeImpact` no backend Go (`internal/nexus/config.go`) serializava `ChangedFields` e `Warnings` como `nil` quando não havia divergências entre configurações, resultando em `{"changed_fields": null}`. O frontend realizava acesso direto a `impact.changed_fields.length`.
+- **Correção em Camadas**:
+  1. **Backend Go (`internal/nexus/config.go`)**: Inicialização explícita de `ChangedFields: []string{}` e `Warnings: []string{}` garantindo `[]` vazio no JSON.
+  2. **Frontend React (`AgentConfigurationSurface.tsx`, `PlanBuilderSurface.tsx`, `DirectoryBrowserModal.tsx`)**: Blindagem defensiva com `(impact.changed_fields || []).length`, `(revisionDiff.added_packages || []).length`, etc.
+  3. **Guardião Estático (`web/scripts/verify-report.mjs`)**: Inclusão de `changed_fields`, `warnings`, `added_packages`, `removed_packages`, `changed_packages`, `checks` no gate estático de `null-arrays`.
+- **Verificação**: `make web-verify` 8/8 gates PASS; `go test ./internal/nexus` PASS; rebuild e reabertura validados.
+
 ## 2026-09-04 — WORKBENCH UX, LAYOUT PERSISTENCE, THEMING AND ACCESSIBILITY HARDENING
 
 - **Escopo**: Hardening arquitetural completo do IAPro Nexus Workbench:
-  1. **WorkspaceLayoutService (`web/src/services/WorkspaceLayoutService.ts`)**:
+  1. **Z-Index Architectural Scale (`web/src/app/workspace-os.css`)**:
+     - Escala canônica de z-index declarada em `:root` (`--nx-z-base: 1` até `--nx-z-tooltip: 9000`).
+     - Normalização das camadas de janelas, rail, topbar, popovers, drawers, context menus e modais.
+     - Radar de atenção e popover de status agora flutuam consistentemente acima de janelas ativas (`--nx-z-popover: 4000` vs janela focada `500`).
+  2. **Componentização de Primitivas de Design System**:
+     - Upgrade do componente `<Select>` (`web/src/design-system/primitives/index.tsx`) com chevron SVG estilizado, foco acessível e suporte flexível a `options`.
+     - Substituição de `<select>` e `<input>` HTML puros não estilizados por `<Select>` e `<Input>` em todos os modais principais (`StartModal`, `ContinueModal`, `HandoffModal`, `NewAgentModal`, `SettingsSurface`, `ComposerSurface`, `PlanBuilderSurface`, `WorkspaceRenderer`).
+     - Prevenção de `alert` e `confirm` nativos unstyled em favor de diálogos integrados com tema.
+  3. **Resiliência Responsiva e Desencavalamento do Topbar (`web/src/app/workspace-os.css`)**:
+     - Eliminação da colisão entre `.nx-project-create-actions` e `.nx-topbar__status` em viewports entre 768px e 1280px.
+     - Regras de mídia em 1280px, 1100px, 820px e 600px para compactação progressiva de contexto e controles.
+     - Suporte a viewports móveis (480px) sem quebra de layout, sobreposição de texto ou estouro horizontal.
+  4. **Auditoria Visual Automatizada com Playwright**:
+     - Captura e inspeção visual de screenshots reais do Nexus em execução nos viewports: Desktop (1440x900), Compact (1024x768), Tablet (768x800) e Mobile (480x800).
+  5. **WorkspaceLayoutService (`web/src/services/WorkspaceLayoutService.ts`)**:
      - Serviço atômico com versionamento v3 (`WORKSPACE_LAYOUT_VERSION = 3`).
      - Normalização, validação de schema, migração retrocompatível (v1/v2 -> v3) e fallback seguro.
      - Suporte a export/import de layouts e ponte de compatibilidade com chaves legadas.
@@ -36,6 +155,18 @@
 - **Verificação**:
   - `make web-verify`: 8/8 gates PASS (typecheck, lint, null-arrays, vitest (244 tests), i18n, build, embed-sync, ui-markers).
 
+
+## 2026-09-04 — Limpeza de artefatos versionados indevidamente
+
+- Removidos do índice (mantidos locais / ignorados): `.tempmediaStorage/` (screenshots e2e), `.superpowers/` (progress SDD local), `web/package-lock.json` (Bun é o packageManager), `DEV/validation/*.status`.
+- `.gitignore` atualizado: `.tempmediaStorage/`, `.worktrees/`, `web/package-lock.json`, status crumbs; `.superpowers/` em vez de `.superpowers/*`.
+- Mantidos de propósito: `internal/control/web/dist/` (embed Go), `favicon.ico`/`logo.png` raiz (fallback do `build.mjs`), `web/bun.lock`, `docs/superpowers/`.
+
+## 2026-09-04 — Seleção AGY: preferir mais famílias utilizáveis
+
+- **Bug**: `BottleneckScore` (0.7×best + 0.3×avg) fazia omega (Gemini 0% / Claude 100% → 85) vencer gmail (90%/40% → 82) no `nexus agy`. LRU sobre quota `!Trustworthy` ainda ignorava o score e voltava ao default.
+- **Fix**: `EffectiveCapacityScore = usableGroups*100 + avg(GroupRemaining)`; `quota_remaining` web usa a mesma razão; stderr Cap mostra `CompactGroupSummary`; LRU só quando não há windows.
+- **Evidência**: `nexus explain agy` → Optimal Choice `kivervinicius-gmail` (265 vs 150).
 
 ## 2026-09-04 — Codex usage: phantoms Claude + rollouts partilhados
 

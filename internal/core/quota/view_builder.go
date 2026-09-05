@@ -120,29 +120,21 @@ func BuildQuotaViewFromDetails(provider, profile, account, plan, status, modelNa
 
 // BottleneckScore computes an effective capacity score for scheduling.
 // Returns (effectiveCapacity, bottleneckKind, avgRemaining).
-// Capacity uses BestGroupRemaining (max of per-group mins) so independent
-// model pools do not cancel each other. Bottleneck kind remains the global
-// tightest window for diagnostics. Average is over group capacities.
+// Prefer accounts with more usable model families, then higher total capacity
+// (usableGroups*100 + avg group remaining). Bottleneck kind remains the global
+// tightest window for diagnostics only.
 func BottleneckScore(qv *QuotaView) (float64, string, float64) {
 	_, bottleneckKind := qv.Bottleneck()
-	best, ok := qv.BestGroupRemaining()
-	if !ok {
+	total, groups := qv.TotalGroupRemaining()
+	if groups == 0 {
 		return 50.0, "", 50.0
 	}
-
-	var groupCaps []float64
-	sum := 0.0
-	for _, g := range qv.ModelGroups {
-		rem, groupOK := g.GroupRemaining()
-		if !groupOK {
-			continue
-		}
-		groupCaps = append(groupCaps, rem)
-		sum += rem
+	avgRemaining := total / float64(groups)
+	effective, ok := qv.EffectiveCapacityScore()
+	if !ok {
+		return 50.0, bottleneckKind, avgRemaining
 	}
-	avgRemaining := sum / float64(len(groupCaps))
-	effectiveCapacity := (best * 0.7) + (avgRemaining * 0.3)
-	return effectiveCapacity, bottleneckKind, avgRemaining
+	return effective, bottleneckKind, avgRemaining
 }
 
 // RenderSummary returns a one-line summary of the quota view for compact displays.

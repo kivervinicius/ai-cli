@@ -31,9 +31,78 @@ export const Textarea: React.FC<Omit<React.TextareaHTMLAttributes<HTMLTextAreaEl
   <textarea className={`nx-textarea ${className}`.trim()} value={value} onChange={(event) => onChange(event.target.value)} {...props} />
 );
 
-export const Select: React.FC<{ value: string; onChange: (value: string) => void; options: { value: string; label: string }[]; label?: string; className?: string; placeholder?: string }> = ({ value, onChange, options, label, className = '', placeholder }) => (
-  <label className={`nx-select-wrap ${className}`.trim()}>{label && <span>{label}</span>}<select className="nx-select" value={value} onChange={(event) => onChange(event.target.value)}>{placeholder && !options.some((option) => option.value === '') && <option value="">{placeholder}</option>}{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-);
+export const Select: React.FC<{
+  value: string;
+  onChange: (value: string) => void;
+  options?: { value: string; label: string; disabled?: boolean }[];
+  label?: string;
+  className?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  id?: string;
+  name?: string;
+  style?: React.CSSProperties;
+  selectStyle?: React.CSSProperties;
+  'aria-label'?: string;
+  children?: React.ReactNode;
+}> = ({
+  value,
+  onChange,
+  options,
+  label,
+  className = '',
+  placeholder,
+  disabled,
+  id,
+  name,
+  style,
+  selectStyle,
+  'aria-label': ariaLabel,
+  children,
+}) => {
+  const selectElement = (
+    <select
+      id={id}
+      name={name}
+      disabled={disabled}
+      aria-label={ariaLabel || (typeof label === 'string' ? label : undefined)}
+      className="nx-select"
+      style={selectStyle}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+    >
+      {placeholder && !options?.some((option) => option.value === '') && (
+        <option value="" disabled>
+          {placeholder}
+        </option>
+      )}
+      {options
+        ? options.map((option) => (
+            <option key={option.value} value={option.value} disabled={option.disabled}>
+              {option.label}
+            </option>
+          ))
+        : children}
+    </select>
+  );
+
+  if (label) {
+    return (
+      <label className={`nx-select-wrap ${className}`.trim()} style={style}>
+        <span>{label}</span>
+        {selectElement}
+      </label>
+    );
+  }
+
+  return className || style ? (
+    <div className={`nx-select-container ${className}`.trim()} style={style}>
+      {selectElement}
+    </div>
+  ) : (
+    selectElement
+  );
+};
 
 export const Switch: React.FC<{ checked: boolean; onChange: (checked: boolean) => void; label: string; description?: string }> = ({ checked, onChange, label, description }) => (
   <label className="nx-switch-row"><button type="button" role="switch" aria-checked={checked} className="nx-switch" data-checked={checked ? 'true' : 'false'} onClick={() => onChange(!checked)}><span /></button><span className="nx-switch-copy"><strong>{label}</strong>{description && <small>{description}</small>}</span></label>
@@ -56,6 +125,7 @@ export const InlineAlert: React.FC<{ tone?: 'info' | 'success' | 'warning' | 'da
 
 export { ContextMenu, clampMenuPosition, contextMenuFromEvent } from './ContextMenu';
 export type { ContextMenuItem, ContextMenuPoint } from './ContextMenu';
+export { ContextDrawer, type ContextDrawerProps } from './ContextDrawer';
 
 import * as RadixDialog from '@radix-ui/react-dialog';
 import * as RadixAlertDialog from '@radix-ui/react-alert-dialog';

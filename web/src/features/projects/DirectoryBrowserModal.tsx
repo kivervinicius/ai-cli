@@ -125,9 +125,9 @@ export const DirectoryBrowserModal: React.FC<{
           )}
 
           <div className="nx-dir-breadcrumbs-list">
-            {data?.breadcrumbs.map((crumb, idx) => {
+            {(data?.breadcrumbs || []).map((crumb, idx, arr) => {
               const label = crumb === '/' ? '/' : crumb.split('/').filter(Boolean).pop();
-              const isLast = idx === data.breadcrumbs.length - 1;
+              const isLast = idx === arr.length - 1;
               return (
                 <React.Fragment key={crumb}>
                   {idx > 0 && <ChevronRight size={12} className="nx-crumb-sep" />}

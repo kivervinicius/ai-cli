@@ -19,9 +19,12 @@ export const WorkspaceTaskbar: React.FC<{
     maestro_available: boolean;
   } | null>(null);
 
+  const [intelligence, setIntelligence] = useState<{ available: boolean; provider?: string } | null>(null);
+
   useEffect(() => {
     nexus.getSystemUpdates().then(setSysInfo).catch(() => undefined);
-  }, []);
+    nexus.getIntelligence(project?.id).then(setIntelligence).catch(() => undefined);
+  }, [project?.id]);
 
   useEffect(() => {
     if (project?.default_branch) {
@@ -95,6 +98,14 @@ export const WorkspaceTaskbar: React.FC<{
             <strong>Nexus</strong> v{sysInfo?.nexus_version || 'unknown'}
           </span>
         </Tooltip>
+        {intelligence?.available && (
+          <Tooltip content={`Inteligência Nexus ativa: ${intelligence.provider || 'default'}`} side="top">
+            <span className="nx-statusbar-item" style={{ color: 'var(--nx-accent-text)', fontWeight: 600 }}>
+              <span className="nx-status-dot" style={{ background: 'var(--nx-accent)' }} />
+              <span>{intelligence.provider || 'Intelligence'}</span>
+            </span>
+          </Tooltip>
+        )}
         <span className="nx-statusbar-item nx-statusbar-local">
           <Wifi size={11} />
           <span>{t('statusBar.local')}</span>

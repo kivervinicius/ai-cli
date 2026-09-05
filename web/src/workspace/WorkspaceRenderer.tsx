@@ -11,6 +11,7 @@ import { findTileSplitters } from './arrange';
 import { isWindowedPresentationMode, mosaicDropTargetViewId } from './presentation';
 import { ptyWindowHeading } from './ptyLiveChrome';
 import { liveChromeFor, usePtyLiveChromeOptional } from './PtyLiveChromeContext';
+import { ARRANGE_MENU_PRESETS, type ArrangeMenuPreset } from './arrangePresets';
 
 const WINDOW_ACCENTS = ['#38bdf8', '#22c55e', '#f59e0b', '#f472b6', '#a78bfa', '#fb7185'];
 const WINDOW_ICONS = ['⌘', '⚡', '◆', '●', '★', '◎'];
@@ -196,6 +197,98 @@ const WindowChromeMenu: React.FC<{
   );
 };
 
+const ArrangeLayoutMenu: React.FC<{
+  activePreset: ArrangeMenuPreset;
+  onSelect: (preset: ArrangeMenuPreset) => void;
+}> = ({ activePreset, onSelect }) => {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setMenuPos(null);
+      return;
+    }
+    const anchor = rootRef.current?.querySelector('button');
+    if (anchor) {
+      const rect = anchor.getBoundingClientRect();
+      setMenuPos({
+        top: rect.bottom + 6,
+        right: Math.max(8, window.innerWidth - rect.right),
+      });
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (rootRef.current?.contains(target)) return;
+      if ((target as Element).closest?.('.nx-arrange-menu__panel')) return;
+      setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    const listen = window.setTimeout(() => {
+      window.addEventListener('pointerdown', onPointerDown, true);
+    }, 0);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(listen);
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const panel =
+    open && menuPos
+      ? createPortal(
+          <div
+            className="nx-arrange-menu__panel"
+            role="menu"
+            aria-label="Arranjar janelas"
+            style={{ top: menuPos.top, right: menuPos.right }}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            {ARRANGE_MENU_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                role="menuitemradio"
+                className="nx-arrange-menu__item"
+                aria-checked={activePreset === preset.id}
+                data-active={activePreset === preset.id ? 'true' : undefined}
+                onClick={() => {
+                  onSelect(preset.id);
+                  setOpen(false);
+                }}
+              >
+                <span>{preset.label}</span>
+                <small>{preset.hint}</small>
+              </button>
+            ))}
+          </div>,
+          document.body
+        )
+      : null;
+
+  return (
+    <div className="nx-arrange-menu" ref={rootRef}>
+      <button
+        type="button"
+        className="nx-arrange-menu__trigger"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        title="Arranjar janelas"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <LayoutGrid size={12} />
+        <span>Arranjar</span>
+      </button>
+      {panel}
+    </div>
+  );
+};
+
 export type WorkspaceCreateActions = {
   onNewAgent?: () => void;
   onNewAISession?: () => void;
@@ -371,13 +464,6 @@ const WorkspaceStackView: React.FC<{
             );
           })}
         </div>
-        {activeProduct && canClose && (
-          <div className="nx-workspace-stack__actions">
-            <IconButton label={t('workspace.close')} onClick={() => closeSurface(activeProduct)}>
-              <X size={13} />
-            </IconButton>
-          </div>
-        )}
       </header>
       <ContextMenu
         open={tabMenu?.point ?? null}
@@ -471,41 +557,11 @@ const TerminalsHost: React.FC<{
       <header className="nx-terminals-host__chrome">
         <div className="nx-terminals-host__title">
           <TerminalSquare size={14} />
-          <strong>{t('nav.terminals')}</strong>
-          <small>
-            {ptySurfaces.length} PTY{ptySurfaces.length === 1 ? '' : 's'}
-          </small>
+          <strong>
+            {t('nav.terminals')} · {ptySurfaces.length} PTY{ptySurfaces.length === 1 ? '' : 's'}
+          </strong>
         </div>
-        <div className="nx-presentation-toggle" role="group" aria-label="Terminal presentation">
-          <button
-            type="button"
-            data-active={presentation.state.mode === 'TABS' ? 'true' : 'false'}
-            onClick={() => presentation.setMode('TABS')}
-            title="Abas internas de PTY"
-          >
-            <PanelsTopLeft size={11} />
-            <span>Abas</span>
-          </button>
-          <button
-            type="button"
-            data-active={presentation.state.mode === 'DESKTOP' ? 'true' : 'false'}
-            onClick={() => presentation.setMode('DESKTOP')}
-            title="Janelas flutuantes"
-          >
-            <AppWindow size={11} />
-            <span>Janelas</span>
-          </button>
-          <button
-            type="button"
-            data-active={presentation.state.mode === 'MOSAIC' ? 'true' : 'false'}
-            onClick={() => presentation.setMode('MOSAIC')}
-            title="Mosaico lado a lado"
-          >
-            <LayoutGrid size={11} />
-            <span>Mosaico</span>
-          </button>
-        </div>
-        {windowed && minimizedPtys.length > 0 && (
+        {windowed && minimizedPtys.length > 0 ? (
           <div className="nx-minimized-chips" aria-label={t('workspace.minimizedShelf')}>
             <span className="nx-minimized-chips__label">{t('workspace.minimizedShelf')}</span>
             {minimizedPtys.map((surface) => {
@@ -534,7 +590,46 @@ const TerminalsHost: React.FC<{
               );
             })}
           </div>
+        ) : (
+          <div className="nx-minimized-chips" aria-hidden="true" />
         )}
+        <div className="nx-terminals-host__chrome-cluster">
+          <div className="nx-presentation-toggle" role="group" aria-label="Terminal presentation">
+            <button
+              type="button"
+              data-active={presentation.state.mode === 'TABS' ? 'true' : 'false'}
+              onClick={() => presentation.setMode('TABS')}
+              title="Abas internas de PTY"
+            >
+              <PanelsTopLeft size={11} />
+              <span>Abas</span>
+            </button>
+            <button
+              type="button"
+              data-active={presentation.state.mode === 'DESKTOP' ? 'true' : 'false'}
+              onClick={() => presentation.setMode('DESKTOP')}
+              title="Janelas flutuantes"
+            >
+              <AppWindow size={11} />
+              <span>Janelas</span>
+            </button>
+            <button
+              type="button"
+              data-active={presentation.state.mode === 'MOSAIC' ? 'true' : 'false'}
+              onClick={() => presentation.setMode('MOSAIC')}
+              title="Mosaico lado a lado"
+            >
+              <LayoutGrid size={11} />
+              <span>Mosaico</span>
+            </button>
+          </div>
+          {windowed && (
+            <ArrangeLayoutMenu
+              activePreset={presentation.state.lastArrangePreset}
+              onSelect={(preset) => presentation.rearrangePreset(preset)}
+            />
+          )}
+        </div>
       </header>
       <div className="nx-terminals-host__body">
         {ptySurfaces.length === 0 ? (
@@ -912,33 +1007,38 @@ const DesktopWorkspace: React.FC<{
                 setWindowMenu({ viewId, surface, point: contextMenuFromEvent(event) });
               }}
             >
-              <div className="nx-desktop-window__title">
-                {icon && <span className="nx-desktop-window__icon" aria-hidden="true">{icon}</span>}
-                {(attention || unread) && (
-                  <span
-                    className="nx-desktop-window__attention-dot"
-                    data-kind={attentionKind || 'needs_user'}
-                    data-unread={unread ? 'true' : undefined}
-                    aria-label={unread ? 'unread attention' : questionnaire ? 'questionnaire' : 'attention'}
-                  />
-                )}
-                <strong title={heading.heading}>{heading.heading}</strong>
-                {heading.identityHint && (
-                  <small className="nx-desktop-window__provider" title={heading.identityHint}>
-                    {heading.identityHint}
-                  </small>
-                )}
-                {!heading.identityHint && providerLabel && <small className="nx-desktop-window__provider">{providerLabel}</small>}
-                {dynamicTitle && (
-                  <small className="nx-desktop-window__dynamic" title={dynamicTitle}>
-                    {dynamicTitle}
-                  </small>
-                )}
-                {!dynamicTitle && statusSuffix && (
-                  <small className="nx-desktop-window__status" data-kind={attentionKind || undefined}>
-                    {statusSuffix}
-                  </small>
-                )}
+              <div
+                className="nx-desktop-window__title"
+                title={[heading.heading, heading.identityHint || providerLabel, dynamicTitle || statusSuffix]
+                  .filter(Boolean)
+                  .join(' · ')}
+              >
+                <div className="nx-desktop-window__title-primary">
+                  {icon && <span className="nx-desktop-window__icon" aria-hidden="true">{icon}</span>}
+                  {(attention || unread) && (
+                    <span
+                      className="nx-desktop-window__attention-dot"
+                      data-kind={attentionKind || 'needs_user'}
+                      data-unread={unread ? 'true' : undefined}
+                      aria-label={unread ? 'unread attention' : questionnaire ? 'questionnaire' : 'attention'}
+                    />
+                  )}
+                  <strong>{heading.heading}</strong>
+                </div>
+                <div className="nx-desktop-window__title-meta" aria-hidden="true">
+                  {heading.identityHint && (
+                    <small className="nx-desktop-window__provider">{heading.identityHint}</small>
+                  )}
+                  {!heading.identityHint && providerLabel && (
+                    <small className="nx-desktop-window__provider">{providerLabel}</small>
+                  )}
+                  {dynamicTitle && <small className="nx-desktop-window__dynamic">{dynamicTitle}</small>}
+                  {!dynamicTitle && statusSuffix && (
+                    <small className="nx-desktop-window__status" data-kind={attentionKind || undefined}>
+                      {statusSuffix}
+                    </small>
+                  )}
+                </div>
               </div>
               <div className="nx-desktop-window__actions" onPointerDown={(event) => event.stopPropagation()}>
                 <WindowChromeMenu

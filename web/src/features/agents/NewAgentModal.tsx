@@ -11,7 +11,7 @@ import {
   Terminal,
   Zap,
 } from 'lucide-react';
-import { Button, Card, Dialog, Input } from '../../design-system';
+import { Button, Card, Dialog, Input, Select } from '../../design-system';
 import { nexus } from '../../nexus/api';
 import type { Agent, Project } from '../../types';
 
@@ -292,17 +292,14 @@ export const NewAgentModal: React.FC<{
           {origin === 'native' ? (
             <div style={{ display: 'grid', gap: '6px', marginTop: '4px' }}>
               <label style={{ fontSize: '11.5px', color: 'var(--nx-muted)' }}>Provedor e Alias Nexus</label>
-              <select
-                className="nx-select"
+              <Select
                 value={provider}
-                onChange={(e) => setProvider(e.target.value)}
-              >
-                {NATIVE_PROVIDERS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setProvider(val)}
+                options={NATIVE_PROVIDERS.map((p) => ({
+                  value: p.id,
+                  label: p.label,
+                }))}
+              />
             </div>
           ) : (
             <div style={{ display: 'grid', gap: '6px', marginTop: '4px' }}>

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Play, RotateCcw, TerminalSquare } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { ArrowUpCircle, Play, RotateCcw, TerminalSquare } from 'lucide-react';
 import { Badge, Button, Card, Dialog, EmptyState } from '../../design-system';
 import { nexus } from '../../nexus/api';
 import { ResourcePicker } from '../../nexus/ResourcePicker';
+import { ProjectCreateActions } from '../projects/ProjectCreateActions';
 import type { Agent, Project, RuntimeSession } from '../../types';
 import { translateStatus } from '../../i18n';
 import { useTranslation } from 'react-i18next';
@@ -29,6 +30,7 @@ export const ProjectOverviewSurface: React.FC<{
   refreshAgents?: () => Promise<void>;
   onStartAgent?: (agent: Agent) => Promise<{ runtime?: RuntimeSession } | void>;
   onRecoverAgent?: (agent: Agent) => Promise<{ runtime?: RuntimeSession } | void>;
+  onOpenSettings?: () => void;
 }> = ({
   project,
   agents,
@@ -42,11 +44,29 @@ export const ProjectOverviewSurface: React.FC<{
   refreshAgents,
   onStartAgent,
   onRecoverAgent,
+  onOpenSettings,
 }) => {
   const { t } = useTranslation();
   const [busy, setBusy] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [resourceAgent, setResourceAgent] = useState<Agent | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<{
+    nexus_version: string;
+    maestro_version: string;
+    maestro_latest_version?: string;
+    maestro_available: boolean;
+    update_available?: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    nexus.getSystemUpdates()
+      .then((data) => {
+        if (active) setUpdateInfo(data);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   const agentList = Array.isArray(agents) ? agents : [];
   const working = agentList.filter((agent) => agent.status === 'WORKING').length;
@@ -119,6 +139,12 @@ export const ProjectOverviewSurface: React.FC<{
           <p>{project.canonical_path} · <code style={{ color: 'var(--nx-accent-text)' }}>{project.default_branch || 'main'}</code></p>
         </div>
         <div className="nx-page-header__actions">
+          <ProjectCreateActions
+            onNewAgent={onNewAgent}
+            onNewAISession={onNewAISession}
+            onProjectShell={onProjectShell}
+            size="sm"
+          />
           {onOpenComposer ? (
             <Button tone="ghost" onClick={onOpenComposer}>
               {t('overview.openComposer')}
@@ -126,6 +152,30 @@ export const ProjectOverviewSurface: React.FC<{
           ) : null}
         </div>
       </div>
+
+      {updateInfo?.update_available && (
+        <Card className="nx-inline-alert" data-tone="warning" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <ArrowUpCircle size={18} className="nx-spin-slow" />
+            <div>
+              <strong>{t('settings.updates', 'Atualização disponível')}</strong>
+              <p style={{ margin: 0, fontSize: '12px', color: 'var(--nx-muted)' }}>
+                Nexus v{updateInfo.nexus_version} · Maestro {updateInfo.maestro_latest_version ? `v${updateInfo.maestro_latest_version}` : 'nova versão disponível'}
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            tone="brand"
+            onClick={() => {
+              if (onOpenSettings) onOpenSettings();
+              else window.dispatchEvent(new CustomEvent('nexus:open-settings'));
+            }}
+          >
+            Ver Detalhes
+          </Button>
+        </Card>
+      )}
 
       <div style={{ display: 'grid', gap: '16px' }}>
         <div className="nx-section-title">

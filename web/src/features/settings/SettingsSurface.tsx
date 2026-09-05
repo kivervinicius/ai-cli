@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Accessibility, ArrowUpCircle, Bell, MonitorCog, Palette, RefreshCw, RotateCcw, Sparkles, Volume2 } from 'lucide-react';
-import { Badge, Button, Card, InlineAlert, Input, Segmented, Switch } from '../../design-system';
-import { useTheme, type ThemeAccent, type ThemeDensity, type ThemeScheme } from '../../design-system';
+import { Accessibility, ArrowUpCircle, Bell, Check, ChevronDown, ChevronRight, MonitorCog, Palette, RefreshCw, RotateCcw, Sliders, Sparkles } from 'lucide-react';
+import { Badge, Button, Card, InlineAlert, Input, Segmented, Select, Switch, THEME_PRESETS, getThemePresetPalette } from '../../design-system';
+import { useTheme, type ThemeAccent, type ThemeDensity, type ThemePresetKey, type ThemeScheme } from '../../design-system';
 import { useWorkspace } from '../../workspace/WorkspaceProvider';
 import { nexus } from '../../nexus/api';
 import type { IntelligenceMode, IntelligenceStatus, ProviderAccount } from '../../types';
@@ -142,7 +142,7 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
         </div>
       </div>
       <div className="nx-settings-grid">
-        <Card className="nx-settings-card">
+        <Card className="nx-settings-card" style={{ gridColumn: '1 / -1' }}>
           <div className="nx-settings-card__title">
             <Palette size={17} />
             <div>
@@ -150,28 +150,8 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
               <small>{t('settings.themeDescription')}</small>
             </div>
           </div>
-          <Segmented
-            ariaLabel={t('settings.colorScheme')}
-            value={theme.scheme}
-            onChange={(value) => theme.setScheme(value as ThemeScheme)}
-            options={[
-              { value: 'system', label: t('settings.system') },
-              { value: 'dark', label: t('settings.dark') },
-              { value: 'light', label: t('settings.light') },
-              { value: 'high-contrast', label: t('settings.highContrast') },
-            ]}
-          />
-          <Segmented
-            ariaLabel={t('settings.accent')}
-            value={theme.accent}
-            onChange={(value) => theme.setAccent(value as ThemeAccent)}
-            options={[
-              { value: 'purple', label: t('settings.purple') },
-              { value: 'blue', label: t('settings.blue') },
-              { value: 'cyan', label: t('settings.cyan') },
-              { value: 'neutral', label: t('settings.neutral') },
-            ]}
-          />
+
+          <ThemeAccordionSelector theme={theme} />
         </Card>
 
         <Card className="nx-settings-card">
@@ -220,10 +200,6 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
             label={t('settings.soundToggle', 'Som')}
             description={t('settings.soundToggleDescription', 'Beep curto ao receber atenção. Independente das notificações visuais.')}
           />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--nx-muted)', fontSize: 12 }}>
-            <Volume2 size={14} />
-            <span>{t('settings.notificationsDefault', 'Ambos ligados por padrão.')}</span>
-          </div>
         </Card>
 
         <Card className="nx-settings-card">
@@ -348,3 +324,271 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
     </div>
   );
 };
+
+interface ThemeCategory {
+  id: string;
+  title: string;
+  description: string;
+  presets: ThemePresetKey[];
+}
+
+const THEME_CATEGORIES: ThemeCategory[] = [
+  {
+    id: 'dark-modern',
+    title: 'Temas Escuros & Noturnos',
+    description: 'Paletas modernas com contraste equilibrado para ambientes com pouca luz',
+    presets: ['nexus-dark', 'midnight', 'nord', 'dracula', 'monokai'],
+  },
+  {
+    id: 'light-clean',
+    title: 'Temas Claros & Clean',
+    description: 'Estilo clean e luminoso com legibilidade aprimorada',
+    presets: ['nexus-light', 'solarized-light'],
+  },
+  {
+    id: 'high-contrast',
+    title: 'Acessibilidade & Alto Contraste (WCAG AAA)',
+    description: 'Relações de contraste máximas (>= 7:1) para máxima distinção visual',
+    presets: ['high-contrast-dark', 'high-contrast-light', 'solarized-dark'],
+  },
+];
+
+const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> = ({ theme }) => {
+  const { t } = useTranslation();
+  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>(() => {
+    // Abre por padrão a categoria onde o preset ativo se encontra
+    const active = theme.preset || 'nexus-dark';
+    const found = THEME_CATEGORIES.find((cat) => cat.presets.includes(active));
+    return { [found ? found.id : 'dark-modern']: true };
+  });
+  const [showAdvanced, setShowAdvanced] = useState(() => theme.isCustomized);
+
+  const toggleCategory = (catId: string) => {
+    setOpenCategories((curr) => ({ ...curr, [catId]: !curr[catId] }));
+  };
+
+  return (
+    <div className="nx-theme-accordion-container" style={{ display: 'grid', gap: 10 }}>
+      {/* Grupos de Categorias em Accordion WAI-ARIA */}
+      {THEME_CATEGORIES.map((cat) => {
+        const isOpen = Boolean(openCategories[cat.id]);
+        const headerId = `theme-cat-hdr-${cat.id}`;
+        const panelId = `theme-cat-panel-${cat.id}`;
+
+        return (
+          <div
+            key={cat.id}
+            className="nx-theme-cat-group"
+            style={{
+              border: '1px solid var(--nx-border)',
+              borderRadius: 8,
+              background: 'var(--nx-bg-elevated)',
+              overflow: 'hidden',
+            }}
+          >
+            <button
+              type="button"
+              id={headerId}
+              aria-expanded={isOpen}
+              aria-controls={panelId}
+              onClick={() => toggleCategory(cat.id)}
+              className="nx-theme-accordion-hdr"
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 14px',
+                border: 0,
+                background: 'transparent',
+                color: 'var(--nx-text)',
+                cursor: 'pointer',
+                textAlign: 'left',
+                fontSize: 13,
+                fontWeight: 650,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {isOpen ? <ChevronDown size={15} color="var(--nx-accent)" /> : <ChevronRight size={15} color="var(--nx-muted)" />}
+                <div>
+                  <div style={{ color: 'var(--nx-text)' }}>{cat.title}</div>
+                  <div style={{ fontSize: 11, color: 'var(--nx-muted)', fontWeight: 400 }}>{cat.description}</div>
+                </div>
+              </div>
+              <span className="nx-badge" data-tone="brand" style={{ fontSize: 10 }}>
+                {cat.presets.length} temas
+              </span>
+            </button>
+
+            {isOpen && (
+              <div
+                id={panelId}
+                role="region"
+                aria-labelledby={headerId}
+                style={{
+                  padding: '10px 14px 14px',
+                  borderTop: '1px solid var(--nx-border)',
+                  background: 'var(--nx-surface-2)',
+                }}
+              >
+                <div
+                  role="radiogroup"
+                  aria-labelledby={headerId}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: 8,
+                  }}
+                >
+                  {cat.presets.map((presetKey) => {
+                    const preset = THEME_PRESETS[presetKey];
+                    if (!preset) return null;
+                    const isSelected = theme.preset === presetKey && !theme.isCustomized;
+                    const palette = getThemePresetPalette(preset);
+
+                    return (
+                      <div
+                        key={presetKey}
+                        role="radio"
+                        aria-checked={isSelected}
+                        tabIndex={isSelected ? 0 : -1}
+                        onClick={() => theme.setPreset(presetKey)}
+                        onKeyDown={(e) => {
+                          if (e.key === ' ' || e.key === 'Enter') {
+                            e.preventDefault();
+                            theme.setPreset(presetKey);
+                          }
+                        }}
+                        style={{
+                          display: 'grid',
+                          gap: 6,
+                          padding: '8px 10px',
+                          border: isSelected ? '2px solid var(--nx-accent)' : '1px solid var(--nx-border)',
+                          borderRadius: 7,
+                          background: isSelected ? 'var(--nx-surface-3)' : 'var(--nx-bg-elevated)',
+                          cursor: 'pointer',
+                          transition: 'all .12s',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <strong style={{ fontSize: 12.5, color: isSelected ? 'var(--nx-accent-text)' : 'var(--nx-text)' }}>
+                            {preset.name}
+                          </strong>
+                          {isSelected && <Check size={14} color="var(--nx-accent)" />}
+                        </div>
+
+                        {/* Amostras de Cores (Swatches) */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} aria-hidden="true">
+                          <span
+                            title={`Fundo: ${palette.bg}`}
+                            style={{ width: 22, height: 16, borderRadius: 4, background: palette.bg, border: '1px solid #444' }}
+                          />
+                          <span
+                            title={`Superfície: ${palette.surface}`}
+                            style={{ width: 22, height: 16, borderRadius: 4, background: palette.surface, border: '1px solid #444' }}
+                          />
+                          <span
+                            title={`Acento: ${palette.accent}`}
+                            style={{ width: 22, height: 16, borderRadius: 4, background: palette.accent, border: '1px solid #444' }}
+                          />
+                          <span
+                            title={`Texto: ${palette.text}`}
+                            style={{ width: 22, height: 16, borderRadius: 4, background: palette.text, border: '1px solid #444' }}
+                          />
+                        </div>
+                        <span className="sr-only">
+                          Paleta: Fundo {palette.bg}, Superfície {palette.surface}, Acento {palette.accent}.
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Seção Expansível: Personalização Avançada (Eliminando Botões Redundantes Soltos) */}
+      <div
+        style={{
+          border: '1px dashed var(--nx-border)',
+          borderRadius: 8,
+          background: 'var(--nx-bg-elevated)',
+          overflow: 'hidden',
+          marginTop: 4,
+        }}
+      >
+        <button
+          type="button"
+          aria-expanded={showAdvanced}
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 14px',
+            border: 0,
+            background: 'transparent',
+            color: 'var(--nx-muted)',
+            cursor: 'pointer',
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <Sliders size={14} />
+            <span>Ajustes Avançados / Sobrescrever Esquema e Acento Manualmente</span>
+          </div>
+          {showAdvanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+
+        {showAdvanced && (
+          <div
+            style={{
+              padding: '12px 14px 14px',
+              borderTop: '1px dashed var(--nx-border)',
+              background: 'var(--nx-surface-2)',
+              display: 'grid',
+              gap: 12,
+            }}
+          >
+            <div style={{ fontSize: 11.5, color: 'var(--nx-subtle)', lineHeight: 1.5 }}>
+              Estes controles manuais sobrescrevem a paleta do preset selecionado. Ao escolher um novo preset no Accordion, as cores voltam a ser restauradas automaticamente.
+            </div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <label style={{ fontSize: 12, color: 'var(--nx-muted)' }}>Esquema de cores manual</label>
+              <Segmented
+                ariaLabel={t('settings.colorScheme')}
+                value={theme.scheme}
+                onChange={(value) => theme.setScheme(value as ThemeScheme)}
+                options={[
+                  { value: 'system', label: t('settings.system') },
+                  { value: 'dark', label: t('settings.dark') },
+                  { value: 'light', label: t('settings.light') },
+                  { value: 'high-contrast', label: t('settings.highContrast') },
+                ]}
+              />
+            </div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <label style={{ fontSize: 12, color: 'var(--nx-muted)' }}>Cor de destaque manual</label>
+              <Segmented
+                ariaLabel={t('settings.accent')}
+                value={theme.accent}
+                onChange={(value) => theme.setAccent(value as ThemeAccent)}
+                options={[
+                  { value: 'purple', label: t('settings.purple') },
+                  { value: 'blue', label: t('settings.blue') },
+                  { value: 'cyan', label: t('settings.cyan') },
+                  { value: 'neutral', label: t('settings.neutral') },
+                ]}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+

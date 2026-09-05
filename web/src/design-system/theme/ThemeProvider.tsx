@@ -1,13 +1,17 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   defaultThemePreferences,
+  MANAGED_THEME_COLOR_VARS,
   normalizeThemePreferences,
   resolveScheme,
+  resolveThemeStyleVariables,
   themeStorageKey,
   type ThemeAccent,
   type ThemeDensity,
   type ThemePreferences,
+  type ThemePresetKey,
   type ThemeScheme,
+  THEME_PRESETS,
 } from './theme';
 
 interface ThemeContextValue extends ThemePreferences {
@@ -16,6 +20,7 @@ interface ThemeContextValue extends ThemePreferences {
   setAccent: (accent: ThemeAccent) => void;
   setDensity: (density: ThemeDensity) => void;
   setReducedMotion: (value: boolean) => void;
+  setPreset: (preset: ThemePresetKey) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -51,15 +56,39 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     root.dataset.density = preferences.density;
     root.dataset.reducedMotion = preferences.reducedMotion ? 'true' : 'false';
     root.style.colorScheme = resolvedScheme === 'light' ? 'light' : 'dark';
+
+    // Limpa todas as variáveis CSS gerenciadas para evitar vazamento entre presets e customizações
+    for (const v of MANAGED_THEME_COLOR_VARS) {
+      root.style.removeProperty(v);
+    }
+
+    if (preferences.preset && THEME_PRESETS[preferences.preset]) {
+      root.dataset.preset = preferences.preset;
+      const dynamicVars = resolveThemeStyleVariables(preferences, resolvedScheme);
+      for (const [varName, varVal] of Object.entries(dynamicVars)) {
+        root.style.setProperty(varName, varVal);
+      }
+    } else {
+      delete root.dataset.preset;
+    }
   }, [preferences, resolvedScheme]);
 
   const value = useMemo<ThemeContextValue>(() => ({
     ...preferences,
     resolvedScheme,
-    setScheme: (scheme) => setPreferences((current) => ({ ...current, scheme })),
-    setAccent: (accent) => setPreferences((current) => ({ ...current, accent })),
+    setScheme: (scheme) => setPreferences((current) => ({ ...current, scheme, isCustomized: true })),
+    setAccent: (accent) => setPreferences((current) => ({ ...current, accent, isCustomized: true })),
     setDensity: (density) => setPreferences((current) => ({ ...current, density })),
     setReducedMotion: (reducedMotion) => setPreferences((current) => ({ ...current, reducedMotion })),
+    setPreset: (preset) => setPreferences((current) => {
+      const def = THEME_PRESETS[preset];
+      return {
+        ...current,
+        preset,
+        scheme: def ? def.scheme : current.scheme,
+        isCustomized: false, // Ao trocar de preset, restaura fidelidade total ao preset
+      };
+    }),
   }), [preferences, resolvedScheme]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

@@ -52,7 +52,8 @@ export const ProjectCreateActions: React.FC<ProjectCreateActionsProps> = ({
       {onProjectShell && (
         <button
           type="button"
-          className="nx-button"
+          data-testid="overview-terminal-btn"
+          className="nx-button nx-button--terminal"
           data-size="sm"
           onClick={onProjectShell}
           title={t('overview.projectShell')}

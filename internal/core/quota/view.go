@@ -118,6 +118,70 @@ func (qv *QuotaView) BestGroupRemaining() (remaining float64, ok bool) {
 	return best, found
 }
 
+// UsableGroupCount returns how many model groups still have capacity (> 0).
+func (qv *QuotaView) UsableGroupCount() int {
+	n := 0
+	for _, g := range qv.ModelGroups {
+		rem, ok := g.GroupRemaining()
+		if ok && rem > 0 {
+			n++
+		}
+	}
+	return n
+}
+
+// TotalGroupRemaining sums each group's GroupRemaining (zeros included when
+// the group has scorable windows). Used with UsableGroupCount for scheduling.
+func (qv *QuotaView) TotalGroupRemaining() (total float64, groups int) {
+	for _, g := range qv.ModelGroups {
+		rem, ok := g.GroupRemaining()
+		if !ok {
+			continue
+		}
+		total += rem
+		groups++
+	}
+	return total, groups
+}
+
+// EffectiveCapacityScore encodes "most available" for scheduling:
+// primary = usable group count, secondary = average group remaining.
+// Formula: usableGroups*100 + totalGroupRemaining/max(numGroups,1)
+// so AGY with 2 live families always beats AGY with 1 live family at 100%.
+func (qv *QuotaView) EffectiveCapacityScore() (score float64, ok bool) {
+	total, groups := qv.TotalGroupRemaining()
+	if groups == 0 {
+		return 0, false
+	}
+	avg := total / float64(groups)
+	return float64(qv.UsableGroupCount())*100.0 + avg, true
+}
+
+// EffectiveCapacityRatio normalizes EffectiveCapacityScore to 0-1 for APIs
+// that expect quota_remaining in that range.
+func (qv *QuotaView) EffectiveCapacityRatio() (ratio float64, ok bool) {
+	score, ok := qv.EffectiveCapacityScore()
+	if !ok {
+		return 0, false
+	}
+	_, groups := qv.TotalGroupRemaining()
+	if groups == 0 {
+		return 0, false
+	}
+	maxScore := float64(groups)*100.0 + 100.0
+	if maxScore <= 0 {
+		return 0, false
+	}
+	ratio = score / maxScore
+	if ratio < 0 {
+		ratio = 0
+	}
+	if ratio > 1 {
+		ratio = 1
+	}
+	return ratio, true
+}
+
 // CompactGroupSummary lists each group's capacity for compact UIs
 // ("Gemini 0% · Claude 100%" or "5h 70% · weekly 95%" for a single pool).
 func (qv *QuotaView) CompactGroupSummary() string {

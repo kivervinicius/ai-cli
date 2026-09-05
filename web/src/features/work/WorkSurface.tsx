@@ -91,7 +91,6 @@ export const WorkSurface: React.FC<{
           <p>Descreva o objetivo. O Flow embaixo nasce ao gerar o rascunho. Trabalho direto no agente fica no terminal.</p>
         </div>
         <div className="nx-composer-header-actions">
-          <Badge tone="brand">{project.name}</Badge>
           <Badge tone={readinessTone(state)}>Context {state}</Badge>
           <Badge tone={intelligenceTone}>
             Intelligence {intelligence?.available ? `READY${intelligence.provider ? ` · ${intelligence.provider}` : ''}` : 'OFF'}

@@ -16,6 +16,7 @@ import {
   type WorkspaceSurface,
 } from './model';
 import { deserializeWorkspace, serializeWorkspace, workspaceStorageKey } from './state';
+import { WorkspaceLayoutService } from '../services/WorkspaceLayoutService';
 
 interface WorkspaceContextValue {
   model: WorkspaceModel;
@@ -81,13 +82,18 @@ export const WorkspaceProvider: React.FC<{
   onSurfaceClosed?: (surface: WorkspaceSurface) => void | Promise<void>;
   children: React.ReactNode;
 }> = ({ projectId, initialLayout, saveLayout, onSurfaceClosed, children }) => {
+  const layoutService = useMemo(() => new WorkspaceLayoutService(projectId), [projectId]);
   const fallback = useMemo(() => createWorkspace(defaultSurface(projectId)), [projectId]);
   const [model, dispatch] = useReducer(reducer, fallback);
 
   useEffect(() => {
-    const local = window.localStorage.getItem(workspaceStorageKey(projectId));
-    dispatch({ type: 'replace', model: deserializeWorkspace(initialLayout || local, fallback, projectId) });
-  }, [projectId, initialLayout, fallback]);
+    if (initialLayout) {
+      dispatch({ type: 'replace', model: deserializeWorkspace(initialLayout, fallback, projectId) });
+    } else {
+      const persisted = layoutService.load(fallback);
+      dispatch({ type: 'replace', model: persisted.model });
+    }
+  }, [projectId, initialLayout, fallback, layoutService]);
 
   useEffect(() => {
     const serialized = serializeWorkspace(model);

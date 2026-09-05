@@ -345,18 +345,9 @@ func executeProviderWithSmartSelection(provName, explicitProfile string, args []
 		}
 		snap, _ := qEng.GetCachedUsage(provName, p.Name)
 		var capInfo string
-		if len(snap.Windows) > 0 {
-			minPct := 100.0
-			minKind := ""
-			for _, w := range snap.Windows {
-				if w.RemainingPercent != nil && *w.RemainingPercent <= minPct {
-					minPct = *w.RemainingPercent
-					minKind = w.Kind
-				}
-			}
-			if minKind != "" {
-				capInfo = fmt.Sprintf(" [Cap: %.0f%% (%s)]", minPct, minKind)
-			}
+		qvCap := quota.BuildQuotaView(snap, accEmail, accInfo.Plan)
+		if summary := qvCap.CompactGroupSummary(); summary != "" {
+			capInfo = fmt.Sprintf(" [Cap: %s]", summary)
 		}
 		fmt.Fprintf(os.Stderr, "⚡ [%s] Usando perfil: %s:%s (%s)%s\n", progName(), provName, p.Name, accEmail, capInfo)
 

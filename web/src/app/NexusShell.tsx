@@ -9,12 +9,12 @@ import {
   Menu,
   MoonStar,
   Network,
+  TerminalSquare,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Badge, IconButton } from '../design-system';
 import { LanguagePicker } from './components/LanguagePicker';
 import { WorkspaceTaskbar } from '../workspace/WorkspaceTaskbar';
-import { ProjectCreateActions } from '../features/projects/ProjectCreateActions';
 import { nexus } from '../nexus/api';
 import { AttentionIntermediationBanner } from '../components/AttentionIntermediationBanner';
 import { GlobalAttentionRadar } from '../components/GlobalAttentionRadar';
@@ -127,13 +127,19 @@ export const NexusShell: React.FC<{
               {project.canonical_path}
             </span>
 
-            <ProjectCreateActions
-              onNewAgent={onNewAgent}
-              onNewAISession={onNewAISession}
-              onProjectShell={onProjectShell}
-              size="sm"
-              className="nx-topbar__create"
-            />
+            {onProjectShell && (
+              <button
+                type="button"
+                data-testid="topbar-terminal-btn"
+                className="nx-button nx-button--terminal"
+                data-size="sm"
+                onClick={onProjectShell}
+                title={t('overview.projectShell', 'Terminal do Projeto')}
+              >
+                <TerminalSquare size={13} />
+                <span className="nx-topbar-terminal-label">{t('overview.projectShell', 'Terminal')}</span>
+              </button>
+            )}
 
             <GlobalAttentionRadar
               runtimes={runtimes}
@@ -155,7 +161,7 @@ export const NexusShell: React.FC<{
                 title={t('settings.updates')}
               >
                 <ArrowUpCircle size={13} className="nx-spin-slow" />
-                <span>{t('settings.updates')}</span>
+                <span className="nx-update-badge">Updates</span>
               </button>
             )}
 

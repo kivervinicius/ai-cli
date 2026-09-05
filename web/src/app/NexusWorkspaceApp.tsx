@@ -28,6 +28,7 @@ import { useNexusData } from './useNexusData';
 import type { Agent, MissionRun, Project } from '../types';
 import { useTranslation } from 'react-i18next';
 import { shouldMarkUnread, surfaceTitleFromAgent } from '../workspace/surfaceAttention';
+import { KeyboardShortcutRegistry } from '../keyboard/KeyboardShortcutRegistry';
 import { pushNotifications } from '../notifications/PushNotificationManager';
 import {
   loadNotificationPrefs,
@@ -328,26 +329,69 @@ const WorkspaceCoordinator: React.FC<{
         keywords: ['flow', 'run', 'mission', run.state],
         run: () => open(flowRunSurface(run.id, `Flow Run · ${run.id.slice(-6)}`)),
       })),
+      ...([
+        { id: 'preset-automatic', label: 'Layout: Automatic (Smart)', group: 'Layout Presets', preset: 'automatic' as const },
+        { id: 'preset-terminal-focus', label: 'Layout: Terminal Focus (68/32)', group: 'Layout Presets', preset: 'terminal-focus' as const },
+        { id: 'preset-two-columns', label: 'Layout: Two Columns (50/50)', group: 'Layout Presets', preset: 'two-columns' as const },
+        { id: 'preset-three-columns', label: 'Layout: Three Columns (33/33/33)', group: 'Layout Presets', preset: 'three-columns' as const },
+        { id: 'preset-terminal-chat', label: 'Layout: Terminal + Chat', group: 'Layout Presets', preset: 'terminal-chat' as const },
+        { id: 'preset-terminal-flow', label: 'Layout: Terminal + Flow', group: 'Layout Presets', preset: 'terminal-flow' as const },
+        { id: 'preset-focus-mode', label: 'Layout: Focus Mode (Active window)', group: 'Layout Presets', preset: 'focus-mode' as const },
+        { id: 'preset-restore-default', label: 'Layout: Restore Default', group: 'Layout Presets', preset: 'restore-default' as const },
+      ].map((p) => ({
+        id: p.id,
+        label: p.label,
+        group: p.group,
+        keywords: ['layout', 'preset', 'window', 'arrange', 'grid', 'columns', 'tile'],
+        run: () => {
+          presentation.setMode('MOSAIC');
+          presentation.rearrangePreset(p.preset);
+        },
+      }))),
       { id: 'welcome', label: t('welcome.title'), group: t('commands.help'), keywords: ['guide', 'help', 'onboarding'], run: () => setWelcomeOpen(true) },
       { id: 'tour', label: t('commands.tour'), group: t('commands.help'), keywords: ['help', 'onboarding'], run: () => setTour(true) },
     ],
-    [project.id, data.agents, flowRuns, t, i18n.language]
+    [project.id, data.agents, flowRuns, t, i18n.language, presentation]
   );
 
-  // Global Keyboard Shortcuts (Ctrl+K = Palette, Ctrl+P = Project Manager surface)
+  // Scoped Keyboard Shortcuts via KeyboardShortcutRegistry
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        setPalette((value) => !value);
-      }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'p') {
-        event.preventDefault();
-        openKind('projects');
-      }
+    const registry = KeyboardShortcutRegistry.getInstance();
+    const unregisterK = registry.register({
+      id: 'open-palette',
+      key: 'k',
+      ctrlOrMeta: true,
+      scope: 'global',
+      description: 'Open Command Palette',
+      preventDefault: true,
+      action: () => setPalette((value) => !value),
+    });
+    const unregisterShiftP = registry.register({
+      id: 'open-palette-shift',
+      key: 'p',
+      ctrlOrMeta: true,
+      shift: true,
+      scope: 'global',
+      description: 'Open Command Palette',
+      preventDefault: true,
+      action: () => setPalette(true),
+    });
+    const unregisterP = registry.register({
+      id: 'open-projects',
+      key: 'p',
+      ctrlOrMeta: true,
+      shift: false,
+      scope: 'global',
+      description: 'Open Project Hub',
+      preventDefault: true,
+      action: () => openKind('projects'),
+    });
+
+    return () => {
+      unregisterK();
+      unregisterShiftP();
+      unregisterP();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
   }, [project.id]);
 
   const handleProjectUpdated = (updated: Project) => {

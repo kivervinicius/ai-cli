@@ -23,6 +23,9 @@ import {
 import type { ArrangeBounds } from './arrange';
 import type { WorkspaceSurface } from './model';
 
+import type { ArrangePresetName } from './arrangePresets';
+import { arrangeByPreset, resolveArrangePreset } from './arrangePresets';
+
 const storageKey = (projectId: string) => `iapro:nexus:workspace:${projectId}:presentation:v1`;
 
 interface ContextValue {
@@ -53,6 +56,7 @@ interface ContextValue {
   maximize: (viewId: string) => void;
   setCanvas: (canvas: ArrangeBounds) => void;
   rearrange: () => void;
+  rearrangePreset: (preset: ArrangePresetName) => void;
 }
 
 type Action =
@@ -90,7 +94,30 @@ type Action =
   | { type: 'minimize'; viewId: string }
   | { type: 'maximize'; viewId: string }
   | { type: 'canvas'; canvas: ArrangeBounds }
-  | { type: 'rearrange' };
+  | { type: 'rearrange' }
+  | { type: 'rearrangePreset'; preset: ArrangePresetName };
+
+function applyPreset(state: WorkspacePresentationState, preset: ArrangePresetName): WorkspacePresentationState {
+  const visible = Object.values(state.windows).filter((win) => !win.minimized).map((win) => win.viewId);
+  if (visible.length === 0) return state;
+  const resolved = resolveArrangePreset(preset);
+  const tiles = arrangeByPreset(resolved, state.canvas, visible, state.activePtyViewId);
+  const windows = { ...state.windows };
+  tiles.forEach((tile) => {
+    const cur = windows[tile.viewId];
+    if (cur) {
+      windows[tile.viewId] = {
+        ...cur,
+        x: tile.x,
+        y: tile.y,
+        width: tile.width,
+        height: tile.height,
+        maximized: false,
+      };
+    }
+  });
+  return { ...state, windows, tiled: true, lastArrangePreset: resolved };
+}
 
 function reducer(state: WorkspacePresentationState, action: Action): WorkspacePresentationState {
   switch (action.type) {
@@ -117,6 +144,7 @@ function reducer(state: WorkspacePresentationState, action: Action): WorkspacePr
     case 'maximize': return toggleDesktopMaximize(state, action.viewId);
     case 'canvas': return setPresentationCanvas(state, action.canvas);
     case 'rearrange': return rearrangeSmart(state);
+    case 'rearrangePreset': return applyPreset(state, action.preset);
   }
 }
 
@@ -153,6 +181,7 @@ export const WorkspacePresentationProvider: React.FC<{ projectId: string; childr
     maximize: (viewId) => dispatch({ type: 'maximize', viewId }),
     setCanvas: (canvas) => dispatch({ type: 'canvas', canvas }),
     rearrange: () => dispatch({ type: 'rearrange' }),
+    rearrangePreset: (preset) => dispatch({ type: 'rearrangePreset', preset }),
   }), [state]);
   return <WorkspacePresentationContext.Provider value={value}>{children}</WorkspacePresentationContext.Provider>;
 };

@@ -63,13 +63,13 @@ func (n *Nexus) ListResources() ([]ProviderAccount, error) {
 		}
 
 		// Get quota view with availability. UNKNOWN/unsupported data is never
-		// converted into synthetic 100% capacity. Score uses best usable group
-		// (max of per-group mins), not the global bottleneck warning.
+		// converted into synthetic 100% capacity. Score prefers more usable
+		// model families, then higher total group capacity (same as CLI selector).
 		qv := profile.GetQuotaView(p.Provider, p.Name, acc.Plan, acc.Email)
 		quotaRemaining := 0.0
 		if quotaStatusKnown(qv.Status) {
-			if rem, ok := qv.BestGroupRemaining(); ok {
-				quotaRemaining = rem / 100.0
+			if ratio, ok := qv.EffectiveCapacityRatio(); ok {
+				quotaRemaining = ratio
 			}
 		}
 

@@ -100,6 +100,8 @@ func AnalyzeImpact(current, proposed AgentConfig) ConfigImpact {
 	impact := ConfigImpact{
 		CurrentConfig:  &current,
 		ProposedConfig: &proposed,
+		ChangedFields:  []string{},
+		Warnings:       []string{},
 	}
 
 	if reflect.DeepEqual(current, proposed) {

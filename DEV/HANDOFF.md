@@ -17,11 +17,14 @@ exija esse tipo nomeado.
 ## Current state
 
 Nexus was rebuilt from the current source and installed at `/home/desenvolvedor/.local/bin/nexus`; the `ai` alias points to the same binary. The installed binary is `0.5.0-beta.23`.
+O servidor `nexus web --port 3000` está ativo com o bundle mais recente incorporando o seletor de temas em Accordion com paleta visual, densidade dinâmica real (`compact` vs `comfortable`), Topbar com proteção de largura e Terminal prioritário sem clipping.
+Bootstrap ativo: `http://127.0.0.1:3000/?token=2369592e52bb08be05f66bea461ca7e315ae8448899db860bcdb773831fcfdb6`.
 
 ## Verification
 
-Fresh `zsh` verification and focused Nexus Go tests passed. The rebuilt
-`nexus web` process is currently active on `http://127.0.0.1:3000`.
+- `make web-verify`: 8/8 gates aprovados (typecheck, lint, null-arrays, vitest, i18n, build, embed-sync, ui-markers).
+- `npm --prefix web run test:e2e-hardening`: 100% aprovado cobrindo 6 viewports (320px até 1440px), verificação de não-obstrução do botão Terminal e delta de densidade.
+- `make build`: Binário compilado com assets embarcados sincronizados e instalado em `/home/desenvolvedor/.local/bin/nexus`.
 
 ## Revisão atual — 2026-09-04
 

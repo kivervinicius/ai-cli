@@ -1,5 +1,30 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-04 — Topbar Overlap Refactor, Responsive Hardening & Accordion Theme Quality Gates
+
+- `make web-verify` — PASS (8/8 gates verdes: typecheck, lint, null-arrays, vitest [51 files, 249 tests], i18n, build, embed-sync, ui-markers).
+- `make build` — PASS (binário `nexus v0.5.0-beta.23` gerado e instalado com bundle web embutido).
+- `npm --prefix web run test:e2e-hardening` — PASS (100% de sucesso nos 6 viewports):
+  - `320x568` (mobile-se): botão Terminal desobstruído (`elementFromPoint` verificado sem overlap).
+  - `390x844` (mobile-iphone): botão Terminal desobstruído.
+  - `768x1024` (tablet): botão Terminal desobstruído.
+  - `1024x768` (laptop-compact): layout estável, ações secundárias colapsadas.
+  - `1280x800` (laptop-critical): terminal acessível em 1º lugar, sem clipping.
+  - `1440x900` (desktop): renderização completa sem colisão.
+  - Validação WAI-ARIA do Accordion de Temas com paletas visuais e medição real do delta de densidade (Comfortable 497px vs Compact 481px).
+
+
+- `make web-verify` — PASS (typecheck, lint, null-arrays, vitest (244 tests), i18n, build, embed-sync e ui-markers).
+- `make build` — PASS (binário `nexus v0.5.0-beta.23` compilado com assets embutidos atualizados).
+- Auditoria Playwright multi-viewport (1440x900, 1024x768, 768x800, 480x800) em `/usr/bin/google-chrome`:
+  - Visualização de screenshots reais renderizados:
+    - `verify_1440x900_desktop.png`: layout limpo com rail lateral, topbar sem colisão, janelas em cascata e radar visível.
+    - `verify_1024x768_compact.png`: botões redundantes de criação escondidos, hierarquia de janelas com z-index correto.
+    - `verify_768x800_tablet.png`: rail colapsado em drawer/overlay, topbar compacto com badges e menus sem quebra.
+    - `verify_480x800_mobile.png`: zero sobreposição/encavalamento de controles; comandos e labels longos suprimidos graciosamente, radar e switcher de idiomas alinhados no topo sem overflow horizontal.
+- Z-Index verificado: radar e popovers operando em camada superior (`--nx-z-popover: 4000`) a janelas focadas (`500`).
+- Primitivas `<Select>` e `<Input>` do design system adotadas em 100% dos modais e superfícies auditadas, eliminando selects HTML crus não estilizados.
+
 ## 2026-09-04 — Terminal recover após reboot/serviço
 
 - `go test -count=1 ./internal/control/registry ./internal/control/web` — PASS.
@@ -259,7 +284,7 @@ All business logic lives in `internal/nexus/` (service layer). Web and TUI consu
 Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CURRENT_CODE_REVIEW.md).
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-04T22:58:35Z
+## Frontend gate — 2026-09-05T04:40:26Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
 

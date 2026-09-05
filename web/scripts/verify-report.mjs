@@ -182,7 +182,7 @@ function checkNullSafeArrayAccess() {
   // (agents/runtimes/projects/phases/packages) must be normalized at the API/
   // model edge instead — see useNexusData + normalizeWorkPlan.
   const fields =
-    'dependencies|changed_files|commands|generations|acceptance_criteria|remaining_issues|dependency_receipts|skills|package_runs|maestro_gates|maestro_skills|relevant_paths|verification_requirements|shared_artifacts';
+    'dependencies|changed_files|commands|generations|acceptance_criteria|remaining_issues|dependency_receipts|skills|package_runs|maestro_gates|maestro_skills|relevant_paths|verification_requirements|shared_artifacts|changed_fields|warnings|added_packages|removed_packages|changed_packages|checks';
   const methods = 'length|map|filter|forEach|flatMap|reduce|find|some|every|includes|join|slice';
   // Negative lookbehind for optional chaining: foo?.dependencies.length is OK.
   const risky = new RegExp(`(?<!\\?)\\.(?:${fields})\\.(?:${methods})\\b`, 'g');

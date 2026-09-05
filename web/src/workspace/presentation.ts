@@ -40,6 +40,13 @@ export interface ModeLayoutSnapshot {
   windows: Record<string, SavedWindowGeometry>;
 }
 
+export type LastArrangePreset =
+  | 'automatic'
+  | 'two-columns'
+  | 'three-columns'
+  | 'terminal-focus'
+  | 'focus-mode';
+
 export interface WorkspacePresentationState {
   version: 2;
   mode: WorkspacePresentationMode;
@@ -52,6 +59,8 @@ export interface WorkspacePresentationState {
   tiled: boolean;
   /** viewId of the PTY the user is viewing (inner tabs or desktop focus). */
   activePtyViewId: string;
+  /** Last layout preset chosen from Arranjar / keyboard palette. */
+  lastArrangePreset: LastArrangePreset;
   /** Last floating layout while in DESKTOP (restored when leaving mosaic/tabs). */
   desktopLayout: ModeLayoutSnapshot;
   /** Last tiled layout while in MOSAIC (restored when leaving windows/tabs). */
@@ -104,6 +113,7 @@ export function createPresentationState(mode: WorkspacePresentationMode = 'DESKT
     canvas,
     tiled: mode === 'MOSAIC',
     activePtyViewId: '',
+    lastArrangePreset: 'automatic',
     desktopLayout: emptyLayout(canvas),
     mosaicLayout: emptyLayout(canvas),
   };
@@ -139,6 +149,15 @@ export function migratePresentationState(raw: unknown): WorkspacePresentationSta
       ? parsed.activePtyViewId
       : '';
   const tiled = mode === 'MOSAIC' ? parsed.tiled !== false : false;
+  const lastRaw = (parsed as { lastArrangePreset?: string }).lastArrangePreset;
+  const lastArrangePreset: LastArrangePreset =
+    lastRaw === 'automatic' ||
+    lastRaw === 'two-columns' ||
+    lastRaw === 'three-columns' ||
+    lastRaw === 'terminal-focus' ||
+    lastRaw === 'focus-mode'
+      ? lastRaw
+      : 'automatic';
   return {
     version: 2,
     mode,
@@ -147,6 +166,7 @@ export function migratePresentationState(raw: unknown): WorkspacePresentationSta
     canvas,
     tiled,
     activePtyViewId,
+    lastArrangePreset,
     desktopLayout: parseLayoutSnapshot(parsed.desktopLayout, canvas),
     mosaicLayout: parseLayoutSnapshot(parsed.mosaicLayout, canvas),
   };

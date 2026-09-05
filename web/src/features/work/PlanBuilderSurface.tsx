@@ -18,7 +18,7 @@ import {
   Sparkles,
   Trash2,
 } from 'lucide-react';
-import { Badge, Button, Card, InlineAlert, Input } from '../../design-system';
+import { Badge, Button, Card, ContextDrawer, InlineAlert, Input, Select } from '../../design-system';
 import { nexusApi } from '../../nexus/api';
 import type { Agent, ClarificationCheckpoint, FlowLeaderPolicy, FlowPreflightReport, MissionRun, MissionSchedule, PlanPhase, PlanRevision, PlanRevisionDiff, Project, WorkPackage, WorkPlan } from '../../types';
 import { clarificationFromError, unresolvedBlocking } from './clarificationModel';
@@ -671,13 +671,12 @@ export const PlanBuilderSurface: React.FC<{
             <span><strong>{item.question}</strong></span>
             {item.rationale && <small style={{ color: 'var(--color-text-muted)' }}>{item.rationale}</small>}
             {item.suggested_options && item.suggested_options.length > 0 ? (
-              <select
+              <Select
                 value={clarificationAnswers[item.key] || ''}
-                onChange={(event) => setClarificationAnswers((prev) => ({ ...prev, [item.key]: event.target.value }))}
-              >
-                <option value="">Choose…</option>
-                {item.suggested_options.map((option) => <option key={option} value={option}>{option}</option>)}
-              </select>
+                onChange={(value) => setClarificationAnswers((prev) => ({ ...prev, [item.key]: value }))}
+                placeholder="Choose…"
+                options={item.suggested_options.map((option) => ({ value: option, label: option }))}
+              />
             ) : (
               <Input
                 value={clarificationAnswers[item.key] || ''}
@@ -773,7 +772,7 @@ export const PlanBuilderSurface: React.FC<{
                 </Badge>
               </div>
               <div style={{ display: 'grid', gap: 6 }}>
-                {preflightReport.checks.map((ch) => (
+                {(preflightReport.checks || []).map((ch) => (
                   <div key={ch.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
                     <div>
                       <span style={{ fontWeight: 500 }}>{ch.label}</span>
@@ -832,12 +831,26 @@ export const PlanBuilderSurface: React.FC<{
             <Card style={{ marginTop: 12, padding: 12 }}>
               <strong>Agent líder sugerido</strong>
               <p className="nx-muted-copy" style={{ margin: '4px 0 10px' }}>Coordena as ondas do DAG e recebe os recibos. A sugestão é exclusiva deste Flow.</p>
-              <div className="nx-composer-goal-bar__row">
-                <Input value={leader.role} onChange={(role) => setLeader((current) => ({ ...current, role }))} placeholder="Especialidade do líder" style={{ flex: 1 }} />
-                <select value={leader.strategy} onChange={(event) => setLeader((current) => ({ ...current, strategy: event.target.value as FlowLeaderPolicy['strategy'], preferred_agent_id: event.target.value === 'AUTO' ? undefined : current.preferred_agent_id }))}>
-                  <option value="AUTO">Sugerir automaticamente</option><option value="EXISTING">Agent cadastrado</option>
-                </select>
-                {leader.strategy === 'EXISTING' && <select value={leader.preferred_agent_id || ''} onChange={(event) => setLeader((current) => ({ ...current, preferred_agent_id: event.target.value }))}><option value="">Escolha o líder</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.role}</option>)}</select>}
+              <div className="nx-composer-goal-bar__row" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Input value={leader.role} onChange={(role) => setLeader((current) => ({ ...current, role }))} placeholder="Especialidade do líder" style={{ flex: 1, minWidth: 160 }} />
+                <Select
+                  value={leader.strategy}
+                  onChange={(val) => setLeader((current) => ({ ...current, strategy: val as FlowLeaderPolicy['strategy'], preferred_agent_id: val === 'AUTO' ? undefined : current.preferred_agent_id }))}
+                  options={[
+                    { value: 'AUTO', label: 'Sugerir automaticamente' },
+                    { value: 'EXISTING', label: 'Agent cadastrado' },
+                  ]}
+                  selectStyle={{ minWidth: 170 }}
+                />
+                {leader.strategy === 'EXISTING' && (
+                  <Select
+                    value={leader.preferred_agent_id || ''}
+                    onChange={(val) => setLeader((current) => ({ ...current, preferred_agent_id: val }))}
+                    placeholder="Escolha o líder"
+                    options={agents.map((agent) => ({ value: agent.id, label: `${agent.name} · ${agent.role}` }))}
+                    selectStyle={{ minWidth: 160 }}
+                  />
+                )}
                 <Button size="sm" onClick={() => void saveLeader()}>Salvar líder</Button>
               </div>
             </Card>
@@ -870,11 +883,18 @@ export const PlanBuilderSurface: React.FC<{
             {flowDraft && (
               <>
                 <div className="nx-flow-editor-toolbar">
-                  <label>Autonomy policy
-                    <select value={flowDraft.policy} onChange={(event) => setFlowDraft({ ...flowDraft, policy: event.target.value as FlowDraftModel['policy'], policyStored: true })}>
-                      <option value="GUIDED">Guided</option><option value="AUTONOMOUS">Autonomous</option>
-                    </select>
-                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 12, color: 'var(--nx-muted)' }}>Autonomy policy:</span>
+                    <Select
+                      value={flowDraft.policy}
+                      onChange={(val) => setFlowDraft({ ...flowDraft, policy: val as FlowDraftModel['policy'], policyStored: true })}
+                      options={[
+                        { value: 'GUIDED', label: 'Guided' },
+                        { value: 'AUTONOMOUS', label: 'Autonomous' },
+                      ]}
+                      selectStyle={{ height: 28, fontSize: 12 }}
+                    />
+                  </div>
                   <Badge tone={flowDirty ? 'warning' : 'success'}>{flowDirty ? 'Unsaved Draft' : `Revision ${selectedPlan?.current_revision || 0}`}</Badge>
                   <Button size="sm" disabled={!flowDirty || flowErrors.length > 0} onClick={() => void saveFlowDraft()}>{flowDirty ? 'Save Draft' : 'Saved'}</Button>
                 </div>
@@ -955,33 +975,25 @@ export const PlanBuilderSurface: React.FC<{
 
       {clarificationBlock}
 
-      {/* Main Two-Column Layout: Plan Hierarchy & Inspector/Runner */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: '24px' }}>
-        {/* Left Column: Plan Hierarchy */}
+      {/* Main Flow Layout: Full-Width Canvas & Drawer Inspector */}
+      <div style={{ display: 'grid', gridTemplateColumns: selectedStepId ? 'minmax(0, 1fr) 380px' : '1fr', gap: '24px', transition: 'grid-template-columns 0.2s ease-in-out' }}>
+        {/* Left Column: Plan Hierarchy & Canvas */}
         <div>
           {/* Plan Selector & Actions */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <select
+              <Select
                 value={selectedPlan?.id || ''}
-                onChange={(e) => {
-                  const p = plans.find((x) => x.id === e.target.value);
+                onChange={(val) => {
+                  const p = plans.find((x) => x.id === val);
                   if (p) setSelectedPlan(p);
                 }}
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  background: 'var(--color-surface)',
-                  color: 'inherit',
-                  border: '1px solid var(--color-border)',
-                }}
-              >
-                {plans.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.title} (Rev {p.current_revision})
-                  </option>
-                ))}
-              </select>
+                options={plans.map((p) => ({
+                  value: p.id,
+                  label: `${p.title} (Rev ${p.current_revision})`,
+                }))}
+                selectStyle={{ minWidth: 200 }}
+              />
               {selectedPlan && (
                 <Badge tone="default">
                   <History size={12} style={{ marginRight: '4px' }} /> Rev {selectedPlan.current_revision}
@@ -1013,11 +1025,18 @@ export const PlanBuilderSurface: React.FC<{
           {flowDraft && (
             <>
               <div className="nx-flow-editor-toolbar">
-                <label>Autonomy policy
-                  <select value={flowDraft.policy} onChange={(event) => setFlowDraft({ ...flowDraft, policy: event.target.value as FlowDraftModel['policy'], policyStored: true })}>
-                    <option value="GUIDED">Guided</option><option value="AUTONOMOUS">Autonomous</option>
-                  </select>
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 12, color: 'var(--nx-muted)' }}>Autonomy policy:</span>
+                  <Select
+                    value={flowDraft.policy}
+                    onChange={(val) => setFlowDraft({ ...flowDraft, policy: val as FlowDraftModel['policy'], policyStored: true })}
+                    options={[
+                      { value: 'GUIDED', label: 'Guided' },
+                      { value: 'AUTONOMOUS', label: 'Autonomous' },
+                    ]}
+                    selectStyle={{ height: 28, fontSize: 12 }}
+                  />
+                </div>
                 <Badge tone={flowDirty ? 'warning' : 'success'}>{flowDirty ? 'Unsaved Draft' : `Revision ${selectedPlan?.current_revision || 0}`}</Badge>
                 <Button size="sm" disabled={!flowDirty || flowErrors.length > 0} onClick={() => void saveFlowDraft()}>{flowDirty ? 'Save Draft' : 'Saved'}</Button>
               </div>
@@ -1098,18 +1117,24 @@ export const PlanBuilderSurface: React.FC<{
 
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginTop: 10, fontSize: 11 }}>
                           <label style={{ display: 'grid', gap: 4 }}>Priority
-                            <select value={pkg.priority} onChange={(event) => void patchPackage(phase.id, pkg.id, { priority: event.target.value as WorkPackage['priority'] }, 'Prioridade alterada')}>
-                              {['CRITICAL','HIGH','NORMAL','LOW'].map((value) => <option key={value} value={value}>{value}</option>)}
-                            </select>
+                            <Select
+                              value={pkg.priority}
+                              onChange={(val) => void patchPackage(phase.id, pkg.id, { priority: val as WorkPackage['priority'] }, 'Prioridade alterada')}
+                              options={['CRITICAL','HIGH','NORMAL','LOW'].map((value) => ({ value, label: value }))}
+                              selectStyle={{ height: 28, fontSize: 11 }}
+                            />
                           </label>
                           <label style={{ display: 'grid', gap: 4 }}>Agent allocation
-                            <select value={pkg.agent_allocation || ''} onChange={(event) => void patchPackage(phase.id, pkg.id, { agent_allocation: event.target.value }, 'Agent allocation alterado')}>
-                              <option value="">Auto scheduler</option>
-                              {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-                            </select>
+                            <Select
+                              value={pkg.agent_allocation || ''}
+                              onChange={(val) => void patchPackage(phase.id, pkg.id, { agent_allocation: val }, 'Agent allocation alterado')}
+                              placeholder="Auto scheduler"
+                              options={agents.map((agent) => ({ value: agent.id, label: agent.name }))}
+                              selectStyle={{ height: 28, fontSize: 11 }}
+                            />
                           </label>
                           <label style={{ display: 'grid', gap: 4 }}>Parallel group
-                            <input value={pkg.parallel_group || ''} onChange={(event) => void patchPackage(phase.id, pkg.id, { parallel_group: event.target.value }, 'Parallel group alterado')} />
+                            <Input value={pkg.parallel_group || ''} onChange={(val) => void patchPackage(phase.id, pkg.id, { parallel_group: val }, 'Parallel group alterado')} style={{ height: 28, fontSize: 11 }} />
                           </label>
                           <label style={{ display: 'grid', gap: 4 }}>Dependencies
                             <select multiple value={pkg.dependencies || []} onChange={(event) => void patchPackage(phase.id, pkg.id, { dependencies: Array.from(event.target.selectedOptions).map((option) => option.value) }, 'Dependências alteradas')}>
@@ -1147,9 +1172,16 @@ export const PlanBuilderSurface: React.FC<{
           )}
         </div>
 
-        {/* Right Column: Step Inspector + compatibility tools */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {flowDraft && <FlowStepInspector flow={flowDraft} step={selectedStep} agents={agents} onChange={changeFlowStep} onAction={handleFlowStepAction} />}
+        {/* Right Column: Step Inspector (when selected) + compatibility tools */}
+        {selectedStepId && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: -8 }}>
+              <Button size="sm" onClick={() => setSelectedStepId('')}>Fechar Inspector</Button>
+            </div>
+            {flowDraft && <FlowStepInspector flow={flowDraft} step={selectedStep} agents={agents} onChange={changeFlowStep} onAction={handleFlowStepAction} />}
+          </div>
+        )}
+        <div style={{ display: selectedStepId ? 'none' : 'flex', flexDirection: 'column', gap: '16px' }}>
           <Card style={{ padding: '16px' }}>
             <div style={{ fontWeight: 600, marginBottom: 10 }}><History size={14} /> Revision History</div>
             <div style={{ display: 'grid', gap: 6 }}>
@@ -1162,7 +1194,7 @@ export const PlanBuilderSurface: React.FC<{
               ))}
               {revisionDiff && (
                 <div style={{ padding: 8, border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 11 }}>
-                  Rev {revisionDiff.from_revision} → {revisionDiff.to_revision}: +{revisionDiff.added_packages.length} / -{revisionDiff.removed_packages.length} / ~{revisionDiff.changed_packages.length} packages
+                  Rev {revisionDiff.from_revision} → {revisionDiff.to_revision}: +{(revisionDiff.added_packages || []).length} / -{(revisionDiff.removed_packages || []).length} / ~{(revisionDiff.changed_packages || []).length} packages
                 </div>
               )}
             </div>

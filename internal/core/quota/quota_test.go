@@ -184,21 +184,43 @@ func TestCodexSinglePoolMinOfWindows(t *testing.T) {
 	}
 }
 
-func TestBottleneckScoreUsesBestGroupNotGlobalMin(t *testing.T) {
-	qv := QuotaView{
+func TestBottleneckScorePrefersMoreUsableFamilies(t *testing.T) {
+	// omega: Gemini 5h dead, Claude full → 1 usable family
+	omega := QuotaView{
 		Status: string(model.UsageCached),
 		ModelGroups: []ModelGroup{
 			{Key: "gemini", Windows: []Window{{Kind: "5h", Remaining: 0}, {Kind: "weekly", Remaining: 66}}},
 			{Key: "claude_gpt", Windows: []Window{{Kind: "claude_5h", Remaining: 100}, {Kind: "claude_weekly", Remaining: 100}}},
 		},
 	}
-	effective, kind, _ := BottleneckScore(&qv)
-	if kind != "5h" {
-		t.Fatalf("bottleneck kind=%q want 5h", kind)
+	// gmail: both families live
+	gmail := QuotaView{
+		Status: string(model.UsageCached),
+		ModelGroups: []ModelGroup{
+			{Key: "gemini", Windows: []Window{{Kind: "5h", Remaining: 90}, {Kind: "weekly", Remaining: 94}}},
+			{Key: "claude_gpt", Windows: []Window{{Kind: "claude_5h", Remaining: 40}, {Kind: "claude_weekly", Remaining: 80}}},
+		},
 	}
-	// best=100, avg of groups = (0+100)/2 = 50 → 0.7*100 + 0.3*50 = 85
-	if effective < 84 || effective > 86 {
-		t.Fatalf("effective=%v want ~85 (best group weighted)", effective)
+	omegaEff, omegaKind, _ := BottleneckScore(&omega)
+	gmailEff, _, _ := BottleneckScore(&gmail)
+	if omegaKind != "5h" {
+		t.Fatalf("omega bottleneck kind=%q want 5h", omegaKind)
+	}
+	// omega: usable=1, avg=(0+100)/2=50 → 150
+	// gmail: usable=2, avg=(90+40)/2=65 → 265
+	if omegaEff < 149 || omegaEff > 151 {
+		t.Fatalf("omega effective=%v want ~150", omegaEff)
+	}
+	if gmailEff < 264 || gmailEff > 266 {
+		t.Fatalf("gmail effective=%v want ~265", gmailEff)
+	}
+	if gmailEff <= omegaEff {
+		t.Fatalf("gmail (%v) must beat omega (%v) — more usable model families", gmailEff, omegaEff)
+	}
+	omegaRatio, ok := omega.EffectiveCapacityRatio()
+	gmailRatio, ok2 := gmail.EffectiveCapacityRatio()
+	if !ok || !ok2 || gmailRatio <= omegaRatio {
+		t.Fatalf("ratios omega=%v gmail=%v — gmail must rank higher", omegaRatio, gmailRatio)
 	}
 }
 

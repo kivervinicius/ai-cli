@@ -4,7 +4,7 @@ import { RuntimeSession, ProviderInfo, ProfileInfo } from '../types';
 import { asArray } from '../lib/safeArray';
 import { api } from '../api';
 import { AlertTriangle } from 'lucide-react';
-import { Button, Dialog } from '../design-system';
+import { Button, Dialog, Select } from '../design-system';
 
 interface ContinueModalProps {
   runtime: RuntimeSession;
@@ -96,51 +96,35 @@ export const ContinueModal: React.FC<ContinueModalProps> = ({
         ) : (
           <div className="space-y-3 text-xs">
             <div>
-              <label className="text-xs" style={{ color: 'var(--nx-text-soft)' }}>
+              <label className="text-xs" style={{ color: 'var(--nx-text-soft)', display: 'block', marginBottom: 4 }}>
                 {t('legacy.destProvider', 'Destination Provider:')}
               </label>
-              <select
+              <Select
                 value={selectedProvider}
-                onChange={(e) => handleProviderChange(e.target.value)}
-                className="mt-1 w-full rounded px-3 py-2 text-xs font-mono uppercase focus:outline-none focus:ring-1 focus:ring-[var(--nx-accent)]"
-                style={{
-                  background: 'var(--nx-bg)',
-                  border: '1px solid var(--nx-border)',
-                  color: 'var(--nx-text)',
-                }}
-              >
-                {otherProviders.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.id} {p.version ? `(${p.version})` : ''}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => handleProviderChange(val)}
+                options={otherProviders.map((p) => ({
+                  value: p.id,
+                  label: `${p.id.toUpperCase()} ${p.version ? `(${p.version})` : ''}`.trim(),
+                }))}
+              />
             </div>
 
             <div>
-              <label className="text-xs" style={{ color: 'var(--nx-text-soft)' }}>
+              <label className="text-xs" style={{ color: 'var(--nx-text-soft)', display: 'block', marginBottom: 4 }}>
                 {t('legacy.profileAccount', 'Profile / Account:')}
               </label>
-              <select
+              <Select
                 value={selectedProfile}
-                onChange={(e) => setSelectedProfile(e.target.value)}
-                className="mt-1 w-full rounded px-3 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[var(--nx-accent)]"
-                style={{
-                  background: 'var(--nx-bg)',
-                  border: '1px solid var(--nx-border)',
-                  color: 'var(--nx-text)',
-                }}
-              >
-                {availableProfiles.length > 0 ? (
-                  availableProfiles.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.name} {p.account_email ? `(${p.account_email})` : ''}
-                    </option>
-                  ))
-                ) : (
-                  <option value="default">default</option>
-                )}
-              </select>
+                onChange={(val) => setSelectedProfile(val)}
+                options={
+                  availableProfiles.length > 0
+                    ? availableProfiles.map((p) => ({
+                        value: p.name,
+                        label: `${p.name} ${p.account_email ? `(${p.account_email})` : ''}`.trim(),
+                      }))
+                    : [{ value: 'default', label: 'default' }]
+                }
+              />
             </div>
           </div>
         )}

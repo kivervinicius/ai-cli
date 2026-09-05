@@ -4,7 +4,7 @@ import { ProviderInfo, ProfileInfo, RuntimeSession, Workspace } from '../types';
 import { asArray } from '../lib/safeArray';
 import { api } from '../api';
 import { Play, FolderGit2 } from 'lucide-react';
-import { Button, Dialog } from '../design-system';
+import { Button, Dialog, Input, Select } from '../design-system';
 
 interface StartModalProps {
   providers: ProviderInfo[];
@@ -100,107 +100,73 @@ export const StartModal: React.FC<StartModalProps> = ({
               <FolderGit2 className="w-3.5 h-3.5" style={{ color: 'var(--nx-accent-text)' }} />
               <span>{t('legacy.targetWorkspace', 'Target Project / Workspace:')}</span>
             </label>
-            <select
+            <Select
               value={isCustomWorkspace ? '__custom__' : selectedWorkspace}
-              onChange={(e) => handleWorkspaceSelect(e.target.value)}
-              className="mt-1 w-full rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[var(--nx-accent)]"
-              style={{
-                background: 'var(--nx-bg)',
-                border: '1px solid var(--nx-border)',
-                color: 'var(--nx-text)',
-              }}
-            >
-              {safeWorkspaces.map((ws) => (
-                <option key={ws.path} value={ws.path}>
-                  {ws.name} ({ws.path})
-                </option>
-              ))}
-              <option value="__custom__">{t('legacy.enterCustomPath', '+ Enter Custom Path...')}</option>
-            </select>
+              onChange={(value) => handleWorkspaceSelect(value)}
+              options={[
+                ...safeWorkspaces.map((ws) => ({
+                  value: ws.path,
+                  label: `${ws.name} (${ws.path})`,
+                })),
+                { value: '__custom__', label: t('legacy.enterCustomPath', '+ Enter Custom Path...') },
+              ]}
+            />
             {isCustomWorkspace && (
-              <input
-                type="text"
-                placeholder={t('legacy.customPathPlaceholder', '/absolute/path/to/project')}
-                value={customWorkspace}
-                onChange={(e) => setCustomWorkspace(e.target.value)}
-                className="mt-2 w-full rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-[var(--nx-accent)]"
-                style={{
-                  background: 'var(--nx-bg)',
-                  border: '1px solid var(--nx-border)',
-                  color: 'var(--nx-text)',
-                }}
-                autoFocus
-              />
+              <div style={{ marginTop: 8 }}>
+                <Input
+                  placeholder={t('legacy.customPathPlaceholder', '/absolute/path/to/project')}
+                  value={customWorkspace}
+                  onChange={(val) => setCustomWorkspace(val)}
+                  autoFocus
+                />
+              </div>
             )}
           </div>
 
           {/* Session Title / Goal */}
           <div>
-            <label style={{ color: 'var(--nx-text-soft)' }}>
+            <label style={{ color: 'var(--nx-text-soft)', display: 'block', marginBottom: 4 }}>
               {t('legacy.sessionObjective', 'Session Title / Objective (Optional):')}
             </label>
-            <input
-              type="text"
+            <Input
               placeholder={t('legacy.sessionPlaceholder', 'e.g. Refactor Auth, Debug Database...')}
               value={sessionTitle}
-              onChange={(e) => setSessionTitle(e.target.value)}
-              className="mt-1 w-full rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[var(--nx-accent)]"
-              style={{
-                background: 'var(--nx-bg)',
-                border: '1px solid var(--nx-border)',
-                color: 'var(--nx-text)',
-              }}
+              onChange={(val) => setSessionTitle(val)}
             />
           </div>
 
           {/* Coding Provider */}
           <div>
-            <label style={{ color: 'var(--nx-text-soft)' }}>
+            <label style={{ color: 'var(--nx-text-soft)', display: 'block', marginBottom: 4 }}>
               {t('legacy.codingProvider', 'Coding Provider:')}
             </label>
-            <select
+            <Select
               value={selectedProvider}
-              onChange={(e) => handleProviderChange(e.target.value)}
-              className="mt-1 w-full rounded px-3 py-2 uppercase focus:outline-none focus:ring-1 focus:ring-[var(--nx-accent)]"
-              style={{
-                background: 'var(--nx-bg)',
-                border: '1px solid var(--nx-border)',
-                color: 'var(--nx-text)',
-              }}
-            >
-              {installedProviders.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.id} {p.version ? `(${p.version})` : ''}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => handleProviderChange(val)}
+              options={installedProviders.map((p) => ({
+                value: p.id,
+                label: `${p.id.toUpperCase()} ${p.version ? `(${p.version})` : ''}`.trim(),
+              }))}
+            />
           </div>
 
           {/* Profile / Account */}
           <div>
-            <label style={{ color: 'var(--nx-text-soft)' }}>
+            <label style={{ color: 'var(--nx-text-soft)', display: 'block', marginBottom: 4 }}>
               {t('legacy.profileAccount', 'Profile / Account:')}
             </label>
-            <select
+            <Select
               value={selectedProfile}
-              onChange={(e) => setSelectedProfile(e.target.value)}
-              className="mt-1 w-full rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[var(--nx-accent)]"
-              style={{
-                background: 'var(--nx-bg)',
-                border: '1px solid var(--nx-border)',
-                color: 'var(--nx-text)',
-              }}
-            >
-              {availableProfiles.length > 0 ? (
-                availableProfiles.map((p) => (
-                  <option key={p.name} value={p.name}>
-                    {p.name} {p.account_email ? `(${p.account_email})` : ''}
-                  </option>
-                ))
-              ) : (
-                <option value="default">default</option>
-              )}
-            </select>
+              onChange={(val) => setSelectedProfile(val)}
+              options={
+                availableProfiles.length > 0
+                  ? availableProfiles.map((p) => ({
+                      value: p.name,
+                      label: `${p.name} ${p.account_email ? `(${p.account_email})` : ''}`.trim(),
+                    }))
+                  : [{ value: 'default', label: 'default' }]
+              }
+            />
           </div>
         </div>
 

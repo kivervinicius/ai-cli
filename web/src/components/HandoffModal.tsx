@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { RuntimeSession, ProfileInfo } from '../types';
 import { asArray } from '../lib/safeArray';
 import { api } from '../api';
-import { Button, Dialog } from '../design-system';
+import { Button, Dialog, Select } from '../design-system';
 
 interface HandoffModalProps {
   runtime: RuntimeSession;
@@ -87,25 +87,17 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
           </div>
         ) : (
           <div className="space-y-2 text-xs">
-            <label className="text-xs" style={{ color: 'var(--nx-text-soft)' }}>
+            <label className="text-xs" style={{ color: 'var(--nx-text-soft)', display: 'block', marginBottom: 4 }}>
               {t('legacy.targetProfile', 'Target Profile:')}
             </label>
-            <select
+            <Select
               value={selectedProfile}
-              onChange={(e) => setSelectedProfile(e.target.value)}
-              className="mt-1 w-full rounded px-3 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[var(--nx-accent)]"
-              style={{
-                background: 'var(--nx-bg)',
-                border: '1px solid var(--nx-border)',
-                color: 'var(--nx-text)',
-              }}
-            >
-              {availableProfiles.map((p) => (
-                <option key={p.name} value={p.name}>
-                  {p.name} {p.account_email ? `(${p.account_email})` : ''} {p.plan ? `[${p.plan}]` : ''}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setSelectedProfile(val)}
+              options={availableProfiles.map((p) => ({
+                value: p.name,
+                label: `${p.name} ${p.account_email ? `(${p.account_email})` : ''} ${p.plan ? `[${p.plan}]` : ''}`.trim(),
+              }))}
+            />
           </div>
         )}
 

@@ -116,17 +116,17 @@ func (s *Selector) SelectBestProfile(ctx context.Context, provider string, works
 		}, fmt.Errorf("no usable %s profiles available: %s", provider, strings.Join(rejectSummaries, ", "))
 	}
 
-	// When no candidate has trustworthy quota evidence, rotate healthy
-	// authenticated profiles by least-recently-selected instead of favoring a
-	// stale default profile.
-	allUnknown := true
+	// When no candidate has any quota windows, rotate healthy authenticated
+	// profiles by least-recently-selected instead of favoring a stale default.
+	// ESTIMATED/stale windows still rank relatively (e.g. AGY family availability).
+	hasQuotaEvidence := false
 	for _, ev := range eligible {
-		if s.quotaEng.Trustworthy(ev.Usage) {
-			allUnknown = false
+		if len(ev.Usage.Windows) > 0 && ev.Usage.Status != model.UsageUnknown {
+			hasQuotaEvidence = true
 			break
 		}
 	}
-	if allUnknown {
+	if !hasQuotaEvidence {
 		lastUsed := selectedAt(provider)
 		sort.SliceStable(eligible, func(i, j int) bool {
 			return lastUsed[eligible[i].Profile.Name].Before(lastUsed[eligible[j].Profile.Name])

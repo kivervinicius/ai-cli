@@ -142,7 +142,7 @@ func controlWebCmd(args []string) error {
 	for i := 0; i < len(args); i++ {
 		if (args[i] == "--port" || args[i] == "-p") && i+1 < len(args) {
 			p, err := strconv.Atoi(args[i+1])
-			if err == nil && p > 0 && p <= 65535 {
+			if err == nil && p >= 0 && p <= 65535 {
 				port = p
 			}
 			i++
