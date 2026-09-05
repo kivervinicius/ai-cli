@@ -155,6 +155,14 @@ func (n *Nexus) StartMissionRun(ctx context.Context, planID, defaultAgentID stri
 		return nil, fmt.Errorf("resolve immutable plan revision %d: %w", plan.CurrentRevision, err)
 	}
 
+	preflight, err := n.PreflightFlow(ctx, planID)
+	if err != nil {
+		return nil, fmt.Errorf("run preflight before mission: %w", err)
+	}
+	if !preflight.Ready {
+		return nil, fmt.Errorf("mission blocked by preflight: invalid flow graph or checks failed")
+	}
+
 	contract = normalizeAutonomyContract(contract, project.CanonicalPath)
 	frozenPlan, err := freezePlanForExecution(n, *plan)
 	if err != nil {

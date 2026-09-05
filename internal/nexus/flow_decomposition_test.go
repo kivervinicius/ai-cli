@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/kivervinicius/ai-cli/internal/nexus/runner"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
 
@@ -96,5 +97,44 @@ func TestPreflightFlow_PassesOnValidFlow(t *testing.T) {
 		if ch.Key == "dag_validity" && ch.Status != "PASS" {
 			t.Fatalf("dag_validity should PASS, got %s", ch.Status)
 		}
+	}
+}
+
+func TestPreflightFlow_RejectsCyclicDAG(t *testing.T) {
+	n := openTestNexus(t)
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := st.CreateProject(store.Project{Name: "CyclicProj", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Create a plan with a circular dependency between pkg1 and pkg2
+	plan, err := n.CreateWorkPlan(context.Background(), project.ID, "Cyclic Plan", "Testing circular DAG preflight", []store.PlanPhase{
+		{
+			ID: "p1", Title: "Phase 1", Order: 1,
+			Packages: []store.WorkPackage{
+				{ID: "pkg1", Title: "Task 1", Status: "READY", Role: "implementer", Dependencies: []string{"pkg2"}},
+				{ID: "pkg2", Title: "Task 2", Status: "READY", Role: "implementer", Dependencies: []string{"pkg1"}},
+			},
+		},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := n.PreflightFlow(context.Background(), plan.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Ready {
+		t.Fatalf("expected ready=false for cyclic plan, got ready=true")
+	}
+
+	// Attempting to start the mission run must fail closed
+	_, err = n.StartMissionRun(context.Background(), plan.ID, "", runner.AutonomyContract{}, false)
+	if err == nil {
+		t.Fatalf("expected StartMissionRun to fail closed on cyclic DAG, but it succeeded")
 	}
 }
