@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/control/driver"
+	"github.com/kivervinicius/ai-cli/internal/control/events"
 	"github.com/kivervinicius/ai-cli/internal/control/launcher"
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
@@ -137,6 +138,18 @@ func Default() *Nexus {
 		}
 		defaultNexus = &Nexus{st: st, launcher: &prodLauncher{l: launcher.Default()}, workers: map[string]*missionWorker{}}
 		if st != nil {
+			events.DefaultBus().SetRecorder(func(e events.Event) {
+				projectID, _ := e.Data["project_id"].(string)
+				agentID, _ := e.Data["agent_id"].(string)
+				_, _ = st.RecordEventMetadata(store.EventMetadata{
+					ID:        e.ID,
+					AgentID:   agentID,
+					ProjectID: projectID,
+					Kind:      string(e.Type),
+					Timestamp: e.Timestamp,
+					Summary:   e.Summary,
+				})
+			})
 			_ = defaultNexus.RecoverMissionRuns(context.Background())
 			defaultNexus.StartScheduleLoop()
 		}

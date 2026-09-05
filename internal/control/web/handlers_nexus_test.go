@@ -489,3 +489,64 @@ func TestSystemUpdateReturnsJSONNot501(t *testing.T) {
 		t.Fatal("expected honest nexus binary note")
 	}
 }
+
+func TestProjectEventsAPI(t *testing.T) {
+	client, srv, csrf := csrfClient(t)
+	base := srv.URL()
+
+	// 1. Create a project
+	dir := t.TempDir()
+	createBody, _ := json.Marshal(map[string]string{
+		"name": "Events Project",
+		"path": dir,
+	})
+	req, _ := http.NewRequest(http.MethodPost, base+"/api/v1/projects", bytes.NewReader(createBody))
+	req.Header.Set("X-CSRF-Token", csrf)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	defer resp.Body.Close()
+	var proj store.Project
+	if err := json.NewDecoder(resp.Body).Decode(&proj); err != nil {
+		t.Fatalf("decode project: %v", err)
+	}
+
+	// 2. Insert test events into the store
+	st := nexus.Default().Store()
+	if st == nil {
+		t.Fatal("store is nil")
+	}
+	_, err = st.RecordEventMetadata(store.EventMetadata{
+		ProjectID: proj.ID,
+		Kind:      "AGENT_WORKING",
+		Summary:   "Secret key 12345 agent work",
+	})
+	if err != nil {
+		t.Fatalf("record event: %v", err)
+	}
+
+	// 3. Fetch project events via API
+	getReq, _ := http.NewRequest(http.MethodGet, base+"/api/v1/projects/"+proj.ID+"/events", nil)
+	getResp, err := client.Do(getReq)
+	if err != nil {
+		t.Fatalf("get events: %v", err)
+	}
+	defer getResp.Body.Close()
+
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", getResp.StatusCode)
+	}
+
+	var eventsList []store.EventMetadata
+	if err := json.NewDecoder(getResp.Body).Decode(&eventsList); err != nil {
+		t.Fatalf("decode events: %v", err)
+	}
+	if len(eventsList) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(eventsList))
+	}
+	if eventsList[0].Kind != "AGENT_WORKING" {
+		t.Fatalf("expected AGENT_WORKING, got %s", eventsList[0].Kind)
+	}
+}

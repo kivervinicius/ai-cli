@@ -15,6 +15,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	coreconfig "github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
+	"github.com/kivervinicius/ai-cli/internal/core/security"
 	"github.com/kivervinicius/ai-cli/internal/doctor"
 	"github.com/kivervinicius/ai-cli/internal/nexus"
 	"github.com/kivervinicius/ai-cli/internal/nexus/intelligence"
@@ -190,6 +191,42 @@ func (h *NexusHandler) handleProjectDetail(w http.ResponseWriter, r *http.Reques
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+// handleProjectEvents GET /api/v1/projects/{id}/events returns recorded activity events.
+func (h *NexusHandler) handleProjectEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	st, err := h.nexus.OpenProject()
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	id := projectIDFromPath(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "missing project id")
+		return
+	}
+
+	limit := 50
+	if lStr := r.URL.Query().Get("limit"); lStr != "" {
+		if parsed, err := strconv.Atoi(lStr); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+	agentID := r.URL.Query().Get("agent_id")
+
+	eventsList, err := st.ListEventsMetadata(id, agentID, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for i := range eventsList {
+		eventsList[i].Summary = security.Redact(eventsList[i].Summary)
+	}
+	writeJSON(w, http.StatusOK, eventsList)
 }
 
 // handleProjectContext GET /api/v1/projects/{id}/context returns the persisted

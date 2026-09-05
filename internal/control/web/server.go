@@ -339,6 +339,8 @@ func (s *Server) routeProject(h *NexusHandler) http.HandlerFunc {
 			}
 		}
 		switch {
+		case strings.HasSuffix(r.URL.Path, "/events"):
+			h.handleProjectEvents(w, r)
 		case strings.HasSuffix(r.URL.Path, "/layout"):
 			h.handleProjectLayout(w, r)
 		case strings.HasSuffix(r.URL.Path, "/agents"):
