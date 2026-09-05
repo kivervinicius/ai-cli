@@ -195,6 +195,13 @@ func (n *Nexus) StartMissionRunApproved(ctx context.Context, planID string, appr
 	if plan.CurrentRevision != approvedRevision {
 		return nil, fmt.Errorf("approved plan revision %d is stale; current is %d", approvedRevision, plan.CurrentRevision)
 	}
+	preflight, err := n.PreflightFlow(ctx, planID)
+	if err != nil {
+		return nil, fmt.Errorf("run preflight before approved mission: %w", err)
+	}
+	if !preflight.Ready {
+		return nil, fmt.Errorf("approved mission blocked by preflight")
+	}
 	return n.startMissionRunAtRevision(ctx, plan, approvedRevision, defaultAgentID, contract, autonomous)
 }
 

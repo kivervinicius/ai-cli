@@ -3,6 +3,8 @@ package nexus
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,12 +23,14 @@ type FlowDecompositionRequest struct {
 
 // FlowDecompositionProposal represents an inspectable candidate flow DAG before final persistence (PLAN 04).
 type FlowDecompositionProposal struct {
-	Title         string         `json:"title"`
-	Description   string         `json:"description"`
-	Archetype     string         `json:"archetype"`
-	Flow          FlowDefinition `json:"flow"`
-	Reasoning     string         `json:"reasoning"`
-	MaestroAdvice string         `json:"maestro_advice,omitempty"`
+	Title                  string         `json:"title"`
+	Description            string         `json:"description"`
+	Archetype              string         `json:"archetype"`
+	SourceArtifactID       string         `json:"source_artifact_id,omitempty"`
+	SourceArtifactRevision int            `json:"source_artifact_revision,omitempty"`
+	Flow                   FlowDefinition `json:"flow"`
+	Reasoning              string         `json:"reasoning"`
+	MaestroAdvice          string         `json:"maestro_advice,omitempty"`
 }
 
 // FlowPreflightCheck represents a single preflight verification item (PLAN 05).
@@ -56,12 +60,34 @@ func (n *Nexus) DecomposePromptIntoFlowProposal(ctx context.Context, req FlowDec
 	if strings.TrimSpace(req.ProjectID) == "" {
 		return nil, fmt.Errorf("project_id is required")
 	}
-	if _, err := st.GetProject(req.ProjectID); err != nil {
+	project, err := st.GetProject(req.ProjectID)
+	if err != nil {
 		return nil, err
 	}
-
 	goal := strings.TrimSpace(req.Goal)
 	sourcePrompt := strings.TrimSpace(req.SourcePrompt)
+	var sourceArtifactRevision int
+	if req.ArtifactID != "" {
+		artifact, err := st.GetPromptArtifact(req.ArtifactID)
+		if err != nil {
+			return nil, fmt.Errorf("resolve source prompt artifact: %w", err)
+		}
+		session, err := st.GetComposerSession(artifact.SessionID)
+		if err != nil {
+			return nil, fmt.Errorf("resolve source composer session: %w", err)
+		}
+		if session.ProjectID != req.ProjectID {
+			return nil, fmt.Errorf("source prompt artifact belongs to another project")
+		}
+		sourceArtifactRevision = artifact.Version
+		if sourcePrompt == "" {
+			sourcePrompt = strings.TrimSpace(artifact.Content)
+		}
+		if goal == "" {
+			goal = strings.TrimSpace(artifact.Content)
+		}
+	}
+
 	archetype := string(classifyPromptArchetype(goal + "\n" + sourcePrompt))
 
 	// Determine if simple
@@ -71,6 +97,7 @@ func (n *Nexus) DecomposePromptIntoFlowProposal(ctx context.Context, req FlowDec
 		(len(strings.Fields(goal)) <= 5 && !strings.Contains(lowerGoal, "refactor") && !strings.Contains(lowerGoal, "e2e") && !strings.Contains(lowerGoal, "system"))
 
 	title := firstNonEmpty(goal, "Flow Proposal")
+	verification := projectVerificationCommands(project.CanonicalPath)
 	phaseID := "phase_" + ids.NewRuntimeID()
 	flow := FlowDefinition{
 		ID:          "flow_draft_" + ids.NewRuntimeID(),
@@ -100,7 +127,7 @@ func (n *Nexus) DecomposePromptIntoFlowProposal(ctx context.Context, req FlowDec
 				Role:                     "implementer",
 				AssignmentStrategy:       FlowAssignmentAuto,
 				AcceptanceCriteria:       []string{"Ajuste concluído com validação dos testes"},
-				VerificationRequirements: []string{"go test ./...", "npm test"},
+				VerificationRequirements: verification,
 				MaestroSkills:            req.MaestroSkills,
 				CompiledPrompt:           sourcePrompt,
 			},
@@ -121,7 +148,7 @@ func (n *Nexus) DecomposePromptIntoFlowProposal(ctx context.Context, req FlowDec
 				Role:                     "implementer",
 				AssignmentStrategy:       FlowAssignmentAuto,
 				AcceptanceCriteria:       []string{"Funcionalidade implementada sem regressões de build"},
-				VerificationRequirements: []string{"go vet ./...", "npm run build"},
+				VerificationRequirements: verification,
 				MaestroSkills:            req.MaestroSkills,
 				CompiledPrompt:           sourcePrompt,
 			},
@@ -137,19 +164,32 @@ func (n *Nexus) DecomposePromptIntoFlowProposal(ctx context.Context, req FlowDec
 				AssignmentStrategy:       FlowAssignmentAuto,
 				Dependencies:             []string{step1ID},
 				AcceptanceCriteria:       []string{"Todos os testes passando e suite de qualidade aprovada"},
-				VerificationRequirements: []string{"go test ./...", "npm test"},
+				VerificationRequirements: verification,
 			},
 		}
 	}
 
 	proposal := &FlowDecompositionProposal{
-		Title:       title,
-		Description: flow.Description,
-		Archetype:   archetype,
-		Flow:        flow,
-		Reasoning:   fmt.Sprintf("Decomposição baseada no arquétipo %s com %d passos.", archetype, len(flow.Steps)),
+		Title:                  title,
+		Description:            flow.Description,
+		Archetype:              archetype,
+		SourceArtifactID:       req.ArtifactID,
+		SourceArtifactRevision: sourceArtifactRevision,
+		Flow:                   flow,
+		Reasoning:              fmt.Sprintf("Decomposição baseada no arquétipo %s com %d passos.", archetype, len(flow.Steps)),
 	}
 	return proposal, nil
+}
+
+func projectVerificationCommands(root string) []string {
+	commands := make([]string, 0, 2)
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err == nil {
+		commands = append(commands, "go test ./...")
+	}
+	if _, err := os.Stat(filepath.Join(root, "package.json")); err == nil {
+		commands = append(commands, "npm test")
+	}
+	return commands
 }
 
 // PreflightFlow validates a Flow or WorkPlan before execution, generating an honest readiness report (PLAN 05).
@@ -212,16 +252,16 @@ func (n *Nexus) PreflightFlow(ctx context.Context, planID string) (*FlowPrefligh
 	report.Checks = append(report.Checks, FlowPreflightCheck{
 		Key:     "worktree_isolation",
 		Label:   "Isolamento de Worktree Git",
-		Status:  "PASS",
-		Summary: "Writers autônomos serão isolados em worktrees separados (fail-closed garantido).",
+		Status:  "WARN",
+		Summary: "O preflight não consegue provar isolamento por step; a execução autônoma exige configuração explícita de worktree.",
 	})
 
 	// 4. Security & Autonomy permissions
 	report.Checks = append(report.Checks, FlowPreflightCheck{
 		Key:     "security",
 		Label:   "Contrato de Autonomia & Segurança",
-		Status:  "PASS",
-		Summary: "Guarda-chuva de rede e segredos ativo pelo Nexus AutonomyGuard.",
+		Status:  "WARN",
+		Summary: "O preflight confirma apenas o contrato declarado; enforcement adicional depende do runtime e não é simulado como PASS.",
 	})
 
 	return report, nil
