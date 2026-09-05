@@ -259,3 +259,34 @@ func TestProjectLayoutV4MonotonicRevision(t *testing.T) {
 		t.Fatalf("expected revision 3 after unconditional save, got %d", rec3.Revision)
 	}
 }
+
+func TestProjectLayoutV4SurvivesProcessRestart(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "nexus.db")
+	s1, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := s1.CreateProject(Project{Name: "Restart", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"version":4,"model":{"active":"flow:F5"},"presentation":{"mode":"MOSAIC"}}`
+	if _, err := s1.SaveLayoutWithRevision(project.ID, want, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s1.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s2, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	record, err := s2.GetLayoutRecord(project.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Revision != 1 || record.Layout != want {
+		t.Fatalf("layout did not survive restart: revision=%d layout=%q", record.Revision, record.Layout)
+	}
+}
