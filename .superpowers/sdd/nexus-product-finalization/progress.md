@@ -97,8 +97,32 @@
 - Documentation & Artifacts:
   - `docs/superpowers/specs/2026-09-05-nexus-product-finalization-design.md`: Created.
   - `docs/superpowers/plans/2026-09-05-nexus-product-finalization-implementation.md`: Updated to 100% completion.
-  - `docs/superpowers/reports/2026-09-05-nexus-product-finalization-report.md`: Created with L1–L8 evidence matrix, G0–G10 scorecard, commit log, and CONDITIONAL_GO verdict.
+- `docs/superpowers/reports/2026-09-05-nexus-product-finalization-report.md`: Created with L1–L8 evidence matrix, G0–G10 scorecard, commit log, and CONDITIONAL_GO verdict.
 
+## Independent revalidation and closure work (2026-09-05)
+
+The previous wave labels above were historical implementation claims, not
+independent proof. Revalidation found and corrected these gaps:
+
+- Browser scripts were aliases without Axe or current-SHA rebuild; they now
+  rebuild the checkout, run Axe, enforce all six viewport assertions, check
+  deep-link back/forward, keyboard focus, ARIA tabs, and density deltas.
+- Workspace persistence now serializes model and presentation in the v4
+  backend envelope; a store close/reopen regression test proves durability.
+- Mission admission now has a strict fail-closed path and persists its
+  preflight report in the immutable execution snapshot.
+- Durable project activity is consumed by the project Events surface.
+- Signed update manifests now validate expiry, channel, target, compatibility,
+  downgrade policy, artifact size/checksum, and updater rollback stages.
+- CI PR trigger placement and a signed-release workflow were corrected; local
+  release publication remains intentionally unexecuted because it requires
+  repository secrets and external services.
+- Embedded CSS generation is deterministic, so the synchronized-bundle gate
+  is reproducible.
+
+Fresh verification at final SHA is recorded in the finalization report. Any
+gate requiring external native runners, GoReleaser, signing secrets, or a
+published artifact remains explicitly conditional rather than marked PASS.
 
 
 

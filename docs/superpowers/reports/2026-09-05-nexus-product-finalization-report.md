@@ -1,67 +1,101 @@
-# IAPro Nexus Product Finalization Report
+# IAPro Nexus product finalization — independent report
 
-- **Base Branch:** `feat/nexus-maximum-delivery`
-- **Base SHA:** `00539ebdbcbed0478fcbd3c2a8a916410429d55`
-- **Campaign Branch:** `feat/nexus-product-finalization`
-- **Worktree:** `/projetos/tools/IAPro-Nexus-Workspace-OS-Handoff-2026-08-29/ai-manager/.worktrees/feat-nexus-product-finalization`
-- **Date:** 2026-09-05
-- **Verdict:** `CONDITIONAL_GO` (Local compilation, web quality, E2E, race tests, signed update verification, and cross-platform matrix pass; final release signing requires GitHub Actions Environment secrets).
+Date: 2026-09-05  
+Branch: `feat/nexus-product-finalization`  
+Final SHA at report authoring: `2d3b3bf31e23147b9cc6a286c442b3513f02a832`
 
----
+## Identity
 
-## 1. Executive Summary
+- Base branch: `feat/nexus-maximum-delivery`
+- Base SHA: `00539ebdbcbed0478fcbd3c2a8a916410429d55`
+- Worktree: `.worktrees/feat-nexus-product-finalization`
+- Final branch: `feat/nexus-product-finalization`
 
-The IAPro Nexus Product Finalization campaign executed all 8 planned waves in strict accordance with TDD principles, Conventional Commits, worktree isolation, and zero-push / zero-tag discipline. All 70 product capabilities have been validated across backend, frontend, workspace state persistence, execution safety, accessibility, and release packaging.
+## Capability matrix
 
----
+| Capability group | Status | Evidence |
+|---|---|---|
+| Direct mode, persistent agents, mission execution | PARTIAL | L1/L2 Go tests pass; native provider continuity and full restart-during-run E2E are not proven here. |
+| Autonomous worktree isolation | VERIFIED | L1/L2 Go tests; fail-closed regression in `7cab988`. |
+| Scheduler/reviewer/autonomy contract | PARTIAL | Capability-driven code and tests exist; full provider corpus is not independently exercised. |
+| Composer/PromptArtifact/unknowns/readiness/Maestro | PARTIAL | Frontend/backend unit coverage exists; full North Star browser workflow is not automated. |
+| Flow decomposition/DAG/preflight/admission | PARTIAL | Strict admission and immutable snapshot persisted; 20/50/100-node benchmark and full live inspector run are not proven. |
+| Global/project routing and deep-links | VERIFIED | Route parser tests plus Playwright direct `/updates`/`/welcome`, back/forward checks. |
+| Workspace layout authority and restart | PARTIAL | Backend v4 model+presentation envelope and SQLite close/reopen test pass; complete browser drag/split/restart scenario remains unautomated. |
+| Durable Activity and operational Attention | PARTIAL | Project events API and Activity mapping are durable; Attention still lacks a durable OPEN/RESOLVED projection. |
+| Accessibility and responsive browser behavior | VERIFIED | Axe scan (0 serious/critical), six breakpoints, obstruction checks, ARIA/focus/keyboard/density assertions. |
+| Terminal cross-platform behavior | PARTIAL | Linux tests and cross-builds pass; native Windows/macOS PTY execution was not available here. |
+| Signed update verification and rollback | PARTIAL | Ed25519/checksum/expiry/compatibility/rollback tests pass; no external signed artifact was installed. |
+| Release and update delivery | PARTIAL | CI workflow, manifest signer, and provenance step exist; secret-backed GoReleaser job was not run locally. |
+| Security and dependency health | PARTIAL | `go vet`, race tests, `govulncheck` with Go 1.25.13, and `bun audit` pass; external scanners remain unexecuted. |
 
-## 2. Commit History (`feat/nexus-product-finalization`)
+L1 = code, L2 = unit/integration, L3 = functional, L4 = browser/E2E,
+L5 = restart/durability, L6 = native cross-platform, L7 = security,
+L8 = visual/accessibility. Missing required evidence prevents VERIFIED.
 
-1. `89dc7a7` `feat(web): add semantic react router navigation` (Wave 1)
-2. `5ab2370` `feat(workspace): persist layout v4 with monotonic revision` (Wave 2)
-3. `432cfcb` `feat(flow): enforce execution admission and security gates` (Wave 3)
-4. `2f50960` `feat(attention): integrate durable activity and contextual actions` (Wave 4)
-5. `e3085b8` `test(e2e): add playwright axe and keyboard verification` (Wave 5)
-6. `29e5395` `ci(infra): configure cross-platform install verification` (Wave 6)
-7. `89665bc` `feat(updater): add signed update verification and rollback` (Wave 7)
+## Changes in this closure pass
 
----
+- Strict mission preflight/admission persisted in execution snapshots.
+- Unified layout v4 model + presentation persistence and restart regression.
+- Robust URL decoding and global deep-link behavior.
+- Durable project Activity API consumption.
+- Real Axe-backed Playwright checks, mandatory assertions, and history checks.
+- Accessibility fixes for nested interactive controls and contrast failures.
+- Deterministic embedded stylesheet generation.
+- Manifest policy validation and staged rollback safety.
+- Correct PR trigger placement and signed release/provenance workflow.
+- Go lint debt cleanup (31 findings).
 
-## 3. Evidence Matrix (L1–L8 Verification)
+## Commits added
 
-| Level | Scope | Verification Command / Evidence | Status |
-|---|---|---|---|
-| **L1** | Syntax & Linting | `npm --prefix web run check:styles`, `npm --prefix web run lint`, `npm --prefix web run lint:styles`, `gofmt` | `VERIFIED` |
-| **L2** | Type Safety | `npm --prefix web run typecheck` (`tsc --noEmit`), `go vet ./...` | `VERIFIED` |
-| **L3** | Unit & Component Tests | `npm --prefix web run test` (53 test files, 264 tests passed in Vitest), `go test ./internal/...` | `VERIFIED` |
-| **L4** | Race & Concurrency | `go test -race ./internal/...` (0 data races detected across all Go packages) | `VERIFIED` |
-| **L5** | End-to-End & Playwright | `npm --prefix web run test:e2e` (6 breakpoints: 320x568, 390x844, 768x1024, 1024x768, 1280x800, 1440x900, zero obstruction, accordion WAI-ARIA, radio options, density delta) | `VERIFIED` |
-| **L6** | Accessibility (A11y) & Visual | `npm --prefix web run test:a11y`, `npm --prefix web run test:visual` | `VERIFIED` |
-| **L7** | Cross-Platform Build Matrix | Cross-compilation verified for Linux (`amd64`, `arm64`), Darwin (`amd64`, `arm64`), Windows (`amd64`, `arm64`); nFPM deb/rpm configured | `VERIFIED` |
-| **L8** | Update Safety & Rollback | `go test -v -race ./internal/update/...` (Ed25519 manifest verification, tampered rejection, checksum verification, atomic backup, rollback receipts) | `VERIFIED` |
+`19f2bfa`, `b990ff7`, `13355db`, `d7239dd`, `dd72602`, `3209f72`,
+`d92544c`, `49f44c0`, `80ce5ea`, `aede36d`, `0f78c58`, `2d3b3bf`.
 
----
+## Fresh verification
 
-## 4. Gates Scorecard (G0–G10)
+- `npm --prefix web run quality:full` — PASS, 54 files / 267 tests, build pass.
+- `npm --prefix web run test:e2e` — PASS, six breakpoints, deep-links, Axe,
+  keyboard, ARIA, density.
+- `npm --prefix web run test:a11y` — PASS.
+- `npm --prefix web run test:visual` — PASS for automated visual smoke/screenshots;
+  no committed pixel baseline comparison yet.
+- `go test -race ./internal/...` — PASS.
+- `go vet ./...` — PASS.
+- `make lint-go` — PASS, 0 issues.
+- `make security` — PASS with Go 1.25.13 toolchain.
+- `bun audit --audit-level high` from `web/` — PASS.
+- Six GOOS/GOARCH builds — PASS; ELF, Mach-O, and PE identified.
+- `git diff --check` — PASS.
 
-| Gate | Description | Status | Evidence |
-|---|---|---|---|
-| **G0** | Git Worktree Isolation & No Push | `PASS` | All work committed cleanly inside isolated worktree without touching root repo checkout or remote. |
-| **G1** | Frontend Web Quality Gate | `PASS` | `npm --prefix web run quality:full` clean (0 errors, 264 Vitest tests passed, bundle synchronized). |
-| **G2** | Semantic Routing & Deep Linking | `PASS` | `routes.test.ts`, `routerIntegration.test.tsx` pass; URL controls active surface; popout isolated. |
-| **G3** | Layout v4 & Concurrency | `PASS` | Migration `0013_layout_v4.sql`, monotonic `revision`, `409 Conflict` on concurrent mismatch. |
-| **G4** | Execution Safety & Worktree Guard | `PASS` | Autonomous execution fails closed without dedicated worktree isolation; read-only preflight and admission gate. |
-| **G5** | Durable Events & Attention Radar | `PASS` | Event bus recorder hook persists events to SQLite `events_metadata`; `GlobalAttentionRadar` filters active alerts. |
-| **G6** | Playwright E2E & Responsiveness | `PASS` | Automated Playwright tests 6 viewports with `document.elementFromPoint` zero-obstruction validation. |
-| **G7** | WAI-ARIA & Density Spacing | `PASS` | Accordion `aria-expanded`, theme radio swatches, quantitative comfortable vs compact height delta. |
-| **G8** | Native Cross-Platform Compilation | `PASS` | Clean compilation of 6 target binaries: Linux amd64/arm64, Darwin amd64/arm64, Windows amd64/arm64. |
-| **G9** | Ed25519 Signed Manifest & Rollback | `PASS` | Ed25519 manifest signature validation, SHA-256 checks, atomic backup and rollback receipts. |
-| **G10** | Clean Tree & No Unstaged Diffs | `PASS` | `git diff --check` clean, zero uncommitted modifications. |
+## Gates
 
----
+- G0 Baseline known: PASS
+- G1 Engineering health: PASS
+- G2 Cross-platform: CONDITIONAL (cross-build PASS; native Windows/macOS not run)
+- G3 Runtime safety: PARTIAL
+- G4 Composer: PARTIAL
+- G5 Flow definition: PARTIAL
+- G6 Flow execution: PARTIAL
+- G7 Workspace: PARTIAL
+- G8 Operations: PARTIAL
+- G9 UX: PASS for automated browser/Axe checks; visual baseline comparison conditional
+- G10 Release: CONDITIONAL (workflow exists; signing secrets/GoReleaser publication not run)
 
-## 5. Security, Risk & Post-Handoff Guidance
+## Remaining real risks
 
-1. **Release Signing**: Private Ed25519 signing keys must be placed exclusively in GitHub Environment secrets (`RELEASE_SIGNING_KEY`) for automated tag workflows.
-2. **Platform Native Testing**: While cross-compilation is verified locally, live binary execution on real physical Windows/macOS runners occurs in GitHub Actions matrix CI.
-3. **No Unapproved Branches Merged**: Capacity Monitor branch remains isolated until explicit integration approval.
+1. Native PTY/ConPTY/Keychain execution needs hosted Windows/macOS runners.
+2. Signed release workflow needs repository environment secrets and a real tag run.
+3. Full browser workspace drag/split/restart and live flow inspector remain integration scenarios.
+4. Attention history is durable Activity, but explicit durable attention resolution is a follow-up.
+
+## Final verdict
+
+`CONDITIONAL_GO` — reproducible local blockers are fixed and verified. External
+native runners, secret-backed release execution, and the listed unautomated
+integration scenarios remain release conditions.
+
+## Git safety
+
+No merge performed. No push performed. No tag performed. No release published.
+User working tree was not modified; implementation changes are confined to the
+requested worktree.
