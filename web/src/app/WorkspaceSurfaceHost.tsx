@@ -1,4 +1,4 @@
-import React, { Suspense, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { Network } from 'lucide-react';
 import { Button, Card, EmptyState } from '../design-system';
 import { recoverOrStartAgent } from '../nexus/agentRecover';
@@ -25,6 +25,7 @@ import {
 import { surfaceViewId } from '../workspace/model';
 import { useWorkspacePresentation } from '../workspace/WorkspacePresentationProvider';
 import { SurfaceLoadingFallback } from './SurfaceLoadingFallback';
+import { mapDurableActivity } from './activityModel';
 
 // Lazy-loaded Surfaces to isolate heavy dependencies (xterm.js, DAG canvas, settings)
 const ProjectManagerSurface = React.lazy(() =>
@@ -143,6 +144,18 @@ export const WorkspaceSurfaceHost: React.FC<{
   const [showStart, setShowStart] = useState(false);
   const [handoff, setHandoff] = useState<RuntimeSession | null>(null);
   const [cont, setCont] = useState<RuntimeSession | null>(null);
+  const [activityEvents, setActivityEvents] = useState<EventRecord[]>([]);
+
+  useEffect(() => {
+    if (surface.type !== 'legacy-events') return;
+    let active = true;
+    void nexus.listProjectEvents(project.id).then((items) => {
+      if (active) setActivityEvents((items || []).map(mapDurableActivity));
+    }).catch(() => {
+      if (active) setActivityEvents([]);
+    });
+    return () => { active = false; };
+  }, [project.id, surface.type]);
 
   const open = (kind: string) =>
     openSurface(projectSurface(project.id, kind as Parameters<typeof projectSurface>[1]));
@@ -393,7 +406,7 @@ export const WorkspaceSurfaceHost: React.FC<{
     if (surface.type === 'legacy-events') {
       return (
         <div className="nx-legacy-surface">
-          <EventsView events={events} />
+          <EventsView events={activityEvents.length > 0 ? activityEvents : events} />
         </div>
       );
     }

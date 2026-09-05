@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import AxeBuilder from '@axe-core/playwright';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -90,7 +91,7 @@ async function main() {
 
     console.log('3. Launching headless browser...');
     const browser = await chromium.launch({
-      executablePath: '/usr/bin/google-chrome',
+      executablePath: existsSync('/usr/bin/google-chrome') ? '/usr/bin/google-chrome' : undefined,
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
@@ -110,6 +111,18 @@ async function main() {
     console.log(`Navigating to ${bootstrapUrl}...`);
     await page.goto(bootstrapUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForSelector('.nx-os-shell', { timeout: 10000 });
+
+    const axeResults = await new AxeBuilder({ page }).analyze();
+    const seriousViolations = axeResults.violations.filter((violation) =>
+      ['serious', 'critical'].includes(violation.impact),
+    );
+    if (seriousViolations.length > 0) console.error(JSON.stringify(seriousViolations, null, 2));
+    assert.equal(
+      seriousViolations.length,
+      0,
+      `critical/serious accessibility violations: ${seriousViolations.map((item) => item.id).join(', ')}`,
+    );
+    console.log(`  ✓ Axe accessibility scan passed (${axeResults.violations.length} minor violations)`);
     await page.waitForTimeout(1000);
 
     console.log('4. Testing semantic global deep-links...');

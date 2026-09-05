@@ -50,6 +50,19 @@ export const validGlobalSurfaces = new Set<GlobalSurfaceKind>([
   'welcome',
 ]);
 
+export function globalSurfaceToProjectSurface(surface: GlobalSurfaceKind): ProjectSurfaceKind | null {
+  return surface === 'updates' || surface === 'settings' ? 'settings' : null;
+}
+
+function decodeSegment(value: string): string | null {
+  try {
+    const decoded = decodeURIComponent(value);
+    return decoded ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
 export function parseRouteLocation(pathname: string, _search = ''): ParsedRoute {
   const normalized = pathname.replace(/\/+$/, '') || '/';
 
@@ -66,23 +79,24 @@ export function parseRouteLocation(pathname: string, _search = ''): ParsedRoute 
 
   // Project routes: /p/:projectId...
   if (parts[0] === 'p' && parts[1]) {
-    const projectId = decodeURIComponent(parts[1]);
+    const projectId = decodeSegment(parts[1]);
+    if (!projectId) return { kind: 'root' };
 
     // Popout route: /p/:projectId/popout/:surface
     if (parts[2] === 'popout' && parts[3]) {
       return {
         kind: 'popout',
         projectId,
-        surface: decodeURIComponent(parts[3]),
+        surface: decodeSegment(parts[3]) || 'overview',
       };
     }
 
-    const surfaceParam = parts[2] ? decodeURIComponent(parts[2]) : 'overview';
+    const surfaceParam = parts[2] ? decodeSegment(parts[2]) || 'overview' : 'overview';
     const surface = validProjectSurfaces.has(surfaceParam as ProjectSurfaceKind)
       ? (surfaceParam as ProjectSurfaceKind)
       : 'overview';
 
-    const subId = parts[3] ? decodeURIComponent(parts[3]) : undefined;
+    const subId = parts[3] ? decodeSegment(parts[3]) || undefined : undefined;
     const action = parts[4] === 'config' ? 'config' : parts[4] ? 'view' : undefined;
 
     return {

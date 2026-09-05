@@ -201,18 +201,12 @@ export const ProjectRail: React.FC<{
         >
           <div
             className="nx-project-rail__heading nx-rail-section-header"
-            onClick={toggleProjects}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') toggleProjects();
-            }}
           >
-            <span className="nx-rail-header-label">
+            <button type="button" className="nx-rail-header-label" onClick={toggleProjects} aria-expanded={projectsExpanded}>
               <span className="nx-rail-chevron">{projectsExpanded ? '▾' : '▸'}</span>
               <span>{t('rail.projects')}</span>
               <span className="nx-rail-count">({filteredProjects.length})</span>
-            </span>
+            </button>
             <span className="nx-rail-header-actions" onClick={(e) => e.stopPropagation()}>
               <IconButton label={t('rail.add')} onClick={() => setAddOpen(true)}>
                 <Plus size={13} />
@@ -266,18 +260,12 @@ export const ProjectRail: React.FC<{
         >
           <div
             className="nx-project-rail__heading nx-rail-section-header"
-            onClick={toggleAgents}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') toggleAgents();
-            }}
           >
-            <span className="nx-rail-header-label">
+            <button type="button" className="nx-rail-header-label" onClick={toggleAgents} aria-expanded={agentsExpanded}>
               <span className="nx-rail-chevron">{agentsExpanded ? '▾' : '▸'}</span>
               <span>Agentes</span>
               <span className="nx-rail-count">({filteredAgents.length})</span>
-            </span>
+            </button>
             <span className="nx-rail-header-actions" onClick={(e) => e.stopPropagation()}>
               {onNewAgent && (
                 <IconButton label="Novo Agente" onClick={onNewAgent}>
@@ -351,18 +339,12 @@ export const ProjectRail: React.FC<{
         >
           <div
             className="nx-project-rail__heading nx-rail-section-header"
-            onClick={toggleTools}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') toggleTools();
-            }}
             style={{ borderTop: '1px solid var(--nx-border)' }}
           >
-            <span className="nx-rail-header-label">
+            <button type="button" className="nx-rail-header-label" onClick={toggleTools} aria-expanded={toolsExpanded}>
               <span className="nx-rail-chevron">{toolsExpanded ? '▾' : '▸'}</span>
               <span>Ferramentas</span>
-            </span>
+            </button>
           </div>
 
           {toolsExpanded && (

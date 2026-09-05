@@ -24,6 +24,8 @@ export type SystemDoctorReport = {
   credentials: { status: string; mechanism: string; reason?: string };
 };
 
+export type DurableActivityEvent = import('../app/activityModel').DurableActivityEvent;
+
 export class NexusAPIError<TPayload = unknown> extends Error {
   readonly status: number;
   readonly payload: TPayload;
@@ -72,6 +74,10 @@ export const nexus = {
   getLayout: (projectId: string) =>
     request<{ layout: string; revision?: number; record?: unknown }>(
       `/api/v1/projects/${projectId}/layout`,
+    ),
+  listProjectEvents: (projectId: string, limit = 50) =>
+    request<DurableActivityEvent[]>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/events?limit=${limit}`,
     ),
   getContextReadiness: (projectId: string) =>
     request<import('../types').ContextReadiness>(`/api/v1/projects/${projectId}/context`),

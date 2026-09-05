@@ -63,6 +63,7 @@ import {
   buildProjectRoute,
   parseRouteLocation,
   routeToWorkspaceSurface,
+  globalSurfaceToProjectSurface,
   validProjectSurfaces,
   type GlobalSurfaceKind,
   type ParsedRoute,
@@ -446,10 +447,12 @@ const WorkspaceCoordinator: React.FC<{
       if (targetSurface) {
         workspace.open(targetSurface);
       }
-    } else if (parsedRoute.kind === 'global' && parsedRoute.surface === 'settings') {
-      workspace.open(projectSurface(project.id, 'settings'));
+    } else if (parsedRoute.kind === 'global') {
+      const projectSurfaceKind = globalSurfaceToProjectSurface(parsedRoute.surface);
+      if (projectSurfaceKind) workspace.open(projectSurface(project.id, projectSurfaceKind));
+      if (parsedRoute.surface === 'welcome') setWelcomeOpen(true);
     }
-  }, [parsedRoute, project.id, data.agents, location.pathname]);
+  }, [parsedRoute, project.id, data.agents, location.pathname, workspace]);
   const shell = useCallback(async () => {
     if (shellInFlight.current) return;
     shellInFlight.current = true;

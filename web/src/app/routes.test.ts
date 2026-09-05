@@ -4,6 +4,7 @@ import {
   buildPopoutRoute,
   parseRouteLocation,
   routeToWorkspaceSurface,
+  globalSurfaceToProjectSurface,
 } from './routes';
 import { projectSurface } from './surfaces';
 
@@ -101,6 +102,17 @@ describe('Semantic Route Parsing and Building', () => {
       projectId: 'proj-123',
       surface: 'work',
     });
+  });
+
+  it('returns root for malformed percent-encoding instead of throwing', () => {
+    expect(() => parseRouteLocation('/p/%E0%A4%A/settings')).not.toThrow();
+    expect(parseRouteLocation('/p/%E0%A4%A/settings')).toEqual({ kind: 'root' });
+  });
+
+  it('maps global update route to the settings workspace surface', () => {
+    expect(globalSurfaceToProjectSurface('updates')).toBe('settings');
+    expect(globalSurfaceToProjectSurface('settings')).toBe('settings');
+    expect(globalSurfaceToProjectSurface('welcome')).toBeNull();
   });
 
   it('builds canonical project and popout routes', () => {

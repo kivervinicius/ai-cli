@@ -42,12 +42,21 @@ import { SystemDiagnosticsCard } from './SystemDiagnosticsCard';
 import type { SystemDoctorReport } from '../../nexus/api';
 
 type SettingsTab = 'appearance' | 'accessibility' | 'updates' | 'intelligence' | 'notifications';
+const SETTINGS_TABS: SettingsTab[] = ['appearance', 'accessibility', 'updates', 'intelligence', 'notifications'];
 
 export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) => {
   const theme = useTheme();
   const { t } = useTranslation();
   const workspace = useWorkspace();
   const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
+  const onSettingsTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    const current = SETTINGS_TABS.indexOf(activeTab);
+    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+    event.preventDefault();
+    const next = (current + (event.key === 'ArrowRight' ? 1 : -1) + SETTINGS_TABS.length) % SETTINGS_TABS.length;
+    setActiveTab(SETTINGS_TABS[next]);
+    document.getElementById(`settings-tab-${SETTINGS_TABS[next]}`)?.focus();
+  };
 
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<{
@@ -201,7 +210,11 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
         <button
           type="button"
           role="tab"
+          id="settings-tab-appearance"
+          aria-controls="settings-panel"
+          tabIndex={activeTab === 'appearance' ? 0 : -1}
           aria-selected={activeTab === 'appearance'}
+          onKeyDown={onSettingsTabKeyDown}
           className={`nx-settings-tab ${activeTab === 'appearance' ? 'nx-settings-tab--active' : ''}`}
           onClick={() => setActiveTab('appearance')}
         >
@@ -211,7 +224,11 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
         <button
           type="button"
           role="tab"
+          id="settings-tab-accessibility"
+          aria-controls="settings-panel"
+          tabIndex={activeTab === 'accessibility' ? 0 : -1}
           aria-selected={activeTab === 'accessibility'}
+          onKeyDown={onSettingsTabKeyDown}
           className={`nx-settings-tab ${activeTab === 'accessibility' ? 'nx-settings-tab--active' : ''}`}
           onClick={() => setActiveTab('accessibility')}
         >
@@ -221,7 +238,11 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
         <button
           type="button"
           role="tab"
+          id="settings-tab-updates"
+          aria-controls="settings-panel"
+          tabIndex={activeTab === 'updates' ? 0 : -1}
           aria-selected={activeTab === 'updates'}
+          onKeyDown={onSettingsTabKeyDown}
           className={`nx-settings-tab ${activeTab === 'updates' ? 'nx-settings-tab--active' : ''}`}
           onClick={() => setActiveTab('updates')}
         >
@@ -236,7 +257,11 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
         <button
           type="button"
           role="tab"
+          id="settings-tab-intelligence"
+          aria-controls="settings-panel"
+          tabIndex={activeTab === 'intelligence' ? 0 : -1}
           aria-selected={activeTab === 'intelligence'}
+          onKeyDown={onSettingsTabKeyDown}
           className={`nx-settings-tab ${activeTab === 'intelligence' ? 'nx-settings-tab--active' : ''}`}
           onClick={() => setActiveTab('intelligence')}
         >
@@ -246,7 +271,11 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
         <button
           type="button"
           role="tab"
+          id="settings-tab-notifications"
+          aria-controls="settings-panel"
+          tabIndex={activeTab === 'notifications' ? 0 : -1}
           aria-selected={activeTab === 'notifications'}
+          onKeyDown={onSettingsTabKeyDown}
           className={`nx-settings-tab ${activeTab === 'notifications' ? 'nx-settings-tab--active' : ''}`}
           onClick={() => setActiveTab('notifications')}
         >
@@ -255,7 +284,13 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
         </button>
       </div>
 
-      <div className="nx-settings-grid">
+      <div
+        className="nx-settings-grid"
+        id="settings-panel"
+        role="tabpanel"
+        aria-labelledby={`settings-tab-${activeTab}`}
+        tabIndex={0}
+      >
         {/* Tab 1: Appearance */}
         {activeTab === 'appearance' && (
           <>
