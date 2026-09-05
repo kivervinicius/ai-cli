@@ -331,7 +331,14 @@ const ArrangeLayoutMenu: React.FC<{
                     onReset();
                   }}
                 >
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--nx-warning, #f59e0b)' }}>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      color: 'var(--nx-warning, #f59e0b)',
+                    }}
+                  >
                     <RotateCcw size={12} />
                     <span>Redefinir layout</span>
                   </span>

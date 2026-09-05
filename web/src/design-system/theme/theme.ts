@@ -22,6 +22,7 @@ export interface ThemePreferences {
   reducedMotion: boolean;
   preset: ThemePresetKey;
   isCustomized: boolean;
+  fontScale: number;
 }
 
 export const themeStorageKey = 'iapro:nexus:theme:v1';
@@ -32,6 +33,7 @@ export const defaultThemePreferences: ThemePreferences = {
   reducedMotion: false,
   preset: 'nexus-dark',
   isCustomized: false,
+  fontScale: 1.0,
 };
 
 export const MANAGED_THEME_COLOR_VARS = [
@@ -198,6 +200,13 @@ export function normalizeThemePreferences(
         ? (input.preset as ThemePresetKey)
         : defaultThemePreferences.preset,
     isCustomized: Boolean(input?.isCustomized),
+    fontScale:
+      typeof input?.fontScale === 'number' &&
+      Number.isFinite(input.fontScale) &&
+      input.fontScale >= 0.7 &&
+      input.fontScale <= 2.0
+        ? input.fontScale
+        : defaultThemePreferences.fontScale,
   };
 }
 

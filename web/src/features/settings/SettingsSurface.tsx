@@ -24,11 +24,7 @@ import {
   THEME_PRESETS,
   getThemePresetPalette,
 } from '../../design-system';
-import {
-  useTheme,
-  type ThemeDensity,
-  type ThemePresetKey,
-} from '../../design-system';
+import { useTheme, type ThemeDensity, type ThemePresetKey } from '../../design-system';
 import { useWorkspace } from '../../workspace/WorkspaceProvider';
 import { nexus } from '../../nexus/api';
 import type { IntelligenceMode, IntelligenceStatus, ProviderAccount } from '../../types';
@@ -50,29 +46,6 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
   const { t } = useTranslation();
   const workspace = useWorkspace();
   const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
-  const [fontScale, setFontScale] = useState<number>(() => {
-    if (typeof document !== 'undefined') {
-      const val = document.documentElement.style.getPropertyValue('--nx-font-scale');
-      if (val) return parseFloat(val) || 1;
-    }
-    return 1;
-  });
-
-  const applyFontScale = (scale: number) => {
-    setFontScale(scale);
-    if (typeof document !== 'undefined') {
-      document.documentElement.style.setProperty('--nx-font-scale', String(scale));
-      localStorage.setItem('iapro:nexus:font-scale', String(scale));
-    }
-  };
-
-  useEffect(() => {
-    const saved = localStorage.getItem('iapro:nexus:font-scale');
-    if (saved) {
-      const s = parseFloat(saved);
-      if (s) applyFontScale(s);
-    }
-  }, []);
 
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<{
@@ -305,42 +278,47 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
               <div className="nx-settings-card__title">
                 <Type size={17} />
                 <div>
-                  <strong>Escala Tipográfica & Zoom</strong>
-                  <small>Ajuste proporcional do tamanho da fonte em toda a interface do OS</small>
+                  <strong>{t('settings.fontScale', 'Escala Tipográfica')}</strong>
+                  <small>
+                    {t(
+                      'settings.fontScaleDesc',
+                      'Ajuste proporcional do tamanho do texto sem distorcer o layout',
+                    )}
+                  </small>
                 </div>
               </div>
               <div className="nx-font-scale-controls">
                 <button
                   type="button"
                   className="nx-font-scale-btn"
-                  data-active={fontScale <= 0.9}
-                  onClick={() => applyFontScale(0.9)}
+                  data-active={(theme.fontScale || 1) <= 0.92}
+                  onClick={() => theme.setFontScale(0.9)}
                 >
                   A- (90%)
                 </button>
                 <button
                   type="button"
                   className="nx-font-scale-btn"
-                  data-active={fontScale === 1}
-                  onClick={() => applyFontScale(1)}
+                  data-active={Math.abs((theme.fontScale || 1) - 1) < 0.04}
+                  onClick={() => theme.setFontScale(1)}
                 >
                   Padrão (100%)
                 </button>
                 <button
                   type="button"
                   className="nx-font-scale-btn"
-                  data-active={fontScale >= 1.15 && fontScale < 1.3}
-                  onClick={() => applyFontScale(1.15)}
+                  data-active={(theme.fontScale || 1) >= 1.05 && (theme.fontScale || 1) < 1.15}
+                  onClick={() => theme.setFontScale(1.1)}
                 >
-                  A+ (115%)
+                  A+ (110%)
                 </button>
                 <button
                   type="button"
                   className="nx-font-scale-btn"
-                  data-active={fontScale >= 1.3}
-                  onClick={() => applyFontScale(1.3)}
+                  data-active={(theme.fontScale || 1) >= 1.15}
+                  onClick={() => theme.setFontScale(1.2)}
                 >
-                  A++ (130%)
+                  A++ (120%)
                 </button>
               </div>
             </Card>

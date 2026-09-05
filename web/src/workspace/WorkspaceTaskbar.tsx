@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Folder, FolderGit2, GitBranch, Wifi, AlertTriangle } from 'lucide-react';
+import { FolderGit2, GitBranch, Wifi, AlertTriangle } from 'lucide-react';
 import { nexus } from '../nexus/api';
 import { BranchSwitcherModal } from '../features/projects/BranchSwitcherModal';
 import { Tooltip } from '../design-system';

@@ -96,6 +96,14 @@ function testAll() {
   return runLocal('vitest', ['run']);
 }
 
+function stylelintCheck() {
+  return runLocal('stylelint', ['src/**/*.css']);
+}
+
+function prettierCheck() {
+  return runLocal('prettier', ['--check', 'src/**/*.{ts,tsx,css,json}']);
+}
+
 function build() {
   return runNodeScript('scripts/build.mjs');
 }
@@ -235,8 +243,10 @@ function checkNullSafeArrayAccess() {
 }
 
 const gates = [
+  { id: 'format', title: 'Prettier (`prettier --check`)', hard: true, check: () => prettierCheck() },
   { id: 'typecheck', title: 'TypeScript (`tsc --noEmit`)', hard: true, check: () => typecheck() },
   { id: 'lint', title: 'ESLint (`eslint src`)', hard: true, check: () => lint() },
+  { id: 'stylelint', title: 'Stylelint (`stylelint "src/**/*.css"`)', hard: true, check: () => stylelintCheck() },
   { id: 'null-arrays', title: 'Null-safe API array access', hard: true, check: () => checkNullSafeArrayAccess() },
   { id: 'test', title: 'Vitest (`vitest run`)', hard: true, check: () => testAll() },
   { id: 'i18n', title: 'i18n catalog parity', hard: true, check: () => checkI18nParityQuick() },

@@ -56,6 +56,7 @@ describe('theme model', () => {
       reducedMotion: false,
       preset: 'nexus-dark',
       isCustomized: false,
+      fontScale: 1.0,
     });
   });
 
@@ -67,6 +68,7 @@ describe('theme model', () => {
       density: 'comfortable',
       reducedMotion: true,
       isCustomized: false,
+      fontScale: 1.15,
     };
     const serialized = JSON.stringify(original);
     const parsed = JSON.parse(serialized);
@@ -89,6 +91,18 @@ describe('theme model', () => {
     expect(keys.length).toBeGreaterThanOrEqual(10);
   });
 
+  it('normalizes out-of-bound fontScale values', () => {
+    expect(
+      normalizeThemePreferences({ fontScale: 0.1 } as unknown as ThemePreferences).fontScale,
+    ).toBe(1.0);
+    expect(
+      normalizeThemePreferences({ fontScale: 5.0 } as unknown as ThemePreferences).fontScale,
+    ).toBe(1.0);
+    expect(
+      normalizeThemePreferences({ fontScale: 1.3 } as unknown as ThemePreferences).fontScale,
+    ).toBe(1.3);
+  });
+
   it('uses a stable storage key', () => expect(themeStorageKey).toBe('iapro:nexus:theme:v1'));
 });
 
@@ -102,6 +116,7 @@ describe('resolveThemeStyleVariables', () => {
         density: 'compact',
         reducedMotion: false,
         isCustomized: false,
+        fontScale: 1.0,
       },
       'dark',
     );
@@ -119,6 +134,7 @@ describe('resolveThemeStyleVariables', () => {
         density: 'compact',
         reducedMotion: false,
         isCustomized: true,
+        fontScale: 1.0,
       },
       'light',
     );

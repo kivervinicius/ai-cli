@@ -97,6 +97,23 @@
      - `ThemeProvider.tsx` agora remove explicitamente todas as variáveis de temas anteriores antes de injetar as novas variáveis, garantindo fidelidade cromática estrita sem contaminação residual entre trocas de preset.
   5. **Suporte a Porta Efêmera no CLI Go**:
      - `internal/app/control_cmd.go`: alterada validação de porta de `p > 0` para `p >= 0`, viabilizando `--port 0` para alocação determinística de portas efêmeras pelo kernel em testes E2E.
+## 2026-09-05 — FIX: ESCALA TIPOGRÁFICA & ZOOM (UI FONT SCALING) & WEB ENGINEERING STANDARDS
+
+- **Escala Tipográfica & Zoom do OS**:
+  - **Sintoma**: O controle de escala tipográfica e zoom (*A- 90%*, *Padrão 100%*, *A+ 115%*, *A++ 130%*) na aba Acessibilidade das Configurações não aplicava escala real ao restante da interface.
+  - **Causa Raiz**:
+    1. O valor de `fontScale` ficava isolado em um `useState` local de `SettingsSurface.tsx` e não estava integrado ao `ThemePreferences` e `ThemeProvider`.
+    2. A variável CSS `--nx-font-scale` não estava vinculada ao cálculo de `font-size` nem à propriedade `zoom` na raiz do documento (`html` e `:root`).
+  - **Correção**:
+    1. `ThemePreferences` e `ThemeProvider` atualizados com `fontScale` e `setFontScale` nativos, persistindo em `iapro:nexus:theme:v1` com suporte retrocompatível a `iapro:nexus:font-scale`.
+    2. No CSS (`workspace-os.css`), `:root` e `html` configurados com `--nx-font-scale`, `font-size: calc(14px * var(--nx-font-scale, 1))` e `zoom: var(--nx-font-scale, 1)`, escalando de forma fluida, proporcional e integrada toda a interface do OS (janelas, cabeçalhos, rodapés, botões, modais e portais).
+    3. Atualizado [SettingsSurface.tsx](file:///projetos/tools/IAPro-Nexus-Workspace-OS-Handoff-2026-08-29/ai-manager/web/src/features/settings/SettingsSurface.tsx) para consumir `theme.fontScale` e `theme.setFontScale`.
+    4. Adicionados testes unitários de bounds e normalização de `fontScale` em `theme.test.ts`.
+
+- **Web Engineering Standards Baseline**:
+  - Criados `docs/engineering/WEB_ENGINEERING_STANDARDS.md`, `AGENTS.md`, `CONTRIBUTING.md` e `docs/engineering/WEB_ENGINEERING_BASELINE_REPORT.md`.
+  - Expandido `make web-verify` para 10 Quality Gates automatizados (Prettier, TypeScript, ESLint, Stylelint, Null-Safe Arrays, Vitest, i18n, Build, Embed-Sync, UI-Markers) com 100% de aprovação.
+
 ## 2026-09-05 — FIX: PORTAL CLICK HANDLERS, TASKBAR PATH HOVER TOOLTIP & SETTINGS REFINEMENTS
 
 - **Menu de Criação (+ Criar)**:

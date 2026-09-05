@@ -21,6 +21,7 @@ interface ThemeContextValue extends ThemePreferences {
   setDensity: (density: ThemeDensity) => void;
   setReducedMotion: (value: boolean) => void;
   setPreset: (preset: ThemePresetKey) => void;
+  setFontScale: (scale: number) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -28,9 +29,14 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 function loadPreferences(): ThemePreferences {
   if (typeof window === 'undefined') return defaultThemePreferences;
   try {
-    return normalizeThemePreferences(
-      JSON.parse(window.localStorage.getItem(themeStorageKey) || 'null'),
-    );
+    const raw = JSON.parse(window.localStorage.getItem(themeStorageKey) || 'null') || {};
+    if (typeof raw.fontScale !== 'number') {
+      const legacy = parseFloat(window.localStorage.getItem('iapro:nexus:font-scale') || '');
+      if (Number.isFinite(legacy) && legacy >= 0.7 && legacy <= 2.0) {
+        raw.fontScale = legacy;
+      }
+    }
+    return normalizeThemePreferences(raw);
   } catch {
     return defaultThemePreferences;
   }
@@ -60,6 +66,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     root.dataset.accent = preferences.accent;
     root.dataset.density = preferences.density;
     root.dataset.reducedMotion = preferences.reducedMotion ? 'true' : 'false';
+    const scale = preferences.fontScale || 1.0;
+    root.dataset.fontScale = String(scale);
+    root.style.setProperty('--nx-font-scale', String(scale));
     root.style.colorScheme = resolvedScheme === 'light' ? 'light' : 'dark';
 
     // Limpa todas as variáveis CSS gerenciadas para evitar vazamento entre presets e customizações
@@ -99,6 +108,13 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             isCustomized: false, // Ao trocar de preset, restaura fidelidade total ao preset
           };
         }),
+      setFontScale: (scale) => {
+        const clamped = Math.min(Math.max(scale, 0.7), 2.0);
+        setPreferences((current) => ({ ...current, fontScale: clamped }));
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('iapro:nexus:font-scale', String(clamped));
+        }
+      },
     }),
     [preferences, resolvedScheme],
   );
