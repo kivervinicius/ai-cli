@@ -84,16 +84,23 @@ export const WorkspaceProvider: React.FC<{
 }> = ({ projectId, initialLayout, saveLayout, onSurfaceClosed, children }) => {
   const layoutService = useMemo(() => new WorkspaceLayoutService(projectId), [projectId]);
   const fallback = useMemo(() => createWorkspace(defaultSurface(projectId)), [projectId]);
-  const [model, dispatch] = useReducer(reducer, fallback);
+  const [model, dispatch] = useReducer(
+    reducer,
+    projectId,
+    (projId) => {
+      const fb = createWorkspace(defaultSurface(projId));
+      if (initialLayout) {
+        return deserializeWorkspace(initialLayout, fb, projId);
+      }
+      return new WorkspaceLayoutService(projId).load(fb).model;
+    }
+  );
 
   useEffect(() => {
     if (initialLayout) {
       dispatch({ type: 'replace', model: deserializeWorkspace(initialLayout, fallback, projectId) });
-    } else {
-      const persisted = layoutService.load(fallback);
-      dispatch({ type: 'replace', model: persisted.model });
     }
-  }, [projectId, initialLayout, fallback, layoutService]);
+  }, [projectId, initialLayout, fallback]);
 
   useEffect(() => {
     const serialized = serializeWorkspace(model);

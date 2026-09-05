@@ -504,23 +504,13 @@ export function setPresentationCanvas(
     return packMosaic({ ...withCanvas, windows, tiled: true });
   }
 
-  const visible = Object.values(state.windows).filter((win) => !win.minimized && !win.maximized);
-  if (visible.length === 0) {
-    return withCanvas;
-  }
-
-  const scaled = scaleTilesToCanvas(visible, state.canvas, nextCanvas);
+  // Free DESKTOP mode keeps exact coordinates, only clamping to canvas boundaries
   const windows = { ...state.windows };
-  scaled.forEach((tile) => {
-    const current = windows[tile.viewId];
-    if (!current) return;
-    const geometry = clampWindow(nextCanvas, {
-      x: tile.x,
-      y: tile.y,
-      width: tile.width,
-      height: tile.height,
-    });
-    windows[tile.viewId] = { ...current, ...geometry };
+  Object.keys(windows).forEach((id) => {
+    const current = windows[id];
+    if (!current || current.minimized || current.maximized) return;
+    const clamped = clampWindow(nextCanvas, current);
+    windows[id] = { ...current, ...clamped };
   });
   return { ...withCanvas, windows, tiled: false };
 }
@@ -541,6 +531,11 @@ export function syncDesktopWindows(
       nextZ = Math.max(nextZ, current.zIndex + 1);
     }
   });
+
+  // If surfaces is transiently empty but state already has persisted windows, preserve them
+  if (nextIds.length === 0 && Object.keys(state.windows).length > 0) {
+    return state;
+  }
 
   const added = nextIds.filter((id) => !state.windows[id]);
   const removed = Object.keys(state.windows).filter((id) => !nextIds.includes(id));

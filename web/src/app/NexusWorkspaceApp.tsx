@@ -3,6 +3,7 @@ import { api, initSession, rotateSession, type BrowserSession } from '../api';
 import { setNexusCSRF, nexus } from '../nexus/api';
 import { Spinner } from '../design-system';
 import { ThemeProvider } from '../design-system';
+import { NexusSplashScreen } from './NexusSplashScreen';
 import { WorkspaceProvider, useWorkspace } from '../workspace/WorkspaceProvider';
 import { WorkspacePresentationProvider, useWorkspacePresentation } from '../workspace/WorkspacePresentationProvider';
 import { PtyLiveChromeProvider } from '../workspace/PtyLiveChromeContext';
@@ -75,11 +76,7 @@ export const NexusWorkspaceApp: React.FC<{ popoutSurface?: WorkspaceSurface }> =
   }, []);
 
   if (!sessionReady) {
-    return (
-      <div className="nx-app-loading">
-        <Spinner label={t('app.starting')} />
-      </div>
-    );
+    return <NexusSplashScreen stage="starting" />;
   }
 
   if (!authenticated) {
@@ -157,11 +154,7 @@ const NexusWorkspaceSession: React.FC<{ popoutSurface?: WorkspaceSurface }> = ({
   }, [selected?.id]);
 
   if (data.loading) {
-    return (
-      <div className="nx-app-loading">
-        <Spinner label={t('app.loading')} />
-      </div>
-    );
+    return <NexusSplashScreen stage="loading" />;
   }
 
   if (!selected) {
