@@ -1,0 +1,18 @@
+@use './tokens';
+@use './typography';
+@use './mixins';
+
+// Global foundation additions
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--nx-font-sans);
+  color: var(--nx-text);
+  background-color: var(--nx-surface-0);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

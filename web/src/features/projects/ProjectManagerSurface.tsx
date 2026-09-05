@@ -44,6 +44,7 @@ import type { Agent, Project } from '../../types';
 import { AddProjectModal } from './AddProjectModal';
 import { DirectoryBrowserModal } from './DirectoryBrowserModal';
 import { ProjectScanModal } from './ProjectScanModal';
+import styles from './ProjectManagerSurface.module.scss';
 
 export const ProjectManagerSurface: React.FC<{
   projects: Project[];
@@ -452,7 +453,7 @@ export const ProjectManagerSurface: React.FC<{
                 <th>{t('projectManager.branch')}</th>
                 <th>{t('projectManager.resourcePolicy')}</th>
                 <th>OS</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
+                <th className={styles.actionsHeader}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -505,7 +506,7 @@ export const ProjectManagerSurface: React.FC<{
                         </IconButton>
                       </div>
                     </td>
-                    <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
+                    <td className={styles.actionsCell} onClick={(e) => e.stopPropagation()}>
                       <div className="nx-table-actions">
                         {isActive ? (
                           <Badge tone="success">{t('projectManager.active')}</Badge>
@@ -642,18 +643,8 @@ export const ProjectManagerSurface: React.FC<{
 
             {/* Git Branch Management & Selector */}
             <div className="nx-config-branch-section">
-              <div
-                className="nx-config-branch-header"
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: '6px',
-                }}
-              >
-                <span
-                  style={{ fontSize: '12px', fontWeight: 600, color: 'var(--nx-text-primary)' }}
-                >
+              <div className={`nx-config-branch-header ${styles.branchSelectRow}`}>
+                <span className={styles.configSectionTitle}>
                   {t('projectManager.branch', 'Branch Padrão / Galho')}
                 </span>
                 {cfgBranchStatus && (
@@ -666,15 +657,12 @@ export const ProjectManagerSurface: React.FC<{
               </div>
 
               {cfgBranchAlert && (
-                <div style={{ marginBottom: '8px' }}>
+                <div className={styles.configSectionSpacing}>
                   <InlineAlert tone={cfgBranchAlert.tone}>{cfgBranchAlert.message}</InlineAlert>
                 </div>
               )}
 
-              <div
-                className="nx-config-branch-controls"
-                style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '12px' }}
-              >
+              <div className={`nx-config-branch-controls ${styles.branchSelectRow}`}>
                 {cfgBranchList.length > 0 ? (
                   <Select
                     value={cfgBranch}

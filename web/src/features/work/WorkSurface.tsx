@@ -14,6 +14,7 @@ import { nexus } from '../../nexus/api';
 import { PlanBuilderSurface } from './PlanBuilderSurface';
 import { ComposerSurface } from './ComposerSurface';
 import { composerGateForReadiness } from './composerModel';
+import styles from './WorkSurface.module.scss';
 
 const readinessTone = (state: ContextReadinessState) =>
   state === 'READY'
@@ -136,11 +137,11 @@ export const WorkSurface: React.FC<{
             </div>
           </div>
           {gate.action !== 'WAIT' && (
-            <div style={{ display: 'grid', gap: '8px', justifyItems: 'start' }}>
+            <div className={styles.readinessActions}>
               {(gate.action === 'PREPARE' ||
                 (gate.action === 'RETRY' &&
                   readiness?.error?.includes('durable project context is missing'))) && (
-                <small style={{ color: 'var(--nx-muted)', maxWidth: '560px' }}>
+                <small className={styles.readinessHint}>
                   Este projeto não possui contexto durável. Ao continuar, o Nexus criará um{' '}
                   <code>AGENTS.md</code> base na raiz, sem sobrescrever arquivos existentes.
                 </small>

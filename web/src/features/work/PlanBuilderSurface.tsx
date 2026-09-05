@@ -43,6 +43,7 @@ import type {
   WorkPlan,
 } from '../../types';
 import { clarificationFromError, unresolvedBlocking } from './clarificationModel';
+import styles from './PlanBuilderSurface.module.scss';
 import { composerGateForReadiness } from './composerModel';
 import { FlowCanvas } from './FlowCanvas';
 import { FlowStepInspector } from './FlowStepInspector';
@@ -858,21 +859,21 @@ export const PlanBuilderSurface: React.FC<{
   };
 
   const clarificationBlock = clarification ? (
-    <Card style={{ margin: '16px 0 24px', padding: '16px' }}>
-      <div style={{ marginBottom: 12 }}>
+    <Card className={styles.clarificationCard}>
+      <div className={styles.clarificationHeader}>
         <strong>Clarification required before autonomous planning</strong>
-        <p style={{ margin: '6px 0 0', color: 'var(--color-text-muted)' }}>
+        <p className={styles.clarificationSubtitle}>
           Nexus stopped instead of guessing. These answers become durable facts in the WorkPlan.
         </p>
       </div>
-      <div style={{ display: 'grid', gap: 14 }}>
+      <div className={styles.clarificationGrid}>
         {unresolvedBlocking(clarification).map((item) => (
-          <label key={item.key} style={{ display: 'grid', gap: 6 }}>
+          <label key={item.key} className={styles.clarificationLabel}>
             <span>
               <strong>{item.question}</strong>
             </span>
             {item.rationale && (
-              <small style={{ color: 'var(--color-text-muted)' }}>{item.rationale}</small>
+              <small className={styles.clarificationRationale}>{item.rationale}</small>
             )}
             {item.suggested_options && item.suggested_options.length > 0 ? (
               <Select
@@ -895,7 +896,7 @@ export const PlanBuilderSurface: React.FC<{
           </label>
         ))}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+      <div className={styles.clarificationActions}>
         <Button
           tone="brand"
           disabled={
@@ -952,18 +953,18 @@ export const PlanBuilderSurface: React.FC<{
           )}
 
           {flowDraft && selectedPlan && (
-            <div className="nx-composer-goal-bar__row" style={{ alignItems: 'center' }}>
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <strong style={{ fontSize: 13, color: 'var(--nx-text)' }}>
+            <div className={`nx-composer-goal-bar__row ${styles.goalBarRow}`}>
+              <div className={styles.goalBarTitleWrap}>
+                <strong className={styles.goalBarTitle}>
                   {selectedPlan.title || autoGoal || 'Objetivo do Flow'}
                 </strong>
                 {selectedPlan.description && (
-                  <p className="nx-muted-copy" style={{ margin: '2px 0 0', fontSize: 11.5 }}>
+                  <p className={`nx-muted-copy ${styles.goalBarSubtitle}`}>
                     {selectedPlan.description}
                   </p>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <div className={styles.goalBarActions}>
                 <Badge tone={flowDirty ? 'warning' : 'success'}>
                   {flowDirty ? 'Alterações não salvas' : `Revisão ${selectedPlan.current_revision}`}
                 </Badge>
@@ -985,44 +986,19 @@ export const PlanBuilderSurface: React.FC<{
           )}
 
           {preflightReport && (
-            <div
-              style={{
-                marginTop: 12,
-                padding: 12,
-                borderRadius: 8,
-                background: 'var(--nx-surface)',
-                border: '1px solid var(--nx-border)',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 8,
-                }}
-              >
+            <div className={styles.preflightCard}>
+              <div className={styles.preflightHeader}>
                 <strong>Checklist de Preflight</strong>
                 <Badge tone={preflightReport.ready ? 'success' : 'danger'}>
                   {preflightReport.ready ? 'Pronto para Execução' : 'Bloqueado'}
                 </Badge>
               </div>
-              <div style={{ display: 'grid', gap: 6 }}>
+              <div className={styles.preflightList}>
                 {(preflightReport.checks || []).map((ch) => (
-                  <div
-                    key={ch.key}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      fontSize: 12,
-                    }}
-                  >
+                  <div key={ch.key} className={styles.preflightItem}>
                     <div>
-                      <span style={{ fontWeight: 500 }}>{ch.label}</span>
-                      <small style={{ display: 'block', color: 'var(--nx-muted)' }}>
-                        {ch.summary}
-                      </small>
+                      <span className={styles.preflightCheckText}>{ch.label}</span>
+                      <small className={styles.preflightCheckSub}>{ch.summary}</small>
                     </div>
                     <Badge
                       tone={
@@ -1043,7 +1019,7 @@ export const PlanBuilderSurface: React.FC<{
 
           {goalChips.length > 0 && !selectedPlan && (
             <div className="nx-composer-goal-chips" aria-label="Solicitações recentes">
-              <small style={{ color: 'var(--nx-muted)' }}>Continuar uma solicitação recente:</small>
+              <small className={styles.autonomyLabel}>Continuar uma solicitação recente:</small>
               {goalChips.slice(0, 5).map((goal) => (
                 <button
                   key={goal}
@@ -1086,20 +1062,17 @@ export const PlanBuilderSurface: React.FC<{
           )}
 
           {flowDraft && selectedPlan && (
-            <Card style={{ marginTop: 12, padding: 12 }}>
+            <Card className={styles.leaderCard}>
               <strong>Agent líder sugerido</strong>
-              <p className="nx-muted-copy" style={{ margin: '4px 0 10px' }}>
+              <p className={`nx-muted-copy ${styles.leaderSubtitle}`}>
                 Coordena as ondas do DAG e recebe os recibos. A sugestão é exclusiva deste Flow.
               </p>
-              <div
-                className="nx-composer-goal-bar__row"
-                style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
-              >
+              <div className={`nx-composer-goal-bar__row ${styles.leaderRow}`}>
                 <Input
                   value={leader.role}
                   onChange={(role) => setLeader((current) => ({ ...current, role }))}
                   placeholder="Especialidade do líder"
-                  style={{ flex: 1, minWidth: 160 }}
+                  className={styles.leaderInput}
                 />
                 <Select
                   value={leader.strategy}
@@ -1160,13 +1133,13 @@ export const PlanBuilderSurface: React.FC<{
           <div className="nx-composer-flow-canvas-pane">
             {!flowDraft && (
               <Card className="nx-composer-empty-canvas">
-                <Sparkles size={22} style={{ marginBottom: 8, opacity: 0.7 }} />
+                <Sparkles size={22} className={styles.emptyCanvasIcon} />
                 <strong>Canvas vazio</strong>
                 <p>
                   Gere o rascunho com a IA ou crie uma estrutura base para montar as etapas
                   manualmente.
                 </p>
-                <div style={{ marginTop: 14 }}>
+                <div className={styles.emptyCanvasActions}>
                   <Button
                     size="sm"
                     tone="default"
@@ -1181,8 +1154,8 @@ export const PlanBuilderSurface: React.FC<{
             {flowDraft && (
               <>
                 <div className="nx-flow-editor-toolbar">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 12, color: 'var(--nx-muted)' }}>Autonomy policy:</span>
+                  <div className={styles.autonomyToolbar}>
+                    <span className={styles.autonomyLabel}>Autonomy policy:</span>
                     <Select
                       value={flowDraft.policy}
                       onChange={(val) =>

@@ -20,6 +20,7 @@ import { InAppNotificationCenter } from '../notifications/InAppNotificationCente
 import { ProjectCreateMenu } from '../features/projects/ProjectCreateMenu';
 import type { Agent, Project, RuntimeSession } from '../types';
 import type { RadarRuntimeItem } from './attentionRadarModel';
+import styles from './NexusShell.module.scss';
 
 export const NexusShell: React.FC<{
   project: Project;
@@ -174,7 +175,7 @@ export const NexusShell: React.FC<{
               </button>
 
               {/* Push & In-App Attention Notification Trigger */}
-              <div style={{ position: 'relative' }}>
+              <div className={styles.notificationWrap}>
                 <IconButton
                   label="Central de Notificações e Radar"
                   onClick={() => setNotificationDrawerOpen((prev) => !prev)}
@@ -185,21 +186,7 @@ export const NexusShell: React.FC<{
                     <Bell size={15} />
                   )}
                 </IconButton>
-                {hasAttentionAlerts && (
-                  <span
-                    style={{
-                      position: 'absolute',
-                      top: 4,
-                      right: 4,
-                      width: 7,
-                      height: 7,
-                      borderRadius: '50%',
-                      background: 'var(--nx-warning, #f59e0b)',
-                      boxShadow: '0 0 6px var(--nx-warning, #f59e0b)',
-                      pointerEvents: 'none',
-                    }}
-                  />
-                )}
+                {hasAttentionAlerts && <span className={styles.attentionIndicator} />}
               </div>
 
               {/* Help & Welcome Guide */}

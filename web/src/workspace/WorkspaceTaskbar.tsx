@@ -5,6 +5,7 @@ import { nexus } from '../nexus/api';
 import { BranchSwitcherModal } from '../features/projects/BranchSwitcherModal';
 import { Tooltip } from '../design-system';
 import type { Agent, Project } from '../types';
+import styles from './WorkspaceTaskbar.module.scss';
 
 export const WorkspaceTaskbar: React.FC<{
   project?: Project;
@@ -60,30 +61,11 @@ export const WorkspaceTaskbar: React.FC<{
         {project && (
           <>
             <Tooltip content={project.canonical_path} side="top">
-              <span
-                className="nx-statusbar-item nx-statusbar-project"
-                style={{
-                  maxWidth: '28vw',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  cursor: 'default',
-                }}
-              >
-                <FolderGit2 size={12} style={{ flexShrink: 0 }} />
-                <span style={{ fontWeight: 600, color: 'var(--nx-text)' }}>{project.name}</span>
+              <span className={`nx-statusbar-item nx-statusbar-project ${styles.projectItem}`}>
+                <FolderGit2 size={12} className={styles.projectIcon} />
+                <span className={styles.projectName}>{project.name}</span>
                 {project.canonical_path && (
-                  <span
-                    style={{
-                      color: 'var(--nx-subtle)',
-                      fontSize: '10.5px',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {project.canonical_path}
-                  </span>
+                  <span className={styles.canonicalPath}>{project.canonical_path}</span>
                 )}
               </span>
             </Tooltip>
@@ -117,8 +99,7 @@ export const WorkspaceTaskbar: React.FC<{
           <Tooltip content="Clique para focar no agente com erro ou atenção" side="top">
             <button
               type="button"
-              className="nx-statusbar-item nx-statusbar-btn"
-              style={{ color: 'var(--nx-warning, #f59e0b)' }}
+              className={`nx-statusbar-item nx-statusbar-btn ${styles.degradedButton}`}
               onClick={() => {
                 const degradedAgent = agents.find((a) =>
                   ['FAILED', 'STALE', 'RECOVERABLE', 'RATE_LIMITED'].includes(a.status),
@@ -157,11 +138,8 @@ export const WorkspaceTaskbar: React.FC<{
             content={`Inteligência Nexus ativa: ${intelligence.provider || 'default'}`}
             side="top"
           >
-            <span
-              className="nx-statusbar-item"
-              style={{ color: 'var(--nx-accent-text)', fontWeight: 600 }}
-            >
-              <span className="nx-status-dot" style={{ background: 'var(--nx-accent)' }} />
+            <span className={`nx-statusbar-item ${styles.intelligenceStatus}`}>
+              <span className={`nx-status-dot ${styles.accentDot}`} />
               <span>{intelligence.provider || 'Intelligence'}</span>
             </span>
           </Tooltip>

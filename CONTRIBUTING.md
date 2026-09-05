@@ -55,11 +55,13 @@ Sempre pesquise antes de criar um novo componente:
 * Garanta operação completa por teclado (`Tab`, `Shift+Tab`, `Enter`, `Space`, `Escape`).
 * Mantenha contraste de cores de acordo com WCAG 2.2 AA em todos os temas.
 
-### 3.3 Estilos & CSS Custom Properties
-* Use variáveis semânticas (`var(--nx-surface)`, `var(--nx-text)`, `var(--nx-accent)`, etc.).
+### 3.3 Estilos: SCSS Modules & Design Tokens
+* Todo componente deve utilizar **SCSS Modules** (`ComponentName.module.scss`) com **CSS Custom Properties** e tokens semânticos (`var(--nx-surface)`, `var(--nx-text)`, `var(--nx-accent)`).
+* **Proibido** criar arquivos `.css` locais avulsos para componentes ou páginas.
+* Estilos globais são restritos estritamente à allowlist (`src/index.css`, `src/app/workspace-os.css`, `src/styles/*.scss`).
 * **Proibido** CSS inline estático (`style={{ ... }}`). Estilos inline são reservados estritamente para propriedades dinâmicas de runtime (dimensões de janelas/posicionamento flutuante).
-* **Proibido** o uso de `!important`.
-* Modularize estilos com CSS/SCSS e limite o aninhamento a no máximo 3 níveis.
+* **Proibido** o uso de `!important` (bloqueado via Stylelint).
+* Modularize estilos com SCSS e limite o aninhamento a no máximo 3 níveis.
 
 ### 3.4 Internacionalização (i18n)
 * Nenhum texto visível ao usuário deve ser fixado diretamente no JSX.
@@ -80,7 +82,8 @@ Sempre pesquise antes de criar um novo componente:
 | `make quality` | Executa todos os gates locais rápidos (formatação, linters, types e testes) |
 | `make web-verify` | Executa a suíte de verificação frontend com relatório detalhado |
 | `make build` | Compila os assets frontend e o binário Go |
-| `npm --prefix web run quality` | Validação completa do frontend (Prettier + ESLint + Stylelint + TypeScript + Vitest) |
+| `npm --prefix web run quality` | Validação completa do frontend (Architecture Check + Prettier + ESLint + Stylelint + TypeScript + Vitest) |
+| `npm --prefix web run check:styles` | Verifica se todos os stylesheets seguem a arquitetura permitida |
 | `npm --prefix web test` | Executa todos os testes unitários do frontend |
 
 ---
@@ -91,6 +94,7 @@ Antes de submeter um Pull Request, certifique-se de que todos os itens abaixo fo
 
 - [ ] Componente ou primitiva existente foi reutilizado sempre que possível.
 - [ ] Nenhuma primitiva de UI foi duplicada desnecessariamente.
+- [ ] Novos componentes utilizam SCSS Modules (`*.module.scss`).
 - [ ] HTML é estritamente semântico (sem divs clicáveis como botões).
 - [ ] Todas as interações funcionam por teclado.
 - [ ] Textos da interface utilizam `i18n`.
@@ -98,7 +102,7 @@ Antes de submeter um Pull Request, certifique-se de que todos os itens abaixo fo
 - [ ] Tokens de design e CSS variables foram respeitados.
 - [ ] Tamanho e responsabilidade dos arquivos foram revisados (1 componente por arquivo).
 - [ ] Testes unitários/componentes foram adicionados ou atualizados.
-- [ ] `make quality` executa com 100% de sucesso.
+- [ ] `npm --prefix web run quality` e `make quality` executam com 100% de sucesso.
 
 ---
 

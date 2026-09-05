@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { History, Play, RefreshCw, Workflow } from 'lucide-react';
+import { History, Play, RefreshCw } from 'lucide-react';
 import { Badge, Button, Card, EmptyState, Spinner } from '../../design-system';
 import { nexusApi } from '../../nexus/api';
 import type { MissionRun, Project } from '../../types';
 import { asArray } from '../../lib/safeArray';
 import { flowRunStateFromMission } from './flowRunModel';
+import styles from './FlowRunsHistorySurface.module.scss';
 
 export const FlowRunsHistorySurface: React.FC<{
   project: Project;
@@ -39,38 +40,69 @@ export const FlowRunsHistorySurface: React.FC<{
     void load();
   }, [load]);
 
+  const [filterState, setFilterState] = useState<'ALL' | 'ACTIVE' | 'COMPLETED' | 'FAILED'>('ALL');
+
+  const filtered = useMemo(() => {
+    return runs.filter((run) => {
+      const state = flowRunStateFromMission(run.state || '');
+      if (filterState === 'ALL') return true;
+      if (filterState === 'ACTIVE')
+        return state === 'QUEUED' || state === 'VERIFYING' || state === 'READY';
+      if (filterState === 'COMPLETED') return state === 'COMPLETED';
+      if (filterState === 'FAILED') return state === 'FAILED' || state === 'CANCELED';
+      return true;
+    });
+  }, [runs, filterState]);
+
   const sorted = useMemo(
     () =>
-      [...runs].sort((a, b) =>
+      [...filtered].sort((a, b) =>
         String(b.started_at || b.id).localeCompare(String(a.started_at || a.id)),
       ),
-    [runs],
+    [filtered],
   );
 
   return (
-    <div className="nx-surface-scroll">
-      <div className="nx-page-header">
-        <div>
-          <span className="nx-eyebrow">
-            <Workflow size={13} /> FLOW RUNS
-          </span>
-          <h1>Histórico de execuções</h1>
-          <p>Abra um run para ver evidências. Para criar um novo Flow, use o Composer.</p>
+    <div className="nx-flow-runs-history-surface">
+      <div className="nx-flow-runs-history-header">
+        <div className="nx-flow-runs-history-title">
+          <History size={16} />
+          <strong>Execuções de Flow</strong>
+          <Badge tone="default">{runs.length}</Badge>
         </div>
-        <div className="nx-composer-header-actions">
-          <Button size="sm" onClick={() => void load()}>
-            <RefreshCw size={13} /> Atualizar
+        <div className="nx-flow-runs-history-actions">
+          <div className="nx-flow-runs-filter-group">
+            {(['ALL', 'ACTIVE', 'COMPLETED', 'FAILED'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={`nx-filter-chip ${filterState === s ? 'active' : ''}`}
+                onClick={() => setFilterState(s)}
+              >
+                {s === 'ALL'
+                  ? 'Todos'
+                  : s === 'ACTIVE'
+                    ? 'Em andamento'
+                    : s === 'COMPLETED'
+                      ? 'Concluídos'
+                      : 'Falhas'}
+              </button>
+            ))}
+          </div>
+          <Button size="sm" onClick={() => void load()} disabled={loading}>
+            <RefreshCw size={13} className={loading ? 'nx-spin' : ''} />
+            Atualizar
           </Button>
           {onOpenComposer && (
             <Button size="sm" tone="brand" onClick={onOpenComposer}>
-              <Play size={13} /> Composer
+              <Play size={13} /> Novo Flow
             </Button>
           )}
         </div>
       </div>
 
       {loading && (
-        <div style={{ display: 'grid', placeItems: 'center', padding: 40 }}>
+        <div className={styles.loadingContainer}>
           <Spinner />
         </div>
       )}
@@ -88,34 +120,18 @@ export const FlowRunsHistorySurface: React.FC<{
           }
         />
       )}
-      <div style={{ display: 'grid', gap: 10 }}>
+      <div className={styles.runsList}>
         {sorted.map((run) => {
           const state = flowRunStateFromMission(run.state || '');
           return (
             <Card key={run.id} className="nx-flow-run-history-card">
-              <button
-                type="button"
-                onClick={() => onOpenRun(run)}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 12,
-                  background: 'transparent',
-                  border: 0,
-                  color: 'inherit',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  padding: 4,
-                }}
-              >
-                <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
-                  <strong style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <button type="button" onClick={() => onOpenRun(run)} className={styles.runButton}>
+                <div className={styles.runInfo}>
+                  <strong className={styles.runTitle}>
                     <History size={14} />
                     Flow Run · {(run.id || '').slice(-8)}
                   </strong>
-                  <small style={{ color: 'var(--nx-muted)' }}>
+                  <small className={styles.runMeta}>
                     {run.started_at || 'sem horário'} · plano {(run.plan_id || '').slice(-6) || '—'}
                   </small>
                 </div>

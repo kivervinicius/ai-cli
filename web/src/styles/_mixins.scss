@@ -1,0 +1,46 @@
+// Reusable SCSS Mixins
+
+@mixin flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@mixin flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+@mixin text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@mixin focus-visible-ring {
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--nx-focus-ring);
+  }
+}
+
+@mixin custom-scrollbar {
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--nx-border-strong);
+    border-radius: var(--nx-radius-full);
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: var(--nx-muted);
+  }
+}

@@ -5,5 +5,5 @@
     "bundle.js",
     "logo.png"
   ],
-  "builder": "node+esbuild+tailwind"
+  "builder": "node+esbuild+tailwind+code-splitting"
 }

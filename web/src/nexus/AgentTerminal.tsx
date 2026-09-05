@@ -35,6 +35,7 @@ import { ConfirmDialog, Tooltip } from '../design-system';
 import type { RuntimeSession } from '../types';
 import { consumePtyOutputForChrome, extractOscTitle } from '../workspace/ptyLiveChrome';
 import { usePtyLiveChromeOptional } from '../workspace/PtyLiveChromeContext';
+import styles from './AgentTerminal.module.scss';
 
 export const AgentTerminal: React.FC<{
   agentId: string;
@@ -778,39 +779,19 @@ export const AgentTerminal: React.FC<{
 
   return (
     <section
-      className="nx-agent-terminal"
+      className={`nx-agent-terminal ${styles.terminalRoot}`}
       data-chrome={chrome}
       aria-label={`Terminal for Agent ${agentId}`}
-      style={{ position: 'relative' }}
     >
       {!windowChrome && (
         <header className="nx-agent-terminal__header">
           <div className="nx-agent-terminal__identity">
-            <span
-              style={{
-                fontSize: '10px',
-                padding: '1px 5px',
-                borderRadius: '4px',
-                background: 'var(--nx-accent)',
-                color: 'white',
-                fontWeight: 700,
-              }}
-            >
-              AGENT
-            </span>
-            <strong style={{ fontSize: '12px', color: 'var(--nx-text)' }} title={agentId}>
+            <span className={styles.agentBadge}>AGENT</span>
+            <strong className={styles.agentTitle} title={agentId}>
               {displayName}
             </strong>
             {provider && (
-              <span
-                style={{
-                  fontSize: '11px',
-                  color: 'var(--nx-text-soft)',
-                  border: '1px solid var(--nx-border)',
-                  padding: '1px 6px',
-                  borderRadius: '4px',
-                }}
-              >
+              <span className={styles.providerBadge}>
                 nexus {provider}
                 {profile && profile !== 'default' ? `:${profile}` : ''}
               </span>
@@ -833,46 +814,19 @@ export const AgentTerminal: React.FC<{
         </div>
       )}
       {askOpen && (
-        <div
-          className="nx-agent-terminal__composer"
-          style={{
-            padding: '8px 12px',
-            background: 'var(--nx-surface-2)',
-            borderBottom: '1px solid var(--nx-border)',
-            display: 'grid',
-            gap: '8px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span
-              style={{
-                fontSize: '12px',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}
-            >
+        <div className={`nx-agent-terminal__composer ${styles.composer}`}>
+          <div className={styles.composerHeader}>
+            <span className={styles.composerTitle}>
               <MessageSquare size={13} /> Enviar instrução ao agente (One-shot)
             </span>
-            <button
-              type="button"
-              onClick={() => setAskOpen(false)}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: 'var(--nx-muted)',
-              }}
-            >
+            <button type="button" onClick={() => setAskOpen(false)} className={styles.closeButton}>
               <X size={13} />
             </button>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div className={styles.composerRow}>
             <input
               type="text"
-              className="nx-input"
-              style={{ flex: 1, fontSize: '12px', padding: '6px 10px' }}
+              className={`nx-input ${styles.composerInput}`}
               placeholder="Digite o objetivo ou comando para o agente..."
               value={askPrompt}
               onChange={(e) => setAskPrompt(e.target.value)}
@@ -896,10 +850,8 @@ export const AgentTerminal: React.FC<{
             </button>
           </div>
           {availableSkills.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-              <span style={{ fontSize: '11px', color: 'var(--nx-muted)' }}>
-                Skills Maestro (até 3 no próximo prompt):
-              </span>
+            <div className={styles.skillsRow}>
+              <span className={styles.skillsLabel}>Skills Maestro (até 3 no próximo prompt):</span>
               {availableSkills.slice(0, 8).map((s) => {
                 const active = selectedSkills.includes(s.id);
                 return (
@@ -907,16 +859,8 @@ export const AgentTerminal: React.FC<{
                     key={s.id}
                     type="button"
                     onClick={() => handleToggleSkill(s.id)}
-                    style={{
-                      fontSize: '11px',
-                      padding: '2px 8px',
-                      borderRadius: '12px',
-                      border: '1px solid',
-                      borderColor: active ? 'var(--nx-accent)' : 'var(--nx-border)',
-                      background: active ? 'var(--nx-accent-soft)' : 'var(--nx-surface-3)',
-                      color: active ? 'var(--nx-text)' : 'var(--nx-text-soft)',
-                      cursor: 'pointer',
-                    }}
+                    className={styles.skillButton}
+                    data-active={active ? 'true' : 'false'}
                     title={s.description || s.name || s.id}
                   >
                     {active ? '✓ ' : '+ '}
@@ -928,13 +872,11 @@ export const AgentTerminal: React.FC<{
           )}
           {askFeedback && (
             <span
-              style={{
-                fontSize: '11px',
-                color:
-                  askFeedback.includes('erro') || askFeedback.includes('failed')
-                    ? 'var(--nx-danger)'
-                    : 'var(--nx-accent)',
-              }}
+              className={
+                askFeedback.includes('erro') || askFeedback.includes('failed')
+                  ? styles.feedbackAlert
+                  : styles.feedbackSuccess
+              }
             >
               {askFeedback}
             </span>
@@ -963,80 +905,23 @@ export const AgentTerminal: React.FC<{
       />
 
       {showRecoverOverlay && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: windowChrome ? 0 : '39px 0 0 0',
-            background: 'rgba(9, 11, 16, 0.88)',
-            backdropFilter: 'blur(3px)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '12px',
-            padding: '24px',
-            zIndex: 10,
-            textAlign: 'center',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              color: 'var(--nx-warning)',
-            }}
-          >
+        <div className={styles.recoverOverlay} data-window-chrome={windowChrome ? 'true' : 'false'}>
+          <div className={styles.recoverHeader}>
             {recovering ? <RefreshCw size={18} className="nx-spin-slow" /> : <Unplug size={18} />}
-            <strong style={{ fontSize: '14px' }}>
+            <strong className={styles.recoverTitle}>
               {recovering || connection === 'CONNECTING'
                 ? 'Recuperando o terminal do agente'
                 : 'Runtime do Agente desconectado'}
             </strong>
           </div>
-          <p
-            style={{
-              maxWidth: '420px',
-              fontSize: '12px',
-              color: 'var(--nx-muted)',
-              margin: 0,
-              lineHeight: 1.5,
-            }}
-          >
+          <p className={styles.recoverText}>
             {recovering || connection === 'CONNECTING'
               ? 'O processo anterior não sobreviveu ao reinício da máquina ou do serviço. O Nexus está relançando o runtime para anexar de novo.'
               : 'O processo do agente não está rodando no momento ou foi finalizado. Inicie o runtime para anexar o terminal e executar comandos.'}
           </p>
-          {message && connection === 'ERROR' && (
-            <p
-              style={{
-                maxWidth: '440px',
-                margin: 0,
-                padding: '8px 10px',
-                borderRadius: 6,
-                border: '1px solid color-mix(in srgb, var(--nx-danger) 40%, var(--nx-border))',
-                background: 'var(--nx-danger-soft)',
-                color: 'var(--nx-danger)',
-                fontSize: '12px',
-                lineHeight: 1.45,
-              }}
-            >
-              {message}
-            </p>
-          )}
+          {message && connection === 'ERROR' && <p className={styles.errorMessage}>{message}</p>}
           {needsResourceSelection && (
-            <div
-              style={{
-                width: 'min(520px, 100%)',
-                maxHeight: '40vh',
-                overflow: 'auto',
-                textAlign: 'left',
-                border: '1px solid var(--nx-border)',
-                borderRadius: 8,
-                padding: 10,
-                background: 'var(--nx-bg-elevated)',
-              }}
-            >
+            <div className={styles.resourcePickerWrapper}>
               <ResourcePicker
                 agentId={agentId}
                 preferProvider={provider}
@@ -1044,29 +929,20 @@ export const AgentTerminal: React.FC<{
               />
             </div>
           )}
-          <div
-            style={{
-              display: 'flex',
-              gap: '8px',
-              marginTop: '4px',
-              flexWrap: 'wrap',
-              justifyContent: 'center',
-            }}
-          >
+          <div className={styles.recoverActions}>
             <button
               type="button"
-              className="nx-button"
+              className={`nx-button ${styles.actionButtonContent}`}
               data-tone="brand"
               disabled={recovering}
               onClick={() => void handleManualStartOrRecover()}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
               {recovering ? <RefreshCw size={13} className="nx-spin-slow" /> : <Play size={13} />}
               <span>{recovering ? 'Iniciando…' : 'Iniciar / Recuperar Agente'}</span>
             </button>
             <button
               type="button"
-              className="nx-button"
+              className={`nx-button ${styles.actionButtonContent}`}
               title="Reabre só o WebSocket; não relança o processo do agente"
               onClick={() => {
                 setMessage('Reconectando transporte…');
@@ -1077,7 +953,6 @@ export const AgentTerminal: React.FC<{
                   setConnectNonce((n) => n + 1);
                 }
               }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
               <RefreshCw size={13} />
               <span>Reconectar WS</span>
@@ -1085,11 +960,10 @@ export const AgentTerminal: React.FC<{
             {onDelete && (
               <button
                 type="button"
-                className="nx-button"
+                className={`nx-button ${styles.actionButtonContent}`}
                 data-tone="danger"
                 disabled={recovering || deleting}
                 onClick={() => void handleDeleteAgent()}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
                 <Trash2 size={13} />
                 <span>{deleting ? 'Removendo…' : 'Remover Agente'}</span>

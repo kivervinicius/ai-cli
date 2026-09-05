@@ -1,0 +1,37 @@
+@use '../styles/tokens';
+@use '../styles/typography';
+@use '../styles/mixins';
+
+.projectItem {
+  max-width: 28vw;
+  cursor: default;
+  @include mixins.text-ellipsis;
+}
+
+.projectIcon {
+  flex-shrink: 0;
+}
+
+.projectName {
+  font-weight: 600;
+  color: var(--nx-text);
+}
+
+.canonicalPath {
+  font-size: var(--nx-font-size-xs);
+  color: var(--nx-text-soft);
+  @include mixins.text-ellipsis;
+}
+
+.degradedButton {
+  color: var(--nx-warning);
+}
+
+.intelligenceStatus {
+  font-weight: 600;
+  color: var(--nx-accent-text);
+}
+
+.accentDot {
+  background: var(--nx-accent);
+}

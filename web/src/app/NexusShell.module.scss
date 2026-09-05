@@ -1,0 +1,19 @@
+@use '../styles/tokens';
+@use '../styles/typography';
+@use '../styles/mixins';
+
+.notificationWrap {
+  position: relative;
+}
+
+.attentionIndicator {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--nx-radius-full);
+  background: var(--nx-warning);
+  box-shadow: 0 0 6px var(--nx-warning);
+  pointer-events: none;
+}

@@ -22,18 +22,34 @@ import {
 import { serializeWorkspace } from '../workspace/state';
 import { ProjectRail } from '../features/projects/ProjectRail';
 import { ProjectHub } from '../features/projects/ProjectHub';
-import { CommandPalette } from './commands/CommandPalette';
 import type { NexusCommand } from './commands/registry';
-import { ProductTour } from './tour/ProductTour';
-import { WelcomeModal } from './modals/WelcomeModal';
-import { MaestroControlModal } from './modals/MaestroControlModal';
-import { NewAgentModal } from '../features/agents/NewAgentModal';
-import {
-  DirectSessionLauncher,
-  type DirectSessionRequest,
-} from '../features/work/DirectSessionLauncher';
+import type { DirectSessionRequest } from '../features/work/DirectSessionLauncher';
 import { NexusShell } from './NexusShell';
 import { WorkspaceSurfaceHost } from './WorkspaceSurfaceHost';
+
+const CommandPalette = React.lazy(() =>
+  import('./commands/CommandPalette').then((m) => ({ default: m.CommandPalette })),
+);
+const ProductTour = React.lazy(() =>
+  import('./tour/ProductTour').then((m) => ({ default: m.ProductTour })),
+);
+const WelcomeModal = React.lazy(() =>
+  import('./modals/WelcomeModal').then((m) => ({ default: m.WelcomeModal })),
+);
+const MaestroControlModal = React.lazy(() =>
+  import('./modals/MaestroControlModal').then((m) => ({ default: m.MaestroControlModal })),
+);
+const NewAgentModal = React.lazy(() =>
+  import('../features/agents/NewAgentModal').then((m) => ({ default: m.NewAgentModal })),
+);
+const DirectSessionLauncher = React.lazy(() =>
+  import('../features/work/DirectSessionLauncher').then((m) => ({
+    default: m.DirectSessionLauncher,
+  })),
+);
+const TerminalActionDialog = React.lazy(() =>
+  import('../nexus/TerminalActionDialog').then((m) => ({ default: m.TerminalActionDialog })),
+);
 import {
   agentConfigSurface,
   agentTerminalSurface,
@@ -53,7 +69,6 @@ import { pushNotifications } from '../notifications/PushNotificationManager';
 import { loadNotificationPrefs, playAttentionSound } from '../notifications/notificationPrefs';
 import { formatAttentionPushBody } from '../notifications/attentionPushCopy';
 import { isPtyAttentionFocused } from '../notifications/attentionDelivery';
-import { TerminalActionDialog } from '../nexus/TerminalActionDialog';
 
 const selectedProjectKey = 'iapro:nexus:selected-project:v1';
 const tourKey = 'iapro:nexus:tour-complete:v1';
@@ -944,56 +959,86 @@ const WorkspaceCoordinator: React.FC<{
         {renderer}
       </NexusShell>
 
-      <CommandPalette open={palette} onClose={() => setPalette(false)} commands={commands} />
+      {palette && (
+        <React.Suspense fallback={null}>
+          <CommandPalette open={palette} onClose={() => setPalette(false)} commands={commands} />
+        </React.Suspense>
+      )}
 
-      <WelcomeModal
-        open={welcomeOpen}
-        onClose={() => setWelcomeOpen(false)}
-        onStartTour={() => {
-          setWelcomeOpen(false);
-          setTour(true);
-        }}
-      />
+      {welcomeOpen && (
+        <React.Suspense fallback={null}>
+          <WelcomeModal
+            open={welcomeOpen}
+            onClose={() => setWelcomeOpen(false)}
+            onStartTour={() => {
+              setWelcomeOpen(false);
+              setTour(true);
+            }}
+          />
+        </React.Suspense>
+      )}
 
-      <MaestroControlModal open={maestroControlOpen} onClose={() => setMaestroControlOpen(false)} />
+      {maestroControlOpen && (
+        <React.Suspense fallback={null}>
+          <MaestroControlModal
+            open={maestroControlOpen}
+            onClose={() => setMaestroControlOpen(false)}
+          />
+        </React.Suspense>
+      )}
 
-      <NewAgentModal
-        open={newAgentOpen}
-        onClose={() => setNewAgentOpen(false)}
-        project={project}
-        onCreated={(created) => {
-          data.setAgents((cur) => [created, ...cur]);
-          terminal(created);
-        }}
-      />
+      {newAgentOpen && (
+        <React.Suspense fallback={null}>
+          <NewAgentModal
+            open={newAgentOpen}
+            onClose={() => setNewAgentOpen(false)}
+            project={project}
+            onCreated={(created) => {
+              data.setAgents((cur) => [created, ...cur]);
+              terminal(created);
+            }}
+          />
+        </React.Suspense>
+      )}
 
-      <DirectSessionLauncher
-        open={!!directSession}
-        project={project}
-        request={directSession}
-        onClose={() => setDirectSession(null)}
-        refreshAgents={() => data.refreshAgents(project.id)}
-        onStarted={(created, prompt) => {
-          open(agentTerminalSurface(created.id, created.name, prompt));
-          openTerminals();
-        }}
-      />
+      {directSession && (
+        <React.Suspense fallback={null}>
+          <DirectSessionLauncher
+            open={!!directSession}
+            project={project}
+            request={directSession}
+            onClose={() => setDirectSession(null)}
+            refreshAgents={() => data.refreshAgents(project.id)}
+            onStarted={(created, prompt) => {
+              open(agentTerminalSurface(created.id, created.name, prompt));
+              openTerminals();
+            }}
+          />
+        </React.Suspense>
+      )}
 
-      <ProductTour
-        open={tour}
-        onClose={() => {
-          setTour(false);
-          window.localStorage.setItem(tourKey, 'true');
-        }}
-      />
+      {tour && (
+        <React.Suspense fallback={null}>
+          <ProductTour
+            open={tour}
+            onClose={() => {
+              setTour(false);
+              window.localStorage.setItem(tourKey, 'true');
+            }}
+          />
+        </React.Suspense>
+      )}
+
       {closeTarget && (
-        <TerminalActionDialog
-          close
-          shell={closeTarget.type === 'project-shell'}
-          onCancel={() => setCloseTarget(null)}
-          onCloseTab={() => void closeConfirmed(false)}
-          onStopRuntime={() => void closeConfirmed(true)}
-        />
+        <React.Suspense fallback={null}>
+          <TerminalActionDialog
+            close
+            shell={closeTarget.type === 'project-shell'}
+            onCancel={() => setCloseTarget(null)}
+            onCloseTab={() => void closeConfirmed(false)}
+            onStopRuntime={() => void closeConfirmed(true)}
+          />
+        </React.Suspense>
       )}
     </>
   );

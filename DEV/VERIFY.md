@@ -288,3 +288,13 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
 
+
+# Verificação — Padrão SCSS Modules & Arquitetura de Estilos (2026-09-05)
+- [x] SCSS Modules integrado e suportado via `sass` e `declaration.d.ts`.
+- [x] Stylelint configurado com `stylelint-config-standard-scss` e `stylelint-config-prettier-scss`.
+- [x] Script `check-css-allowlist.js` (`npm run check:styles`) ativo e validando a árvore.
+- [x] `plan-builder.css` migrado para `PlanBuilderSurface.module.scss` sem `!important`.
+- [x] `attention-layout.css` redundante removido.
+- [x] `npm --prefix web run quality`: PASS (check:styles, format:check, lint, lint:styles, typecheck, test 253/253).
+- [x] `npm --prefix web run build`: PASS (compilação e sincronização com backend Go).
+- [x] Contratos e diretrizes atualizados em `AGENTS.md`, `docs/engineering/WEB_ENGINEERING_STANDARDS.md` e `CONTRIBUTING.md`.

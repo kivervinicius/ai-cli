@@ -1,5 +1,17 @@
 # IAPro Nexus — Contrato Oficial para Coding Agents
 
+## STYLE RULES
+
+- New component styles MUST use SCSS Modules.
+- Do not create local .css files.
+- Existing local CSS touched by the task should be migrated to .module.scss when safe.
+- Runtime theme/layout values MUST use CSS Custom Properties.
+- Static styling MUST NOT be placed inline.
+- Do not use !important.
+- Reuse semantic design tokens.
+- Reuse existing components before introducing duplicated styles.
+- Global styles are restricted to reset, tokens, themes and real global foundations.
+
 ## 1. Regra Fundamental
 Antes de qualquer alteração substancial no frontend ou backend, leia e siga obrigatoriamente:
 * `docs/engineering/WEB_ENGINEERING_STANDARDS.md` (Padrões de Engenharia Frontend)
@@ -23,6 +35,7 @@ Antes de qualquer alteração substancial no frontend ou backend, leia e siga ob
    - Garanta contraste adequado em todos os 10 presets de temas.
 
 4. **Estilização & Design Tokens**:
+   - SCSS Modules (`*.module.scss`) é o padrão oficial de estilização encapsulada para componentes.
    - CSS Custom Properties (`var(--nx-*)`) são a autoridade para cores, layout, temas e densidade.
    - Proibido CSS inline estático (`style={{ ... }}`). Estilos inline são permitidos **apenas** para propriedades calculadas dinamicamente em runtime (ex: dimensões e posições de janelas).
    - Proibido adicionar `!important` para resolver conflitos de especificidade.
@@ -36,7 +49,7 @@ Antes de qualquer alteração substancial no frontend ou backend, leia e siga ob
 6. **Componentização & Limites**:
    - **1 componente por arquivo**: Separe componentes conceituais em arquivos individuais.
    - Heurística de tamanho: `~200 linhas` (revisar), `~300 linhas` (dividir), `>400 linhas` (exige justificativa técnica).
-   - Coloque testes (`*.test.tsx`) e estilos (`*.module.scss`/`*.css`) próximos aos componentes (`colocation`).
+   - Coloque testes (`*.test.tsx`) e estilos (`*.module.scss`) próximos aos componentes (`colocation`).
    - `src/shared/` nunca importa de `src/features/`. Features nunca importam internals de outras features.
 
 7. **TypeScript & Resiliência a Dados Externos**:
@@ -56,6 +69,7 @@ Antes de qualquer alteração substancial no frontend ou backend, leia e siga ob
 
 ### During coding
 - [ ] HTML semântico utilizado (`<button>`, `<main>`, `<header>`, `<label>`, etc.).
+- [ ] Estilos de novos componentes em SCSS Modules (`*.module.scss`).
 - [ ] Textos da interface internacionalizados via i18n (`t(...)`).
 - [ ] Sem CSS inline estático; CSS Custom Properties e tokens semânticos respeitados.
 - [ ] Sem novo `!important`.
@@ -66,6 +80,7 @@ Antes de qualquer alteração substancial no frontend ou backend, leia e siga ob
 - [ ] Formatação passa (`npm --prefix web run format:check` / `make format-check`).
 - [ ] ESLint passa (`npm --prefix web run lint`).
 - [ ] Stylelint passa (`npm --prefix web run lint:styles`).
+- [ ] Verificação de allowlist de estilos passa (`npm --prefix web run check:styles`).
 - [ ] TypeScript passa (`npm --prefix web run typecheck`).
 - [ ] Testes unitários/componentes passam (`npm --prefix web run test`).
 - [ ] Build passa (`npm --prefix web run build`).

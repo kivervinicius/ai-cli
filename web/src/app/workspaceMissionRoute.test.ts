@@ -5,9 +5,7 @@ const source = readFileSync(new URL('./WorkspaceSurfaceHost.tsx', import.meta.ur
 
 describe('Workspace OS mission surface wiring', () => {
   it('routes Missions to Flow Runs history instead of the PlanBuilder editor', () => {
-    expect(source).toContain(
-      "import { FlowRunsHistorySurface } from '../features/work/FlowRunsHistorySurface';",
-    );
+    expect(source).toMatch(/import\(['"]\.\.\/features\/work\/FlowRunsHistorySurface['"]\)/);
     expect(source).toMatch(/surface\.type === 'missions'[\s\S]*?<FlowRunsHistorySurface/);
     expect(source).not.toMatch(/surface\.type === 'missions'[\s\S]*?<PlanBuilderSurface/);
     expect(source).not.toMatch(/surface\.type === 'missions'[\s\S]*?<MissionsPage projectId=/);

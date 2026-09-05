@@ -104,7 +104,17 @@ All features must comply with WCAG 2.2 AA standards:
 
 ---
 
-## 5. Styling Architecture, Design Tokens & Themes
+## 5. Styling Architecture: SCSS Modules & Design Tokens
+
+The official frontend styling architecture is:
+
+```text
+SCSS Modules
++
+CSS Custom Properties (Runtime Themes & Metrics)
++
+Semantic Design Tokens
+```
 
 ### Authority of CSS Custom Properties
 CSS Custom Properties (`var(--nx-*)`) are the authoritative runtime source for:
@@ -113,11 +123,13 @@ CSS Custom Properties (`var(--nx-*)`) are the authoritative runtime source for:
 * Typography, border radiuses, shadows, and z-index layers.
 
 ### Strict Rules for Styles:
-1. **Zero Unjustified Inline CSS**: Static presentation styles must reside in CSS/SCSS modules or global stylesheets.
-2. **Inline Style Exception**: Inline `style={{ ... }}` is permitted *only* for dynamic runtime variables (e.g., coordinates, pane dimensions, CSS variable overrides like `style={{ '--panel-width': `${width}px` }}`).
-3. **No `!important`**: Overriding CSS specificity with `!important` is forbidden. Resolve cascading order and stacking context at the root selector level.
-4. **No Hardcoded Hex/RGB in Components**: Components must consume semantic design tokens rather than arbitrary raw colors (`#ffffff`, `#1a1a1a`).
-5. **Modern SCSS/CSS**: Use `@use` and `@forward` instead of deprecated `@import`. Limit selector nesting to <= 3 levels.
+1. **SCSS Modules for Component Styling**: New component styles must use `ComponentName.module.scss`. Do not create local unencapsulated `.css` files.
+2. **Zero Unjustified Inline CSS**: Static presentation styles must reside in SCSS modules or global stylesheets.
+3. **Inline Style Exception**: Inline `style={{ ... }}` is permitted *only* for dynamic runtime variables (e.g., coordinates, pane dimensions, CSS variable overrides like `style={{ '--panel-width': `${width}px` }}`).
+4. **No `!important`**: Overriding CSS specificity with `!important` is forbidden and enforced via Stylelint (`declaration-no-important: true`).
+5. **No Hardcoded Hex/RGB in Components**: Components must consume semantic design tokens rather than arbitrary raw colors (`#ffffff`, `#1a1a1a`).
+6. **Modern SCSS/CSS**: Use `@use` and `@forward` instead of deprecated `@import`. Limit selector nesting to <= 3 levels.
+7. **Global Styles Allowlist**: Global stylesheets are restricted to `src/index.css`, `src/app/workspace-os.css` (OS core foundation), and `src/styles/*.scss`. Other `.css` files are rejected by `npm run check:styles`.
 
 ---
 
@@ -149,19 +161,12 @@ CSS Custom Properties (`var(--nx-*)`) are the authoritative runtime source for:
 ### Local Quality Commands
 | Command | Action |
 | :--- | :--- |
-| `npm --prefix web run quality` | Runs format check, ESLint, Stylelint, TypeScript check, and Vitest suite |
+| `npm --prefix web run check:styles` | Validates stylesheet architecture against global allowlist |
+| `npm --prefix web run lint:styles` | Stylelint validation for SCSS & CSS rules |
+| `npm --prefix web run quality` | Runs check:styles, format check, ESLint, Stylelint, TypeScript check, and Vitest suite |
 | `npm --prefix web run quality:full` | Runs `quality` plus full production build and bundle sync check |
 | `make quality` | Comprehensive repository gate (frontend + Go tests + linters) |
 | `make web-verify` | Frontend gate report generator (`DEV/validation/FRONTEND_LATEST.md`) |
-
-### Continuous Integration (CI)
-The CI pipeline automatically enforces:
-1. `Prettier` format verification
-2. `ESLint 9` rules and hooks validation
-3. `Stylelint` CSS token and property validation
-4. `TypeScript` strict compilation (`tsc --noEmit`)
-5. `Vitest` unit and component test execution
-6. Production bundle compilation and embed synchronization
 
 ---
 

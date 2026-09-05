@@ -1,0 +1,32 @@
+@use '../../styles/tokens';
+@use '../../styles/typography';
+@use '../../styles/mixins';
+
+.actionsHeader {
+  text-align: right;
+}
+
+.actionsCell {
+  text-align: right;
+}
+
+.configModal {
+  padding: 16px;
+}
+
+.configSectionTitle {
+  font-size: var(--nx-font-size-sm);
+  font-weight: 600;
+  color: var(--nx-text-primary);
+}
+
+.configSectionSpacing {
+  margin-bottom: 8px;
+}
+
+.branchSelectRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}

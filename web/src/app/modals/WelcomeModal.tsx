@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Dialog, Button, Badge } from '../../design-system';
 import { nexus } from '../../nexus/api';
+import styles from './WelcomeModal.module.scss';
 
 export const WelcomeModal: React.FC<{
   open: boolean;
@@ -197,15 +198,13 @@ export const WelcomeModal: React.FC<{
                 </div>
                 <div className="nx-version-row">
                   <span>Updates</span>
-                  <span style={{ fontSize: '12px' }}>
+                  <span className={styles.updateStatus}>
                     {sysInfo?.update_available ? (
-                      <strong style={{ color: 'var(--nx-warning, #f59e0b)' }}>
+                      <strong className={styles.updateWarning}>
                         {t('welcome.updateAvailable')}
                       </strong>
                     ) : (
-                      <span style={{ color: 'var(--nx-success, #10b981)' }}>
-                        ✓ {t('welcome.upToDate')}
-                      </span>
+                      <span className={styles.updateSuccess}>✓ {t('welcome.upToDate')}</span>
                     )}
                   </span>
                 </div>

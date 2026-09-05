@@ -1,5 +1,26 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-05 — Frontend Code-Splitting, Route Chunking & SCSS Modules Modularization
+
+- **Objetivo**: Concluir a refatoração arquitetural de frontend dividindo o monólito `bundle.js` em rotas/superfícies e modais sob demanda (`React.lazy` + `Suspense`), além de migrar componentes para o padrão oficial de estilos (`SCSS Modules` + tokens de design).
+- **Alterações Realizadas**:
+  1. **Separação de Rotas e Superfícies sob Demanda (`WorkspaceSurfaceHost.tsx`)**:
+     - Todas as 18 superfícies do Workspace OS (`AgentTerminal`, `PlanBuilderSurface`, `FlowCanvas`, `FlowRunsHistorySurface`, `ProjectManagerSurface`, `WorkSurface`, `SettingsSurface`, `SessionsSurface`, `ProjectOverviewSurface`, `ResourcePicker`, `TerminalPane`, `Dashboard`, etc.) convertidas para dynamic imports (`React.lazy`) com `<Suspense fallback={<SurfaceLoadingFallback />}>`.
+     - Dependências pesadas (`xterm` + addons ~300 KB, DAG/Flow engine ~130 KB, Monaco/Plan builder, scanner) completamente isoladas em chunks carregados sob demanda apenas quando a respectiva superfície é aberta.
+  2. **Lazy Loading de Diálogos e Modais (`NexusWorkspaceApp.tsx`)**:
+     - `CommandPalette`, `ProductTour`, `WelcomeModal`, `MaestroControlModal`, `NewAgentModal`, `DirectSessionLauncher` e `TerminalActionDialog` convertidos para `React.lazy` e encapsulados em `<Suspense fallback={null}>`.
+  3. **Build Pipeline & SCSS Modules Plugin (`web/scripts/build.mjs`)**:
+     - Configurado `esbuild` com `splitting: true`, `format: 'esm'`, `outdir: 'dist'`, `chunkNames: 'chunks/[name]-[hash]'`.
+     - Plugin customizado Sass integrado para compilar `*.module.scss` preservando escopo léxico local de classes.
+  4. **Padronização SCSS Modules**:
+     - Criados `_tokens.scss`, `_typography.scss`, `_mixins.scss` e módulos `.module.scss` para componentes de tela (`WorkspaceTaskbar`, `NexusShell`, `SurfaceLoadingFallback`, `WelcomeModal`, `AgentTerminal`, `PlanBuilderSurface`, `MissionAutonomyCard`, `FlowRunsHistorySurface`, `ProjectManagerSurface`, `WorkSurface`).
+  5. **Métricas de Performance e Redução de Bundle**:
+     - `dist/bundle.js` inicial reduzido de **1.1 MB (1.152 KB)** para **278.4 KB** (**redução de 75.8%**).
+     - Chunks sob demanda gerados em `dist/chunks/` com hash para cache busting ideal.
+  6. **Validação e Qualidade Completa**:
+     - `npm --prefix web run quality`: 8/8 gates aprovados (`check:styles`, `format:check`, `lint`, `lint:styles`, `typecheck`, `vitest` 51 arquivos / 253 testes PASS).
+     - `npm --prefix web run build`: 100% PASS.
+
 ## 2026-09-05 — Refatoração Arquitetural Workspace OS: Topbar Limpo, Gaveta de Atenção e Notificações, Tarefas Degradadas Interativas, Persistência de Janelas e Segregação de Settings
 
 - **Objetivo**: Concluir a refatoração completa solicitada no `/plan` (`workspace_os_refactor_plan.md`), resolvendo sobrecarga visual no Topbar, unificando radar e notificações sob o ícone de sino, tornando o status degraded na taskbar interativo com foco direto, garantindo persistência sólida de posições de janelas e dividindo Configurações em 5 módulos organizados.
@@ -1600,3 +1621,13 @@ silenciosamente ou repetir uma resposta sem diagnóstico.
 
 Verificação: testes Nexus/Intelligence PASS, `make web-verify` PASS, `make
 build` PASS e Web reiniciado em HTTP 200.
+
+## Milestone: Adoção Oficial do Padrão SCSS Modules & Allowlist Architecture (2026-09-05)
+- Estabelecido **SCSS Modules** (`*.module.scss`) com **CSS Custom Properties** e **Semantic Design Tokens** como padrão oficial de estilização encapsulada para componentes.
+- Migrado `src/features/work/plan-builder.css` para `PlanBuilderSurface.module.scss` (eliminando o `!important` desnecessário).
+- Removido `src/app/attention-layout.css` redundante cujas classes já residem na fundação `workspace-os.css`.
+- Configurado Stylelint (`web/.stylelintrc.json`) com `stylelint-config-standard-scss` e `stylelint-config-prettier-scss` para validar regras SCSS/CSS com bloqueio de `!important`.
+- Criado script de verificação de allowlist arquitetural `web/scripts/check-css-allowlist.js` integrado ao comando `npm --prefix web run check:styles` e ao quality gate unificado.
+- Criado arquivo de declarações de tipos TypeScript `web/src/declaration.d.ts` para suporte a módulos SCSS.
+- Atualizadas as diretrizes em `AGENTS.md`, `docs/engineering/WEB_ENGINEERING_STANDARDS.md` e `CONTRIBUTING.md`.
+- Verificação executada: `npm --prefix web run quality`, `npm --prefix web run build` e `vitest run` (253/253 testes aprovados).
