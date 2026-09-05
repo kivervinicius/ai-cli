@@ -75,4 +75,16 @@
   - `go test -v ./internal/release/...` passed.
   - `go test -race ./internal/...` passed.
 
+## Wave 7: Manifesto assinado, updater, confirmação, receipt e rollback (VERIFIED)
+- Signed Manifest & Ed25519 verification:
+  - `internal/update/manifest.go` and `internal/update/keyring.go`: Implemented Ed25519 manifest verification over exact manifest bytes with trusted key ring, schema version validation, and channel checks.
+  - Tested negative cases: tampered manifest bytes rejected, untrusted key IDs rejected, malformed signatures rejected.
+- Atomic updater, checksums, receipts & rollback:
+  - `internal/update/updater.go`: SHA-256 binary validation, atomic backup (`.bak`), atomic apply (`.tmp` -> replace), persistent JSON audit receipts in `receipts/update-<timestamp>.json`.
+  - Tested successful application, status recording (`SUCCESS`), and atomic rollback restoring previous binary (`ROLLED_BACK`).
+- Quality gates:
+  - `go test -v -race ./internal/update/...` passed.
+  - `go test -race ./internal/...` passed with 0 data races across all packages.
+
+
 
