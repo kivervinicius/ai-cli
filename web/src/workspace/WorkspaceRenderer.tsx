@@ -13,6 +13,7 @@ import {
   Paintbrush,
   PanelsTopLeft,
   Plus,
+  RotateCcw,
   Settings,
   Sparkles,
   TerminalSquare,
@@ -244,7 +245,8 @@ const WindowChromeMenu: React.FC<{
 const ArrangeLayoutMenu: React.FC<{
   activePreset: ArrangeMenuPreset;
   onSelect: (preset: ArrangeMenuPreset) => void;
-}> = ({ activePreset, onSelect }) => {
+  onReset?: () => void;
+}> = ({ activePreset, onSelect, onReset }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
@@ -310,6 +312,33 @@ const ArrangeLayoutMenu: React.FC<{
                 <small>{preset.hint}</small>
               </button>
             ))}
+            {onReset && (
+              <>
+                <div
+                  style={{
+                    height: 1,
+                    background: 'var(--nx-border)',
+                    margin: '4px 0',
+                  }}
+                  role="separator"
+                />
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="nx-arrange-menu__item"
+                  onClick={() => {
+                    setOpen(false);
+                    onReset();
+                  }}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--nx-warning, #f59e0b)' }}>
+                    <RotateCcw size={12} />
+                    <span>Redefinir layout</span>
+                  </span>
+                  <small>Restaurar padrão</small>
+                </button>
+              </>
+            )}
           </div>,
           document.body,
         )
@@ -574,6 +603,7 @@ const TerminalsHost: React.FC<{
   active: boolean;
 }> = ({ ptySurfaces, renderSurface, onRequestClose, createActions, active }) => {
   const { t } = useTranslation();
+  const workspace = useWorkspace();
   const presentation = useWorkspacePresentation();
   const liveChrome = usePtyLiveChromeOptional();
   const liveByViewId = liveChrome?.byViewId || {};
@@ -699,6 +729,7 @@ const TerminalsHost: React.FC<{
             <ArrangeLayoutMenu
               activePreset={presentation.state.lastArrangePreset}
               onSelect={(preset) => presentation.rearrangePreset(preset)}
+              onReset={workspace.reset}
             />
           )}
         </div>

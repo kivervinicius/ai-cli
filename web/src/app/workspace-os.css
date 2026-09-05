@@ -1340,6 +1340,7 @@ button { color:inherit; }
   min-width: 0 !important;
   overflow: hidden !important;
   gap: 8px !important;
+  justify-content: space-between !important;
 }
 
 .nx-topbar__actions {

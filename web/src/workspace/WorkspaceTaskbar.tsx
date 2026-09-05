@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FolderGit2, GitBranch, Wifi, AlertTriangle } from 'lucide-react';
+import { Folder, FolderGit2, GitBranch, Wifi, AlertTriangle } from 'lucide-react';
 import { nexus } from '../nexus/api';
 import { BranchSwitcherModal } from '../features/projects/BranchSwitcherModal';
 import { Tooltip } from '../design-system';
@@ -60,9 +60,31 @@ export const WorkspaceTaskbar: React.FC<{
         {project && (
           <>
             <Tooltip content={project.canonical_path} side="top">
-              <span className="nx-statusbar-item">
-                <FolderGit2 size={12} />
-                <span>{project.name}</span>
+              <span
+                className="nx-statusbar-item nx-statusbar-project"
+                style={{
+                  maxWidth: '28vw',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  cursor: 'default',
+                }}
+              >
+                <FolderGit2 size={12} style={{ flexShrink: 0 }} />
+                <span style={{ fontWeight: 600, color: 'var(--nx-text)' }}>{project.name}</span>
+                {project.canonical_path && (
+                  <span
+                    style={{
+                      color: 'var(--nx-subtle)',
+                      fontSize: '10.5px',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {project.canonical_path}
+                  </span>
+                )}
               </span>
             </Tooltip>
             <Tooltip

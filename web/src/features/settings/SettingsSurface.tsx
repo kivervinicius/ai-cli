@@ -10,7 +10,6 @@ import {
   Palette,
   RefreshCw,
   RotateCcw,
-  Sliders,
   Sparkles,
   Type,
 } from 'lucide-react';
@@ -27,10 +26,8 @@ import {
 } from '../../design-system';
 import {
   useTheme,
-  type ThemeAccent,
   type ThemeDensity,
   type ThemePresetKey,
-  type ThemeScheme,
 } from '../../design-system';
 import { useWorkspace } from '../../workspace/WorkspaceProvider';
 import { nexus } from '../../nexus/api';
@@ -638,14 +635,12 @@ const THEME_CATEGORIES: ThemeCategory[] = [
 ];
 
 const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> = ({ theme }) => {
-  const { t } = useTranslation();
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>(() => {
     // Abre por padrão a categoria onde o preset ativo se encontra
     const active = theme.preset || 'nexus-dark';
     const found = THEME_CATEGORIES.find((cat) => cat.presets.includes(active));
     return { [found ? found.id : 'dark-modern']: true };
   });
-  const [showAdvanced, setShowAdvanced] = useState(() => theme.isCustomized);
 
   const toggleCategory = (catId: string) => {
     setOpenCategories((curr) => ({ ...curr, [catId]: !curr[catId] }));
@@ -710,23 +705,22 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
               </span>
             </button>
 
+            {/* Painel do Accordion com Grid de Presets */}
             {isOpen && (
               <div
                 id={panelId}
                 role="region"
                 aria-labelledby={headerId}
                 style={{
-                  padding: '10px 14px 14px',
+                  padding: '12px 14px',
                   borderTop: '1px solid var(--nx-border)',
                   background: 'var(--nx-surface-2)',
                 }}
               >
                 <div
-                  role="radiogroup"
-                  aria-labelledby={headerId}
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
                     gap: 8,
                   }}
                 >
@@ -739,44 +733,42 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
                     return (
                       <div
                         key={presetKey}
-                        role="radio"
-                        aria-checked={isSelected}
-                        tabIndex={isSelected ? 0 : -1}
-                        onClick={() => theme.setPreset(presetKey)}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => theme.setPreset(presetKey as ThemePresetKey)}
                         onKeyDown={(e) => {
-                          if (e.key === ' ' || e.key === 'Enter') {
+                          if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
-                            theme.setPreset(presetKey);
+                            theme.setPreset(presetKey as ThemePresetKey);
                           }
                         }}
                         style={{
-                          display: 'grid',
-                          gap: 6,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 8,
                           padding: '8px 10px',
+                          borderRadius: 6,
                           border: isSelected
-                            ? '2px solid var(--nx-accent)'
+                            ? '1.5px solid var(--nx-accent)'
                             : '1px solid var(--nx-border)',
-                          borderRadius: 7,
-                          background: isSelected ? 'var(--nx-surface-3)' : 'var(--nx-bg-elevated)',
+                          background: isSelected
+                            ? 'var(--nx-accent-soft)'
+                            : 'var(--nx-bg-elevated)',
                           cursor: 'pointer',
-                          transition: 'all .12s',
+                          transition: 'all 0.15s ease',
                         }}
                       >
                         <div
                           style={{
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'space-between',
+                            gap: 6,
+                            fontSize: 12,
+                            fontWeight: isSelected ? 650 : 500,
                           }}
                         >
-                          <strong
-                            style={{
-                              fontSize: 12.5,
-                              color: isSelected ? 'var(--nx-accent-text)' : 'var(--nx-text)',
-                            }}
-                          >
-                            {preset.name}
-                          </strong>
+                          <span>{preset.name}</span>
                           {isSelected && <Check size={14} color="var(--nx-accent)" />}
                         </div>
 
@@ -788,48 +780,23 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
                           <span
                             title={`Fundo: ${palette.bg}`}
                             style={{
-                              width: 22,
-                              height: 16,
-                              borderRadius: 4,
+                              width: 14,
+                              height: 14,
+                              borderRadius: 3,
                               background: palette.bg,
-                              border: '1px solid #444',
-                            }}
-                          />
-                          <span
-                            title={`Superfície: ${palette.surface}`}
-                            style={{
-                              width: 22,
-                              height: 16,
-                              borderRadius: 4,
-                              background: palette.surface,
-                              border: '1px solid #444',
+                              border: '1px solid var(--nx-border)',
                             }}
                           />
                           <span
                             title={`Acento: ${palette.accent}`}
                             style={{
-                              width: 22,
-                              height: 16,
-                              borderRadius: 4,
+                              width: 14,
+                              height: 14,
+                              borderRadius: 3,
                               background: palette.accent,
-                              border: '1px solid #444',
-                            }}
-                          />
-                          <span
-                            title={`Texto: ${palette.text}`}
-                            style={{
-                              width: 22,
-                              height: 16,
-                              borderRadius: 4,
-                              background: palette.text,
-                              border: '1px solid #444',
                             }}
                           />
                         </div>
-                        <span className="sr-only">
-                          Paleta: Fundo {palette.bg}, Superfície {palette.surface}, Acento{' '}
-                          {palette.accent}.
-                        </span>
                       </div>
                     );
                   })}
@@ -839,91 +806,6 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
           </div>
         );
       })}
-
-      {/* Seção Expansível: Personalização Avançada (Eliminando Botões Redundantes Soltos) */}
-      <div
-        style={{
-          border: '1px dashed var(--nx-border)',
-          borderRadius: 8,
-          background: 'var(--nx-bg-elevated)',
-          overflow: 'hidden',
-          marginTop: 4,
-        }}
-      >
-        <button
-          type="button"
-          aria-expanded={showAdvanced}
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          style={{
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '10px 14px',
-            border: 0,
-            background: 'transparent',
-            color: 'var(--nx-muted)',
-            cursor: 'pointer',
-            fontSize: 12,
-            fontWeight: 600,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <Sliders size={14} />
-            <span>Ajustes Avançados / Sobrescrever Esquema e Acento Manualmente</span>
-          </div>
-          {showAdvanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </button>
-
-        {showAdvanced && (
-          <div
-            style={{
-              padding: '12px 14px 14px',
-              borderTop: '1px dashed var(--nx-border)',
-              background: 'var(--nx-surface-2)',
-              display: 'grid',
-              gap: 12,
-            }}
-          >
-            <div style={{ fontSize: 11.5, color: 'var(--nx-subtle)', lineHeight: 1.5 }}>
-              Estes controles manuais sobrescrevem a paleta do preset selecionado. Ao escolher um
-              novo preset no Accordion, as cores voltam a ser restauradas automaticamente.
-            </div>
-            <div style={{ display: 'grid', gap: 6 }}>
-              <label style={{ fontSize: 12, color: 'var(--nx-muted)' }}>
-                Esquema de cores manual
-              </label>
-              <Segmented
-                ariaLabel={t('settings.colorScheme')}
-                value={theme.scheme}
-                onChange={(value) => theme.setScheme(value as ThemeScheme)}
-                options={[
-                  { value: 'system', label: t('settings.system') },
-                  { value: 'dark', label: t('settings.dark') },
-                  { value: 'light', label: t('settings.light') },
-                  { value: 'high-contrast', label: t('settings.highContrast') },
-                ]}
-              />
-            </div>
-            <div style={{ display: 'grid', gap: 6 }}>
-              <label style={{ fontSize: 12, color: 'var(--nx-muted)' }}>
-                Cor de destaque manual
-              </label>
-              <Segmented
-                ariaLabel={t('settings.accent')}
-                value={theme.accent}
-                onChange={(value) => theme.setAccent(value as ThemeAccent)}
-                options={[
-                  { value: 'purple', label: t('settings.purple') },
-                  { value: 'blue', label: t('settings.blue') },
-                  { value: 'cyan', label: t('settings.cyan') },
-                  { value: 'neutral', label: t('settings.neutral') },
-                ]}
-              />
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 };

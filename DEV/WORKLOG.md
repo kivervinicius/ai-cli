@@ -97,6 +97,25 @@
      - `ThemeProvider.tsx` agora remove explicitamente todas as variáveis de temas anteriores antes de injetar as novas variáveis, garantindo fidelidade cromática estrita sem contaminação residual entre trocas de preset.
   5. **Suporte a Porta Efêmera no CLI Go**:
      - `internal/app/control_cmd.go`: alterada validação de porta de `p > 0` para `p >= 0`, viabilizando `--port 0` para alocação determinística de portas efêmeras pelo kernel em testes E2E.
+## 2026-09-05 — FIX: PORTAL CLICK HANDLERS, TASKBAR PATH HOVER TOOLTIP & SETTINGS REFINEMENTS
+
+- **Menu de Criação (+ Criar)**:
+  - **Sintoma**: As 3 ações (*Novo Agente*, *Nova Sessão IA*, *Terminal do Projeto*) não respondiam ao clique.
+  - **Causa Raiz**: O listener global de `pointerdown` em modo captura no `ProjectCreateMenu.tsx` tratava o clique no portal (renderizado no `document.body`) como um clique fora do elemento raiz, disparando `setOpen(false)` e desmontando os itens antes do evento `onClick` ser executado.
+  - **Correção**: Atualizado `onPointerDown` para verificar `(target as Element).closest?.('.nx-create-menu__panel')` e ignorar o fechamento precoce.
+- **Caminho da Pasta no Rodapé com Tooltip**:
+  - Removido o caminho duplicado do Topbar.
+  - Adicionado à barra de status / rodapé (`WorkspaceTaskbar.tsx`) com largura controlada (`maxWidth: '28vw'`), truncamento limpo com reticências (`overflow: hidden; text-overflow: ellipsis; white-space: nowrap`) e Tooltip completo com o caminho canônico do projeto ao passar o cursor.
+- **Limpeza do Topbar e Simplificação de Configurações**:
+  - Removido botão duplicado de Terminal avulso no Topbar.
+  - Removida a seção redundante de *Ajustes Avançados* em `SettingsSurface.tsx`, mantendo a seleção limpa e consistente de Presets de Tema.
+  - Reposicionado o botão contextual de **Redefinir layout** dentro do dropdown *Arranjar* (`WorkspaceRenderer.tsx`).
+- **Validação & Testes**:
+  - `bun run typecheck` 100% OK (0 erros).
+  - `bun run test` (Vitest): 51 arquivos de teste, 252/252 testes PASSANDO (100% verde).
+  - `make build && make install` executado com sucesso e binário atualizado em `/home/desenvolvedor/.local/bin/nexus`.
+  - Serviço `nexus web` reiniciado com as novas alterações.
+
 - **Validação Automatizada & Gates**:
   - **Vitest**: Adicionados testes de serialização, precedência de customização e validação de contraste WCAG AA/AAA (W3C relative luminance) para todos os 10 presets (`npm --prefix web test` — 51 arquivos, 249 testes PASS).
   - **Playwright E2E Determinístico**: Criado `web/scripts/e2e-hardening-verify.mjs` testando 6 resoluções (320x568, 390x844, 768x1024, 1024x768, 1280x800, 1440x900). Teste confirmou visibilidade sem colisão do botão Terminal e delta real de densidade compact vs comfortable.

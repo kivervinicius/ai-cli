@@ -64,6 +64,7 @@ web/package-lock.json
 !.yarn/releases/
 !.yarn/versions/
 yarn.lock
+yarn.lock
 
 # Ephemeral dated test/verification reports and gate status crumbs
 DEV/validation/FRONTEND_20*.md

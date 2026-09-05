@@ -50,9 +50,11 @@ export const ProjectCreateMenu: React.FC<ProjectCreateMenuProps> = ({
     compute();
     const onResize = () => compute();
     const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (rootRef.current?.contains(target)) return;
+      if ((target as Element).closest?.('.nx-create-menu__panel')) return;
+      setOpen(false);
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpen(false);

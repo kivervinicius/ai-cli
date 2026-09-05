@@ -8,7 +8,6 @@ import {
   Command,
   Menu,
   MoonStar,
-  TerminalSquare,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { IconButton } from '../design-system';
@@ -125,35 +124,6 @@ export const NexusShell: React.FC<{
                 </span>
                 <ChevronDown size={12} className="nx-project-chevron" />
               </button>
-
-              <span
-                className="nx-topbar__path"
-                title={project.canonical_path}
-                style={{
-                  maxWidth: '32vw',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {project.canonical_path}
-              </span>
-
-              {onProjectShell && (
-                <button
-                  type="button"
-                  data-testid="topbar-terminal-btn"
-                  className="nx-button nx-button--terminal"
-                  data-size="sm"
-                  onClick={onProjectShell}
-                  title={t('overview.projectShell', 'Terminal do Projeto')}
-                >
-                  <TerminalSquare size={13} />
-                  <span className="nx-topbar-terminal-label">
-                    {t('overview.projectShell', 'Terminal')}
-                  </span>
-                </button>
-              )}
 
               <ProjectCreateMenu
                 onNewAgent={onNewAgent}

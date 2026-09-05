@@ -114,29 +114,29 @@ async function main() {
     await page.waitForSelector('.nx-os-shell', { timeout: 10000 });
     await page.waitForTimeout(1000);
 
-    console.log('4. Testing Breakpoints and Terminal Button...');
+    console.log('4. Testing Breakpoints and Create Menu Button...');
     for (const vp of viewports) {
       await page.setViewportSize({ width: vp.width, height: vp.height });
       await page.waitForTimeout(400);
 
-      const terminalBtn = page.locator('[data-testid="topbar-terminal-btn"]');
-      const isVisible = await terminalBtn.isVisible();
-      assert.equal(isVisible, true, `Terminal button must be visible at ${vp.width}x${vp.height}`);
+      const createBtn = page.locator('[data-testid="topbar-create-menu-btn"]');
+      const isVisible = await createBtn.isVisible();
+      assert.equal(isVisible, true, `Create menu button must be visible at ${vp.width}x${vp.height}`);
 
-      const box = await terminalBtn.boundingBox();
-      assert.ok(box, `Terminal button must have bounding box at ${vp.width}px`);
-      assert.ok(box.width >= 30, `Terminal button width (${box.width}) must be >= 30 at ${vp.width}px`);
-      assert.ok(box.height >= 26, `Terminal button height (${box.height}) must be >= 26 at ${vp.width}px`);
+      const box = await createBtn.boundingBox();
+      assert.ok(box, `Create menu button must have bounding box at ${vp.width}px`);
+      assert.ok(box.width >= 30, `Create menu button width (${box.width}) must be >= 30 at ${vp.width}px`);
+      assert.ok(box.height >= 26, `Create menu button height (${box.height}) must be >= 26 at ${vp.width}px`);
 
       // Verifica ausência física de sobreposição (elementFromPoint)
       const elementAtPoint = await page.evaluate(
         ({ x, y }) => {
           const el = document.elementFromPoint(x, y);
-          return Boolean(el && el.closest('[data-testid="topbar-terminal-btn"]'));
+          return Boolean(el && el.closest('[data-testid="topbar-create-menu-btn"]'));
         },
         { x: box.x + box.width / 2, y: box.y + box.height / 2 }
       );
-      assert.equal(elementAtPoint, true, `Terminal button must be topmost element at ${vp.width}px`);
+      assert.equal(elementAtPoint, true, `Create menu button must be topmost element at ${vp.width}px`);
 
       const shotPath = path.join(screenshotDir, `e2e_bp_${vp.width}.png`);
       await page.screenshot({ path: shotPath });
