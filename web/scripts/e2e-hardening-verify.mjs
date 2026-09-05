@@ -122,18 +122,43 @@ async function main() {
       0,
       `critical/serious accessibility violations: ${seriousViolations.map((item) => item.id).join(', ')}`,
     );
-    console.log(`  ✓ Axe accessibility scan passed (${axeResults.violations.length} minor violations)`);
+    console.log(
+      `  ✓ Axe accessibility scan passed (${axeResults.violations.length} minor violations)`,
+    );
     await page.waitForTimeout(1000);
 
     console.log('4. Testing semantic global deep-links...');
     const updatesUrl = new URL('/updates', bootstrapUrl);
     await page.goto(updatesUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.locator('.nx-settings-tabs').waitFor({ state: 'visible', timeout: 10000 });
-    assert.equal(new URL(page.url()).pathname, '/updates', 'updates deep-link must remain canonical');
+    assert.equal(
+      new URL(page.url()).pathname,
+      '/updates',
+      'updates deep-link must remain canonical',
+    );
     const welcomeUrl = new URL('/welcome', bootstrapUrl);
     await page.goto(welcomeUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 15000 });
-    await page.locator('.nx-tour-layer, .nx-welcome-modal').first().waitFor({ state: 'visible', timeout: 10000 });
-    assert.equal(new URL(page.url()).pathname, '/welcome', 'welcome deep-link must remain canonical');
+    await page
+      .locator('.nx-tour-layer, .nx-welcome-modal')
+      .first()
+      .waitFor({ state: 'visible', timeout: 10000 });
+    assert.equal(
+      new URL(page.url()).pathname,
+      '/welcome',
+      'welcome deep-link must remain canonical',
+    );
+    await page.goBack({ waitUntil: 'domcontentloaded' });
+    assert.equal(
+      new URL(page.url()).pathname,
+      '/updates',
+      'browser back must restore previous semantic route',
+    );
+    await page.goForward({ waitUntil: 'domcontentloaded' });
+    assert.equal(
+      new URL(page.url()).pathname,
+      '/welcome',
+      'browser forward must restore deep-link',
+    );
     await page.goto(bootstrapUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForSelector('.nx-os-shell', { timeout: 10000 });
 
@@ -144,12 +169,22 @@ async function main() {
 
       const createBtn = page.locator('[data-testid="topbar-create-menu-btn"]').first();
       await createBtn.waitFor({ state: 'visible', timeout: 5000 });
-      assert.equal(await createBtn.isVisible(), true, `Create menu button must be visible at ${vp.width}x${vp.height}`);
+      assert.equal(
+        await createBtn.isVisible(),
+        true,
+        `Create menu button must be visible at ${vp.width}x${vp.height}`,
+      );
 
       const box = await createBtn.boundingBox();
       assert.ok(box, `Create menu button must have bounding box at ${vp.width}px`);
-      assert.ok(box.width >= 30, `Create menu button width (${box.width}) must be >= 30 at ${vp.width}px`);
-      assert.ok(box.height >= 26, `Create menu button height (${box.height}) must be >= 26 at ${vp.width}px`);
+      assert.ok(
+        box.width >= 30,
+        `Create menu button width (${box.width}) must be >= 30 at ${vp.width}px`,
+      );
+      assert.ok(
+        box.height >= 26,
+        `Create menu button height (${box.height}) must be >= 26 at ${vp.width}px`,
+      );
 
       // Verifica ausência física de sobreposição (elementFromPoint)
       const elementAtPoint = await page.evaluate(
@@ -157,13 +192,19 @@ async function main() {
           const el = document.elementFromPoint(x, y);
           return Boolean(el && el.closest('[data-testid="topbar-create-menu-btn"]'));
         },
-        { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+        { x: box.x + box.width / 2, y: box.y + box.height / 2 },
       );
-      assert.equal(elementAtPoint, true, `Create menu button must be topmost element at ${vp.width}px`);
+      assert.equal(
+        elementAtPoint,
+        true,
+        `Create menu button must be topmost element at ${vp.width}px`,
+      );
 
       const shotPath = path.join(screenshotDir, `e2e_bp_${vp.width}.png`);
       await page.screenshot({ path: shotPath });
-      console.log(`  ✓ Breakpoint ${vp.width}x${vp.height} verified (Zero obstruction, shot: ${shotPath})`);
+      console.log(
+        `  ✓ Breakpoint ${vp.width}x${vp.height} verified (Zero obstruction, shot: ${shotPath})`,
+      );
     }
 
     console.log('6. Testing Settings Surface, Accordion WAI-ARIA and Density Delta...');
@@ -183,16 +224,24 @@ async function main() {
     await page.waitForTimeout(500);
 
     const settingsTabs = page.locator('.nx-settings-tabs [role="tab"]');
-    assert.ok(await settingsTabs.count() >= 5, 'Settings must expose all five semantic tabs');
-    for (let i = 0; i < await settingsTabs.count(); i += 1) {
+    assert.ok((await settingsTabs.count()) >= 5, 'Settings must expose all five semantic tabs');
+    for (let i = 0; i < (await settingsTabs.count()); i += 1) {
       const tab = settingsTabs.nth(i);
       assert.ok(await tab.getAttribute('aria-controls'), `settings tab ${i} must control a panel`);
       assert.ok(await tab.getAttribute('id'), `settings tab ${i} must have a stable id`);
     }
     await settingsTabs.first().focus();
-    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('role')), 'tab', 'keyboard focus must land on a settings tab');
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.getAttribute('role')),
+      'tab',
+      'keyboard focus must land on a settings tab',
+    );
     await page.keyboard.press('ArrowRight');
-    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('role')), 'tab', 'arrow navigation must remain within settings tabs');
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.getAttribute('role')),
+      'tab',
+      'arrow navigation must remain within settings tabs',
+    );
     await settingsTabs.first().click();
     await page.waitForTimeout(300);
 
@@ -200,19 +249,28 @@ async function main() {
     const accordionHeader = page.locator('button[id^="theme-cat-hdr-"]').first();
     await accordionHeader.waitFor({ state: 'visible', timeout: 15000 });
     const ariaExpanded = await accordionHeader.getAttribute('aria-expanded');
-    assert.ok(ariaExpanded === 'true' || ariaExpanded === 'false', 'aria-expanded must be boolean string');
+    assert.ok(
+      ariaExpanded === 'true' || ariaExpanded === 'false',
+      'aria-expanded must be boolean string',
+    );
 
     // Validação dos Radios com Swatches
     const themeRadio = page.locator('div[role="radio"]').first();
     await themeRadio.waitFor({ state: 'visible', timeout: 5000 });
     assert.equal(await themeRadio.isVisible(), true, 'Theme radio must be visible');
-    const hasSwatches = await themeRadio.locator('.nx-theme-palette, span[title^="Fundo:"]').count();
+    const hasSwatches = await themeRadio
+      .locator('.nx-theme-palette, span[title^="Fundo:"]')
+      .count();
     assert.ok(hasSwatches > 0, 'Theme radio must display color palette swatches');
 
     // Validação Quantitativa de Densidade (Compact vs Comfortable)
     const card = page.locator('.nx-settings-card').first();
-    const densityCompBtn = page.locator('button:has-text("Compacta"), button:has-text("Compact")').first();
-    const densityComfBtn = page.locator('button:has-text("Confortável"), button:has-text("Comfortable")').first();
+    const densityCompBtn = page
+      .locator('button:has-text("Compacta"), button:has-text("Compact")')
+      .first();
+    const densityComfBtn = page
+      .locator('button:has-text("Confortável"), button:has-text("Comfortable")')
+      .first();
 
     await settingsTabs.nth(1).click();
     await densityComfBtn.waitFor({ state: 'visible', timeout: 5000 });
@@ -224,8 +282,13 @@ async function main() {
     await page.waitForTimeout(300);
     const boxComp = await card.boundingBox();
     assert.ok(boxComf && boxComp, 'density cards must have measurable bounds');
-    console.log(`  Measured Card Height - Comfortable: ${boxComf.height.toFixed(1)}px, Compact: ${boxComp.height.toFixed(1)}px`);
-    assert.ok(boxComf.height > boxComp.height, 'Comfortable card height must be strictly greater than Compact');
+    console.log(
+      `  Measured Card Height - Comfortable: ${boxComf.height.toFixed(1)}px, Compact: ${boxComp.height.toFixed(1)}px`,
+    );
+    assert.ok(
+      boxComf.height > boxComp.height,
+      'Comfortable card height must be strictly greater than Compact',
+    );
 
     const settingsShot = path.join(screenshotDir, 'e2e_settings_accordion.png');
     await page.screenshot({ path: settingsShot });
