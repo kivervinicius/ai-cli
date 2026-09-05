@@ -54,10 +54,8 @@ func BuildQuotaView(snap model.UsageSnapshot, account, plan string) QuotaView {
 		}
 
 		label := WindowLabel(w.Kind)
-		if multiGroup && gKey != "" {
-			// When multiple groups, prefix label with group context.
-			// The group name is shown as a header, so label stays as-is.
-		}
+		_ = multiGroup
+		_ = gKey
 
 		bar := RenderBarWithPercent(remaining, string(snap.Status), 10)
 

@@ -289,7 +289,7 @@ func (n *Nexus) PreflightFlowStrict(ctx context.Context, planID string, autonomo
 	return n.strictAdmissionForPlan(ctx, *plan, report, autonomous)
 }
 
-func (n *Nexus) strictAdmissionForPlan(ctx context.Context, plan store.WorkPlan, report *FlowPreflightReport, autonomous bool) (*FlowPreflightReport, error) {
+func (n *Nexus) strictAdmissionForPlan(_ context.Context, plan store.WorkPlan, report *FlowPreflightReport, autonomous bool) (*FlowPreflightReport, error) {
 	if err := validateFlowExecutionContract(plan); err != nil {
 		report.Ready = false
 		report.Checks = append(report.Checks, FlowPreflightCheck{Key: "execution_contract", Label: "Contrato de Execução", Status: "FAIL", Summary: err.Error()})

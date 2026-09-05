@@ -349,6 +349,12 @@ func (s *Server) routeProject(h *NexusHandler) http.HandlerFunc {
 			} else {
 				h.handleAgentCreate(w, r)
 			}
+		case strings.HasSuffix(r.URL.Path, "/missions"):
+			if r.Method == http.MethodGet {
+				h.handleMissionsList(w, r)
+			} else {
+				h.handleMissionCreate(w, r)
+			}
 		case strings.HasSuffix(r.URL.Path, "/plans"):
 			h.handleProjectPlans(w, r)
 		case strings.HasSuffix(r.URL.Path, "/composer-sessions"):

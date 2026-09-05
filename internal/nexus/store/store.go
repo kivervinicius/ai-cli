@@ -222,54 +222,6 @@ func hasColumns(cols map[string]bool, required []string) bool {
 	return true
 }
 
-func tableContractValid(tx *sql.Tx, table string) bool {
-	rows, err := tx.Query(`PRAGMA foreign_key_list(` + quoteIdent(table) + `)`)
-	if err != nil {
-		return false
-	}
-	defer rows.Close()
-	var id, seq int
-	var tbl, from, to, onUpdate, onDelete, match sql.NullString
-	hasRunFK := false
-	for rows.Next() {
-		if rows.Scan(&id, &seq, &tbl, &from, &to, &onUpdate, &onDelete, &match) == nil && tbl.String == "mission_runs" && from.String == "run_id" {
-			hasRunFK = true
-		}
-	}
-	if !hasRunFK {
-		return false
-	}
-	idxRows, err := tx.Query(`PRAGMA index_list(` + quoteIdent(table) + `)`)
-	if err != nil {
-		return false
-	}
-	defer idxRows.Close()
-	var seqNo int
-	var name string
-	var unique, origin, partial int
-	for idxRows.Next() {
-		if idxRows.Scan(&seqNo, &name, &unique, &origin, &partial) != nil || unique == 0 {
-			continue
-		}
-		info, e := tx.Query(`PRAGMA index_info(` + quoteIdent(name) + `)`)
-		if e != nil {
-			continue
-		}
-		seen := map[string]bool{}
-		var s, cid int
-		var col string
-		for info.Next() {
-			if info.Scan(&s, &cid, &col) == nil {
-				seen[col] = true
-			}
-		}
-		info.Close()
-		if seen["run_id"] && seen["step_id"] {
-			return true
-		}
-	}
-	return false
-}
 func quoteIdent(v string) string { return `"` + strings.ReplaceAll(v, `"`, `""`) + `"` }
 func createFlowEvidenceTable(tx *sql.Tx, table string) error {
 	stmt := `CREATE TABLE IF NOT EXISTS ` + quoteIdent(table) + ` (id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES mission_runs(id) ON DELETE CASCADE, step_id TEXT NOT NULL, `

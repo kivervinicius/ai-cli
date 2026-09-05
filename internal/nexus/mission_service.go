@@ -92,27 +92,27 @@ func validateFlowExecutionContract(plan store.WorkPlan) error {
 			case "": // legacy WorkPlan compatibility
 			case string(FlowAssignmentExisting):
 				if strings.TrimSpace(pkg.AgentAllocation) == "" {
-					return fmt.Errorf("Flow Step %s uses EXISTING assignment without AgentID", pkg.ID)
+					return fmt.Errorf("flow step %s uses EXISTING assignment without agent ID", pkg.ID)
 				}
 			case string(FlowAssignmentCreate):
 				if strings.TrimSpace(pkg.AgentAllocation) != "" {
-					return fmt.Errorf("Flow Step %s uses CREATE assignment with an existing AgentID", pkg.ID)
+					return fmt.Errorf("flow step %s uses CREATE assignment with an existing agent ID", pkg.ID)
 				}
 			case string(FlowAssignmentAuto):
 				if strings.TrimSpace(pkg.AgentAllocation) != "" {
-					return fmt.Errorf("Flow Step %s uses AUTO assignment with a fixed AgentID", pkg.ID)
+					return fmt.Errorf("flow step %s uses AUTO assignment with a fixed agent ID", pkg.ID)
 				}
 			default:
-				return fmt.Errorf("Flow Step %s has unsupported assignment strategy %q", pkg.ID, pkg.AssignmentStrategy)
+				return fmt.Errorf("flow step %s has unsupported assignment strategy %q", pkg.ID, pkg.AssignmentStrategy)
 			}
 			policy := strings.ToUpper(strings.TrimSpace(pkg.ResourcePolicy))
 			switch policy {
 			case "", string(PolicyBalanced), string(PolicyPreserveQuota), string(PolicyPreferProvider), string(PolicyManual):
 			default:
-				return fmt.Errorf("Flow Step %s has unsupported resource policy %q", pkg.ID, pkg.ResourcePolicy)
+				return fmt.Errorf("flow step %s has unsupported resource policy %q", pkg.ID, pkg.ResourcePolicy)
 			}
 			if policy == string(PolicyManual) && strings.TrimSpace(pkg.Provider) == "" && strings.TrimSpace(pkg.Profile) == "" {
-				return fmt.Errorf("Flow Step %s MANUAL resource policy requires provider and/or profile restriction", pkg.ID)
+				return fmt.Errorf("flow step %s MANUAL resource policy requires provider and/or profile restriction", pkg.ID)
 			}
 		}
 	}

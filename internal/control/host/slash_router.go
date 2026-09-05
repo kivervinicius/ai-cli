@@ -305,24 +305,6 @@ func truncateStr(s string, max int) string {
 	return s
 }
 
-func formatUsageSummary(snap model.UsageSnapshot) string {
-	switch snap.Status {
-	case model.UsageLive, model.UsageCached:
-		for _, w := range snap.Windows {
-			if w.RemainingPercent != nil {
-				return fmt.Sprintf("%.0f%% remaining (%s)", *w.RemainingPercent, snap.Status)
-			}
-		}
-		return string(snap.Status)
-	case model.UsageRateLimited:
-		return "RATE_LIMITED (429)"
-	case model.UsageUnsupported:
-		return "UNSUPPORTED"
-	default:
-		return "UNKNOWN"
-	}
-}
-
 // formatQuotaViewSummary returns a compact one-line summary from a QuotaView.
 func formatQuotaViewSummary(qv quota.QuotaView) string {
 	status := qv.Status

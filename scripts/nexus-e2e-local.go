@@ -357,7 +357,7 @@ func verifySafeApply(ctx context.Context, api *apiClient, bootstrap *url.URL, ja
 		return fmt.Errorf("read config for Safe Apply: %w", err)
 	}
 	if current.Config == nil {
-		return fmt.Errorf("Safe Apply current config is empty")
+		return fmt.Errorf("safe apply current config is empty")
 	}
 	environment, _ := current.Config["environment"].(map[string]any)
 	if environment == nil {
@@ -376,7 +376,7 @@ func verifySafeApply(ctx context.Context, api *apiClient, bootstrap *url.URL, ja
 		return fmt.Errorf("preview Safe Apply: %w", err)
 	}
 	if preview.Impact.Mode != "RESTART_RUNTIME" || !preview.Impact.RequiresRestart {
-		return fmt.Errorf("Safe Apply preview did not require restart: mode=%q restart=%t", preview.Impact.Mode, preview.Impact.RequiresRestart)
+		return fmt.Errorf("safe apply preview did not require restart: mode=%q restart=%t", preview.Impact.Mode, preview.Impact.RequiresRestart)
 	}
 	if err := api.do(ctx, http.MethodPost, "/api/v1/agents/"+url.PathEscape(agentID)+"/config/apply", current.Config, nil); err != nil {
 		return fmt.Errorf("apply Safe Apply: %w", err)
@@ -395,7 +395,7 @@ func verifySafeApply(ctx context.Context, api *apiClient, bootstrap *url.URL, ja
 		return fmt.Errorf("read Safe Apply generation: %w", err)
 	}
 	if detail.Agent.ID != agentID || len(detail.Generations) < 2 || detail.Generations[0].RuntimeID == "" || detail.Generations[0].RuntimeID == previousRuntimeID || detail.Generations[0].AgentID != agentID {
-		return fmt.Errorf("Safe Apply did not create a new runtime generation for the same Agent")
+		return fmt.Errorf("safe apply did not create a new runtime generation for the same agent")
 	}
 
 	wsScheme := "ws"
@@ -415,7 +415,7 @@ func verifySafeApply(ctx context.Context, api *apiClient, bootstrap *url.URL, ja
 	}
 	ws, _, err := (&websocket.Dialer{HandshakeTimeout: 10 * time.Second}).DialContext(ctx, wsURL, header)
 	if err != nil {
-		return fmt.Errorf("Safe Apply terminal reconnect: %w", err)
+		return fmt.Errorf("safe apply terminal reconnect: %w", err)
 	}
 	defer ws.Close()
 	deadline := time.Now().Add(45 * time.Second)
@@ -448,7 +448,7 @@ func verifySafeApply(ctx context.Context, api *apiClient, bootstrap *url.URL, ja
 			}
 		}
 	}
-	return fmt.Errorf("Safe Apply provider marker %q was not received; sanitized transcript: %q", providerAnswerMarker, transcriptExcerpt(sanitizeTranscript(transcript.String())))
+	return fmt.Errorf("safe apply provider marker %q was not received; sanitized transcript: %q", providerAnswerMarker, transcriptExcerpt(sanitizeTranscript(transcript.String())))
 }
 
 func transcriptExcerpt(transcript string) string {

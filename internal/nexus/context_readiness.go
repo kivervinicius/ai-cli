@@ -295,7 +295,7 @@ func (n *Nexus) ComposerContextData(projectID string) (map[string]any, error) {
 
 func (r ContextReadiness) ValidateComposerReady() error {
 	if r.State != ContextReady {
-		return fmt.Errorf("Composer planning requires READY context, current state is %s", r.State)
+		return fmt.Errorf("composer planning requires READY context, current state is %s", r.State)
 	}
 	return nil
 }

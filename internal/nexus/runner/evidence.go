@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -18,7 +17,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/ids"
 )
 
-var ErrMissingContextCapsule = errors.New("Flow Step context capsule is missing")
+var ErrMissingContextCapsule = errors.New("flow step context capsule is missing")
 var ErrEvidenceRepositoryUnavailable = errors.New("mission evidence repository is unavailable")
 
 // ErrInfrastructureFailure marks failures that must not consume implementation
@@ -364,14 +363,6 @@ func (r *MissionRunner) saveRun(ctx context.Context, run *MissionRun) error {
 		}
 	}
 	return r.repo.SaveRun(ctx, run)
-}
-
-func cloneCapsuleJSON(capsule *ContextCapsule) string {
-	if capsule == nil {
-		return ""
-	}
-	b, _ := json.Marshal(capsule)
-	return string(b)
 }
 
 // RenderContextCapsule produces the bounded prompt section supplied to the

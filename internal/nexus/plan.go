@@ -195,27 +195,6 @@ func (n *Nexus) compilePackagePromptFromPlan(ctx context.Context, plan *store.Wo
 	return compileTargetPackagePrompt(ctx, plan, targetPkg, validatedSkills)
 }
 
-func (n *Nexus) validateMaestroGates(ctx context.Context, gates []string) []string {
-	if len(gates) == 0 {
-		return nil
-	}
-	available, err := NewMaestroClient().ListSkills(ctx)
-	if err != nil {
-		return nil
-	}
-	allowed := make(map[string]struct{}, len(available))
-	for _, skill := range available {
-		allowed[skill] = struct{}{}
-	}
-	var out []string
-	for _, skill := range gates {
-		if _, ok := allowed[skill]; ok {
-			out = append(out, skill)
-		}
-	}
-	return out
-}
-
 func compileTargetPackagePrompt(ctx context.Context, plan *store.WorkPlan, targetPkg *store.WorkPackage, validatedSkills []string) (*intelligence.PromptCompilationResult, error) {
 	engine := intelligence.NewNexusEngine(nil)
 	outline := intelligence.WorkPackageOutline{

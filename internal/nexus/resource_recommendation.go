@@ -231,7 +231,7 @@ func evaluateCandidate(acc ProviderAccount, req TaskRequirements, policy Schedul
 	switch acc.Health {
 	case "healthy":
 		healthScore = 20.0
-		c.Pros = append(c.Pros, "Saúde operacional excelente")
+		c.Pros = append(c.Pros, "Saúde de operação excelente")
 	case "degraded":
 		healthScore = 5.0
 		c.Cons = append(c.Cons, "Saúde degradada")

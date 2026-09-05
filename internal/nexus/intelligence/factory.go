@@ -1,6 +1,7 @@
 package intelligence
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -20,7 +21,7 @@ func ProviderFromConfig(cfg coreconfig.IntelligenceConfig) (IntelligenceProvider
 			return nil, err
 		}
 		p := NewOpenAIProvider(cfg.BaseURL, key, cfg.Model)
-		if !p.Available(nil) {
+		if !p.Available(context.TODO()) {
 			return nil, ErrIntelligenceUnavailable
 		}
 		return p, nil

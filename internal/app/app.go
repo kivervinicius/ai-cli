@@ -676,7 +676,7 @@ func removeCmd(args []string) error {
 		s, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 		s = strings.ToLower(strings.TrimSpace(s))
 		if s != "y" && s != "yes" {
-			fmt.Println("Cancelled.")
+			fmt.Println("Canceled.")
 			return nil
 		}
 	}

@@ -167,7 +167,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.MouseMsg:
-		if msg.Type == tea.MouseLeft && m.modalMode == ModalNone {
+		if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress && m.modalMode == ModalNone {
 			if msg.Y >= 2 && msg.Y <= 11 {
 				if msg.X < 26 {
 					m.activePanel = PanelProviders
@@ -716,7 +716,7 @@ func (m Model) View() string {
 	if m.isSearching {
 		sb.WriteString(" Busca rápida: " + m.filterQuery + "█\n")
 	} else {
-		controls := subStyle.Render(" [↑/↓] Navegar  [←/→/Tab] Alternar Caixa  [1-9] Disparo Rápido  [/] Buscar  [q/Esc] Sair")
+		controls := subStyle.Render(" [↑/↓] Navegar  [←/→/Tab] Trocar Caixa  [1-9] Disparo Rápido  [/] Buscar  [q/Esc] Sair")
 		sb.WriteString(" " + controls)
 	}
 

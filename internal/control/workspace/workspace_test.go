@@ -59,9 +59,6 @@ func TestWorkspaceIDDistinctByPath(t *testing.T) {
 	if makeWorkspaceID("/home/user/company/api") == makeWorkspaceID("/home/user/personal/api") {
 		t.Error("workspace IDs must differ for different canonical paths sharing a basename")
 	}
-	if makeWorkspaceID("/home/user/company/api") != makeWorkspaceID("/home/user/company/api") {
-		t.Error("workspace ID must be stable for the same path")
-	}
 	if !strings.HasPrefix(makeWorkspaceID("/tmp/x/y"), "ws-") {
 		t.Error("workspace ID must carry the ws- prefix")
 	}

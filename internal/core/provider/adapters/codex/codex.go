@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/kivervinicius/ai-cli/internal/core/classifier"
 	"github.com/kivervinicius/ai-cli/internal/core/config"
@@ -20,6 +21,14 @@ import (
 )
 
 type Adapter struct{}
+
+func titlePlan(value string) string {
+	value = strings.ToLower(value)
+	for i, r := range value {
+		return string(unicode.ToUpper(r)) + value[i+len(string(r)):]
+	}
+	return value
+}
 
 func New() *Adapter {
 	return &Adapter{}
@@ -221,7 +230,7 @@ func (a *Adapter) InspectAuth(ctx context.Context, p model.Profile) model.Accoun
 					if claims.OpenAIAuth.PlanType == "pro" {
 						info.Plan = "ChatGPT Pro"
 					} else {
-						info.Plan = "ChatGPT " + strings.Title(strings.ToLower(claims.OpenAIAuth.PlanType))
+						info.Plan = "ChatGPT " + titlePlan(claims.OpenAIAuth.PlanType)
 					}
 					if claims.OpenAIAuth.ActiveUntil != "" {
 						if t, err := time.Parse(time.RFC3339, claims.OpenAIAuth.ActiveUntil); err == nil {

@@ -24,10 +24,9 @@ import (
 )
 
 type loadClient struct {
-	http  *http.Client
-	base  string
-	csrf  string
-	write sync.Mutex
+	http *http.Client
+	base string
+	csrf string
 }
 
 type projectResponse struct {

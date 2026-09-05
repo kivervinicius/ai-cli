@@ -10,7 +10,7 @@ import (
 const (
 	ClarificationPending   = "PENDING"
 	ClarificationResolved  = "RESOLVED"
-	ClarificationCancelled = "CANCELLED"
+	ClarificationCancelled = "CANCELED"
 )
 
 // Clarification persists an Intelligence ambiguity checkpoint without importing

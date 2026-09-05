@@ -141,7 +141,7 @@ const (
 	MissionPaused    = "PAUSED"
 	MissionCompleted = "COMPLETED"
 	MissionFailed    = "FAILED"
-	MissionCancelled = "CANCELLED"
+	MissionCancelled = "CANCELED"
 )
 
 // MissionTask lifecycle states.

@@ -81,7 +81,7 @@ var (
 
 	workingPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)thinking\.\.\.|pensando\.\.\.`),
-		regexp.MustCompile(`(?i)running command|executando comando`),
+		regexp.MustCompile(`(?i)running command|executando ação`),
 		regexp.MustCompile(`(?i)analyzing|analisando`),
 		regexp.MustCompile(`(?i)generating|gerando`),
 		regexp.MustCompile(`(?i)searching|pesquisando`),

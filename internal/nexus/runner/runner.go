@@ -86,13 +86,6 @@ func (r *MissionRunner) StartMissionRun(ctx context.Context, plan PlanSpec, work
 	return run, nil
 }
 
-func chooseAgent(packageAgent, fallback string) string {
-	if packageAgent != "" {
-		return packageAgent
-	}
-	return fallback
-}
-
 func (r *MissionRunner) GetRun(ctx context.Context, id string) (*MissionRun, error) {
 	return r.repo.GetRun(ctx, id)
 }
@@ -333,11 +326,11 @@ func (r *MissionRunner) packageFailureFrom(ctx context.Context, run *MissionRun,
 	if terminalErr := r.markRemediation(run, pkg, retryFrom, err.Error()); terminalErr != nil {
 		run.UpdatedAt = time.Now().UTC()
 		_ = r.saveRun(ctx, run)
-		return run, false, terminalErr
+		return run, pkg.State == StateFailed, terminalErr
 	}
 	run.UpdatedAt = time.Now().UTC()
 	_ = r.saveRun(ctx, run)
-	return run, false, err
+	return run, pkg.State == StateFailed, err
 }
 
 func (r *MissionRunner) markRemediation(run *MissionRun, pkg *PackageRun, retryFrom State, failure string) error {
@@ -498,7 +491,7 @@ func (r *MissionRunner) executeOne(ctx context.Context, run *MissionRun, pkg *Pa
 	outcome, err := r.executor.Execute(ctx, run, pkg, pkg.CompiledPrompt)
 	if err != nil {
 		finishDispatch(pkg, DispatchFailed)
-		return fmt.Errorf("Execution failed: %w", err)
+		return fmt.Errorf("execution failed: %w", err)
 	}
 	if outcome.RuntimeID == "" {
 		finishDispatch(pkg, DispatchFailed)
@@ -553,7 +546,6 @@ func (r *MissionRunner) executeParallelGroup(ctx context.Context, run *MissionRu
 	}
 	results := make(chan result, len(indexes))
 	for _, idx := range indexes {
-
 		runCopy := *run
 		runCopy.PackageRuns = append([]PackageRun(nil), run.PackageRuns...)
 		go func() {

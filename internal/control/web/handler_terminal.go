@@ -356,10 +356,8 @@ func sendAttachedCommand(conn interface{ Write([]byte) (int, error) }, command p
 	return err
 }
 
-func sendAttachedCommandWithRetry(conn interface{ Write([]byte) (int, error) }, attempts int) error {
-	if attempts < 1 {
-		attempts = 1
-	}
+func sendAttachedCommandWithRetry(conn interface{ Write([]byte) (int, error) }, _ int) error {
+	const attempts = 3
 	var err error
 	for i := 0; i < attempts; i++ {
 		err = sendAttachedCommand(conn, protocol.CmdLeaseAcquire, nil)

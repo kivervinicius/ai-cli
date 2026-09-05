@@ -29,11 +29,6 @@ var (
 			Foreground(lipgloss.Color("#9CA3AF")).
 			Bold(true)
 
-	borderStyle = lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#4B5563")).
-			Padding(0, 1)
-
 	activeBorderStyle = lipgloss.NewStyle().
 				BorderStyle(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("#8B5CF6")).
