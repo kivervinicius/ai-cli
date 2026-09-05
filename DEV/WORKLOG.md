@@ -1727,3 +1727,16 @@ build` PASS e Web reiniciado em HTTP 200.
   --json` e verificação do checksum passaram.
 - Escopo do artefato: Linux amd64, uso local/loopback; Windows/macOS continuam
   fora da matriz suportada até haver execução nativa.
+
+## 2026-09-05 — IAPro Nexus Product Finalization (Waves 1–8)
+
+- Executada a campanha completa de finalização do produto com TDD, isolamento em worktree e zero-push:
+  - **Wave 1 (Routing)**: Navegação canônica com `react-router-dom` v7, deep linking, popout isolation.
+  - **Wave 2 (Layout v4)**: Persistência SQLite autoritativa com monotonic revision e `409 Conflict` em corrida.
+  - **Wave 3 (Execution Admission & Security)**: Preflight read-only, fail-closed admission e isolamento estrito de git worktree para execuções autônomas.
+  - **Wave 4 (Activity & Attention)**: Hook de gravação persistente no event bus para `events_metadata` do SQLite e radar global de atenção contextual.
+  - **Wave 5 (Playwright E2E & A11y)**: Testes automatizados em 6 breakpoints responsivos (`320x568` a `1440x900`), validação de `elementFromPoint` sem obstrução visual, acordeom WAI-ARIA, seletores de tema acessíveis e delta quantitativo de densidade.
+  - **Wave 6 (Cross-Platform Matrix & Packaging)**: Configuração e verificação de compilação cruzada Linux/Darwin/Windows (amd64/arm64), pacotes nFPM `.deb`/`.rpm`, testes de sintaxe e nomes de artefatos.
+  - **Wave 7 (Signed Updates & Rollback)**: Verificação de manifestos Ed25519 sobre bytes exatos, validação de SHA-256, backup atômico, recibos persistentes em JSON e rollback testado.
+  - **Wave 8 (North Star & Evidence Report)**: Execução de todos os gates de qualidade (`quality:full`, `test:e2e`, `test:a11y`, `test:visual`, `go test -race ./internal/...`, `go vet`, `git diff --check`) e publicação de specs, plans e relatório final (`CONDITIONAL_GO`).
+
