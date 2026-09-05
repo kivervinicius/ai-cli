@@ -28,7 +28,7 @@ const sassPlugin = {
     buildInstance.onLoad({ filter: /\.scss$/ }, (args) => {
       if (args.path.includes('.module.')) return;
       const result = sass.compile(args.path);
-      collectedStyles.push(result.css);
+      collectedStyles.push({ path: args.path, css: result.css });
       return {
         contents: '',
         loader: 'js',
@@ -48,7 +48,7 @@ const sassPlugin = {
         return `.${scoped}`;
       });
 
-      collectedStyles.push(transformedCss);
+      collectedStyles.push({ path: args.path, css: transformedCss });
 
       return {
         contents: `export default ${JSON.stringify(classMap)};`,
@@ -78,7 +78,11 @@ await build({
 
 if (collectedStyles.length > 0) {
   const currentBundleCss = await readFile(resolve(distDir, 'bundle.css'), 'utf8');
-  await writeFile(resolve(distDir, 'bundle.css'), currentBundleCss + '\n' + collectedStyles.join('\n'));
+  const stableStyles = collectedStyles
+    .toSorted((left, right) => left.path.localeCompare(right.path))
+    .map((entry) => entry.css)
+    .join('\n');
+  await writeFile(resolve(distDir, 'bundle.css'), currentBundleCss + '\n' + stableStyles);
 }
 
 await cp(resolve(webDir, 'index.html'), resolve(distDir, 'index.html'));
