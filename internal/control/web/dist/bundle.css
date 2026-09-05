@@ -87,100 +87,16 @@ body {
   --nx-line-height-relaxed: 1.75;
 }
 
-.loadingContainer_407196 {
+.readinessActions_8f662e {
   display: grid;
-  place-items: center;
-  padding: 40px;
-}
-
-.runsList_407196 {
-  display: grid;
-  gap: 10px;
-}
-
-.runButton_407196 {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  background: transparent;
-  border: 0;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  padding: 4px;
-}
-.runButton_407196:focus-visible {
-  outline: none;
-  box-shadow: var(--nx-focus-ring);
-}
-
-.runInfo_407196 {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.runTitle_407196 {
-  display: inline-flex;
-  align-items: center;
   gap: 8px;
-  font-size: var(--nx-font-size-sm);
+  justify-items: start;
 }
 
-.runMeta_407196 {
+.readinessHint_8f662e {
   color: var(--nx-muted);
+  max-width: 560px;
   font-size: var(--nx-font-size-xs);
-}
-:root {
-  --nx-surface-0: var(--nx-bg);
-  --nx-surface-1: var(--nx-surface);
-  --nx-text-primary: var(--nx-text);
-  --nx-text-muted: var(--nx-muted);
-  --nx-border-subtle: var(--nx-border);
-  --nx-accent-subtle: var(--nx-accent-soft);
-  --nx-danger-border: var(--nx-danger);
-  --nx-danger-subtle: var(--nx-danger-soft);
-  --nx-radius-md: var(--nx-radius);
-  --nx-radius-xl: var(--nx-radius-lg);
-  --nx-radius-full: 999px;
-  --nx-space-2: 0.5rem;
-  --nx-space-3: 0.75rem;
-  --nx-space-4: 1rem;
-  --nx-focus-ring: 0 0 0 2px var(--nx-bg), 0 0 0 4px var(--nx-accent);
-}
-
-:root {
-  --nx-font-sans:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --nx-font-mono:
-    'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
-    monospace;
-  --nx-font-size-2xs: 10px;
-  --nx-font-size-xs: 11px;
-  --nx-font-size-sm: 12px;
-  --nx-font-size-base: 13px;
-  --nx-font-size-md: 14px;
-  --nx-font-size-lg: 16px;
-  --nx-font-size-xl: 18px;
-  --nx-font-size-2xl: 20px;
-  --nx-line-height-tight: 1.25;
-  --nx-line-height-normal: 1.5;
-  --nx-line-height-relaxed: 1.75;
-}
-
-.updateStatus_524f66 {
-  font-size: var(--nx-font-size-sm);
-}
-
-.updateWarning_524f66 {
-  color: var(--nx-warning);
-  font-weight: 600;
-}
-
-.updateSuccess_524f66 {
-  color: var(--nx-success);
 }
 .card_05e360 {
   grid-column: 1/-1;
@@ -284,16 +200,123 @@ body {
   --nx-line-height-relaxed: 1.75;
 }
 
-.readinessActions_8f662e {
-  display: grid;
-  gap: 8px;
-  justify-items: start;
+.notificationWrap_7c033d {
+  position: relative;
 }
 
-.readinessHint_8f662e {
+.attentionIndicator_7c033d {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--nx-radius-full);
+  background: var(--nx-warning);
+  box-shadow: 0 0 6px var(--nx-warning);
+  pointer-events: none;
+}
+:root {
+  --nx-surface-0: var(--nx-bg);
+  --nx-surface-1: var(--nx-surface);
+  --nx-text-primary: var(--nx-text);
+  --nx-text-muted: var(--nx-muted);
+  --nx-border-subtle: var(--nx-border);
+  --nx-accent-subtle: var(--nx-accent-soft);
+  --nx-danger-border: var(--nx-danger);
+  --nx-danger-subtle: var(--nx-danger-soft);
+  --nx-radius-md: var(--nx-radius);
+  --nx-radius-xl: var(--nx-radius-lg);
+  --nx-radius-full: 999px;
+  --nx-space-2: 0.5rem;
+  --nx-space-3: 0.75rem;
+  --nx-space-4: 1rem;
+  --nx-focus-ring: 0 0 0 2px var(--nx-bg), 0 0 0 4px var(--nx-accent);
+}
+
+:root {
+  --nx-font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --nx-font-mono:
+    'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  --nx-font-size-2xs: 10px;
+  --nx-font-size-xs: 11px;
+  --nx-font-size-sm: 12px;
+  --nx-font-size-base: 13px;
+  --nx-font-size-md: 14px;
+  --nx-font-size-lg: 16px;
+  --nx-font-size-xl: 18px;
+  --nx-font-size-2xl: 20px;
+  --nx-line-height-tight: 1.25;
+  --nx-line-height-normal: 1.5;
+  --nx-line-height-relaxed: 1.75;
+}
+
+.container_39d86d {
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--nx-surface-0);
+  color: var(--nx-text-soft);
+}
+
+.text_39d86d {
+  font-size: var(--nx-font-size-sm);
   color: var(--nx-muted);
-  max-width: 560px;
-  font-size: var(--nx-font-size-xs);
+}
+:root {
+  --nx-surface-0: var(--nx-bg);
+  --nx-surface-1: var(--nx-surface);
+  --nx-text-primary: var(--nx-text);
+  --nx-text-muted: var(--nx-muted);
+  --nx-border-subtle: var(--nx-border);
+  --nx-accent-subtle: var(--nx-accent-soft);
+  --nx-danger-border: var(--nx-danger);
+  --nx-danger-subtle: var(--nx-danger-soft);
+  --nx-radius-md: var(--nx-radius);
+  --nx-radius-xl: var(--nx-radius-lg);
+  --nx-radius-full: 999px;
+  --nx-space-2: 0.5rem;
+  --nx-space-3: 0.75rem;
+  --nx-space-4: 1rem;
+  --nx-focus-ring: 0 0 0 2px var(--nx-bg), 0 0 0 4px var(--nx-accent);
+}
+
+:root {
+  --nx-font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --nx-font-mono:
+    'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  --nx-font-size-2xs: 10px;
+  --nx-font-size-xs: 11px;
+  --nx-font-size-sm: 12px;
+  --nx-font-size-base: 13px;
+  --nx-font-size-md: 14px;
+  --nx-font-size-lg: 16px;
+  --nx-font-size-xl: 18px;
+  --nx-font-size-2xl: 20px;
+  --nx-line-height-tight: 1.25;
+  --nx-line-height-normal: 1.5;
+  --nx-line-height-relaxed: 1.75;
+}
+
+.updateStatus_524f66 {
+  font-size: var(--nx-font-size-sm);
+}
+
+.updateWarning_524f66 {
+  color: var(--nx-warning);
+  font-weight: 600;
+}
+
+.updateSuccess_524f66 {
+  color: var(--nx-success);
 }
 :root {
   --nx-surface-0: var(--nx-bg);
@@ -515,177 +538,6 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-}
-:root {
-  --nx-surface-0: var(--nx-bg);
-  --nx-surface-1: var(--nx-surface);
-  --nx-text-primary: var(--nx-text);
-  --nx-text-muted: var(--nx-muted);
-  --nx-border-subtle: var(--nx-border);
-  --nx-accent-subtle: var(--nx-accent-soft);
-  --nx-danger-border: var(--nx-danger);
-  --nx-danger-subtle: var(--nx-danger-soft);
-  --nx-radius-md: var(--nx-radius);
-  --nx-radius-xl: var(--nx-radius-lg);
-  --nx-radius-full: 999px;
-  --nx-space-2: 0.5rem;
-  --nx-space-3: 0.75rem;
-  --nx-space-4: 1rem;
-  --nx-focus-ring: 0 0 0 2px var(--nx-bg), 0 0 0 4px var(--nx-accent);
-}
-
-:root {
-  --nx-font-sans:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --nx-font-mono:
-    'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
-    monospace;
-  --nx-font-size-2xs: 10px;
-  --nx-font-size-xs: 11px;
-  --nx-font-size-sm: 12px;
-  --nx-font-size-base: 13px;
-  --nx-font-size-md: 14px;
-  --nx-font-size-lg: 16px;
-  --nx-font-size-xl: 18px;
-  --nx-font-size-2xl: 20px;
-  --nx-line-height-tight: 1.25;
-  --nx-line-height-normal: 1.5;
-  --nx-line-height-relaxed: 1.75;
-}
-
-.notificationWrap_7c033d {
-  position: relative;
-}
-
-.attentionIndicator_7c033d {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 7px;
-  height: 7px;
-  border-radius: var(--nx-radius-full);
-  background: var(--nx-warning);
-  box-shadow: 0 0 6px var(--nx-warning);
-  pointer-events: none;
-}
-:root {
-  --nx-surface-0: var(--nx-bg);
-  --nx-surface-1: var(--nx-surface);
-  --nx-text-primary: var(--nx-text);
-  --nx-text-muted: var(--nx-muted);
-  --nx-border-subtle: var(--nx-border);
-  --nx-accent-subtle: var(--nx-accent-soft);
-  --nx-danger-border: var(--nx-danger);
-  --nx-danger-subtle: var(--nx-danger-soft);
-  --nx-radius-md: var(--nx-radius);
-  --nx-radius-xl: var(--nx-radius-lg);
-  --nx-radius-full: 999px;
-  --nx-space-2: 0.5rem;
-  --nx-space-3: 0.75rem;
-  --nx-space-4: 1rem;
-  --nx-focus-ring: 0 0 0 2px var(--nx-bg), 0 0 0 4px var(--nx-accent);
-}
-
-:root {
-  --nx-font-sans:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --nx-font-mono:
-    'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
-    monospace;
-  --nx-font-size-2xs: 10px;
-  --nx-font-size-xs: 11px;
-  --nx-font-size-sm: 12px;
-  --nx-font-size-base: 13px;
-  --nx-font-size-md: 14px;
-  --nx-font-size-lg: 16px;
-  --nx-font-size-xl: 18px;
-  --nx-font-size-2xl: 20px;
-  --nx-line-height-tight: 1.25;
-  --nx-line-height-normal: 1.5;
-  --nx-line-height-relaxed: 1.75;
-}
-
-.container_39d86d {
-  width: 100%;
-  height: 100%;
-  min-height: 200px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  background: var(--nx-surface-0);
-  color: var(--nx-text-soft);
-}
-
-.text_39d86d {
-  font-size: var(--nx-font-size-sm);
-  color: var(--nx-muted);
-}
-:root {
-  --nx-surface-0: var(--nx-bg);
-  --nx-surface-1: var(--nx-surface);
-  --nx-text-primary: var(--nx-text);
-  --nx-text-muted: var(--nx-muted);
-  --nx-border-subtle: var(--nx-border);
-  --nx-accent-subtle: var(--nx-accent-soft);
-  --nx-danger-border: var(--nx-danger);
-  --nx-danger-subtle: var(--nx-danger-soft);
-  --nx-radius-md: var(--nx-radius);
-  --nx-radius-xl: var(--nx-radius-lg);
-  --nx-radius-full: 999px;
-  --nx-space-2: 0.5rem;
-  --nx-space-3: 0.75rem;
-  --nx-space-4: 1rem;
-  --nx-focus-ring: 0 0 0 2px var(--nx-bg), 0 0 0 4px var(--nx-accent);
-}
-
-:root {
-  --nx-font-sans:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --nx-font-mono:
-    'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
-    monospace;
-  --nx-font-size-2xs: 10px;
-  --nx-font-size-xs: 11px;
-  --nx-font-size-sm: 12px;
-  --nx-font-size-base: 13px;
-  --nx-font-size-md: 14px;
-  --nx-font-size-lg: 16px;
-  --nx-font-size-xl: 18px;
-  --nx-font-size-2xl: 20px;
-  --nx-line-height-tight: 1.25;
-  --nx-line-height-normal: 1.5;
-  --nx-line-height-relaxed: 1.75;
-}
-
-.actionsHeader_7c7192 {
-  text-align: right;
-}
-
-.actionsCell_7c7192 {
-  text-align: right;
-}
-
-.configModal_7c7192 {
-  padding: 16px;
-}
-
-.configSectionTitle_7c7192 {
-  font-size: var(--nx-font-size-sm);
-  font-weight: 600;
-  color: var(--nx-text-primary);
-}
-
-.configSectionSpacing_7c7192 {
-  margin-bottom: 8px;
-}
-
-.branchSelectRow_7c7192 {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 12px;
 }
 :root {
   --nx-surface-0: var(--nx-bg);
@@ -966,4 +818,152 @@ body {
 .autonomyLabel_87f74b {
   font-size: var(--nx-font-size-sm);
   color: var(--nx-muted);
+}
+:root {
+  --nx-surface-0: var(--nx-bg);
+  --nx-surface-1: var(--nx-surface);
+  --nx-text-primary: var(--nx-text);
+  --nx-text-muted: var(--nx-muted);
+  --nx-border-subtle: var(--nx-border);
+  --nx-accent-subtle: var(--nx-accent-soft);
+  --nx-danger-border: var(--nx-danger);
+  --nx-danger-subtle: var(--nx-danger-soft);
+  --nx-radius-md: var(--nx-radius);
+  --nx-radius-xl: var(--nx-radius-lg);
+  --nx-radius-full: 999px;
+  --nx-space-2: 0.5rem;
+  --nx-space-3: 0.75rem;
+  --nx-space-4: 1rem;
+  --nx-focus-ring: 0 0 0 2px var(--nx-bg), 0 0 0 4px var(--nx-accent);
+}
+
+:root {
+  --nx-font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --nx-font-mono:
+    'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  --nx-font-size-2xs: 10px;
+  --nx-font-size-xs: 11px;
+  --nx-font-size-sm: 12px;
+  --nx-font-size-base: 13px;
+  --nx-font-size-md: 14px;
+  --nx-font-size-lg: 16px;
+  --nx-font-size-xl: 18px;
+  --nx-font-size-2xl: 20px;
+  --nx-line-height-tight: 1.25;
+  --nx-line-height-normal: 1.5;
+  --nx-line-height-relaxed: 1.75;
+}
+
+.loadingContainer_407196 {
+  display: grid;
+  place-items: center;
+  padding: 40px;
+}
+
+.runsList_407196 {
+  display: grid;
+  gap: 10px;
+}
+
+.runButton_407196 {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 4px;
+}
+.runButton_407196:focus-visible {
+  outline: none;
+  box-shadow: var(--nx-focus-ring);
+}
+
+.runInfo_407196 {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.runTitle_407196 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--nx-font-size-sm);
+}
+
+.runMeta_407196 {
+  color: var(--nx-muted);
+  font-size: var(--nx-font-size-xs);
+}
+:root {
+  --nx-surface-0: var(--nx-bg);
+  --nx-surface-1: var(--nx-surface);
+  --nx-text-primary: var(--nx-text);
+  --nx-text-muted: var(--nx-muted);
+  --nx-border-subtle: var(--nx-border);
+  --nx-accent-subtle: var(--nx-accent-soft);
+  --nx-danger-border: var(--nx-danger);
+  --nx-danger-subtle: var(--nx-danger-soft);
+  --nx-radius-md: var(--nx-radius);
+  --nx-radius-xl: var(--nx-radius-lg);
+  --nx-radius-full: 999px;
+  --nx-space-2: 0.5rem;
+  --nx-space-3: 0.75rem;
+  --nx-space-4: 1rem;
+  --nx-focus-ring: 0 0 0 2px var(--nx-bg), 0 0 0 4px var(--nx-accent);
+}
+
+:root {
+  --nx-font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --nx-font-mono:
+    'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  --nx-font-size-2xs: 10px;
+  --nx-font-size-xs: 11px;
+  --nx-font-size-sm: 12px;
+  --nx-font-size-base: 13px;
+  --nx-font-size-md: 14px;
+  --nx-font-size-lg: 16px;
+  --nx-font-size-xl: 18px;
+  --nx-font-size-2xl: 20px;
+  --nx-line-height-tight: 1.25;
+  --nx-line-height-normal: 1.5;
+  --nx-line-height-relaxed: 1.75;
+}
+
+.actionsHeader_7c7192 {
+  text-align: right;
+}
+
+.actionsCell_7c7192 {
+  text-align: right;
+}
+
+.configModal_7c7192 {
+  padding: 16px;
+}
+
+.configSectionTitle_7c7192 {
+  font-size: var(--nx-font-size-sm);
+  font-weight: 600;
+  color: var(--nx-text-primary);
+}
+
+.configSectionSpacing_7c7192 {
+  margin-bottom: 8px;
+}
+
+.branchSelectRow_7c7192 {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
 }

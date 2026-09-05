@@ -50,13 +50,23 @@ const DirectSessionLauncher = React.lazy(() =>
 const TerminalActionDialog = React.lazy(() =>
   import('../nexus/TerminalActionDialog').then((m) => ({ default: m.TerminalActionDialog })),
 );
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   agentConfigSurface,
   agentTerminalSurface,
   flowRunSurface,
   projectShellSurface,
   projectSurface,
+  type ProjectSurfaceKind,
 } from './surfaces';
+import {
+  buildProjectRoute,
+  parseRouteLocation,
+  routeToWorkspaceSurface,
+  validProjectSurfaces,
+  type GlobalSurfaceKind,
+  type ParsedRoute,
+} from './routes';
 import { attentionFingerprintOf, buildDocumentTitle, isHonestNeedsUser } from './documentTitle';
 import { planFocusAttention, type RadarRuntimeItem } from './attentionRadarModel';
 import { resolveProjectSelection } from './projectSelection';
@@ -73,9 +83,10 @@ import { isPtyAttentionFocused } from '../notifications/attentionDelivery';
 const selectedProjectKey = 'iapro:nexus:selected-project:v1';
 const tourKey = 'iapro:nexus:tour-complete:v1';
 
-export const NexusWorkspaceApp: React.FC<{ popoutSurface?: WorkspaceSurface }> = ({
-  popoutSurface,
-}) => {
+export const NexusWorkspaceApp: React.FC<{
+  popoutSurface?: WorkspaceSurface;
+  initialGlobalSurface?: GlobalSurfaceKind;
+}> = ({ popoutSurface, initialGlobalSurface }) => {
   const { t } = useTranslation();
   const [sessionReady, setSessionReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(true);
@@ -182,19 +193,51 @@ export const NexusWorkspaceApp: React.FC<{ popoutSurface?: WorkspaceSurface }> =
 
   return (
     <ThemeProvider>
-      <NexusWorkspaceSession popoutSurface={popoutSurface} />
+      <NexusWorkspaceSession
+        popoutSurface={popoutSurface}
+        initialGlobalSurface={initialGlobalSurface}
+      />
     </ThemeProvider>
   );
 };
 
-const NexusWorkspaceSession: React.FC<{ popoutSurface?: WorkspaceSurface }> = ({
-  popoutSurface,
-}) => {
+const NexusWorkspaceSession: React.FC<{
+  popoutSurface?: WorkspaceSurface;
+  initialGlobalSurface?: GlobalSurfaceKind;
+}> = ({ popoutSurface: explicitPopout, initialGlobalSurface }) => {
   const { t } = useTranslation();
+  const location = useLocation();
+  const navigate = useNavigate();
   const data = useNexusData();
-  const [selectedId, setSelectedId] = useState(
-    () => window.localStorage.getItem(selectedProjectKey) || '',
+
+  const parsedRoute = useMemo(
+    () => parseRouteLocation(location.pathname, location.search),
+    [location.pathname, location.search],
   );
+
+  const popoutSurface = useMemo(() => {
+    if (explicitPopout) return explicitPopout;
+    if (parsedRoute.kind === 'popout') {
+      return projectSurface(parsedRoute.projectId, parsedRoute.surface as any);
+    }
+    return undefined;
+  }, [explicitPopout, parsedRoute]);
+
+  const routeProjectId =
+    parsedRoute.kind === 'project' || parsedRoute.kind === 'popout'
+      ? parsedRoute.projectId
+      : undefined;
+
+  const [selectedId, setSelectedId] = useState(
+    () => routeProjectId || window.localStorage.getItem(selectedProjectKey) || '',
+  );
+
+  useEffect(() => {
+    if (routeProjectId && routeProjectId !== selectedId) {
+      setSelectedId(routeProjectId);
+    }
+  }, [routeProjectId, selectedId]);
+
   const selected = resolveProjectSelection(data.projects, selectedId);
   const [layout, setLayout] = useState<string | undefined>();
 
@@ -209,8 +252,31 @@ const NexusWorkspaceSession: React.FC<{ popoutSurface?: WorkspaceSurface }> = ({
       .catch(() => setLayout(undefined));
   }, [selected?.id]);
 
+  useEffect(() => {
+    if (data.loading) return;
+    if (parsedRoute.kind === 'root') {
+      if (selected) {
+        navigate(buildProjectRoute(selected.id, 'overview'), { replace: true });
+      } else if (data.projects.length === 0) {
+        navigate('/projects', { replace: true });
+      }
+    }
+  }, [data.loading, parsedRoute.kind, selected, data.projects.length, navigate]);
+
   if (data.loading) {
     return <NexusSplashScreen stage="loading" />;
+  }
+
+  if (initialGlobalSurface === 'projects' || (!selected && data.projects.length === 0)) {
+    return (
+      <ProjectHub
+        onCreated={(project) => {
+          data.setProjects((current) => [project, ...current]);
+          setSelectedId(project.id);
+          navigate(buildProjectRoute(project.id, 'overview'));
+        }}
+      />
+    );
   }
 
   if (!selected) {
@@ -219,6 +285,7 @@ const NexusWorkspaceSession: React.FC<{ popoutSurface?: WorkspaceSurface }> = ({
         onCreated={(project) => {
           data.setProjects((current) => [project, ...current]);
           setSelectedId(project.id);
+          navigate(buildProjectRoute(project.id, 'overview'));
         }}
       />
     );
@@ -237,9 +304,13 @@ const NexusWorkspaceSession: React.FC<{ popoutSurface?: WorkspaceSurface }> = ({
         <PtyLiveChromeProvider>
           <WorkspaceCoordinator
             project={selected}
-            setProject={(project) => setSelectedId(project.id)}
+            setProject={(project) => {
+              setSelectedId(project.id);
+              navigate(buildProjectRoute(project.id, 'overview'));
+            }}
             data={data}
             popout={Boolean(popoutSurface)}
+            parsedRoute={parsedRoute}
           />
         </PtyLiveChromeProvider>
       </WorkspacePresentationProvider>
@@ -252,8 +323,10 @@ const WorkspaceCoordinator: React.FC<{
   setProject: (project: Project) => void;
   data: ReturnType<typeof useNexusData>;
   popout: boolean;
-}> = ({ project, setProject, data, popout }) => {
+  parsedRoute: ParsedRoute;
+}> = ({ project, setProject, data, popout, parsedRoute }) => {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const workspace = useWorkspace();
   const presentation = useWorkspacePresentation();
   const [railOpen, setRailOpen] = useState(false);
@@ -288,7 +361,26 @@ const WorkspaceCoordinator: React.FC<{
     };
   }, [project.id, palette]);
 
-  const open = (surface: WorkspaceSurface) => workspace.open(surface);
+  const open = useCallback(
+    (surface: WorkspaceSurface, updateUrl = true) => {
+      workspace.open(surface);
+      if (updateUrl && !popout) {
+        if (surface.type === 'flow-run' && surface.data?.runId) {
+          navigate(buildProjectRoute(project.id, 'missions', surface.data.runId));
+        } else if (surface.type === 'project-shell' && surface.data?.runtimeId) {
+          navigate(buildProjectRoute(project.id, 'terminals', surface.data.runtimeId));
+        } else if (surface.type === 'terminal' && surface.data?.agentId) {
+          navigate(buildProjectRoute(project.id, 'agents', surface.data.agentId));
+        } else if (surface.type === 'agent-config' && surface.data?.agentId) {
+          navigate(buildProjectRoute(project.id, 'agents', surface.data.agentId, 'config'));
+        } else if (validProjectSurfaces.has(surface.type as any)) {
+          navigate(buildProjectRoute(project.id, surface.type as any));
+        }
+      }
+    },
+    [workspace, popout, navigate, project.id],
+  );
+
   const requestCloseSurface = (surface: WorkspaceSurface) => setCloseTarget(surface);
   const closeConfirmed = async (stopRuntime: boolean) => {
     if (!closeTarget) return;
@@ -310,14 +402,35 @@ const WorkspaceCoordinator: React.FC<{
       }
     })();
   };
-  const openKind = (kind: string) => open(projectSurface(project.id, kind as any));
-  const openTerminals = () => open(projectSurface(project.id, 'terminals'));
+  const openKind = useCallback(
+    (kind: string) => open(projectSurface(project.id, kind as any)),
+    [open, project.id],
+  );
+  const openTerminals = useCallback(
+    () => open(projectSurface(project.id, 'terminals')),
+    [open, project.id],
+  );
   const openNewAISession = () => setDirectSession({ mode: 'direct', prompt: '' });
-  const terminal = (agent: Agent) => {
-    open(agentTerminalSurface(agent.id, agent.name));
-    openTerminals();
-  };
-  const config = (agent: Agent) => open(agentConfigSurface(agent.id, agent.name));
+  const terminal = useCallback(
+    (agent: Agent) => {
+      open(agentTerminalSurface(agent.id, agent.name));
+      openTerminals();
+    },
+    [open, openTerminals],
+  );
+  const config = useCallback(
+    (agent: Agent) => open(agentConfigSurface(agent.id, agent.name)),
+    [open],
+  );
+
+  useEffect(() => {
+    if (parsedRoute.kind === 'project' && parsedRoute.projectId === project.id) {
+      const targetSurface = routeToWorkspaceSurface(parsedRoute, { agents: data.agents });
+      if (targetSurface) {
+        workspace.open(targetSurface);
+      }
+    }
+  }, [parsedRoute, project.id, data.agents, workspace]);
   const shell = useCallback(async () => {
     if (shellInFlight.current) return;
     shellInFlight.current = true;
