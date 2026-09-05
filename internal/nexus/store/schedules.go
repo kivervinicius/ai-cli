@@ -117,8 +117,20 @@ func (s *Store) UpdateMissionScheduleStatus(id, status string) error {
 	return nil
 }
 
+// ClaimMissionSchedule atomically transitions a pending schedule to running.
+// The conditional update is the concurrency boundary: only one scheduler
+// worker can observe a successful claim for a given schedule.
+func (s *Store) ClaimMissionSchedule(id string) (bool, error) {
+	res, err := s.db.Exec(`UPDATE mission_schedules SET status=?,updated_at=? WHERE id=? AND status=?`, ScheduleRunning, time.Now().UTC().Format(time.RFC3339Nano), id, SchedulePending)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
 func (s *Store) BindMissionScheduleRun(id, runID string) error {
-	res, err := s.db.Exec(`UPDATE mission_schedules SET run_id=?,status=?,updated_at=? WHERE id=? AND status=?`, runID, ScheduleRunning, time.Now().UTC().Format(time.RFC3339Nano), id, SchedulePending)
+	res, err := s.db.Exec(`UPDATE mission_schedules SET run_id=?,status=?,updated_at=? WHERE id=? AND status IN (?,?) AND run_id IS NULL`, runID, ScheduleRunning, time.Now().UTC().Format(time.RFC3339Nano), id, SchedulePending, ScheduleRunning)
 	if err != nil {
 		return err
 	}

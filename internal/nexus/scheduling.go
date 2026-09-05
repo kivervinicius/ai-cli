@@ -158,12 +158,23 @@ func (n *Nexus) processMissionSchedules(ctx context.Context) error {
 			_ = st.UpdateMissionScheduleStatus(schedule.ID, store.ScheduleFailed)
 			continue
 		}
+		claimed, claimErr := st.ClaimMissionSchedule(schedule.ID)
+		if claimErr != nil {
+			return claimErr
+		}
+		if !claimed {
+			// Another scheduler worker won the atomic claim after the ready list
+			// was read. It owns responsibility for creating this run.
+			continue
+		}
 		run, startErr := n.StartMissionRun(ctx, schedule.PlanID, payload.AgentID, payload.Contract, true)
 		if startErr != nil {
 			// Resource/transient failures remain pending for WHEN_RESOURCES; fixed
 			// time/dependency schedules become FAILED and are visible to the user.
 			if schedule.Mode != ScheduleWhenResources {
 				_ = st.UpdateMissionScheduleStatus(schedule.ID, store.ScheduleFailed)
+			} else {
+				_ = st.UpdateMissionScheduleStatus(schedule.ID, store.SchedulePending)
 			}
 			continue
 		}

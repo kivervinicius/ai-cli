@@ -172,6 +172,55 @@ func TestMissionScheduleBindsRunID(t *testing.T) {
 	}
 }
 
+func TestMissionScheduleClaimIsAtomicAcrossWorkers(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "schedule-claim.db")
+	st1, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st1.Close()
+	st2, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st2.Close()
+
+	project, err := st1.CreateProject(Project{CanonicalPath: t.TempDir(), Name: "Atomic schedule"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := st1.CreateWorkPlan(WorkPlan{ProjectID: project.ID, Title: "Atomic plan", Phases: []PlanPhase{{ID: "p", Title: "P", Packages: []WorkPackage{{ID: "w", Title: "W", Goal: "G"}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := st1.CreateMissionSchedule(MissionSchedule{ID: "schedule-atomic", PlanID: plan.ID, ProjectID: project.ID, Mode: "AT"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	results := make(chan bool, 2)
+	for _, st := range []*Store{st1, st2} {
+		go func(s *Store) {
+			<-start
+			claimed, claimErr := s.ClaimMissionSchedule(item.ID)
+			if claimErr != nil {
+				t.Errorf("claim schedule: %v", claimErr)
+			}
+			results <- claimed
+		}(st)
+	}
+	close(start)
+	claimed := 0
+	for range 2 {
+		if <-results {
+			claimed++
+		}
+	}
+	if claimed != 1 {
+		t.Fatalf("expected one worker to claim schedule, got %d", claimed)
+	}
+}
+
 func TestMissionRunSaveIsFencedByLeaseToken(t *testing.T) {
 	st, err := Open(filepath.Join(t.TempDir(), "fencing.db"))
 	if err != nil {
