@@ -18,7 +18,7 @@ type continuityLaunch struct {
 
 // continuityForNextGeneration decides whether a new runtime can truthfully
 // resume the previous provider session. Cross-provider or unverifiable changes
-// are NEW_SESSION; they are never labelled as resume/context recovery.
+// are NEW_SESSION; they are never labeled as resume/context recovery.
 func continuityForNextGeneration(ctx context.Context, cfg AgentConfig, previous *store.RuntimeGeneration) (continuityLaunch, error) {
 	if previous == nil || previous.RuntimeID == "" {
 		return continuityLaunch{Status: store.ContinuityNewSession}, nil

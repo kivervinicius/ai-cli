@@ -116,6 +116,9 @@ type StatusData struct {
 	Workspace           string    `json:"workspace"`
 	PID                 int       `json:"pid"`
 	State               string    `json:"state"`
+	StartupStage        string    `json:"startup_stage,omitempty"`
+	StageChangedAt      time.Time `json:"stage_changed_at,omitempty"`
+	LastFault           string    `json:"last_fault,omitempty"`
 	ControlLevel        string    `json:"control_level"`
 	StartedAt           time.Time `json:"started_at"`
 	QuotaStatus         string    `json:"quota_status,omitempty"`

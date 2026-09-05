@@ -334,20 +334,21 @@ func Inspect(provider, name string) (*ProfileInfo, error) {
 		Details:       make(map[string]string),
 	}
 
-	if provider == "codex" {
+	switch provider {
+	case "codex":
 		info.IsolationVars["CODEX_HOME"] = home
-	} else if provider == "agy" {
+	case "agy":
 		info.IsolationVars["HOME"] = home
 		info.IsolationVars["XDG_CONFIG_HOME"] = filepath.Join(home, ".config")
 		info.IsolationVars["XDG_CACHE_HOME"] = filepath.Join(home, ".cache")
 		info.IsolationVars["XDG_DATA_HOME"] = filepath.Join(home, ".local", "share")
-	} else if provider == "claude" {
+	case "claude":
 		info.IsolationVars["HOME"] = home
 		info.IsolationVars["CLAUDE_CONFIG_DIR"] = filepath.Join(home, ".claude")
-	} else if provider == "opencode" {
+	case "opencode":
 		info.IsolationVars["HOME"] = home
 		info.IsolationVars["OPENCODE_CONFIG_DIR"] = filepath.Join(home, ".config", "opencode")
-	} else if provider == "gemini" {
+	case "gemini":
 		info.IsolationVars["HOME"] = home
 		info.IsolationVars["GEMINI_CLI_HOME"] = home
 	}

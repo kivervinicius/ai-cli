@@ -133,6 +133,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	mux.HandleFunc("/api/v1/missions/", s.routeMission(nexusHandler))
 
 	// System Updates (Auto-update for Nexus & Maestro)
+	mux.HandleFunc("/api/v1/system/doctor", s.authMiddleware(nexusHandler.handleSystemDoctor))
 	mux.HandleFunc("/api/v1/system/updates", s.authMiddleware(nexusHandler.handleSystemUpdates))
 	mux.HandleFunc("/api/v1/system/update", s.authMiddleware(nexusHandler.handleSystemUpdate))
 

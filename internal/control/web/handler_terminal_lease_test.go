@@ -5,8 +5,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-
-	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 )
 
 type flakyWriter struct {
@@ -26,7 +24,7 @@ func (w *flakyWriter) Write(p []byte) (int, error) {
 
 func TestSendAttachedCommandWithRetryEventuallySucceeds(t *testing.T) {
 	w := &flakyWriter{failsBefore: 2}
-	if err := sendAttachedCommandWithRetry(w, protocol.CmdLeaseAcquire, nil, 3); err != nil {
+	if err := sendAttachedCommandWithRetry(w, 3); err != nil {
 		t.Fatalf("expected retry success, got %v", err)
 	}
 	if w.calls.Load() != 3 {
@@ -39,7 +37,7 @@ func TestSendAttachedCommandWithRetryEventuallySucceeds(t *testing.T) {
 
 func TestSendAttachedCommandWithRetryExhaustsAttempts(t *testing.T) {
 	w := &flakyWriter{failsBefore: 10}
-	err := sendAttachedCommandWithRetry(w, protocol.CmdLeaseAcquire, nil, 3)
+	err := sendAttachedCommandWithRetry(w, 3)
 	if err == nil {
 		t.Fatal("expected error after exhausted retries")
 	}
@@ -53,7 +51,7 @@ func TestAttachKeepsControlRoleConstant(t *testing.T) {
 	// remains CONTROL (demotion removed). Pure behavioral assertion for reviewers.
 	role := "CONTROL"
 	effectiveRole := role
-	err := sendAttachedCommandWithRetry(&flakyWriter{failsBefore: 10}, protocol.CmdLeaseAcquire, nil, 3)
+	err := sendAttachedCommandWithRetry(&flakyWriter{failsBefore: 10}, 3)
 	if err == nil {
 		t.Fatal("expected write failure")
 	}

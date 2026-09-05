@@ -188,7 +188,7 @@ func (n *Nexus) compilePackagePromptFromPlan(ctx context.Context, plan *store.Wo
 
 	// Maestro remains the sole authority for skill IDs. Explicit gates are part
 	// of the approved contract and must never be silently dropped.
-	validatedSkills, err := n.validateMaestroGatesStrict(ctx, uniqueStrings(append(append([]string(nil), targetPkg.MaestroGates...), targetPkg.MaestroSkills...)))
+	validatedSkills, err := n.validateMaestroGatesStrict(uniqueStrings(append(append([]string(nil), targetPkg.MaestroGates...), targetPkg.MaestroSkills...)))
 	if err != nil {
 		return nil, err
 	}

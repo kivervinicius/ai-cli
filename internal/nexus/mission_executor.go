@@ -314,7 +314,7 @@ func (e *nexusPackageExecutor) Review(ctx context.Context, run *runner.MissionRu
 		return runner.ReviewVerdict{}, err
 	}
 
-	reviewPrompt := buildReviewPrompt(run, pkg)
+	reviewPrompt := buildReviewPrompt(pkg)
 	before, _ := workspaceFingerprint(ctx, pkg.Workspace)
 	result, err := e.n.executeAgentPrompt(ctx, reviewer.ID, pkg.Workspace, reviewPrompt, agentPromptPolicy{Contract: run.Contract, Review: true})
 	if err != nil {
@@ -492,7 +492,7 @@ func defaultRole(value, fallback string) string {
 	return value
 }
 
-func buildReviewPrompt(run *runner.MissionRun, pkg *runner.PackageRun) string {
+func buildReviewPrompt(pkg *runner.PackageRun) string {
 	var evidence []string
 	for _, v := range pkg.Verifications {
 		evidence = append(evidence, fmt.Sprintf("- %s: passed=%t exit=%d\n%s", v.Command, v.Passed, v.ExitCode, v.OutputSnippet))

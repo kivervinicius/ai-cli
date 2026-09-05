@@ -59,7 +59,7 @@ func planToRunnerSpec(plan *store.WorkPlan, snapshotID string) (runner.PlanSpec,
 	return spec, nil
 }
 
-func freezePlanForExecution(ctx context.Context, n *Nexus, plan store.WorkPlan) (store.WorkPlan, error) {
+func freezePlanForExecution(n *Nexus, plan store.WorkPlan) (store.WorkPlan, error) {
 	if err := validateFlowExecutionContract(plan); err != nil {
 		return store.WorkPlan{}, err
 	}
@@ -67,7 +67,7 @@ func freezePlanForExecution(ctx context.Context, n *Nexus, plan store.WorkPlan) 
 		for wi := range plan.Phases[pi].Packages {
 			pkg := &plan.Phases[pi].Packages[wi]
 			requested := uniqueStrings(append(append([]string(nil), pkg.MaestroGates...), pkg.MaestroSkills...))
-			validated, err := n.validateMaestroGatesStrict(ctx, requested)
+			validated, err := n.validateMaestroGatesStrict(requested)
 			if err != nil {
 				return store.WorkPlan{}, fmt.Errorf("freeze Maestro skills for package %s: %w", pkg.ID, err)
 			}
@@ -118,7 +118,7 @@ func validateFlowExecutionContract(plan store.WorkPlan) error {
 	return nil
 }
 
-func (n *Nexus) validateMaestroGatesStrict(ctx context.Context, gates []string) ([]string, error) {
+func (n *Nexus) validateMaestroGatesStrict(gates []string) ([]string, error) {
 	if len(gates) == 0 {
 		return nil, nil
 	}
@@ -156,7 +156,7 @@ func (n *Nexus) StartMissionRun(ctx context.Context, planID, defaultAgentID stri
 	}
 
 	contract = normalizeAutonomyContract(contract, project.CanonicalPath)
-	frozenPlan, err := freezePlanForExecution(ctx, n, *plan)
+	frozenPlan, err := freezePlanForExecution(n, *plan)
 	if err != nil {
 		return nil, err
 	}

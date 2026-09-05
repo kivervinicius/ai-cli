@@ -148,9 +148,8 @@ func (s *Store) repairFlowEvidenceSchema() error {
 		if exists && table == "flow_work_receipts" {
 			// Best-effort copy from known legacy column names. Rows remain
 			// auditable even when a legacy schema used payload_json/receipt_json.
-			legacy := table + "_legacy_" + time.Now().UTC().Format("20060102150405")
 			// Locate the just-renamed table (timestamp may differ by a second).
-			legacy, err = latestLegacyTable(tx, table+"_legacy_")
+			legacy, err := latestLegacyTable(tx, table+"_legacy_")
 			if err != nil {
 				return err
 			}

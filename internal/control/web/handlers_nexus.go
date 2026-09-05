@@ -7,15 +7,20 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+	stdruntime "runtime"
 	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/buildinfo"
+	"github.com/kivervinicius/ai-cli/internal/control/driver"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	coreconfig "github.com/kivervinicius/ai-cli/internal/core/config"
+	"github.com/kivervinicius/ai-cli/internal/core/model"
+	"github.com/kivervinicius/ai-cli/internal/doctor"
 	"github.com/kivervinicius/ai-cli/internal/nexus"
 	"github.com/kivervinicius/ai-cli/internal/nexus/intelligence"
 	"github.com/kivervinicius/ai-cli/internal/nexus/runner"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
+	nexusruntime "github.com/kivervinicius/ai-cli/internal/runtime"
 
 	"time"
 
@@ -28,6 +33,30 @@ type NexusHandler struct {
 	auth                  *AuthManager
 	nexus                 *nexus.Nexus
 	hostFilesystemEnabled bool
+}
+
+// handleSystemDoctor exposes the same read-only diagnostic report used by the
+// CLI. The Web layer does not probe or mutate a second set of state.
+func (h *NexusHandler) handleSystemDoctor(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	detections := make(map[string]model.DetectionResult)
+	for _, providerDriver := range driver.DefaultRegistry().List() {
+		if providerDriver.ProviderID() == "fake" {
+			continue
+		}
+		detection, _ := providerDriver.Detect(r.Context())
+		detections[providerDriver.ProviderID()] = detection
+	}
+	report := doctor.BuildReport(buildinfo.Version, detections, nexusruntime.DefaultCredentialIsolator().Capability())
+	// Keep the response shape stable and make the runtime platform explicit for
+	// clients rendering remediation guidance.
+	if report.OS == "" {
+		report.OS = stdruntime.GOOS
+	}
+	writeJSON(w, http.StatusOK, report)
 }
 
 func NewNexusHandler(auth *AuthManager) *NexusHandler {

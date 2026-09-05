@@ -47,6 +47,10 @@ var (
 	procWaitForSingleObject               = modKernel32.NewProc("WaitForSingleObject")
 	procGetExitCodeProcess                = modKernel32.NewProc("GetExitCodeProcess")
 	procTerminateProcess                  = modKernel32.NewProc("TerminateProcess")
+	procCreateJobObjectW                  = modKernel32.NewProc("CreateJobObjectW")
+	procSetInformationJobObject           = modKernel32.NewProc("SetInformationJobObject")
+	procAssignProcessToJobObject          = modKernel32.NewProc("AssignProcessToJobObject")
+	procOpenProcess                       = modKernel32.NewProc("OpenProcess")
 )
 
 type coord struct {
@@ -95,6 +99,7 @@ type windowsBackend struct {
 	hProcess  uintptr
 	pid       int
 	hPC       uintptr
+	hJob      uintptr
 	isConPTY  bool
 	mechanism string
 }
@@ -326,6 +331,49 @@ func (b *windowsBackend) Close() error {
 		_ = closeHandle(b.hProcess)
 		b.hProcess = 0
 	}
+	if b.hJob != 0 {
+		_ = closeHandle(b.hJob)
+		b.hJob = 0
+	}
+	return nil
+}
+
+func (b *windowsBackend) Supervise() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.hJob != 0 {
+		return nil
+	}
+	process := b.hProcess
+	if process == 0 && b.cmd != nil && b.cmd.Process != nil {
+		const processAllAccess = 0x001F0FFF
+		h, _, _ := procOpenProcess.Call(processAllAccess, 0, uintptr(b.cmd.Process.Pid))
+		process = h
+		if process != 0 {
+			b.hProcess = process
+		}
+	}
+	if process == 0 {
+		return errors.New("provider process handle unavailable")
+	}
+	job, _, err := procCreateJobObjectW.Call(0, 0)
+	if job == 0 {
+		return fmt.Errorf("CreateJobObjectW failed: %v", err)
+	}
+	// JOBOBJECT_EXTENDED_LIMIT_INFORMATION has the BasicLimitInformation
+	// block followed by IO counters and four memory limits. The kill-on-close
+	// bit is the first DWORD in the BasicLimitInformation.Flags field.
+	info := make([]byte, 144)
+	*(*uint32)(unsafe.Pointer(&info[16])) = 0x00002000
+	if result, _, callErr := procSetInformationJobObject.Call(job, 9, uintptr(unsafe.Pointer(&info[0])), uintptr(len(info))); result == 0 {
+		_ = closeHandle(job)
+		return fmt.Errorf("SetInformationJobObject failed: %v", callErr)
+	}
+	if result, _, callErr := procAssignProcessToJobObject.Call(job, process); result == 0 {
+		_ = closeHandle(job)
+		return fmt.Errorf("AssignProcessToJobObject failed: %v", callErr)
+	}
+	b.hJob = job
 	return nil
 }
 
@@ -426,10 +474,9 @@ func (b *windowsBackend) Mechanism() string {
 }
 
 func closePseudoConsole(h uintptr) error {
-	r, _, e := procClosePseudoConsole.Call(h)
-	if r == 0 {
-		return e
-	}
+	// ClosePseudoConsole is a void Win32 API. Its return register is undefined;
+	// interpreting it as BOOL can report false failures after a successful close.
+	_, _, _ = procClosePseudoConsole.Call(h)
 	return nil
 }
 

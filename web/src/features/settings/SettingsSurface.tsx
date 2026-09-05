@@ -38,6 +38,8 @@ import {
   type NotificationPrefs,
 } from '../../notifications/notificationPrefs';
 import { pushNotifications } from '../../notifications/PushNotificationManager';
+import { SystemDiagnosticsCard } from './SystemDiagnosticsCard';
+import type { SystemDoctorReport } from '../../nexus/api';
 
 type SettingsTab = 'appearance' | 'accessibility' | 'updates' | 'intelligence' | 'notifications';
 
@@ -64,6 +66,9 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
     nexus_version: string;
     error?: string;
   } | null>(null);
+  const [doctorReport, setDoctorReport] = useState<SystemDoctorReport | null>(null);
+  const [checkingDoctor, setCheckingDoctor] = useState(false);
+  const [doctorError, setDoctorError] = useState('');
   const [intelligence, setIntelligence] = useState<IntelligenceStatus | null>(null);
   const [intelligenceDraft, setIntelligenceDraft] = useState<IntelligenceStatus>({
     mode: 'OFF',
@@ -102,6 +107,19 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
     }
   };
 
+  const checkDoctor = async () => {
+    try {
+      setCheckingDoctor(true);
+      setDoctorError('');
+      setDoctorReport(await nexus.getSystemDoctor());
+    } catch (error) {
+      setDoctorReport(null);
+      setDoctorError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCheckingDoctor(false);
+    }
+  };
+
   const loadIntelligence = async () => {
     try {
       setIntelligenceError('');
@@ -119,6 +137,7 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
 
   useEffect(() => {
     void checkUpdates();
+    void checkDoctor();
     void loadIntelligence();
   }, []);
 
@@ -353,82 +372,100 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
 
         {/* Tab 3: Updates & System */}
         {activeTab === 'updates' && (
-          <Card className="nx-settings-card" style={{ gridColumn: '1 / -1' }}>
-            <div className="nx-settings-card__title">
-              <ArrowUpCircle size={17} />
-              <div>
-                <strong>{t('settings.updates')}</strong>
-                <small>{t('settings.updatesDescription')}</small>
-              </div>
-            </div>
-            {updateInfo && (
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                  fontSize: '13px',
-                  maxWidth: 480,
-                }}
-              >
-                <div
-                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                >
-                  <span>IAPro Nexus Core:</span>
-                  <Badge tone="success">v{updateInfo.nexus_version}</Badge>
+          <>
+            <Card className="nx-settings-card" style={{ gridColumn: '1 / -1' }}>
+              <div className="nx-settings-card__title">
+                <ArrowUpCircle size={17} />
+                <div>
+                  <strong>{t('settings.updates')}</strong>
+                  <small>{t('settings.updatesDescription')}</small>
                 </div>
-                <div
-                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                >
-                  <span>Orquestrador Maestro:</span>
-                  <Badge tone={updateInfo.maestro_available ? 'brand' : 'warning'}>
-                    v{updateInfo.maestro_version}
-                  </Badge>
-                </div>
-                {updateInfo.update_available ? (
-                  <InlineAlert tone="warning" title="Atualização disponível">
-                    Há uma nova versão do Orquestrador Maestro disponível (
-                    {updateInfo.maestro_latest_version
-                      ? `v${updateInfo.maestro_latest_version}`
-                      : 'nova build'}
-                    ).
-                  </InlineAlert>
-                ) : (
-                  <InlineAlert tone="success" title="Sistema em dia">
-                    Você está executando as versões mais recentes estáveis do Nexus e do Maestro.
-                  </InlineAlert>
-                )}
               </div>
-            )}
-            {updateError && (
-              <InlineAlert tone="danger" title="Status de atualização indisponível">
-                {updateError}
-              </InlineAlert>
-            )}
-            {updateSuccess && updateResult && (
-              <InlineAlert
-                tone={updateResult.maestro_updated ? 'success' : 'info'}
-                title={t('maestroControl.updateResult')}
-              >
-                {updateResult.maestro_updated
-                  ? t('maestroControl.updateMaestroDone', { version: updateResult.maestro_version })
-                  : t('maestroControl.updateMaestroSame', {
-                      version: updateResult.maestro_version,
-                    })}{' '}
-                {t('maestroControl.nexusBinaryNote', { version: updateResult.nexus_version })}
-              </InlineAlert>
-            )}
-            <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-              <Button onClick={() => void checkUpdates()} disabled={checkingUpdates || updating}>
-                <RefreshCw size={14} className={checkingUpdates ? 'nx-spin' : ''} />
-                {checkingUpdates ? 'Verificando…' : 'Verificar Atualizações Agora'}
-              </Button>
-              <Button tone="brand" onClick={handleUpdate} disabled={updating}>
-                <RefreshCw size={14} className={updating ? 'nx-spin' : ''} />
-                {updating ? t('settings.updating') : t('settings.update')}
-              </Button>
-            </div>
-          </Card>
+              {updateInfo && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    fontSize: '13px',
+                    maxWidth: 480,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span>IAPro Nexus Core:</span>
+                    <Badge tone="success">v{updateInfo.nexus_version}</Badge>
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span>Orquestrador Maestro:</span>
+                    <Badge tone={updateInfo.maestro_available ? 'brand' : 'warning'}>
+                      v{updateInfo.maestro_version}
+                    </Badge>
+                  </div>
+                  {updateInfo.update_available ? (
+                    <InlineAlert tone="warning" title="Atualização disponível">
+                      Há uma nova versão do Orquestrador Maestro disponível (
+                      {updateInfo.maestro_latest_version
+                        ? `v${updateInfo.maestro_latest_version}`
+                        : 'nova build'}
+                      ).
+                    </InlineAlert>
+                  ) : (
+                    <InlineAlert tone="success" title="Sistema em dia">
+                      Você está executando as versões mais recentes estáveis do Nexus e do Maestro.
+                    </InlineAlert>
+                  )}
+                </div>
+              )}
+              {updateError && (
+                <InlineAlert tone="danger" title="Status de atualização indisponível">
+                  {updateError}
+                </InlineAlert>
+              )}
+              {updateSuccess && updateResult && (
+                <InlineAlert
+                  tone={updateResult.maestro_updated ? 'success' : 'info'}
+                  title={t('maestroControl.updateResult')}
+                >
+                  {updateResult.maestro_updated
+                    ? t('maestroControl.updateMaestroDone', {
+                        version: updateResult.maestro_version,
+                      })
+                    : t('maestroControl.updateMaestroSame', {
+                        version: updateResult.maestro_version,
+                      })}{' '}
+                  {t('maestroControl.nexusBinaryNote', { version: updateResult.nexus_version })}
+                </InlineAlert>
+              )}
+              <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+                <Button onClick={() => void checkUpdates()} disabled={checkingUpdates || updating}>
+                  <RefreshCw size={14} className={checkingUpdates ? 'nx-spin' : ''} />
+                  {checkingUpdates ? 'Verificando…' : 'Verificar Atualizações Agora'}
+                </Button>
+                <Button tone="brand" onClick={handleUpdate} disabled={updating}>
+                  <RefreshCw size={14} className={updating ? 'nx-spin' : ''} />
+                  {updating ? t('settings.updating') : t('settings.update')}
+                </Button>
+              </div>
+            </Card>
+            <SystemDiagnosticsCard
+              report={doctorReport}
+              loading={checkingDoctor}
+              error={doctorError}
+              onRefresh={() => void checkDoctor()}
+            />
+          </>
         )}
 
         {/* Tab 4: Intelligence */}

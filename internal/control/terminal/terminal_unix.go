@@ -175,6 +175,8 @@ func (b *unixPTYBackend) Mechanism() string {
 	return "PTY (creack/pty)"
 }
 
+func (b *unixPTYBackend) Supervise() error { return nil }
+
 func (b *unixPTYBackend) Wait() error {
 	b.mu.Lock()
 	cmd := b.cmd

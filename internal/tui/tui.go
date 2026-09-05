@@ -271,7 +271,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Quick numeric execution (1-9)
 		if k >= "1" && k <= "9" {
 			idx := int(k[0] - '1')
-			if m.activePanel == PanelAccounts {
+			switch m.activePanel {
+			case PanelAccounts:
 				profs := m.filteredProfiles()
 				if idx < len(profs) {
 					p := profs[idx]
@@ -291,7 +292,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, tea.Quit
 				}
-			} else if m.activePanel == PanelSessions {
+			case PanelSessions:
 				sess := m.filteredSessions()
 				if idx < len(sess) {
 					m.selSessIndex = idx
@@ -688,19 +689,19 @@ func (m Model) View() string {
 			authBadge = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render("[Authenticated]")
 		}
 	}
-	sb.WriteString(fmt.Sprintf(" Selected: %s / %s  %s\n\n",
+	fmt.Fprintf(&sb, " Selected: %s / %s  %s\n\n",
 		titleStyle.Render(formatProviderName(selProv)),
 		selTextStyle.Render(selProf),
-		authBadge))
+		authBadge)
 
 	// Action buttons row
-	sb.WriteString(fmt.Sprintf(" %s %s %s %s %s %s\n\n",
+	fmt.Fprintf(&sb, " %s %s %s %s %s %s\n\n",
 		btnStyle.Render("[Enter/1-9] Run"),
 		btnStyle.Render("[c] Continue Latest"),
 		btnStyle.Render("[r] Resume Modal"),
 		btnStyle.Render("[s] Quotas"),
 		btnStyle.Render("[d] Default"),
-		btnStyle.Render("[l] Login")))
+		btnStyle.Render("[l] Login"))
 
 	// 5. Smart Account Selection Banner
 	autoText := fmt.Sprintf("%s %s is optimal for new sessions (highest available capacity)",
@@ -746,8 +747,8 @@ func (m Model) renderQuotaModal(width int) string {
 
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render(fmt.Sprintf("📊 Limites & Quota — %s (%s)", p.Name, strings.ToUpper(p.Provider))) + "\n\n")
-	sb.WriteString(fmt.Sprintf(" Conta:   %s (%s)\n", accentStyle.Render(acc.Email), magentaStyle.Render(acc.Plan)))
-	sb.WriteString(fmt.Sprintf(" Status:  %s\n", acc.Status))
+	fmt.Fprintf(&sb, " Conta:   %s (%s)\n", accentStyle.Render(acc.Email), magentaStyle.Render(acc.Plan))
+	fmt.Fprintf(&sb, " Status:  %s\n", acc.Status)
 
 	// Availability line
 	availLabel := qv.AvailabilityLabel()
@@ -756,15 +757,15 @@ func (m Model) renderQuotaModal(width int) string {
 		availColor = "208" // orange
 	}
 	availStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(availColor))
-	sb.WriteString(fmt.Sprintf(" Quota:   %s\n\n", availStyle.Render(availLabel)))
+	fmt.Fprintf(&sb, " Quota:   %s\n\n", availStyle.Render(availLabel))
 
 	sb.WriteString(accentStyle.Render("MODELOS & CAPACIDADE:") + "\n")
 	for _, group := range qv.ModelGroups {
 		if qv.HasMultipleGroups() && group.Name != "" {
-			sb.WriteString(fmt.Sprintf("\n  %s\n", groupStyle.Render(group.Name+":")))
+			fmt.Fprintf(&sb, "\n  %s\n", groupStyle.Render(group.Name+":"))
 		}
 		for _, w := range group.Windows {
-			sb.WriteString(fmt.Sprintf("  %s: %s\n", w.Label, w.Bar))
+			fmt.Fprintf(&sb, "  %s: %s\n", w.Label, w.Bar)
 			if w.ResetDesc != "" {
 				sb.WriteString(subStyle.Render(fmt.Sprintf("                  Reset em %s\n", w.ResetDesc)))
 			}
@@ -803,10 +804,10 @@ func (m Model) renderResumeModal(width int) string {
 	cwd, _ := os.Getwd()
 	suggestedResult, _ := m.selector.SelectBestProfile(context.Background(), chosenSess.Provider, cwd, m.profiles, m.accounts, nil)
 	if suggestedResult != nil && suggestedResult.SelectedProfile != nil {
-		sb.WriteString(fmt.Sprintf(" 💡 %s Sugerido: %s (%s)\n\n",
+		fmt.Fprintf(&sb, " 💡 %s Sugerido: %s (%s)\n\n",
 			lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42")).Render("AUTO:"),
 			selStyle.Render(suggestedResult.SelectedProfile.Name),
-			suggestedResult.Reason))
+			suggestedResult.Reason)
 	}
 
 	sb.WriteString(subStyle.Render("Selecione a conta para retomar a sessão:") + "\n\n")
@@ -828,7 +829,7 @@ func (m Model) renderResumeModal(width int) string {
 		emailCol := subStyle.Render(fmt.Sprintf("%-26s", acc.Email))
 		planCol := lipgloss.NewStyle().Foreground(lipgloss.Color("213")).Render(fmt.Sprintf("%-12s", acc.Plan))
 
-		sb.WriteString(fmt.Sprintf("%s%s %s %s %s %s\n", pointer, numBadge, provBadge, nameCol, emailCol, planCol))
+		fmt.Fprintf(&sb, "%s%s %s %s %s %s\n", pointer, numBadge, provBadge, nameCol, emailCol, planCol)
 	}
 
 	sb.WriteString("\n" + titleStyle.Render("[Enter/1-9]") + " Iniciar nesta conta    " + subStyle.Render("[Esc/q] Cancelar"))

@@ -1,5 +1,30 @@
 # Handoff
 
+## Atualização 2026-09-05 — Autopilot Platform Stabilization
+
+A campanha `01a07224-1c17-7863-881a-6b1963a6ce43` está em execução no branch
+`feat/nexus-maximum-delivery`, HEAD `ab88fcbfddb5d99cf77c5e6f651aa2e5aa281770`.
+T0 foi concluído. T1 corrigiu lockfile e pinos da CI, mas o lint reproduz 59
+achados existentes; isso mantém o release bloqueado. T2 criou o
+`ResolvedCommand`; T3/T4 corrigiram o teste ConPTY bloqueante, a semântica de
+`ClosePseudoConsole`, a ordem IPC-before-provider e os metadados de startup.
+
+Próxima ação: executar/verificar Job Objects no runner Windows, depois fechar
+path identity, credenciais e doctor. Não anunciar suporte Windows/macOS nem
+fazer release enquanto a matriz nativa não estiver verde. Não houve commit ou
+push automático.
+
+O incremento seguinte adicionou `PathRef`/`FilesystemIdentity`, migração SQLite
+aditiva `0012_path_identity.sql` e capacidades explícitas de isolamento de
+credenciais por SO. Os testes Go e vet continuam verdes. A próxima ação é
+consolidar `nexus doctor` e produzir bundle diagnóstico redigido; a evidência
+nativa Windows/macOS continua obrigatória.
+
+`nexus doctor` agora usa um relatório read-only compartilhado para texto/JSON e
+ZIP allowlisted (`report.json` + `MANIFEST.txt`). `nexus control doctor` só faz
+limpeza com `--repair`. Próximo passo: expor o mesmo relatório na Web e obter
+execução nativa Windows/macOS antes do checkpoint de runtime.
+
 ## Atualização 2026-09-04
 
 Baseline do working tree revalidado após correções pequenas de P0. `make
@@ -120,6 +145,11 @@ com sucesso: comandos universais (`--yolo`, `-y`, `--continue`, `-c`, `--resume`
 execução para cada CLI nativo e exibidos com destaque em `nexus <provider> --help`.
 
 ## Next action
+
+O cartão de diagnóstico em Configurações já usa o relatório read-only compartilhado
+com `nexus doctor`; o próximo gate é evidência nativa Windows para ConPTY, startup,
+Named Pipe e Job Objects. O build/embed Web continua pendente por causa do arquivo
+`internal/control/web/dist/bundle.css` já modificado antes desta campanha.
 
 Execute `nexus agy --help`, `nexus codex --help` ou `nexus claude --help` para conferir
 a ajuda fusionada com aliases canônicos; execute `nexus usage` para quotas por janela

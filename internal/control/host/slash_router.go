@@ -213,23 +213,23 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 	case "usage":
 		qv := profile.GetQuotaView(session.ProviderID, session.ProfileID, "", "")
 		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("\n=== Quota Snapshot: %s:%s ===\n", strings.ToUpper(session.ProviderID), session.ProfileID))
-		sb.WriteString(fmt.Sprintf("Status:       %s\n", qv.Status))
-		sb.WriteString(fmt.Sprintf("Source:       %s\n", qv.Source))
+		fmt.Fprintf(&sb, "\n=== Quota Snapshot: %s:%s ===\n", strings.ToUpper(session.ProviderID), session.ProfileID)
+		fmt.Fprintf(&sb, "Status:       %s\n", qv.Status)
+		fmt.Fprintf(&sb, "Source:       %s\n", qv.Source)
 		if len(qv.ModelGroups) > 0 {
 			for _, group := range qv.ModelGroups {
 				if qv.HasMultipleGroups() && group.Name != "" {
-					sb.WriteString(fmt.Sprintf("\n  %s:\n", group.Name))
+					fmt.Fprintf(&sb, "\n  %s:\n", group.Name)
 				}
 				for _, w := range group.Windows {
-					sb.WriteString(fmt.Sprintf("  Window [%s]:  Remaining: %.1f%% | Reset: %s\n", w.Kind, w.Remaining, w.ResetDesc))
+					fmt.Fprintf(&sb, "  Window [%s]:  Remaining: %.1f%% | Reset: %s\n", w.Kind, w.Remaining, w.ResetDesc)
 				}
 			}
 		} else {
 			sb.WriteString("Remaining:    UNKNOWN (No authentic quota metric exposed)\n")
 		}
 		if !qv.FetchedAt.IsZero() {
-			sb.WriteString(fmt.Sprintf("Last Check:   %s (%s ago)\n", qv.FetchedAt.Format(time.RFC3339), time.Since(qv.FetchedAt).Round(time.Second)))
+			fmt.Fprintf(&sb, "Last Check:   %s (%s ago)\n", qv.FetchedAt.Format(time.RFC3339), time.Since(qv.FetchedAt).Round(time.Second))
 		}
 		return SlashResult{Intercepted: true, Response: sb.String() + "\n"}
 

@@ -253,6 +253,34 @@ func (r *Registry) UpdateState(runtimeID string, state RuntimeState) error {
 	return nil
 }
 
+// UpdateStartupStage records the observable startup stage without changing
+// the backward-compatible operational RuntimeState field.
+func (r *Registry) UpdateStartupStage(runtimeID string, stage StartupStage, fault StartupFault) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var notFound bool
+	err := r.saveLocked(func(fresh map[string]RuntimeSession) {
+		s, ok := fresh[runtimeID]
+		if !ok {
+			notFound = true
+			return
+		}
+		s.StartupStage = stage
+		s.StageChangedAt = time.Now()
+		s.LastFault = fault
+		s.UpdatedAt = time.Now()
+		fresh[runtimeID] = s
+	})
+	if err != nil {
+		return err
+	}
+	if notFound {
+		return fmt.Errorf("runtime %q not found", runtimeID)
+	}
+	return nil
+}
+
 // UpdateProviderSessionID updates the underlying provider session ID.
 func (r *Registry) UpdateProviderSessionID(runtimeID, providerSessionID string) error {
 	r.mu.Lock()

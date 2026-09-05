@@ -325,13 +325,13 @@ func (s *Selector) ExplainSelection(ctx context.Context, provider string, worksp
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("=== Smart Account Selection Explanation: %s ===\n", strings.ToUpper(provider)))
+	fmt.Fprintf(&sb, "=== Smart Account Selection Explanation: %s ===\n", strings.ToUpper(provider))
 	sb.WriteString("Evaluation of all candidate profiles:\n\n")
 	if res.SelectedProfile != nil {
-		sb.WriteString(fmt.Sprintf("Optimal Choice: %s (Reason: %s)\n\n", res.SelectedProfile.Name, res.Reason))
+		fmt.Fprintf(&sb, "Optimal Choice: %s (Reason: %s)\n\n", res.SelectedProfile.Name, res.Reason)
 	}
 
-	sb.WriteString(fmt.Sprintf("%-18s %-10s %-8s %s\n", "PROFILE", "ELIGIBLE", "SCORE", "BREAKDOWN / REJECTION"))
+	fmt.Fprintf(&sb, "%-18s %-10s %-8s %s\n", "PROFILE", "ELIGIBLE", "SCORE", "BREAKDOWN / REJECTION")
 	for _, ev := range res.Evaluations {
 		elig := "YES"
 		if !ev.Eligible {
@@ -341,7 +341,7 @@ func (s *Selector) ExplainSelection(ctx context.Context, provider string, worksp
 		if !ev.Eligible {
 			detail = "REJECTED: " + ev.RejectReason
 		}
-		sb.WriteString(fmt.Sprintf("%-18s %-10s %-8.1f %s\n", ev.Profile.Name, elig, ev.Score, detail))
+		fmt.Fprintf(&sb, "%-18s %-10s %-8.1f %s\n", ev.Profile.Name, elig, ev.Score, detail)
 	}
 
 	return sb.String()

@@ -1,5 +1,36 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-05 — Autopilot Platform Stabilization T0–T4
+
+- `bun install --frozen-lockfile` — PASS com Bun 1.3.9 após regeneração do lockfile.
+- Frontend format/typecheck/lint/stylelint — PASS; lint com 0 erros e 36 warnings preexistentes.
+- Frontend Vitest — PASS: 51 arquivos, 253 testes.
+- golangci-lint `v2.12.2 config verify` — PASS; execução completa reproduz 59 achados existentes, sem supressão.
+- `go test ./...` — PASS após ExecutableResolver.
+- `go test -race ./internal/control/terminal ./internal/control/protocol ./internal/control/host` — PASS.
+- Windows cross-compile `go test -c` para terminal, launcher, host e protocol — PASS; execução nativa ainda pendente.
+
+Estado: runtime/release continuam NO-GO até lint debt, build/embed gate e evidência nativa Windows/macOS serem fechados.
+
+## 2026-09-05 — Path identity and credential capability increment
+
+- `go test ./internal/core/config ./internal/nexus/store` — PASS após migração `0012_path_identity.sql`.
+- Cross-compile de config/runtime para Windows e Darwin — PASS.
+- `go test ./...` — PASS.
+- `go vet ./...` — PASS.
+- `git diff --check` — PASS.
+
+Limitações mantidas: identidade nativa por handle no Windows, execução nativa Windows/macOS e bundle do `nexus doctor` ainda não foram validados.
+
+## 2026-09-05 — Doctor CLI and diagnostic bundle
+
+- `nexus doctor --json` com diretórios temporários isolados — PASS.
+- `nexus doctor --bundle` — PASS; ZIP contém somente `report.json` e `MANIFEST.txt`.
+- `go test ./internal/doctor ./internal/app` — PASS.
+- `go test ./...` — PASS.
+
+O bundle foi validado por allowlist; execução nativa Windows/macOS e reuso na Web permanecem pendentes.
+
 ## 2026-09-04 — Topbar Overlap Refactor, Responsive Hardening & Accordion Theme Quality Gates
 
 - `make web-verify` — PASS (8/8 gates verdes: typecheck, lint, null-arrays, vitest [51 files, 249 tests], i18n, build, embed-sync, ui-markers).
@@ -284,17 +315,7 @@ All business logic lives in `internal/nexus/` (service layer). Web and TUI consu
 Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CURRENT_CODE_REVIEW.md).
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-05T13:26:30Z
+## Frontend gate — 2026-09-05T18:43:03Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
 
-
-# Verificação — Padrão SCSS Modules & Arquitetura de Estilos (2026-09-05)
-- [x] SCSS Modules integrado e suportado via `sass` e `declaration.d.ts`.
-- [x] Stylelint configurado com `stylelint-config-standard-scss` e `stylelint-config-prettier-scss`.
-- [x] Script `check-css-allowlist.js` (`npm run check:styles`) ativo e validando a árvore.
-- [x] `plan-builder.css` migrado para `PlanBuilderSurface.module.scss` sem `!important`.
-- [x] `attention-layout.css` redundante removido.
-- [x] `npm --prefix web run quality`: PASS (check:styles, format:check, lint, lint:styles, typecheck, test 253/253).
-- [x] `npm --prefix web run build`: PASS (compilação e sincronização com backend Go).
-- [x] Contratos e diretrizes atualizados em `AGENTS.md`, `docs/engineering/WEB_ENGINEERING_STANDARDS.md` e `CONTRIBUTING.md`.

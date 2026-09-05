@@ -113,6 +113,28 @@ func NewSessionHost(cfg Config) (*SessionHost, error) {
 func (sh *SessionHost) Start() error {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
+	setStage := func(stage registry.StartupStage, fault registry.StartupFault) {
+		sh.session.StartupStage = stage
+		sh.session.StageChangedAt = time.Now()
+		sh.session.LastFault = fault
+		_ = registry.DefaultRegistry().UpdateStartupStage(sh.session.RuntimeID, stage, fault)
+	}
+	setStage(registry.StartupHostStarting, "")
+	setStage(registry.StartupIPCBinding, "")
+
+	// Bind IPC before starting the provider so a bind failure is reported as
+	// IPC_BIND_FAILED instead of being hidden behind a generic handshake timeout.
+	l, err := protocol.Listen(sh.session.RuntimeID)
+	if err != nil {
+		setStage(registry.StartupIPCBinding, registry.StartupFaultIPCBindFailed)
+		sh.session.State = registry.StateFailed
+		_ = registry.DefaultRegistry().UpdateState(sh.session.RuntimeID, registry.StateFailed)
+		return fmt.Errorf("failed to create control endpoint: %w", err)
+	}
+	sh.listener = l
+	setStage(registry.StartupIPCBound, "")
+	go sh.serveIPC()
+	setStage(registry.StartupProtocolReady, "")
 
 	// 1. Start process with terminal backend
 	rows := sh.cfg.InitialRows
@@ -125,10 +147,25 @@ func (sh *SessionHost) Start() error {
 	}
 
 	prepareCmd(sh.cmd)
+	setStage(registry.StartupTerminalStarting, "")
+	setStage(registry.StartupProviderStarting, "")
 
 	if err := sh.termBackend.Start(sh.cmd, rows, cols); err != nil {
+		setStage(registry.StartupProviderStarting, registry.StartupFaultConPTYStartFailed)
+		_ = sh.listener.Close()
+		sh.listener = nil
 		return fmt.Errorf("failed to start terminal backend: %w", err)
 	}
+	if err := sh.termBackend.Supervise(); err != nil {
+		setStage(registry.StartupProviderStarting, registry.StartupFaultProcessSupervision)
+		_ = sh.termBackend.Kill()
+		_ = sh.termBackend.Wait()
+		_ = sh.termBackend.Close()
+		_ = sh.listener.Close()
+		sh.listener = nil
+		return fmt.Errorf("failed to supervise provider process: %w", err)
+	}
+	setStage(registry.StartupTerminalReady, "")
 
 	// Start reading stdout from terminal backend
 	go sh.streamReader(sh.termBackend)
@@ -138,6 +175,7 @@ func (sh *SessionHost) Start() error {
 	sh.session.HostPID = os.Getpid()
 	sh.session.HostGeneration = time.Now().UnixNano()
 	sh.session.State = registry.StateRunning
+	setStage(registry.StartupRunning, "")
 	sh.session.ControlEndpoint = protocol.EndpointPath(sh.session.RuntimeID)
 
 	// Persist in Registry
@@ -153,21 +191,7 @@ func (sh *SessionHost) Start() error {
 		map[string]any{"pid": sh.session.PID, "host_pid": sh.session.HostPID, "endpoint": sh.session.ControlEndpoint},
 	))
 
-	// 2. Start IPC listener
-	l, err := protocol.Listen(sh.session.RuntimeID)
-	if err != nil {
-		// Clean up and terminate the spawned child process immediately so it is not orphaned
-		_ = sh.termBackend.Kill()
-		_ = sh.termBackend.Wait()
-		_ = sh.termBackend.Close()
-		sh.session.State = registry.StateFailed
-		_ = registry.DefaultRegistry().UpdateState(sh.session.RuntimeID, registry.StateFailed)
-		return fmt.Errorf("failed to create control endpoint: %w", err)
-	}
-	sh.listener = l
-	go sh.serveIPC()
-
-	// 3. Monitor process termination
+	// Monitor process termination.
 	go sh.waitProcess()
 
 	return nil
@@ -441,6 +465,9 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 			Workspace:           sh.session.Workspace,
 			PID:                 sh.session.PID,
 			State:               string(sh.session.State),
+			StartupStage:        string(sh.session.StartupStage),
+			StageChangedAt:      sh.session.StageChangedAt,
+			LastFault:           string(sh.session.LastFault),
 			ControlLevel:        string(sh.session.ControlLevel),
 			StartedAt:           sh.session.StartedAt,
 			DroppedOutputChunks: fanoutStats.DroppedChunks,

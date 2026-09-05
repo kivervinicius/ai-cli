@@ -3,6 +3,27 @@
 import { Project, Agent, AgentDetail, RuntimeSession, AgentConfig, ConfigImpact } from '../types';
 import { normalizeWorkPlan } from './workPlan';
 
+export type SystemDoctorCheck = {
+  id: string;
+  status: 'PASS' | 'WARN' | 'FAIL' | 'SKIPPED' | string;
+  summary: string;
+  remediation?: string;
+};
+
+export type SystemDoctorReport = {
+  schema: string;
+  generated_at: string;
+  version: string;
+  os: string;
+  arch: string;
+  checks: SystemDoctorCheck[];
+  providers: Record<
+    string,
+    { installed: boolean; version?: string; binary_path?: string; error?: string }
+  >;
+  credentials: { status: string; mechanism: string; reason?: string };
+};
+
 export class NexusAPIError<TPayload = unknown> extends Error {
   readonly status: number;
   readonly payload: TPayload;
@@ -232,6 +253,7 @@ export const nexus = {
     }),
 
   // System Updates
+  getSystemDoctor: () => request<SystemDoctorReport>('/api/v1/system/doctor'),
   getSystemUpdates: () =>
     request<{
       nexus_version: string;

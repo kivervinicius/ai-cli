@@ -88,6 +88,24 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 			FetchedAt:  time.Now(),
 		}
 	}
+
+	// Reject stale snapshots from adapters: a quota file older than the
+	// trust window is not evidence of live capacity. Downgrading to
+	// UNKNOWN prevents the scheduler and usage tables from displaying
+	// phantom 100% remaining data from disk caches written days ago.
+	if snap.Status != model.UsageUnknown && snap.Status != model.UsageError && len(snap.Windows) > 0 {
+		if !qEng.Trustworthy(snap) {
+			snap.Status = model.UsageUnknown
+			snap.Source = model.SourceNone
+			snap.Windows = nil
+			return snap
+		}
+		// Persist only trustworthy data so the scheduler and other
+		// consumers read current quota instead of stale cache files.
+		eng := quota.NewEngine(5 * time.Minute)
+		_ = eng.SaveUsage(snap)
+	}
+
 	return snap
 }
 
@@ -105,15 +123,16 @@ func GetQuotaDetails(providerName, name, plan, email string) QuotaDetails {
 	}
 
 	if q.ModelName == "" {
-		if providerName == "codex" {
+		switch providerName {
+		case "codex":
 			q.ModelName = "gpt-5.6-sol"
-		} else if providerName == "agy" {
+		case "agy":
 			q.ModelName = "Gemini 2.5 Flash / Pro"
-		} else if providerName == "claude" {
+		case "claude":
 			q.ModelName = "Claude 3.7 Sonnet"
-		} else if providerName == "opencode" {
+		case "opencode":
 			q.ModelName = "OpenCode Provider"
-		} else if providerName == "gemini" {
+		case "gemini":
 			q.ModelName = "Gemini Pro"
 		}
 	}
@@ -135,13 +154,14 @@ func GetQuotaDetails(providerName, name, plan, email string) QuotaDetails {
 			ProgressBar: bar,
 			Status:      string(snap.Status),
 		}
-		if w.Kind == "5h" || w.Kind == "daily" {
+		switch w.Kind {
+		case "5h", "daily":
 			q.FiveHour = lw
-		} else if w.Kind == "weekly" {
+		case "weekly":
 			q.Weekly = lw
-		} else if w.Kind == "claude_5h" || w.Kind == "claude_five_hour" {
+		case "claude_5h", "claude_five_hour":
 			q.ClaudeFiveH = lw
-		} else if w.Kind == "claude_weekly" {
+		case "claude_weekly":
 			q.ClaudeWeek = lw
 		}
 	}

@@ -14,9 +14,10 @@ func TestSlashPrefixRouter_NeverLeaksToChild(t *testing.T) {
 
 	for _, b := range input {
 		out := router.ProcessByte(b)
-		if out.Action == ActionForwardBytes {
+		switch out.Action {
+		case ActionForwardBytes:
 			forwarded = append(forwarded, out.ForwardBytes...)
-		} else if out.Action == ActionControlCommand {
+		case ActionControlCommand:
 			interceptedCmd = out.ControlCmd
 		}
 	}
@@ -34,9 +35,10 @@ func TestSlashPrefixRouter_NeverLeaksToChild(t *testing.T) {
 	interceptedCmd = ""
 	for _, b := range []byte("hello world\r") {
 		out := router.ProcessByte(b)
-		if out.Action == ActionForwardBytes {
+		switch out.Action {
+		case ActionForwardBytes:
 			forwarded = append(forwarded, out.ForwardBytes...)
-		} else if out.Action == ActionControlCommand {
+		case ActionControlCommand:
 			interceptedCmd = out.ControlCmd
 		}
 	}
@@ -54,9 +56,10 @@ func TestSlashPrefixRouter_NeverLeaksToChild(t *testing.T) {
 	interceptedCmd = ""
 	for _, b := range []byte("/help\r") {
 		out := router.ProcessByte(b)
-		if out.Action == ActionForwardBytes {
+		switch out.Action {
+		case ActionForwardBytes:
 			forwarded = append(forwarded, out.ForwardBytes...)
-		} else if out.Action == ActionControlCommand {
+		case ActionControlCommand:
 			interceptedCmd = out.ControlCmd
 		}
 	}
@@ -74,9 +77,10 @@ func TestSlashPrefixRouter_NeverLeaksToChild(t *testing.T) {
 	interceptedCmd = ""
 	for _, b := range []byte("//ai prompt\r") {
 		out := router.ProcessByte(b)
-		if out.Action == ActionForwardBytes {
+		switch out.Action {
+		case ActionForwardBytes:
 			forwarded = append(forwarded, out.ForwardBytes...)
-		} else if out.Action == ActionControlCommand {
+		case ActionControlCommand:
 			interceptedCmd = out.ControlCmd
 		}
 	}
@@ -94,9 +98,10 @@ func TestSlashPrefixRouter_NeverLeaksToChild(t *testing.T) {
 	interceptedCmd = ""
 	for _, b := range []byte("/nexus status\r") {
 		out := router.ProcessByte(b)
-		if out.Action == ActionForwardBytes {
+		switch out.Action {
+		case ActionForwardBytes:
 			forwarded = append(forwarded, out.ForwardBytes...)
-		} else if out.Action == ActionControlCommand {
+		case ActionControlCommand:
 			interceptedCmd = out.ControlCmd
 		}
 	}
@@ -114,9 +119,10 @@ func TestSlashPrefixRouter_NeverLeaksToChild(t *testing.T) {
 	interceptedCmd = ""
 	for _, b := range []byte("//nexus prompt\r") {
 		out := router.ProcessByte(b)
-		if out.Action == ActionForwardBytes {
+		switch out.Action {
+		case ActionForwardBytes:
 			forwarded = append(forwarded, out.ForwardBytes...)
-		} else if out.Action == ActionControlCommand {
+		case ActionControlCommand:
 			interceptedCmd = out.ControlCmd
 		}
 	}

@@ -8,6 +8,37 @@ import (
 	"strings"
 )
 
+// FilesystemIdentity identifies an existing filesystem object independently of
+// textual aliases such as macOS /var and /private/var or Windows short names.
+type FilesystemIdentity struct {
+	Kind      string `json:"kind"`
+	StableKey string `json:"stable_key"`
+	Available bool   `json:"available"`
+}
+
+// PathRef keeps the user-facing spelling, canonical security path and stable
+// identity together. DisplayPath must never be used for authorization.
+type PathRef struct {
+	DisplayPath   string             `json:"display_path"`
+	CanonicalPath string             `json:"canonical_path"`
+	Identity      FilesystemIdentity `json:"identity"`
+}
+
+// ResolvePathRef resolves a path and, when it exists, records its filesystem
+// identity. Non-existing paths remain usable for creation flows but have no
+// identity until an object exists on disk.
+func ResolvePathRef(p string) (PathRef, error) {
+	canonical, err := CanonicalWorkspacePath(p)
+	if err != nil {
+		return PathRef{}, err
+	}
+	ref := PathRef{DisplayPath: p, CanonicalPath: canonical}
+	if identity, identityErr := filesystemIdentity(canonical); identityErr == nil {
+		ref.Identity = identity
+	}
+	return ref, nil
+}
+
 // CanonicalWorkspacePath resolves and canonicalizes any workspace or project path:
 // - Verifies non-empty
 // - Computes absolute path

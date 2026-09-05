@@ -6,6 +6,34 @@ import (
 
 type RuntimeState string
 
+type StartupStage string
+
+const (
+	StartupCreated          StartupStage = "CREATED"
+	StartupHostStarting     StartupStage = "HOST_STARTING"
+	StartupIPCBinding       StartupStage = "IPC_BINDING"
+	StartupIPCBound         StartupStage = "IPC_BOUND"
+	StartupProtocolReady    StartupStage = "PROTOCOL_READY"
+	StartupTerminalStarting StartupStage = "TERMINAL_STARTING"
+	StartupTerminalReady    StartupStage = "TERMINAL_READY"
+	StartupProviderStarting StartupStage = "PROVIDER_STARTING"
+	StartupRunning          StartupStage = "RUNNING"
+)
+
+type StartupFault string
+
+const (
+	StartupFaultIPCBindFailed       StartupFault = "IPC_BIND_FAILED"
+	StartupFaultIPCTimeout          StartupFault = "IPC_TIMEOUT"
+	StartupFaultProtocolError       StartupFault = "PROTOCOL_ERROR"
+	StartupFaultConPTYStartFailed   StartupFault = "CONPTY_START_FAILED"
+	StartupFaultProviderNotFound    StartupFault = "PROVIDER_NOT_FOUND"
+	StartupFaultProviderExitedEarly StartupFault = "PROVIDER_EXITED_EARLY"
+	StartupFaultWorkspaceInvalid    StartupFault = "WORKSPACE_INVALID"
+	StartupFaultPermissionDenied    StartupFault = "PERMISSION_DENIED"
+	StartupFaultProcessSupervision  StartupFault = "PROCESS_SUPERVISION_FAILED"
+)
+
 const (
 	StateStarting RuntimeState = "STARTING"
 	StateRunning  RuntimeState = "RUNNING"
@@ -46,6 +74,9 @@ type RuntimeSession struct {
 	Args                 []string          `json:"-"`
 	Env                  []string          `json:"-"`
 	State                RuntimeState      `json:"state"`
+	StartupStage         StartupStage      `json:"startup_stage,omitempty"`
+	StageChangedAt       time.Time         `json:"stage_changed_at,omitempty"`
+	LastFault            StartupFault      `json:"last_fault,omitempty"`
 	ControlLevel         ControlLevel      `json:"control_level"`
 	StartedAt            time.Time         `json:"started_at"`
 	UpdatedAt            time.Time         `json:"updated_at"`

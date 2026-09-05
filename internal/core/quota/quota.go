@@ -85,6 +85,21 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 	var snap model.UsageSnapshot
 	_ = json.Unmarshal(data, &snap)
 
+	// Codex quota from local files is unreliable: the live rate limits come
+	// from session rollouts, not from quota.json / usage.json. Treat any
+	// codex cached snapshot as UNKNOWN so the scheduler scores it honestly
+	// instead of trusting potentially stale file data.
+	if provider == "codex" && (snap.Status == model.UsageCached || snap.Status == model.UsageLive) {
+		// Only invalidate if the file is older than our trust window.
+		// Freshly-written files (from loadUsageSnapshot) are still valid.
+		if !e.Trustworthy(snap) {
+			snap.Status = model.UsageUnknown
+			snap.Source = model.SourceNone
+			snap.Windows = nil
+			return snap, false
+		}
+	}
+
 	if snap.Status == "" || len(snap.Windows) == 0 {
 		var leg struct {
 			Account   string `json:"account"`

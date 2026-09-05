@@ -1631,3 +1631,99 @@ build` PASS e Web reiniciado em HTTP 200.
 - Criado arquivo de declarações de tipos TypeScript `web/src/declaration.d.ts` para suporte a módulos SCSS.
 - Atualizadas as diretrizes em `AGENTS.md`, `docs/engineering/WEB_ENGINEERING_STANDARDS.md` e `CONTRIBUTING.md`.
 - Verificação executada: `npm --prefix web run quality`, `npm --prefix web run build` e `vitest run` (253/253 testes aprovados).
+
+## 2026-09-05 — Autopilot: Platform Stabilization T0–T4
+
+- Registrado o plano executável em `docs/superpowers/plans/2026-09-05-nexus-platform-stabilization-productization.md` e os artefatos de retomada em `.omx/autopilot/nexus-platform-stabilization/`.
+- CI agora fixa GoReleaser `v2.18.0` e golangci-lint `v2.12.2`; `.golangci.yml` usa schema v2. Bun `1.3.9` regenerou `web/bun.lock` e `bun install --frozen-lockfile` passou.
+- Frontend: format, typecheck, lint (0 erros), stylelint e 253 testes passaram. O build/embed foi adiado para não sobrescrever `internal/control/web/dist/bundle.css`, já alterado antes da campanha.
+- Criado `ResolvedCommand` com suporte a `.exe`, `.cmd`, `.bat` e `.ps1`, integrado a runtime e launcher; `go test ./...` passou.
+- Windows ConPTY: teste deixou de bloquear deadline em `Read`; `ClosePseudoConsole` corrigido como API void; SessionHost passou a expor stages e bindar IPC antes do provider; Named Pipe não faz fallback inseguro.
+- Job Object de supervisão foi conectado ao backend Windows como primeiro incremento; falta execução nativa no runner Windows e a variante suspended/resume.
+- Não houve commit ou push automático. Alterações locais anteriores foram preservadas.
+
+## 2026-09-05 — Autopilot: Path Identity and Credential Capability Increment
+
+- Adicionados `PathRef`/`FilesystemIdentity` no módulo de configuração, com identidade Unix device/inode e fallback Windows explicitamente não suportado até a implementação por handle.
+- Criada migração SQLite `0012_path_identity.sql`; `Project` mantém `canonical_path` e passa a persistir display/identity de forma aditiva.
+- Credenciais agora expõem capacidade `SUPPORTED`, `DEGRADED` ou `UNSUPPORTED`; macOS/Windows não reutilizam comportamento Linux silenciosamente.
+- Verificação: `go test ./...`, `go vet ./...`, cross-compile Windows/Darwin e `git diff --check` passaram.
+- Próximo passo: consolidar `nexus doctor` e bundle diagnóstico redigido.
+
+## 2026-09-05 — Autopilot: Doctor CLI and Diagnostic Bundle
+
+- Consolidado o `nexus doctor` existente sobre um serviço de relatório read-only com checks de diretórios, providers e capacidade de credenciais.
+- `nexus doctor --json` agora retorna schema estável; `nexus doctor --bundle` gera ZIP allowlisted sem environment, args, prompts, transcripts ou logs brutos.
+- `nexus control doctor` deixou de limpar runtimes stale por padrão; reparo exige `--repair` explícito.
+- Testes de não-mutação, allowlist/redação e `go test ./...` passaram.
+
+## 2026-09-05 — Autopilot: Settings Diagnostics Surface
+
+- A tela Settings agora consome o mesmo endpoint autenticado `/api/v1/system/doctor`
+  usado pelo serviço de diagnóstico, sem duplicar probes no frontend.
+- Adicionado cartão de diagnóstico com plataforma/arquitetura, estado de cada check,
+  remediação sugerida, erro explícito e refresh manual; textos usam i18n e o novo
+  componente usa SCSS Module com tokens semânticos.
+- Verificação: `bun run format:check`, `bun run typecheck`, `bun run lint`,
+  `bun run lint:styles`, `bun run test -- --run` (51 arquivos / 253 testes) passaram.
+- Build/embed permanece adiado por causa do diff pré-existente em
+  `internal/control/web/dist/bundle.css`.
+
+## 2026-09-05 — Autopilot: Startup Fault Taxonomy
+
+- O Registry agora expõe constantes tipadas para falhas de bind IPC, timeout,
+  protocolo, ConPTY, provider, workspace, permissão e supervisão de processos.
+- O Launcher registra `IPC_TIMEOUT` ou `PROTOCOL_ERROR` no estágio de startup
+  antes de marcar o runtime como `FAILED`, permitindo que Web/Doctor exibam uma
+  causa operacional estável em vez de apenas um timeout genérico.
+- Verificação: `go test ./...`, `go vet ./...` e `git diff --check` passaram.
+
+## 2026-09-05 — Autopilot: CI Reproducibility Gate
+
+- A CI passou a declarar `GOTOOLCHAIN=local` e `GOFLAGS=-mod=readonly`, evitando
+  que o runner altere implicitamente a toolchain ou o módulo durante os gates.
+- O job frontend agora executa também `bun run check:styles`, fechando o gate de
+  allowlist SCSS que já é exigido pelo quality local.
+- Os jobs Windows/macOS nativos já existem no workflow; a próxima evidência deve
+  vir da execução desses runners, não de cross-test no Linux.
+
+## 2026-09-05 — Autopilot: Go Lint Audit
+
+- Instalado localmente o mesmo golangci-lint `v2.12.2` usado na CI e executado
+  com `--fix` apenas para correções mecânicas.
+- O conjunto caiu de 59 para 39 findings; `go test ./...` e `go vet ./...`
+  continuam verdes.
+- O restante não foi mascarado: inclui `unparam`, funções não usadas,
+  `staticcheck`, `ineffassign` e sugestões de `misspell` que confundem textos
+  válidos em português/espanhol. Essas correções exigem revisão manual antes de
+  entrar na branch.
+
+## 2026-09-05 — Autopilot: Frontend Verify Green
+
+- O gate `null-arrays` encontrou acesso direto a `report.checks.map` no cartão de
+  diagnóstico; a leitura foi normalizada com `asArray<SystemDoctorCheck>`.
+- `make web-verify` passou completamente: format, typecheck, lint, stylelint,
+  null-arrays, testes, i18n, build, embed-sync e UI markers.
+- O relatório ainda marca a árvore `web/dist` como dirty porque o build gera o
+  bundle embutido; essa reconciliação continua separada para não sobrescrever o
+  estado pré-existente sem revisão.
+
+## 2026-09-05 — Autopilot: redução segura de lint debt
+
+- Removidos parâmetros invariavelmente constantes/não utilizados em seleção de
+  provider, retry de lease, congelamento de plano e comandos CLI.
+- Corrigido shadowing/atribuição ineficaz durante consulta de versão do Maestro
+  e migração de schema.
+- `go test ./internal/control/web ./internal/nexus` e `git diff --check` passaram.
+- O lint Go continua bloqueado por findings preexistentes de misspell,
+  staticcheck e funções sem uso; nenhuma supressão foi adicionada.
+
+## 2026-09-05 — Beta Linux distribuível
+
+- Gerado `dist/beta/nexus-linux-amd64-v0.5.0-beta.23.tar.gz` com binário,
+  `VERSION` e instruções `BETA_LINUX.md`.
+- Gerado checksum SHA-256 ao lado do arquivo.
+- Smoke test em diretório temporário: `nexus version --json`, `nexus doctor
+  --json` e verificação do checksum passaram.
+- Escopo do artefato: Linux amd64, uso local/loopback; Windows/macOS continuam
+  fora da matriz suportada até haver execução nativa.

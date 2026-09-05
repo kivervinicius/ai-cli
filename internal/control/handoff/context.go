@@ -25,25 +25,25 @@ import (
 // FormatKickoffPrompt produces a clean, honest initial prompt for the target provider from a WorkCheckpoint.
 func FormatKickoffPrompt(cp WorkCheckpoint) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("=== IAPro Nexus Context Handoff (from %s:%s) ===\n", strings.ToUpper(cp.SourceProvider), cp.SourceProfile))
-	sb.WriteString(fmt.Sprintf("Workspace: %s\n", cp.Workspace))
+	fmt.Fprintf(&sb, "=== IAPro Nexus Context Handoff (from %s:%s) ===\n", strings.ToUpper(cp.SourceProvider), cp.SourceProfile)
+	fmt.Fprintf(&sb, "Workspace: %s\n", cp.Workspace)
 	if cp.SourceModel != "" {
-		sb.WriteString(fmt.Sprintf("Previous Model: %s\n", cp.SourceModel))
+		fmt.Fprintf(&sb, "Previous Model: %s\n", cp.SourceModel)
 	}
 	if cp.GitBranch != "" {
-		sb.WriteString(fmt.Sprintf("Active Git Branch: %s\n", cp.GitBranch))
+		fmt.Fprintf(&sb, "Active Git Branch: %s\n", cp.GitBranch)
 	}
 	if len(cp.ChangedFiles) > 0 {
-		sb.WriteString(fmt.Sprintf("Modified Files (%d):\n", len(cp.ChangedFiles)))
+		fmt.Fprintf(&sb, "Modified Files (%d):\n", len(cp.ChangedFiles))
 		for _, f := range cp.ChangedFiles {
-			sb.WriteString(fmt.Sprintf(" - %s\n", f))
+			fmt.Fprintf(&sb, " - %s\n", f)
 		}
 	}
 	if cp.GitDiffStat != "" {
 		sb.WriteString("Git Diff Summary:\n" + cp.GitDiffStat + "\n")
 	}
 	if cp.Goal != "" {
-		sb.WriteString(fmt.Sprintf("Current Goal / Task: %s\n", cp.Goal))
+		fmt.Fprintf(&sb, "Current Goal / Task: %s\n", cp.Goal)
 	}
 	sb.WriteString("==================================================\n")
 	sb.WriteString("Please inspect the modified files and continue the ongoing task in this workspace.")

@@ -203,6 +203,30 @@ func TestNexusProjectsAndAgentsAPI(t *testing.T) {
 	resp.Body.Close()
 }
 
+func TestSystemDoctorAPIUsesSharedReadOnlyReport(t *testing.T) {
+	client, srv, _ := csrfClient(t)
+	resp, err := client.Get(srv.URL() + "/api/v1/system/doctor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("doctor status: %d", resp.StatusCode)
+	}
+	var report struct {
+		Schema string `json:"schema"`
+		Checks []struct {
+			ID string `json:"id"`
+		} `json:"checks"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Schema != "nexus.doctor/v1" || len(report.Checks) == 0 {
+		t.Fatalf("unexpected doctor report: %+v", report)
+	}
+}
+
 // TestNexusCSRFEnforcement verifies that all mutating Nexus REST routes reject
 // requests missing or invalid CSRF tokens (P0-2).
 func TestNexusCSRFEnforcement(t *testing.T) {

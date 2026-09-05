@@ -103,7 +103,7 @@ SUBCOMMANDS:
   continue <runtime-id> --with <provider[:profile]>
                                 Cross-provider context handoff
   cleanup                       Clean up stale runtime records and dead sockets
-  doctor [--json]               Audit control runtime environment and drivers
+  doctor [--json] [--repair]     Audit control runtime environment and drivers
   web [--port <port>] [--no-open] [--listen <ip>] [--remote]
                                 Open browser-based Web Workspace OS
                                 Default port: 3000 (override with NEXUS_WEB_PORT env var)
@@ -127,7 +127,7 @@ func controlWebCmd(args []string) error {
 	}
 
 	var port int
-	var host string = "127.0.0.1"
+	var host = "127.0.0.1"
 	var noOpen bool
 	var remote bool
 
@@ -621,7 +621,7 @@ func controlContinueCmd(args []string) error {
 	return attachRuntime(newSess.RuntimeID)
 }
 
-func controlCleanupCmd(args []string) error {
+func controlCleanupCmd(_ []string) error {
 	reg := registry.DefaultRegistry()
 	cleaned, _ := reg.CleanupStale()
 	purged, _ := reg.PurgeInactive()
@@ -634,7 +634,15 @@ func controlDoctorCmd(args []string) error {
 	ctx := context.Background()
 
 	reg := registry.DefaultRegistry()
-	staleCount, _ := reg.CleanupStale()
+	staleCount := 0
+	for _, session := range reg.List() {
+		if session.State == registry.StateStale {
+			staleCount++
+		}
+	}
+	if hasFlag(args, "--repair") {
+		staleCount, _ = reg.CleanupStale()
+	}
 
 	var filterProvider string
 	for _, a := range args {

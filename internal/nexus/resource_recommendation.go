@@ -204,7 +204,7 @@ func evaluateCandidate(acc ProviderAccount, req TaskRequirements, policy Schedul
 	// QuotaView is not evidence that the data is LIVE.
 	c.Confidence = quotaConfidence(acc)
 
-	var score float64 = 50.0 // Baseline
+	var score = 50.0 // Baseline
 
 	// 1. Quota & Capacity Scoring (0 to 30 pts)
 	quotaScore := 0.0

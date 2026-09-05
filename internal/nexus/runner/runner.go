@@ -553,7 +553,7 @@ func (r *MissionRunner) executeParallelGroup(ctx context.Context, run *MissionRu
 	}
 	results := make(chan result, len(indexes))
 	for _, idx := range indexes {
-		idx := idx
+
 		runCopy := *run
 		runCopy.PackageRuns = append([]PackageRun(nil), run.PackageRuns...)
 		go func() {

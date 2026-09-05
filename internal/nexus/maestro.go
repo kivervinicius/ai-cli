@@ -229,7 +229,8 @@ func (c *MaestroClient) queryCapabilities() (*MaestroCapability, error) {
 	// 2. Query version from CLI
 	verOut, err := exec.Command(c.maestroBin, "version").Output()
 	if err != nil {
-		verOut, err = exec.Command(c.maestroBin, "--version").Output()
+		fallbackOut, _ := exec.Command(c.maestroBin, "--version").Output()
+		verOut = fallbackOut
 	}
 	version := strings.TrimSpace(string(verOut))
 	if version == "" {
@@ -345,7 +346,6 @@ func (c *MaestroClient) GetAdvice(ctx AdviceContext, intent string) (*AdviceResp
 		Mode:     MaestroOff,
 		Degraded: true,
 	}, fmt.Errorf("maestro advise unavailable or returned an invalid contract (MAESTRO_DEGRADED)")
-
 }
 
 func stringToReader(b []byte) *stringReader {

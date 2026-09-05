@@ -14,6 +14,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
+	"github.com/kivervinicius/ai-cli/internal/runtime"
 )
 
 // LaunchOptions defines parameters for launching a supervised AI runtime.
@@ -100,6 +101,12 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 		}
 		customCommand = true
 	}
+	resolved, err := runtime.ResolveCommand(bin)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve executable for %s:%s: %w", opts.ProviderID, opts.ProfileID, err)
+	}
+	bin = resolved.LauncherPath
+	extraArgs = append(append([]string(nil), resolved.PrefixArgs...), extraArgs...)
 
 	title := opts.Title
 	if strings.TrimSpace(title) == "" {
@@ -178,6 +185,7 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 
 	// Handshake: wait for IPC endpoint to be active and responsive
 	if err := protocol.WaitForEndpoint(ctx, opts.RuntimeID, opts.Timeout); err != nil {
+		_ = l.reg.UpdateStartupStage(opts.RuntimeID, registry.StartupProviderStarting, registry.StartupFaultIPCTimeout)
 		_ = l.reg.UpdateState(opts.RuntimeID, registry.StateFailed)
 		return nil, fmt.Errorf("runtime handshake timed out for %s: %w", opts.RuntimeID, err)
 	}
@@ -185,6 +193,7 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 	// Verify handshake with status probe
 	client, err := protocol.NewClient(opts.RuntimeID)
 	if err != nil {
+		_ = l.reg.UpdateStartupStage(opts.RuntimeID, registry.StartupProtocolReady, registry.StartupFaultProtocolError)
 		_ = l.reg.UpdateState(opts.RuntimeID, registry.StateFailed)
 		return nil, fmt.Errorf("failed to connect to initialized runtime %s: %w", opts.RuntimeID, err)
 	}
@@ -192,6 +201,7 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 
 	status, err := client.Status()
 	if err != nil {
+		_ = l.reg.UpdateStartupStage(opts.RuntimeID, registry.StartupProtocolReady, registry.StartupFaultProtocolError)
 		_ = l.reg.UpdateState(opts.RuntimeID, registry.StateFailed)
 		return nil, fmt.Errorf("status handshake probe failed for runtime %s: %w", opts.RuntimeID, err)
 	}

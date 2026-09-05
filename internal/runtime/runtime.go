@@ -49,6 +49,9 @@ func WrapWithIsolatedSecretService(bin string, args []string) (string, []string)
 // LookPath searches for an executable in the system PATH and standard developer directories
 // (e.g. ~/.local/bin, ~/.bun/bin, ~/.opencode/bin, ~/.cargo/bin, ~/.nvm/versions/node/*/bin).
 func LookPath(name string) (string, error) {
+	if resolved, err := ResolveCommand(name); err == nil {
+		return resolved.ArtifactPath, nil
+	}
 	// 1. Standard PATH
 	if path, err := exec.LookPath(name); err == nil {
 		return path, nil
@@ -184,7 +187,11 @@ func EnvSet(base []string, overrides map[string]string, unset ...string) []strin
 
 // RunInteractive executes an external CLI in full interactive TTY passthrough mode.
 func RunInteractive(bin string, args []string, env []string, cwd string) (model.Failure, error) {
-	cmd := exec.Command(bin, args...)
+	resolved, err := ResolveCommand(bin)
+	if err != nil {
+		return model.Failure{Kind: model.FailureCommand, Message: err.Error()}, err
+	}
+	cmd := exec.Command(resolved.LauncherPath, append(resolved.PrefixArgs, args...)...)
 	// Some embedded/browser terminals expose TERM=dumb even though the child
 	// still has an interactive stdin. Modern provider CLIs interpret that value
 	// as an unsafe non-TUI terminal and stop for a confirmation prompt whose
@@ -214,7 +221,7 @@ func RunInteractive(bin string, args []string, env []string, cwd string) (model.
 		}
 	}()
 
-	err := cmd.Wait()
+	err = cmd.Wait()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
@@ -243,7 +250,11 @@ func NormalizeInteractiveEnv(env []string) []string {
 
 // RunCommandCapture executes a command non-interactively and captures its combined stdout and stderr.
 func RunCommandCapture(ctx context.Context, bin string, args []string, env []string, cwd string) (string, error) {
-	cmd := exec.CommandContext(ctx, bin, args...)
+	resolved, err := ResolveCommand(bin)
+	if err != nil {
+		return "", err
+	}
+	cmd := exec.CommandContext(ctx, resolved.LauncherPath, append(resolved.PrefixArgs, args...)...)
 	cmd.Env = env
 	cmd.Dir = cwd
 
@@ -251,7 +262,7 @@ func RunCommandCapture(ctx context.Context, bin string, args []string, env []str
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
 
-	err := cmd.Run()
+	err = cmd.Run()
 	return buf.String(), err
 }
 

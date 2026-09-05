@@ -20,7 +20,8 @@ var (
 )
 
 const projectColumns = `id,name,slug,canonical_path,repo_remote,repo_url,default_branch,
-	maestro_mode,resource_policy,default_isolation,settings,created_at,updated_at,last_opened_at`
+	maestro_mode,resource_policy,default_isolation,settings,created_at,updated_at,last_opened_at,
+	display_path,identity_kind,identity_key`
 
 // CanonicalPath resolves and validates a project path: absolute, cleaned,
 // symlinks resolved, must exist and be a directory.
@@ -56,6 +57,16 @@ func (s *Store) CreateProject(p Project) (Project, error) {
 	if p.CanonicalPath == "" {
 		return Project{}, errors.New("canonical_path is required")
 	}
+	if p.DisplayPath == "" {
+		p.DisplayPath = p.CanonicalPath
+	}
+	if p.IdentityKind == "" {
+		if ref, err := config.ResolvePathRef(p.CanonicalPath); err == nil {
+			p.IdentityKind = ref.Identity.Kind
+			p.IdentityKey = ref.Identity.StableKey
+			p.PathRef = ref
+		}
+	}
 	if strings.TrimSpace(p.Name) == "" {
 		p.Name = filepath.Base(p.CanonicalPath)
 	}
@@ -87,11 +98,13 @@ func (s *Store) CreateProject(p Project) (Project, error) {
 		}
 		_, err := s.db.Exec(`INSERT INTO projects
 			(id,name,slug,canonical_path,repo_remote,repo_url,default_branch,maestro_mode,
-			 resource_policy,default_isolation,settings,created_at,updated_at,last_opened_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)`,
+			 resource_policy,default_isolation,settings,created_at,updated_at,last_opened_at,
+			 display_path,identity_kind,identity_key)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?)`,
 			p.ID, p.Name, slug, p.CanonicalPath, p.RepoRemote, p.RepoURL, p.DefaultBranch,
 			p.MaestroMode, p.ResourcePolicy, p.DefaultIsolation, p.Settings,
-			p.CreatedAt.Format(time.RFC3339Nano), p.UpdatedAt.Format(time.RFC3339Nano))
+			p.CreatedAt.Format(time.RFC3339Nano), p.UpdatedAt.Format(time.RFC3339Nano),
+			p.DisplayPath, p.IdentityKind, p.IdentityKey)
 		if err == nil {
 			p.Slug = slug
 			return p, nil
@@ -141,10 +154,11 @@ func (s *Store) UpdateProject(p Project) error {
 	_, err := s.db.Exec(`UPDATE projects SET
 		name=?,slug=?,canonical_path=?,repo_remote=?,repo_url=?,default_branch=?,
 		maestro_mode=?,resource_policy=?,default_isolation=?,settings=?,updated_at=?
+		,display_path=?,identity_kind=?,identity_key=?
 		WHERE id=?`,
 		p.Name, p.Slug, p.CanonicalPath, p.RepoRemote, p.RepoURL, p.DefaultBranch,
 		p.MaestroMode, p.ResourcePolicy, p.DefaultIsolation, p.Settings,
-		p.UpdatedAt.Format(time.RFC3339Nano), p.ID)
+		p.UpdatedAt.Format(time.RFC3339Nano), p.DisplayPath, p.IdentityKind, p.IdentityKey, p.ID)
 	return err
 }
 
@@ -193,7 +207,7 @@ func scanProjectRows(row rowScanner) (Project, error) {
 	var lastOpenedAt sql.NullString
 	err := row.Scan(&p.ID, &p.Name, &p.Slug, &p.CanonicalPath, &p.RepoRemote, &p.RepoURL,
 		&p.DefaultBranch, &p.MaestroMode, &p.ResourcePolicy, &p.DefaultIsolation, &p.Settings,
-		&createdAt, &updatedAt, &lastOpenedAt)
+		&createdAt, &updatedAt, &lastOpenedAt, &p.DisplayPath, &p.IdentityKind, &p.IdentityKey)
 	if err == sql.ErrNoRows {
 		return Project{}, ErrNotFound
 	}
@@ -206,6 +220,14 @@ func scanProjectRows(row rowScanner) (Project, error) {
 		if t, err := time.Parse(time.RFC3339Nano, lastOpenedAt.String); err == nil {
 			p.LastOpenedAt = &t
 		}
+	}
+	if p.DisplayPath == "" {
+		p.DisplayPath = p.CanonicalPath
+	}
+	p.PathRef = config.PathRef{
+		DisplayPath:   p.DisplayPath,
+		CanonicalPath: p.CanonicalPath,
+		Identity:      config.FilesystemIdentity{Kind: p.IdentityKind, StableKey: p.IdentityKey, Available: p.IdentityKind != "" && p.IdentityKey != ""},
 	}
 	return p, nil
 }

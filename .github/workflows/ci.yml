@@ -7,6 +7,10 @@ on:
       - master
       - 'feat/**'
       - 'fix/**'
+
+env:
+  GOTOOLCHAIN: local
+  GOFLAGS: -mod=readonly
   pull_request:
     branches:
       - main
@@ -47,6 +51,10 @@ jobs:
         working-directory: ./web
         run: bun run lint:styles
 
+      - name: Verify stylesheet allowlist
+        working-directory: ./web
+        run: bun run check:styles
+
       - name: Unit Tests
         working-directory: ./web
         run: bun run test
@@ -83,7 +91,7 @@ jobs:
       - name: GolangCI-Lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v2.12.2
           args: --timeout=5m
 
       - name: Test with Race Detector
@@ -192,7 +200,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
-          version: latest
+          version: v2.18.0
           args: release --snapshot --clean
 
       - name: Verify Artifacts

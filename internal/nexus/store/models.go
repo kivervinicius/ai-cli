@@ -3,6 +3,8 @@ package store
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/kivervinicius/ai-cli/internal/core/config"
 )
 
 // Continuity statuses (§24 honest continuity model).
@@ -45,20 +47,24 @@ const (
 // Project is the root of the Nexus domain (§14-15). Identity is a stable
 // ULID-based ID, never derived from basename/path.
 type Project struct {
-	ID               string     `json:"id"`
-	Name             string     `json:"name"`
-	Slug             string     `json:"slug"`
-	CanonicalPath    string     `json:"canonical_path"`
-	RepoRemote       string     `json:"repo_remote"`
-	RepoURL          string     `json:"repo_url"`
-	DefaultBranch    string     `json:"default_branch"`
-	MaestroMode      string     `json:"maestro_mode"`
-	ResourcePolicy   string     `json:"resource_policy"` // JSON object
-	DefaultIsolation string     `json:"default_isolation"`
-	Settings         string     `json:"settings"` // JSON object
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
-	LastOpenedAt     *time.Time `json:"last_opened_at,omitempty"`
+	ID               string         `json:"id"`
+	Name             string         `json:"name"`
+	Slug             string         `json:"slug"`
+	CanonicalPath    string         `json:"canonical_path"`
+	DisplayPath      string         `json:"display_path,omitempty"`
+	IdentityKind     string         `json:"identity_kind,omitempty"`
+	IdentityKey      string         `json:"identity_key,omitempty"`
+	PathRef          config.PathRef `json:"path_ref,omitempty"`
+	RepoRemote       string         `json:"repo_remote"`
+	RepoURL          string         `json:"repo_url"`
+	DefaultBranch    string         `json:"default_branch"`
+	MaestroMode      string         `json:"maestro_mode"`
+	ResourcePolicy   string         `json:"resource_policy"` // JSON object
+	DefaultIsolation string         `json:"default_isolation"`
+	Settings         string         `json:"settings"` // JSON object
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+	LastOpenedAt     *time.Time     `json:"last_opened_at,omitempty"`
 }
 
 // Agent is the primary operational unit (§19-21). AgentID is stable across

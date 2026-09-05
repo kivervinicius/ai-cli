@@ -27,3 +27,13 @@ func TestCredentialIsolationWrapCommand(t *testing.T) {
 		}
 	}
 }
+
+func TestCredentialCapabilityIsTruthfulOnUnsupportedPlatforms(t *testing.T) {
+	capability := DefaultCredentialIsolator().Capability()
+	if capability.Mechanism == "" || capability.Status == "" {
+		t.Fatalf("credential capability must be explicit: %+v", capability)
+	}
+	if (runtime.GOOS == "windows" || runtime.GOOS == "darwin") && capability.Status == CredentialSupported {
+		t.Fatalf("unsupported native integration must not claim support: %+v", capability)
+	}
+}

@@ -112,7 +112,8 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.custom = m.custom[:len(m.custom)-1]
 			}
 		case "enter":
-			if m.step == "select" {
+			switch m.step {
+			case "select":
 				if m.options[m.selected].Kind == "custom" {
 					m.step = "custom"
 				} else {
@@ -121,16 +122,16 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.step = "confirm"
 					}
 				}
-			} else if m.step == "custom" {
+			case "custom":
 				m.next, m.err = m.custom, Validate(m.custom)
 				if m.err == nil {
 					m.step = "confirm"
 				}
-			} else if m.step == "confirm" {
+			case "confirm":
 				m.step = "building"
 				m.startTime = time.Now()
 				return m, tea.Batch(m.execute(), tickCmd(), waitForProgress(m.progressCh))
-			} else if m.step == "done" || m.step == "error" {
+			case "done", "error":
 				return m, tea.Quit
 			}
 		default:

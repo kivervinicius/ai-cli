@@ -32,10 +32,12 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/core/security"
 	"github.com/kivervinicius/ai-cli/internal/core/session"
 	"github.com/kivervinicius/ai-cli/internal/core/telemetry"
+	diagnostic "github.com/kivervinicius/ai-cli/internal/doctor"
 	"github.com/kivervinicius/ai-cli/internal/localization"
 	"github.com/kivervinicius/ai-cli/internal/nexus"
 	"github.com/kivervinicius/ai-cli/internal/profile"
 	"github.com/kivervinicius/ai-cli/internal/release"
+	nexusruntime "github.com/kivervinicius/ai-cli/internal/runtime"
 	"github.com/kivervinicius/ai-cli/internal/tui"
 )
 
@@ -94,7 +96,7 @@ func Run(args []string) error {
 			if prof == "auto" {
 				prof = ""
 			}
-			return executeProviderWithSmartSelection(prov, prof, trimDashDash(args[1:]), true)
+			return executeProviderWithSmartSelection(prov, prof, trimDashDash(args[1:]))
 		}
 	}
 
@@ -212,14 +214,14 @@ func Run(args []string) error {
 		if targetProfile == "auto" {
 			targetProfile = ""
 		}
-		return executeProviderWithSmartSelection(prov, targetProfile, trimDashDash(rest), true)
+		return executeProviderWithSmartSelection(prov, targetProfile, trimDashDash(rest))
 	default:
 		if strings.HasPrefix(args[0], "-") {
 			// Auto selection for configured default provider
 			cfg, _ := config.LoadConfig()
 			for prov, prof := range cfg.Defaults {
 				if prof != "" {
-					return executeProviderWithSmartSelection(prov, prof, trimDashDash(args), true)
+					return executeProviderWithSmartSelection(prov, prof, trimDashDash(args))
 				}
 			}
 			return fmt.Errorf("no default profile configured; specify provider, e.g.: %s codex", progName())
@@ -264,7 +266,7 @@ func interactiveTUI() error {
 	}
 	switch res.Action {
 	case tui.ActionRunProfile:
-		return executeProviderWithSmartSelection(res.Provider, res.ProfileName, res.Args, true)
+		return executeProviderWithSmartSelection(res.Provider, res.ProfileName, res.Args)
 	case tui.ActionResumeConversation:
 		return executeResume(res.Provider, res.ProfileName, res.ConversationID, res.Args)
 	case tui.ActionLogin:
@@ -274,7 +276,7 @@ func interactiveTUI() error {
 	}
 }
 
-func executeProviderWithSmartSelection(provName, explicitProfile string, args []string, allowFallback bool) error {
+func executeProviderWithSmartSelection(provName, explicitProfile string, args []string) error {
 	reg := initRegistry()
 	pAdapter, ok := reg.Get(provName)
 	if !ok {
@@ -299,7 +301,13 @@ func executeProviderWithSmartSelection(provName, explicitProfile string, args []
 		if p.Provider == provName {
 			candidates = append(candidates, p)
 			accounts[p.Name] = profile.GetAccountInfo(provName, p.Name)
-			_ = profile.GetUsageSnapshot(provName, p.Name)
+			snap := profile.GetUsageSnapshot(provName, p.Name)
+			// Persist fresh snapshot so the scheduler reads current quota
+			// instead of potentially stale disk cache (especially for codex
+			// which always bypasses cache on read).
+			if snap.Status != model.UsageUnknown && snap.Status != model.UsageError {
+				_ = qEng.SaveUsage(snap)
+			}
 		}
 	}
 
@@ -337,7 +345,7 @@ func executeProviderWithSmartSelection(provName, explicitProfile string, args []
 	cwd, _ := os.Getwd()
 	ctx := context.Background()
 
-	return exec.RunWithFallback(ctx, provName, cwd, explicitProfile, candidates, accounts, allowFallback, func(p model.Profile) (model.Failure, error) {
+	return exec.RunWithFallback(ctx, provName, cwd, explicitProfile, candidates, accounts, true, func(p model.Profile) (model.Failure, error) {
 		accInfo := accounts[p.Name]
 		accEmail := accInfo.Email
 		if accEmail == "" {
@@ -449,7 +457,7 @@ func usage() {
   %s unbind <provider>            Unbind current workspace
   %s bindings [--json]            List all active workspace bindings
   %s explain <provider>           Explain account selection decision and scores
-  %s doctor [--json]              Deep diagnostics of runtime, keyrings & CLIs
+  %s doctor [--json|--bundle]     Deep diagnostics of runtime, keyrings & CLIs
   %s security [profile] [--json]  Audit file sharing and isolation boundary
   %s history [--json]             View local session execution log
   %s stats [--json]               Aggregated statistics (sessions, fallbacks, rate limits)
@@ -853,14 +861,40 @@ func usageTableCmd(ps []model.Profile) error {
 			if fiveHour == "-" && weekly == "-" {
 				continue
 			}
-			rows = append(rows, tui.UsageTableRow{Provider: p.Provider, Profile: p.Name, Account: acc.Email, Plan: acc.Plan, Group: group.Name, FiveHour: fiveHour, Weekly: weekly, Status: quotaGroupStatus(group, qv.Status)})
+			modelName := qv.ModelGroups[0].Name
+			if len(qv.ModelGroups) > 1 {
+				modelName = group.Name
+			}
+			lastUpdated := ""
+			if !qv.FetchedAt.IsZero() {
+				lastUpdated = quota.FormatFreshness(qv.FetchedAt)
+			}
+			rows = append(rows, tui.UsageTableRow{
+				Provider:    p.Provider,
+				Profile:     p.Name,
+				Account:     acc.Email,
+				Plan:        acc.Plan,
+				Group:       group.Name,
+				FiveHour:    fiveHour,
+				Weekly:      weekly,
+				Status:      quotaGroupStatus(group, qv.Status),
+				ModelName:   modelName,
+				LastUpdated: lastUpdated,
+			})
 		}
 	}
 	if len(rows) == 0 {
 		fmt.Println("Nenhuma quota disponível para exibir.")
 		return nil
 	}
-	return tui.RunUsageTable(rows)
+	sel, err := tui.RunUsageTable(rows)
+	if err != nil {
+		return err
+	}
+	if sel != nil {
+		return executeProviderWithSmartSelection(sel.Provider, sel.Profile, nil)
+	}
+	return nil
 }
 
 func quotaWindowDisplay(windows []quota.Window, kind string) string {
@@ -1042,14 +1076,24 @@ func doctorCmd(args []string) error {
 	reg := initRegistry()
 	ctx := context.Background()
 	detections := reg.DetectAll(ctx)
-	ps, _ := profile.List()
-
-	if len(args) > 0 && args[0] == "--json" {
-		out := map[string]interface{}{
-			"detections": detections,
-			"profiles":   ps,
+	jsonOutput := false
+	bundleOutput := false
+	for _, arg := range args {
+		jsonOutput = jsonOutput || arg == "--json"
+		bundleOutput = bundleOutput || arg == "--bundle"
+	}
+	report := diagnostic.BuildReport(buildinfo.Version, detections, nexusruntime.DefaultCredentialIsolator().Capability())
+	if bundleOutput {
+		path := filepath.Join(os.TempDir(), fmt.Sprintf("nexus-doctor-%d.zip", time.Now().UnixNano()))
+		if err := report.WriteBundle(path); err != nil {
+			return fmt.Errorf("write doctor bundle: %w", err)
 		}
-		b, _ := json.MarshalIndent(out, "", "  ")
+		fmt.Println(path)
+		return nil
+	}
+
+	if jsonOutput {
+		b, _ := report.JSON()
 		fmt.Println(string(b))
 		return nil
 	}
@@ -1062,6 +1106,12 @@ func doctorCmd(args []string) error {
 			fmt.Printf("✗ %-12s not installed (%s)\n", id, det.Error)
 		}
 	}
+	fmt.Println("\n=== Platform Checks ===")
+	for _, check := range report.Checks {
+		fmt.Printf("%s %-28s %s\n", check.Status, check.ID, check.Summary)
+	}
+
+	ps, _ := profile.List()
 
 	fmt.Println("\n=== Profile & Auth Status ===")
 	for _, p := range ps {
@@ -1175,7 +1225,7 @@ func statsCmd(args []string) error {
 	return nil
 }
 
-func exportCmd(args []string) error {
+func exportCmd(_ []string) error {
 	reg := initRegistry()
 	ctx := context.Background()
 	detections := reg.DetectAll(ctx)
@@ -1196,18 +1246,18 @@ func exportCmd(args []string) error {
 	return nil
 }
 
-func issueReportCmd(args []string) error {
+func issueReportCmd(_ []string) error {
 	reg := initRegistry()
 	ctx := context.Background()
 	detections := reg.DetectAll(ctx)
 
 	var sb strings.Builder
 	sb.WriteString("### Environment Diagnostics\n\n")
-	sb.WriteString(fmt.Sprintf("- IAPro Nexus Version: `%s`\n", buildinfo.Version))
-	sb.WriteString(fmt.Sprintf("- OS: `%s`\n\n", runtime.GOOS))
+	fmt.Fprintf(&sb, "- IAPro Nexus Version: `%s`\n", buildinfo.Version)
+	fmt.Fprintf(&sb, "- OS: `%s`\n\n", runtime.GOOS)
 	sb.WriteString("### Installed Providers\n\n")
 	for id, det := range detections {
-		sb.WriteString(fmt.Sprintf("- **%s**: Installed=%v, Version=`%s`\n", id, det.Installed, det.Version))
+		fmt.Fprintf(&sb, "- **%s**: Installed=%v, Version=`%s`\n", id, det.Installed, det.Version)
 	}
 	fmt.Println(security.Redact(sb.String()))
 	return nil
@@ -1299,7 +1349,7 @@ func runCmd(args []string) error {
 		prof = rest[0]
 		rest = rest[1:]
 	}
-	return executeProviderWithSmartSelection(prov, prof, trimDashDash(rest), true)
+	return executeProviderWithSmartSelection(prov, prof, trimDashDash(rest))
 }
 
 func resumeCmd(args []string) error {

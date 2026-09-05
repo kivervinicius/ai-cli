@@ -135,7 +135,7 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 	// left the UI read-only even though no other writer held the lease.
 	effectiveRole := role
 	if role == "CONTROL" {
-		_ = sendAttachedCommandWithRetry(rawConn, protocol.CmdLeaseAcquire, nil, 3)
+		_ = sendAttachedCommandWithRetry(rawConn, 3)
 	}
 	_ = safeWriteJSON(TerminalMessage{
 		Type: "lease",
@@ -329,7 +329,7 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 					Type: "lease",
 					Role: "CONTROL",
 				})
-				_ = sendAttachedCommandWithRetry(rawConn, protocol.CmdLeaseAcquire, nil, 3)
+				_ = sendAttachedCommandWithRetry(rawConn, 3)
 			}
 
 		case "lease_release":
@@ -356,13 +356,13 @@ func sendAttachedCommand(conn interface{ Write([]byte) (int, error) }, command p
 	return err
 }
 
-func sendAttachedCommandWithRetry(conn interface{ Write([]byte) (int, error) }, command protocol.CommandType, payload any, attempts int) error {
+func sendAttachedCommandWithRetry(conn interface{ Write([]byte) (int, error) }, attempts int) error {
 	if attempts < 1 {
 		attempts = 1
 	}
 	var err error
 	for i := 0; i < attempts; i++ {
-		err = sendAttachedCommand(conn, command, payload)
+		err = sendAttachedCommand(conn, protocol.CmdLeaseAcquire, nil)
 		if err == nil {
 			return nil
 		}

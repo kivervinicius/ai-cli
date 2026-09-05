@@ -172,3 +172,7 @@
 - 2026-09-05T13:21:34Z · FAIL · feat/nexus-maximum-delivery@a737ecd · failed=[typecheck] · DEV/validation/FRONTEND_2026-09-05T13-21-34Z.md
 - 2026-09-05T13:22:23Z · PASS · feat/nexus-maximum-delivery@a737ecd · failed=[-] · DEV/validation/FRONTEND_2026-09-05T13-22-23Z.md
 - 2026-09-05T13:26:30Z · PASS · feat/nexus-maximum-delivery@a737ecd · failed=[-] · DEV/validation/FRONTEND_2026-09-05T13-26-30Z.md
+- 2026-09-05T17:04:43Z · FAIL · feat/nexus-maximum-delivery@ab88fcb · failed=[null-arrays] · DEV/validation/FRONTEND_2026-09-05T17-04-43Z.md
+- 2026-09-05T17:05:16Z · FAIL · feat/nexus-maximum-delivery@ab88fcb · failed=[typecheck] · DEV/validation/FRONTEND_2026-09-05T17-05-16Z.md
+- 2026-09-05T17:05:57Z · PASS · feat/nexus-maximum-delivery@ab88fcb · failed=[-] · DEV/validation/FRONTEND_2026-09-05T17-05-57Z.md
+- 2026-09-05T18:43:03Z · PASS · feat/nexus-maximum-delivery@ab88fcb · failed=[-] · DEV/validation/FRONTEND_2026-09-05T18-43-03Z.md

@@ -14,7 +14,7 @@ func RenderMergedHelp(providerID string, nativeHelp string) string {
 	var sb strings.Builder
 	sb.WriteString("\n")
 	sb.WriteString("================================================================================\n")
-	sb.WriteString(fmt.Sprintf("  ⚡ Nexus · Canonical Aliases for %s\n", strings.ToUpper(providerID)))
+	fmt.Fprintf(&sb, "  ⚡ Nexus · Canonical Aliases for %s\n", strings.ToUpper(providerID))
 	sb.WriteString("================================================================================\n")
 	sb.WriteString("Nexus translates these cross-provider canonical flags into native CLI options.\n")
 	sb.WriteString("Native CLI flags are always supported 100% and take precedence.\n\n")
@@ -40,16 +40,16 @@ func RenderMergedHelp(providerID string, nativeHelp string) string {
 		return rows[i].alias < rows[j].alias
 	})
 
-	sb.WriteString(fmt.Sprintf("  %-18s  %-32s  %s\n", "CANONICAL ALIAS", "NATIVE CLI TRANSLATION", "DESCRIPTION"))
+	fmt.Fprintf(&sb, "  %-18s  %-32s  %s\n", "CANONICAL ALIAS", "NATIVE CLI TRANSLATION", "DESCRIPTION")
 	sb.WriteString("  " + strings.Repeat("─", 76) + "\n")
 
 	for _, r := range rows {
-		sb.WriteString(fmt.Sprintf("  %-18s  %-32s  %s\n", r.alias, r.nativeArgs, r.description))
+		fmt.Fprintf(&sb, "  %-18s  %-32s  %s\n", r.alias, r.nativeArgs, r.description)
 	}
 
 	sb.WriteString("\nCustom aliases can be defined in ~/.config/nexus/config.json under \"flag_aliases\".\n")
 	sb.WriteString("--------------------------------------------------------------------------------\n")
-	sb.WriteString(fmt.Sprintf("  Official %s CLI Help:\n", strings.ToUpper(providerID)))
+	fmt.Fprintf(&sb, "  Official %s CLI Help:\n", strings.ToUpper(providerID))
 	sb.WriteString("--------------------------------------------------------------------------------\n\n")
 
 	if strings.TrimSpace(nativeHelp) != "" {

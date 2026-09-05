@@ -58,6 +58,10 @@ type Backend interface {
 
 	// Mechanism returns a truthful description of the terminal backend in use.
 	Mechanism() string
+
+	// Supervise attaches the child process tree to the backend's lifecycle
+	// supervisor. It is a no-op on platforms without a native tree primitive.
+	Supervise() error
 }
 
 // NewBackend instantiates the optimal terminal backend for the current OS.

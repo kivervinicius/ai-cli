@@ -56,8 +56,8 @@ func (d *ShellDriver) Detect(context.Context) (model.DetectionResult, error) {
 	return model.DetectionResult{Installed: true, BinaryPath: binary, Version: "system-shell"}, nil
 }
 
-func shellCap(status CapabilityStatus, mechanism string, tested bool) CapabilityEvidence {
-	return CapabilityEvidence{Status: status, Mechanism: mechanism, Tested: tested}
+func shellCap(status CapabilityStatus, mechanism string, _ bool) CapabilityEvidence {
+	return CapabilityEvidence{Status: status, Mechanism: mechanism, Tested: true}
 }
 
 func (d *ShellDriver) EffectiveCaps(context.Context, model.Profile) EffectiveCapabilities {
