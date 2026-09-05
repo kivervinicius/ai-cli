@@ -8,9 +8,110 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestManifestValidationRejectsExpiredDowngradeAndWrongTarget(t *testing.T) {
+	manifest := Manifest{
+		SchemaVersion: 1,
+		Channel:       "beta",
+		Version:       "0.5.1",
+		ReleaseDate:   time.Now().UTC().Format(time.RFC3339),
+		ExpiresAt:     time.Now().UTC().Add(-time.Minute).Format(time.RFC3339),
+		KeyID:         "test",
+		Artifacts: map[string]Artifact{
+			"linux_amd64": {SHA256: strings.Repeat("a", 64), Size: 3},
+		},
+	}
+	if err := manifest.Validate(ManifestPolicy{Channel: "beta", CurrentVersion: "0.5.0", Target: "linux_amd64"}); err == nil {
+		t.Fatal("expected expired manifest to be rejected")
+	}
+
+	manifest.ExpiresAt = time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
+	manifest.Version = "0.4.9"
+	if err := manifest.Validate(ManifestPolicy{Channel: "beta", CurrentVersion: "0.5.0", Target: "linux_amd64"}); err == nil {
+		t.Fatal("expected downgrade manifest to be rejected")
+	}
+
+	manifest.Version = "0.5.1"
+	if err := manifest.Validate(ManifestPolicy{Channel: "beta", CurrentVersion: "0.5.0", Target: "darwin_arm64"}); err == nil {
+		t.Fatal("expected missing target artifact to be rejected")
+	}
+}
+
+func TestManifestValidationAcceptsCompatibilityAndTarget(t *testing.T) {
+	manifest := Manifest{
+		SchemaVersion:     1,
+		Channel:           "stable",
+		Version:           "1.2.0",
+		ReleaseDate:       time.Now().UTC().Format(time.RFC3339),
+		ExpiresAt:         time.Now().UTC().Add(time.Hour).Format(time.RFC3339),
+		MinNexusVersion:   "1.0.0",
+		MinMaestroVersion: "0.14.0",
+		KeyID:             "test",
+		Artifacts:         map[string]Artifact{"linux_amd64": {SHA256: strings.Repeat("a", 64), Size: 3}},
+	}
+	if err := manifest.Validate(ManifestPolicy{Channel: "stable", CurrentVersion: "1.1.0", NexusVersion: "1.1.0", MaestroVersion: "0.14.1", Target: "linux_amd64"}); err != nil {
+		t.Fatalf("expected compatible manifest to validate: %v", err)
+	}
+}
+
+func TestUpdaterRollbackKeepsCurrentBinaryWhenRestoreFails(t *testing.T) {
+	tempDir := t.TempDir()
+	binPath := filepath.Join(tempDir, "nexus")
+	if err := os.WriteFile(binPath, []byte("current"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	updater := NewUpdater(binPath, tempDir)
+	if _, err := updater.ApplyUpdate("1.0.0", "1.1.0", []byte("next"), sha256Hex([]byte("next"))); err != nil {
+		t.Fatalf("apply update: %v", err)
+	}
+	if err := os.Remove(binPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := updater.Rollback(); err != nil {
+		t.Fatalf("rollback should restore backup: %v", err)
+	}
+	data, err := os.ReadFile(binPath)
+	if err != nil || string(data) != "current" {
+		t.Fatalf("expected current binary restored, got %q, err=%v", data, err)
+	}
+}
+
+func TestUpdaterApplyManifestBindsTargetChecksum(t *testing.T) {
+	tempDir := t.TempDir()
+	binPath := filepath.Join(tempDir, "nexus")
+	if err := os.WriteFile(binPath, []byte("current"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	data := []byte("signed-artifact")
+	manifest := Manifest{
+		SchemaVersion: 1,
+		Channel:       "beta",
+		Version:       "1.1.0",
+		ReleaseDate:   time.Now().UTC().Format(time.RFC3339),
+		KeyID:         "test",
+		Artifacts: map[string]Artifact{"linux_amd64": {
+			Size: int64(len(data)), SHA256: sha256Hex(data),
+		}},
+	}
+	updater := NewUpdater(binPath, tempDir)
+	if _, err := updater.ApplyManifest(manifest, ManifestPolicy{Channel: "beta", CurrentVersion: "1.0.0", Target: "linux_amd64"}, data); err != nil {
+		t.Fatalf("expected manifest-bound update to succeed: %v", err)
+	}
+	bad := append([]byte(nil), data...)
+	bad[0] = 'x'
+	if _, err := updater.ApplyManifest(manifest, ManifestPolicy{Channel: "beta", CurrentVersion: "1.0.0", Target: "linux_amd64"}, bad); err == nil {
+		t.Fatal("expected artifact bound to manifest checksum to fail")
+	}
+}
+
+func sha256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
 
 func generateTestKeyPair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
