@@ -90,7 +90,7 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 	current.Provider, current.Profile = selected.Provider, selected.Profile
 	// Interactive and Flow agents run in the Project folder by default. Worktree
 	// isolation stays opt-in via agent config or project.default_isolation.
-	if strings.TrimSpace(current.Workspace) == "" && strings.TrimSpace(current.Isolation) == "" {
+	if !run.Autonomous && strings.TrimSpace(current.Workspace) == "" && strings.TrimSpace(current.Isolation) == "" {
 		current.Isolation = "project"
 	}
 	if _, err := e.n.SafeApply(ctx, agent.ID, current); err != nil {
@@ -101,7 +101,12 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 	if err != nil {
 		return runner.AllocationResult{}, err
 	}
-	workspace, err := e.n.resolveExecutionWorkspace(ctx, project, agent, current)
+	var workspace string
+	if run.Autonomous {
+		workspace, err = e.n.resolveAutonomousExecutionWorkspace(ctx, project, agent, current)
+	} else {
+		workspace, err = e.n.resolveExecutionWorkspace(ctx, project, agent, current)
+	}
 	if err != nil {
 		return runner.AllocationResult{}, err
 	}

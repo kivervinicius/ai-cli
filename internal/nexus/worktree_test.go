@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
@@ -29,6 +30,20 @@ func TestResolveExecutionWorkspaceAgentProjectOverridesWorktreeDefault(t *testin
 	got, err := n.resolveExecutionWorkspace(context.Background(), project, agent, AgentConfig{Isolation: "project"})
 	if err != nil || got != dir {
 		t.Fatalf("workspace=%q err=%v want %q", got, err, dir)
+	}
+}
+
+func TestResolveAutonomousExecutionWorkspaceFailsClosedWithoutWorktree(t *testing.T) {
+	n := &Nexus{}
+	project := store.Project{ID: "p", CanonicalPath: t.TempDir(), DefaultIsolation: "project"}
+	agent := store.Agent{ID: "a", ProjectID: "p"}
+
+	_, err := n.resolveAutonomousExecutionWorkspace(context.Background(), project, agent, AgentConfig{})
+	if err == nil {
+		t.Fatal("autonomous execution must reject canonical project isolation")
+	}
+	if !strings.Contains(err.Error(), "Isolation") || !strings.Contains(err.Error(), "worktree") {
+		t.Fatalf("error=%q, want actionable worktree isolation guidance", err)
 	}
 }
 

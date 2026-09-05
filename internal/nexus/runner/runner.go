@@ -55,7 +55,7 @@ func (r *MissionRunner) StartMissionRun(ctx context.Context, plan PlanSpec, work
 
 	now := time.Now().UTC()
 	run := &MissionRun{ID: "run_" + ids.NewRuntimeID(), PlanID: plan.ID, PlanRevision: plan.Revision, ExecutionSnapshotID: plan.ExecutionSnapshotID, ProjectID: plan.ProjectID,
-		Workspace: workspace, State: StateExecuting, Contract: contract, StartedAt: now, UpdatedAt: now}
+		Workspace: workspace, State: StateExecuting, Contract: contract, Autonomous: plan.Autonomous, StartedAt: now, UpdatedAt: now}
 	for _, spec := range plan.Packages {
 		state := StatePending
 		if len(spec.Dependencies) == 0 {

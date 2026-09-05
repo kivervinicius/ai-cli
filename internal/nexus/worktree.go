@@ -22,6 +22,17 @@ var unsafeBranchChars = regexp.MustCompile(`[^A-Za-z0-9._/-]+`)
 // workspace isolation because provider credential sandboxing remains owned by
 // the ai-cli profile layer.
 func (n *Nexus) resolveExecutionWorkspace(ctx context.Context, project store.Project, agent store.Agent, cfg AgentConfig) (string, error) {
+	return n.resolveExecutionWorkspaceWithMode(ctx, project, agent, cfg, false)
+}
+
+func (n *Nexus) resolveAutonomousExecutionWorkspace(ctx context.Context, project store.Project, agent store.Agent, cfg AgentConfig) (string, error) {
+	if strings.TrimSpace(cfg.Workspace) != "" || strings.ToLower(strings.TrimSpace(cfg.Isolation)) != "worktree" && strings.ToLower(strings.TrimSpace(project.DefaultIsolation)) != "worktree" {
+		return "", fmt.Errorf("autonomous execution requires AgentConfig Isolation=worktree; configure a dedicated worktree before starting the mission")
+	}
+	return n.resolveExecutionWorkspaceWithMode(ctx, project, agent, cfg, true)
+}
+
+func (n *Nexus) resolveExecutionWorkspaceWithMode(ctx context.Context, project store.Project, agent store.Agent, cfg AgentConfig, autonomous bool) (string, error) {
 	if strings.TrimSpace(cfg.Workspace) != "" {
 		return store.CanonicalPath(cfg.Workspace)
 	}
@@ -35,6 +46,9 @@ func (n *Nexus) resolveExecutionWorkspace(ctx context.Context, project store.Pro
 	case "worktree":
 		return ensureAgentWorktree(ctx, project, agent)
 	default:
+		if autonomous {
+			return "", fmt.Errorf("autonomous execution requires AgentConfig Isolation=worktree; got %q", isolation)
+		}
 		return "", fmt.Errorf("unsupported agent isolation %q", isolation)
 	}
 }

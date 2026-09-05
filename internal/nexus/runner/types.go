@@ -48,6 +48,7 @@ type PlanSpec struct {
 	ProjectID           string        `json:"project_id"`
 	Revision            int           `json:"revision"`
 	ExecutionSnapshotID string        `json:"execution_snapshot_id,omitempty"`
+	Autonomous          bool          `json:"autonomous,omitempty"`
 	Packages            []PackageSpec `json:"packages"`
 }
 
@@ -195,6 +196,7 @@ type MissionRun struct {
 	PlanRevision        int              `json:"plan_revision"`
 	ExecutionSnapshotID string           `json:"execution_snapshot_id,omitempty"`
 	ProjectID           string           `json:"project_id"`
+	Autonomous          bool             `json:"autonomous,omitempty"`
 	Workspace           string           `json:"workspace"`
 	State               State            `json:"state"`
 	Contract            AutonomyContract `json:"contract"`

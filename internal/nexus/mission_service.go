@@ -172,6 +172,7 @@ func (n *Nexus) StartMissionRun(ctx context.Context, planID, defaultAgentID stri
 	if err != nil {
 		return nil, err
 	}
+	spec.Autonomous = autonomous
 	run, err := n.Runner().StartMissionRun(ctx, spec, project.CanonicalPath, contract, defaultAgentID)
 	if err != nil {
 		return nil, err
@@ -227,6 +228,7 @@ func (n *Nexus) startMissionRunAtRevision(ctx context.Context, plan *store.WorkP
 	if err != nil {
 		return nil, err
 	}
+	spec.Autonomous = autonomous
 	run, err := n.Runner().StartMissionRun(ctx, spec, project.CanonicalPath, contract, defaultAgentID)
 	if err != nil {
 		return nil, err
