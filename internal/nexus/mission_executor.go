@@ -31,6 +31,20 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 	if err != nil {
 		return runner.AllocationResult{}, err
 	}
+	if strings.TrimSpace(run.ExecutionSnapshotID) != "" {
+		snapshot, snapshotErr := e.n.loadMissionSnapshot(run)
+		if snapshotErr != nil {
+			return runner.AllocationResult{}, fmt.Errorf("revalidate execution admission: %w", snapshotErr)
+		}
+		if run.Autonomous || snapshot.Preflight != nil && snapshot.Preflight.Strict {
+			report := &FlowPreflightReport{PlanID: snapshot.Plan.ID, Revision: snapshot.Plan.CurrentRevision, Strict: true, GeneratedAt: time.Now().UTC()}
+			if _, admissionErr := e.n.strictAdmissionForPlan(ctx, snapshot.Plan, report, run.Autonomous); admissionErr != nil {
+				return runner.AllocationResult{}, fmt.Errorf("revalidate execution admission: %w", admissionErr)
+			} else if !report.Ready {
+				return runner.AllocationResult{}, fmt.Errorf("execution admission failed before dispatch")
+			}
+		}
+	}
 
 	strategy := strings.ToUpper(strings.TrimSpace(pkg.AssignmentStrategy))
 	var agent store.Agent

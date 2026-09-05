@@ -19,8 +19,9 @@ import (
 // missionExecutionSnapshot is immutable input for one approved MissionRun.
 // The live WorkPlan may continue evolving without changing an active run.
 type missionExecutionSnapshot struct {
-	Plan     store.WorkPlan          `json:"plan"`
-	Contract runner.AutonomyContract `json:"contract"`
+	Plan      store.WorkPlan          `json:"plan"`
+	Contract  runner.AutonomyContract `json:"contract"`
+	Preflight *FlowPreflightReport    `json:"preflight,omitempty"`
 }
 
 type missionWorker struct {
@@ -162,13 +163,22 @@ func (n *Nexus) StartMissionRun(ctx context.Context, planID, defaultAgentID stri
 	if !preflight.Ready {
 		return nil, fmt.Errorf("mission blocked by preflight: invalid flow graph or checks failed")
 	}
+	if autonomous {
+		preflight, err = n.PreflightFlowStrict(ctx, planID, true)
+		if err != nil {
+			return nil, fmt.Errorf("run strict admission before mission: %w", err)
+		}
+		if !preflight.Ready {
+			return nil, fmt.Errorf("mission blocked by strict admission: worktree, resources, agent or Maestro requirements are not satisfied")
+		}
+	}
 
 	contract = normalizeAutonomyContract(contract, project.CanonicalPath)
 	frozenPlan, err := freezePlanForExecution(n, *plan)
 	if err != nil {
 		return nil, err
 	}
-	envelope, err := json.Marshal(missionExecutionSnapshot{Plan: frozenPlan, Contract: contract})
+	envelope, err := json.Marshal(missionExecutionSnapshot{Plan: frozenPlan, Contract: contract, Preflight: preflight})
 	if err != nil {
 		return nil, fmt.Errorf("encode mission execution snapshot: %w", err)
 	}
@@ -203,17 +213,17 @@ func (n *Nexus) StartMissionRunApproved(ctx context.Context, planID string, appr
 	if plan.CurrentRevision != approvedRevision {
 		return nil, fmt.Errorf("approved plan revision %d is stale; current is %d", approvedRevision, plan.CurrentRevision)
 	}
-	preflight, err := n.PreflightFlow(ctx, planID)
+	preflight, err := n.PreflightFlowStrict(ctx, planID, autonomous)
 	if err != nil {
 		return nil, fmt.Errorf("run preflight before approved mission: %w", err)
 	}
 	if !preflight.Ready {
 		return nil, fmt.Errorf("approved mission blocked by preflight")
 	}
-	return n.startMissionRunAtRevision(ctx, plan, approvedRevision, defaultAgentID, contract, autonomous)
+	return n.startMissionRunAtRevision(ctx, plan, approvedRevision, defaultAgentID, contract, autonomous, preflight)
 }
 
-func (n *Nexus) startMissionRunAtRevision(ctx context.Context, plan *store.WorkPlan, revision int, defaultAgentID string, contract runner.AutonomyContract, autonomous bool) (*runner.MissionRun, error) {
+func (n *Nexus) startMissionRunAtRevision(ctx context.Context, plan *store.WorkPlan, revision int, defaultAgentID string, contract runner.AutonomyContract, autonomous bool, admission ...*FlowPreflightReport) (*runner.MissionRun, error) {
 	st, err := n.OpenProject()
 	if err != nil {
 		return nil, err
@@ -231,7 +241,11 @@ func (n *Nexus) startMissionRunAtRevision(ctx context.Context, plan *store.WorkP
 		return nil, err
 	}
 	contract = normalizeAutonomyContract(contract, project.CanonicalPath)
-	env, err := json.Marshal(missionExecutionSnapshot{Plan: frozen, Contract: contract})
+	var preflight *FlowPreflightReport
+	if len(admission) > 0 {
+		preflight = admission[0]
+	}
+	env, err := json.Marshal(missionExecutionSnapshot{Plan: frozen, Contract: contract, Preflight: preflight})
 	if err != nil {
 		return nil, err
 	}

@@ -3,8 +3,10 @@ package nexus
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
+	"github.com/kivervinicius/ai-cli/internal/nexus/runner"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
 
@@ -40,6 +42,31 @@ func TestValidateFlowExecutionContractRejectsContradictoryAssignment(t *testing.
 	plan.Phases[0].Packages[0].ResourcePolicy = "MANUAL"
 	if err := validateFlowExecutionContract(plan); err == nil {
 		t.Fatal("MANUAL resource policy without provider/profile must be rejected")
+	}
+}
+
+func TestStartMissionRunAutonomousRejectsMissingWorktreeAdmission(t *testing.T) {
+	n := openTestNexus(t)
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := st.CreateProject(store.Project{Name: "Strict admission", CanonicalPath: t.TempDir(), DefaultIsolation: "project"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := n.CreateWorkPlan(context.Background(), project.ID, "Plan", "", []store.PlanPhase{{
+		Title: "Phase", Packages: []store.WorkPackage{{Title: "Required worktree", Goal: "Run safely", Status: "READY", Role: "implementer", AcceptanceCriteria: []string{"done"}}},
+	}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = n.StartMissionRun(context.Background(), plan.ID, "", runner.DefaultAutonomyContract(), true)
+	if err == nil {
+		t.Fatal("expected autonomous mission admission to reject project checkout")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "worktree") {
+		t.Fatalf("expected actionable worktree admission error, got %v", err)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/control/ids"
+	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
 
 // FlowDecompositionRequest defines the contract for decomposing a prompt or artifact into a Flow proposal (PLAN 04).
@@ -45,6 +46,7 @@ type FlowPreflightCheck struct {
 type FlowPreflightReport struct {
 	PlanID      string               `json:"plan_id"`
 	Revision    int                  `json:"revision"`
+	Strict      bool                 `json:"strict,omitempty"`
 	Ready       bool                 `json:"ready"`
 	Checks      []FlowPreflightCheck `json:"checks"`
 	GeneratedAt time.Time            `json:"generated_at"`
@@ -264,5 +266,73 @@ func (n *Nexus) PreflightFlow(ctx context.Context, planID string) (*FlowPrefligh
 		Summary: "O preflight confirma apenas o contrato declarado; enforcement adicional depende do runtime e não é simulado como PASS.",
 	})
 
+	return report, nil
+}
+
+// PreflightFlowStrict performs the admission checks required before an
+// autonomous mission may dispatch work. PreflightFlow remains advisory for
+// legacy callers and intentionally keeps WARN checks non-blocking.
+func (n *Nexus) PreflightFlowStrict(ctx context.Context, planID string, autonomous bool) (*FlowPreflightReport, error) {
+	st, err := n.OpenProject()
+	if err != nil {
+		return nil, err
+	}
+	plan, err := st.GetWorkPlan(planID)
+	if err != nil {
+		return nil, err
+	}
+	report, err := n.PreflightFlow(ctx, planID)
+	if err != nil {
+		return nil, err
+	}
+	report.Strict = true
+	return n.strictAdmissionForPlan(ctx, *plan, report, autonomous)
+}
+
+func (n *Nexus) strictAdmissionForPlan(ctx context.Context, plan store.WorkPlan, report *FlowPreflightReport, autonomous bool) (*FlowPreflightReport, error) {
+	if err := validateFlowExecutionContract(plan); err != nil {
+		report.Ready = false
+		report.Checks = append(report.Checks, FlowPreflightCheck{Key: "execution_contract", Label: "Contrato de Execução", Status: "FAIL", Summary: err.Error()})
+	}
+	project, err := n.OpenProject()
+	if err != nil {
+		return nil, err
+	}
+	projectRecord, err := project.GetProject(plan.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	if autonomous && strings.ToLower(strings.TrimSpace(projectRecord.DefaultIsolation)) != "worktree" {
+		report.Ready = false
+		report.Checks = append(report.Checks, FlowPreflightCheck{Key: "worktree_isolation", Label: "Isolamento de Worktree Git", Status: "FAIL", Summary: "execução autônoma exige DefaultIsolation=worktree no projeto"})
+	}
+	resources, resourceErr := n.ListResources()
+	if resourceErr != nil || len(resources) == 0 {
+		report.Ready = false
+		report.Checks = append(report.Checks, FlowPreflightCheck{Key: "resources", Label: "Recursos & Provedores", Status: "FAIL", Summary: "nenhum recurso de provedor disponível para admissão strict"})
+	} else {
+		for _, phase := range plan.Phases {
+			for _, pkg := range phase.Packages {
+				if strings.TrimSpace(pkg.Provider) == "" && strings.TrimSpace(pkg.Profile) == "" {
+					continue
+				}
+				if len(filterFlowResourceAccounts(resources, pkg.Provider, pkg.Profile)) == 0 {
+					report.Ready = false
+					report.Checks = append(report.Checks, FlowPreflightCheck{Key: "resources", Label: "Recursos & Provedores", Status: "FAIL", Summary: fmt.Sprintf("nenhum recurso satisfaz as restrições do step %s", pkg.ID)})
+				}
+			}
+		}
+	}
+	requested := make([]string, 0)
+	for _, phase := range plan.Phases {
+		for _, pkg := range phase.Packages {
+			requested = append(requested, pkg.MaestroGates...)
+			requested = append(requested, pkg.MaestroSkills...)
+		}
+	}
+	if _, err := n.validateMaestroGatesStrict(uniqueStrings(requested)); err != nil {
+		report.Ready = false
+		report.Checks = append(report.Checks, FlowPreflightCheck{Key: "maestro", Label: "Gates Maestro", Status: "FAIL", Summary: err.Error()})
+	}
 	return report, nil
 }
