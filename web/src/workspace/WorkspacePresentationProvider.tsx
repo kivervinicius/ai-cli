@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from 'react';
 import {
   commitMosaicMove,
-  createPresentationState,
   focusDesktopWindow,
   migratePresentationState,
   moveDesktopWindow,
@@ -25,8 +24,8 @@ import type { WorkspaceSurface } from './model';
 
 import type { ArrangePresetName } from './arrangePresets';
 import { arrangeByPreset, resolveArrangePreset } from './arrangePresets';
+import { useWorkspaceLayoutPersistence } from './WorkspaceProvider';
 
-const storageKey = (projectId: string) => `iapro:nexus:workspace:${projectId}:presentation:v1`;
 
 interface ContextValue {
   state: WorkspacePresentationState;
@@ -165,26 +164,21 @@ function reducer(state: WorkspacePresentationState, action: Action): WorkspacePr
   }
 }
 
-function load(projectId: string): WorkspacePresentationState {
-  try {
-    const raw = window.localStorage.getItem(storageKey(projectId));
-    if (!raw) return createPresentationState();
-    return migratePresentationState(JSON.parse(raw));
-  } catch {
-    return createPresentationState();
-  }
-}
-
 const WorkspacePresentationContext = createContext<ContextValue | null>(null);
 
 export const WorkspacePresentationProvider: React.FC<{
   projectId: string;
   children: React.ReactNode;
-}> = ({ projectId, children }) => {
-  const [state, dispatch] = useReducer(reducer, projectId, load);
+}> = ({ children }) => {
+  const persistence = useWorkspaceLayoutPersistence();
+  const [state, dispatch] = useReducer(
+    reducer,
+    persistence.initialPresentation,
+    migratePresentationState,
+  );
   useEffect(() => {
-    window.localStorage.setItem(storageKey(projectId), JSON.stringify(state));
-  }, [projectId, state]);
+    persistence.registerPresentation(state);
+  }, [persistence, state]);
   const value = useMemo<ContextValue>(
     () => ({
       state,

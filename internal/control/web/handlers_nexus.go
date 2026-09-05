@@ -139,8 +139,8 @@ func (h *NexusHandler) handleProjectDetail(w http.ResponseWriter, r *http.Reques
 		}
 		// Touch MRU on access (P1 Project MRU).
 		_ = st.TouchProject(id)
-		layout, _ := st.GetLayout(id)
-		writeJSON(w, http.StatusOK, map[string]any{"project": proj, "layout": layout})
+		record, _ := st.GetLayoutRecord(id)
+		writeJSON(w, http.StatusOK, map[string]any{"project": proj, "layout": record.Layout, "revision": record.Revision, "record": record})
 
 	case http.MethodPatch:
 		proj, err := st.GetProject(id)

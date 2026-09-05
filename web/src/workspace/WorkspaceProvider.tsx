@@ -15,8 +15,8 @@ import {
   type WorkspaceModel,
   type WorkspaceSurface,
 } from './model';
-import { deserializeWorkspace, serializeWorkspace, workspaceStorageKey } from './state';
 import { WorkspaceLayoutService } from '../services/WorkspaceLayoutService';
+import type { WorkspacePresentationState } from './presentation';
 
 interface WorkspaceContextValue {
   model: WorkspaceModel;
@@ -34,6 +34,20 @@ interface WorkspaceContextValue {
   resize: (splitId: string, ratio: number) => void;
   maximize: (surfaceId: string) => void;
   reset: () => void;
+}
+
+export interface WorkspaceLayoutPersistence {
+  initialPresentation: WorkspacePresentationState;
+  registerPresentation: (state: WorkspacePresentationState) => void;
+}
+
+const WorkspaceLayoutPersistenceContext = createContext<WorkspaceLayoutPersistence | null>(null);
+
+export function useWorkspaceLayoutPersistence(): WorkspaceLayoutPersistence {
+  const context = useContext(WorkspaceLayoutPersistenceContext);
+  if (!context)
+    throw new Error('useWorkspaceLayoutPersistence must be used inside WorkspaceProvider');
+  return context;
 }
 
 type Action =
@@ -104,7 +118,16 @@ export const WorkspaceProvider: React.FC<{
 }> = ({ projectId, initialLayout, initialRevision, saveLayout, onSurfaceClosed, children }) => {
   const layoutService = useMemo(() => new WorkspaceLayoutService(projectId), [projectId]);
   const fallback = useMemo(() => createWorkspace(defaultSurface(projectId)), [projectId]);
-  const revisionRef = useRef<number>(initialRevision || 1);
+  const initialPersisted = useMemo(() => {
+    if (!initialLayout) return layoutService.load(fallback);
+    try {
+      return layoutService.migrateAndNormalize(JSON.parse(initialLayout), fallback);
+    } catch {
+      return layoutService.load(fallback);
+    }
+  }, [fallback, initialLayout, layoutService]);
+  const revisionRef = useRef<number>(initialRevision || initialPersisted.revision || 1);
+  const [presentation, setPresentation] = React.useState(initialPersisted.presentation);
 
   useEffect(() => {
     if (typeof initialRevision === 'number' && initialRevision > 0) {
@@ -112,30 +135,29 @@ export const WorkspaceProvider: React.FC<{
     }
   }, [initialRevision]);
 
-  const [model, dispatch] = useReducer(reducer, projectId, (projId) => {
-    const fb = createWorkspace(defaultSurface(projId));
-    if (initialLayout) {
-      return deserializeWorkspace(initialLayout, fb, projId);
-    }
-    return new WorkspaceLayoutService(projId).load(fb).model;
-  });
+  const [model, dispatch] = useReducer(reducer, initialPersisted.model);
 
   useEffect(() => {
     if (initialLayout) {
       dispatch({
         type: 'replace',
-        model: deserializeWorkspace(initialLayout, fallback, projectId),
+        model: initialPersisted.model,
       });
     }
-  }, [projectId, initialLayout, fallback]);
+  }, [projectId, initialLayout, fallback, initialPersisted.model]);
 
   useEffect(() => {
-    const serialized = serializeWorkspace(model);
-    window.localStorage.setItem(workspaceStorageKey(projectId), serialized);
     if (!saveLayout) return;
+    const envelope = layoutService.normalize({
+      ...initialPersisted,
+      revision: revisionRef.current,
+      model,
+      presentation,
+      updatedAt: new Date().toISOString(),
+    });
     const timer = window.setTimeout(async () => {
       try {
-        const res = (await saveLayout(serialized, revisionRef.current)) as
+        const res = (await saveLayout(JSON.stringify(envelope), revisionRef.current)) as
           { revision?: number } | undefined;
         if (res && typeof res.revision === 'number') {
           revisionRef.current = res.revision;
@@ -145,7 +167,12 @@ export const WorkspaceProvider: React.FC<{
       }
     }, 500);
     return () => window.clearTimeout(timer);
-  }, [model, projectId, saveLayout]);
+  }, [layoutService, model, initialPersisted, presentation, projectId, saveLayout]);
+
+  const persistence = useMemo<WorkspaceLayoutPersistence>(
+    () => ({ initialPresentation: initialPersisted.presentation, registerPresentation: setPresentation }),
+    [initialPersisted.presentation],
+  );
 
   const value = useMemo<WorkspaceContextValue>(
     () => ({
@@ -176,7 +203,11 @@ export const WorkspaceProvider: React.FC<{
     [model, fallback, onSurfaceClosed],
   );
 
-  return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
+  return (
+    <WorkspaceLayoutPersistenceContext.Provider value={persistence}>
+      <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>
+    </WorkspaceLayoutPersistenceContext.Provider>
+  );
 };
 
 export function useWorkspace(): WorkspaceContextValue {
