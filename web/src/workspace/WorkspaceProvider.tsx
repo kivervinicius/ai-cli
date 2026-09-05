@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useReducer } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
 import {
   closeSurface,
   createWorkspace,
@@ -97,12 +97,21 @@ const defaultSurface = (projectId: string): WorkspaceSurface => {
 export const WorkspaceProvider: React.FC<{
   projectId: string;
   initialLayout?: string;
-  saveLayout?: (layout: string) => Promise<unknown>;
+  initialRevision?: number;
+  saveLayout?: (layout: string, revision?: number) => Promise<unknown>;
   onSurfaceClosed?: (surface: WorkspaceSurface) => void | Promise<void>;
   children: React.ReactNode;
-}> = ({ projectId, initialLayout, saveLayout, onSurfaceClosed, children }) => {
+}> = ({ projectId, initialLayout, initialRevision, saveLayout, onSurfaceClosed, children }) => {
   const layoutService = useMemo(() => new WorkspaceLayoutService(projectId), [projectId]);
   const fallback = useMemo(() => createWorkspace(defaultSurface(projectId)), [projectId]);
+  const revisionRef = useRef<number>(initialRevision || 1);
+
+  useEffect(() => {
+    if (typeof initialRevision === 'number' && initialRevision > 0) {
+      revisionRef.current = initialRevision;
+    }
+  }, [initialRevision]);
+
   const [model, dispatch] = useReducer(reducer, projectId, (projId) => {
     const fb = createWorkspace(defaultSurface(projId));
     if (initialLayout) {
@@ -124,8 +133,16 @@ export const WorkspaceProvider: React.FC<{
     const serialized = serializeWorkspace(model);
     window.localStorage.setItem(workspaceStorageKey(projectId), serialized);
     if (!saveLayout) return;
-    const timer = window.setTimeout(() => {
-      void saveLayout(serialized).catch(() => undefined);
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = (await saveLayout(serialized, revisionRef.current)) as
+          { revision?: number } | undefined;
+        if (res && typeof res.revision === 'number') {
+          revisionRef.current = res.revision;
+        }
+      } catch {
+        // Revision conflict or network error — handled gracefully
+      }
     }, 500);
     return () => window.clearTimeout(timer);
   }, [model, projectId, saveLayout]);

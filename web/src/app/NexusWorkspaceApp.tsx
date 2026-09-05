@@ -240,6 +240,7 @@ const NexusWorkspaceSession: React.FC<{
 
   const selected = resolveProjectSelection(data.projects, selectedId);
   const [layout, setLayout] = useState<string | undefined>();
+  const [layoutRevision, setLayoutRevision] = useState<number | undefined>();
 
   useEffect(() => {
     if (!selected) return;
@@ -248,8 +249,14 @@ const NexusWorkspaceSession: React.FC<{
     void data.refreshAgents(selected.id);
     nexus
       .getProject(selected.id)
-      .then((detail) => setLayout(detail.layout || undefined))
-      .catch(() => setLayout(undefined));
+      .then((detail) => {
+        setLayout(detail.layout || undefined);
+        setLayoutRevision(detail.revision);
+      })
+      .catch(() => {
+        setLayout(undefined);
+        setLayoutRevision(undefined);
+      });
   }, [selected?.id]);
 
   useEffect(() => {
@@ -298,7 +305,12 @@ const NexusWorkspaceSession: React.FC<{
       key={`${selected.id}:${popoutSurface?.id || 'main'}`}
       projectId={selected.id}
       initialLayout={initial}
-      saveLayout={popoutSurface ? undefined : (next) => nexus.saveLayout(selected.id, next)}
+      initialRevision={layoutRevision}
+      saveLayout={
+        popoutSurface
+          ? undefined
+          : (next, revision) => nexus.saveLayout(selected.id, next, revision)
+      }
     >
       <WorkspacePresentationProvider projectId={selected.id}>
         <PtyLiveChromeProvider>

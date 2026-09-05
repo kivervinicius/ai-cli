@@ -64,13 +64,15 @@ export const nexus = {
   createProject: (path: string, name?: string) =>
     request<Project>('/api/v1/projects', { method: 'POST', body: JSON.stringify({ path, name }) }),
   getProject: (id: string) =>
-    request<{ project: Project; layout: string }>(`/api/v1/projects/${id}`),
+    request<{ project: Project; layout: string; revision?: number }>(`/api/v1/projects/${id}`),
   updateProject: (id: string, data: Partial<Project>) =>
     request<Project>(`/api/v1/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteProject: (id: string) =>
     request<{ status: string }>(`/api/v1/projects/${id}`, { method: 'DELETE' }),
   getLayout: (projectId: string) =>
-    request<{ layout: string }>(`/api/v1/projects/${projectId}/layout`),
+    request<{ layout: string; revision?: number; record?: unknown }>(
+      `/api/v1/projects/${projectId}/layout`,
+    ),
   getContextReadiness: (projectId: string) =>
     request<import('../types').ContextReadiness>(`/api/v1/projects/${projectId}/context`),
   prepareContext: (projectId: string, createContext = false) =>
@@ -134,11 +136,14 @@ export const nexus = {
     normalizeWorkPlan(
       await request<unknown>(`/api/v1/prompt-artifacts/${id}/flow`, { method: 'POST' }),
     ),
-  saveLayout: (projectId: string, layout: string) =>
-    request<{ status: string }>(`/api/v1/projects/${projectId}/layout`, {
-      method: 'PUT',
-      body: JSON.stringify({ layout }),
-    }),
+  saveLayout: (projectId: string, layout: string, revision?: number) =>
+    request<{ status: string; revision?: number; layout?: string }>(
+      `/api/v1/projects/${projectId}/layout`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ layout, revision }),
+      },
+    ),
 
   listAgents: (projectId: string) => request<Agent[]>(`/api/v1/projects/${projectId}/agents`),
   createAgent: (projectId: string, name: string, role?: string) =>

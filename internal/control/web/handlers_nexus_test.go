@@ -151,24 +151,44 @@ func TestNexusProjectsAndAgentsAPI(t *testing.T) {
 		t.Errorf("recover without runtime must not 500, got %d", recResp.StatusCode)
 	}
 
-	// Layout round-trip.
-	lbody, _ := json.Marshal(map[string]string{"layout": `{"openAgents":["` + agent.ID + `"]}`})
+	// Layout round-trip with monotonic revision and conflict handling.
+	lbody, _ := json.Marshal(map[string]any{"layout": `{"openAgents":["` + agent.ID + `"]}`, "revision": 0})
 	req, _ = http.NewRequest(http.MethodPut, base+"/api/v1/projects/"+proj.ID+"/layout", bytes.NewReader(lbody))
 	req.Header.Set("X-CSRF-Token", csrf)
 	resp, err = client.Do(req)
 	if err != nil {
 		t.Fatalf("save layout: %v", err)
 	}
+	var saveResp map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&saveResp)
 	resp.Body.Close()
+	if saveResp["status"] != "saved" || saveResp["revision"].(float64) < 1 {
+		t.Fatalf("unexpected save layout response: %v", saveResp)
+	}
+
+	// Stale revision save returns 409 Conflict.
+	staleBody, _ := json.Marshal(map[string]any{"layout": `{"openAgents":[]}`, "revision": 999})
+	req, _ = http.NewRequest(http.MethodPut, base+"/api/v1/projects/"+proj.ID+"/layout", bytes.NewReader(staleBody))
+	req.Header.Set("X-CSRF-Token", csrf)
+	conflictResp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("stale layout save error: %v", err)
+	}
+	if conflictResp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409 Conflict on stale revision, got %d", conflictResp.StatusCode)
+	}
+	conflictResp.Body.Close()
+
 	resp, err = client.Get(base + "/api/v1/projects/" + proj.ID + "/layout")
 	if err != nil {
 		t.Fatalf("get layout: %v", err)
 	}
-	var layoutResp map[string]string
+	var layoutResp map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&layoutResp)
 	resp.Body.Close()
-	if layoutResp["layout"] == "" || !bytes.Contains([]byte(layoutResp["layout"]), []byte(agent.ID)) {
-		t.Fatalf("layout roundtrip failed: %q", layoutResp["layout"])
+	layoutStr, _ := layoutResp["layout"].(string)
+	if layoutStr == "" || !bytes.Contains([]byte(layoutStr), []byte(agent.ID)) {
+		t.Fatalf("layout roundtrip failed: %v", layoutResp)
 	}
 
 	// Agent terminal WS without active runtime must fail cleanly (404).

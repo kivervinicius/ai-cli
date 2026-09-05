@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -206,5 +207,55 @@ func TestProjectLayoutPersistence(t *testing.T) {
 	layout, err := s.GetLayout(proj.ID)
 	if err != nil || !strings.Contains(layout, "agt_a") {
 		t.Fatalf("layout roundtrip failed: %q (%v)", layout, err)
+	}
+}
+
+func TestProjectLayoutV4MonotonicRevision(t *testing.T) {
+	s := openTestStore(t)
+	proj, err := s.CreateProject(Project{Name: "L4", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	// 1. Initial get returns revision 0 and empty layout
+	rec, err := s.GetLayoutRecord(proj.ID)
+	if err != nil {
+		t.Fatalf("initial get layout record: %v", err)
+	}
+	if rec.Revision != 0 {
+		t.Fatalf("expected initial revision 0, got %d", rec.Revision)
+	}
+
+	// 2. First save with expected revision 0 creates revision 1
+	rec1, err := s.SaveLayoutWithRevision(proj.ID, `{"version":4,"model":{}}`, 0)
+	if err != nil {
+		t.Fatalf("first save: %v", err)
+	}
+	if rec1.Revision != 1 {
+		t.Fatalf("expected revision 1 after first save, got %d", rec1.Revision)
+	}
+
+	// 3. Second save with expected revision 1 advances to revision 2
+	rec2, err := s.SaveLayoutWithRevision(proj.ID, `{"version":4,"model":{"updated":true}}`, 1)
+	if err != nil {
+		t.Fatalf("second save: %v", err)
+	}
+	if rec2.Revision != 2 {
+		t.Fatalf("expected revision 2 after second save, got %d", rec2.Revision)
+	}
+
+	// 4. Stale save with expected revision 1 fails with ErrRevisionConflict
+	_, err = s.SaveLayoutWithRevision(proj.ID, `{"version":4,"model":{"stale":true}}`, 1)
+	if !errors.Is(err, ErrRevisionConflict) {
+		t.Fatalf("expected ErrRevisionConflict on stale revision 1, got %v", err)
+	}
+
+	// 5. Unconditional save (expectedRevision = 0) advances to revision 3
+	rec3, err := s.SaveLayoutWithRevision(proj.ID, `{"version":4,"model":{"force":true}}`, 0)
+	if err != nil {
+		t.Fatalf("unconditional save: %v", err)
+	}
+	if rec3.Revision != 3 {
+		t.Fatalf("expected revision 3 after unconditional save, got %d", rec3.Revision)
 	}
 }

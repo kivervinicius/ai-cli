@@ -18,11 +18,12 @@ import {
 } from '../workspace/presentation';
 import { type ArrangeBounds } from '../workspace/arrange';
 
-export const WORKSPACE_LAYOUT_VERSION = 3;
+export const WORKSPACE_LAYOUT_VERSION = 4;
 
 export interface PersistedWorkbenchLayout {
   version: typeof WORKSPACE_LAYOUT_VERSION;
   workspaceId: string;
+  revision: number;
   updatedAt: string;
   model: WorkspaceModel;
   presentation: WorkspacePresentationState;
@@ -38,6 +39,10 @@ export class WorkspaceLayoutService {
   }
 
   get storageKey(): string {
+    return `iapro:nexus:workbench:${this.projectId}:v4`;
+  }
+
+  get legacyV3StorageKey(): string {
     return `iapro:nexus:workbench:${this.projectId}:v3`;
   }
 
@@ -50,17 +55,25 @@ export class WorkspaceLayoutService {
   }
 
   /**
-   * Load workbench state: checks v3 unified key first, then falls back
-   * to legacy model & presentation keys, migrating smoothly into v3 format.
+   * Load workbench state: checks v4 unified key first, then falls back
+   * to v3 / legacy model & presentation keys, migrating smoothly into v4 format.
    */
   load(fallbackModel: WorkspaceModel): PersistedWorkbenchLayout {
     try {
-      const raw =
-        typeof window !== 'undefined' ? window.localStorage.getItem(this.storageKey) : null;
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object') {
-          return this.migrateAndNormalize(parsed, fallbackModel);
+      if (typeof window !== 'undefined') {
+        const raw = window.localStorage.getItem(this.storageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            return this.migrateAndNormalize(parsed, fallbackModel);
+          }
+        }
+        const rawV3 = window.localStorage.getItem(this.legacyV3StorageKey);
+        if (rawV3) {
+          const parsedV3 = JSON.parse(rawV3);
+          if (parsedV3 && typeof parsedV3 === 'object') {
+            return this.migrateAndNormalize(parsedV3, fallbackModel);
+          }
         }
       }
     } catch {
@@ -71,7 +84,7 @@ export class WorkspaceLayoutService {
   }
 
   /**
-   * Load and migrate from legacy v1/v2 storage keys.
+   * Load and migrate from legacy v1/v2/v3 storage keys.
    */
   loadLegacy(fallbackModel: WorkspaceModel): PersistedWorkbenchLayout {
     let model = fallbackModel;
@@ -100,6 +113,7 @@ export class WorkspaceLayoutService {
     return this.normalize({
       version: WORKSPACE_LAYOUT_VERSION,
       workspaceId: this.projectId,
+      revision: 1,
       updatedAt: new Date().toISOString(),
       model,
       presentation,
@@ -129,7 +143,7 @@ export class WorkspaceLayoutService {
   }
 
   /**
-   * Validate and migrate previous versions into current v3 schema.
+   * Validate and migrate previous versions into current v4 schema.
    */
   migrateAndNormalize(raw: unknown, fallbackModel: WorkspaceModel): PersistedWorkbenchLayout {
     if (!raw || typeof raw !== 'object') {
@@ -138,7 +152,7 @@ export class WorkspaceLayoutService {
 
     const candidate = raw as Partial<PersistedWorkbenchLayout> & { version?: number };
 
-    // Migrate from v1 or v2 if encountered
+    // Migrate from v1, v2 or v3 if encountered
     if (candidate.version !== WORKSPACE_LAYOUT_VERSION) {
       const model = deserializeWorkspace(
         candidate.model ? JSON.stringify(candidate.model) : null,
@@ -150,6 +164,7 @@ export class WorkspaceLayoutService {
       return this.normalize({
         version: WORKSPACE_LAYOUT_VERSION,
         workspaceId: this.projectId,
+        revision: candidate.revision && candidate.revision > 0 ? candidate.revision : 1,
         updatedAt: new Date().toISOString(),
         model,
         presentation,
@@ -168,6 +183,7 @@ export class WorkspaceLayoutService {
     return this.normalize({
       version: WORKSPACE_LAYOUT_VERSION,
       workspaceId: candidate.workspaceId || this.projectId,
+      revision: candidate.revision && candidate.revision > 0 ? candidate.revision : 1,
       updatedAt: candidate.updatedAt || new Date().toISOString(),
       model,
       presentation,
@@ -199,6 +215,7 @@ export class WorkspaceLayoutService {
     return {
       version: WORKSPACE_LAYOUT_VERSION,
       workspaceId: this.projectId,
+      revision: layout.revision && layout.revision > 0 ? layout.revision : 1,
       updatedAt: layout.updatedAt || new Date().toISOString(),
       model,
       presentation,
@@ -214,6 +231,7 @@ export class WorkspaceLayoutService {
     const layout = this.normalize({
       version: WORKSPACE_LAYOUT_VERSION,
       workspaceId: this.projectId,
+      revision: 1,
       updatedAt: new Date().toISOString(),
       model: fallbackModel,
       presentation: createPresentationState(),

@@ -64,7 +64,27 @@ describe('WorkspaceLayoutService', () => {
 
     const migrated = service.load(fallback);
     expect(migrated.version).toBe(WORKSPACE_LAYOUT_VERSION);
+    expect(migrated.revision).toBe(1);
     expect(migrated.presentation.mode).toBe('MOSAIC');
+  });
+
+  it('migrates from v3 layout preserving custom revision', () => {
+    mockLocalStorage.setItem(
+      service.legacyV3StorageKey,
+      JSON.stringify({
+        version: 3,
+        workspaceId: projectId,
+        updatedAt: '2026-09-01T00:00:00.000Z',
+        model: fallback,
+        presentation: { mode: 'MOSAIC', windows: {}, nextZ: 2 },
+        activeSurfaceId: overviewId,
+        openSurfaceIds: [`view:${overviewId}`],
+      }),
+    );
+
+    const migrated = service.load(fallback);
+    expect(migrated.version).toBe(4);
+    expect(migrated.revision).toBe(1);
   });
 
   it('exports and imports valid workbench configurations', () => {

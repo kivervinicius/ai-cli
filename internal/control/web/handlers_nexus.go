@@ -267,25 +267,48 @@ func (h *NexusHandler) handleProjectLayout(w http.ResponseWriter, r *http.Reques
 	id := parts[0]
 	switch r.Method {
 	case http.MethodGet:
-		layout, err := st.GetLayout(id)
+		rec, err := st.GetLayoutRecord(id)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"layout": layout})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"layout":   rec.Layout,
+			"revision": rec.Revision,
+			"record":   rec,
+		})
 	case http.MethodPut:
 		var body struct {
-			Layout string `json:"layout"`
+			Layout   string `json:"layout"`
+			Revision *int64 `json:"revision"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid body")
 			return
 		}
-		if err := st.SaveLayout(id, body.Layout); err != nil {
+		var expectedRev int64
+		if body.Revision != nil {
+			expectedRev = *body.Revision
+		}
+		newRec, err := st.SaveLayoutWithRevision(id, body.Layout, expectedRev)
+		if errors.Is(err, store.ErrRevisionConflict) {
+			cur, _ := st.GetLayoutRecord(id)
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error":            "layout revision conflict",
+				"code":             "REVISION_CONFLICT",
+				"current_revision": cur.Revision,
+			})
+			return
+		}
+		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":   "saved",
+			"revision": newRec.Revision,
+			"layout":   newRec.Layout,
+		})
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}

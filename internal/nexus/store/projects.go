@@ -175,22 +175,93 @@ func (s *Store) DeleteProject(id string) error {
 	return err
 }
 
-// SaveLayout persists a project cockpit layout.
+// ErrRevisionConflict is returned when an optimistic revision check fails.
+var ErrRevisionConflict = errors.New("layout revision conflict")
+
+// ProjectLayoutRecord represents a durable layout record with monotonic revision.
+type ProjectLayoutRecord struct {
+	ProjectID string `json:"project_id"`
+	Layout    string `json:"layout"`
+	Revision  int64  `json:"revision"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// SaveLayout persists a project cockpit layout unconditionally (advancing revision).
 func (s *Store) SaveLayout(projectID, layout string) error {
-	_, err := s.db.Exec(`INSERT INTO project_layouts(project_id,layout,updated_at)
-		VALUES(?,?,?) ON CONFLICT(project_id) DO UPDATE SET layout=excluded.layout, updated_at=excluded.updated_at`,
-		projectID, layout, time.Now().UTC().Format(time.RFC3339Nano))
+	_, err := s.SaveLayoutWithRevision(projectID, layout, 0)
 	return err
 }
 
-// GetLayout loads a project cockpit layout.
-func (s *Store) GetLayout(projectID string) (string, error) {
-	var layout string
-	err := s.db.QueryRow(`SELECT layout FROM project_layouts WHERE project_id=?`, projectID).Scan(&layout)
-	if err == sql.ErrNoRows {
-		return "{}", nil
+// SaveLayoutWithRevision atomically saves layout and increments revision if expectedRevision matches.
+// If expectedRevision is 0, it saves unconditionally advancing the revision.
+func (s *Store) SaveLayoutWithRevision(projectID, layout string, expectedRevision int64) (ProjectLayoutRecord, error) {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return ProjectLayoutRecord{}, err
 	}
-	return layout, err
+	defer tx.Rollback()
+
+	var curRev int64
+	err = tx.QueryRow(`SELECT revision FROM project_layouts WHERE project_id=?`, projectID).Scan(&curRev)
+	if err != nil && err != sql.ErrNoRows {
+		return ProjectLayoutRecord{}, err
+	}
+
+	exists := (err == nil)
+	if expectedRevision > 0 && exists && curRev != expectedRevision {
+		return ProjectLayoutRecord{}, ErrRevisionConflict
+	}
+
+	nextRev := curRev + 1
+	if !exists {
+		nextRev = 1
+		_, err = tx.Exec(`INSERT INTO project_layouts(project_id, layout, revision, updated_at) VALUES(?,?,?,?)`,
+			projectID, layout, nextRev, now)
+	} else {
+		_, err = tx.Exec(`UPDATE project_layouts SET layout=?, revision=?, updated_at=? WHERE project_id=?`,
+			layout, nextRev, now, projectID)
+	}
+	if err != nil {
+		return ProjectLayoutRecord{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return ProjectLayoutRecord{}, err
+	}
+
+	return ProjectLayoutRecord{
+		ProjectID: projectID,
+		Layout:    layout,
+		Revision:  nextRev,
+		UpdatedAt: now,
+	}, nil
+}
+
+// GetLayout loads a project cockpit layout string (backward compatibility).
+func (s *Store) GetLayout(projectID string) (string, error) {
+	rec, err := s.GetLayoutRecord(projectID)
+	if err != nil {
+		return "{}", err
+	}
+	return rec.Layout, nil
+}
+
+// GetLayoutRecord loads the full project layout record including monotonic revision.
+func (s *Store) GetLayoutRecord(projectID string) (ProjectLayoutRecord, error) {
+	var rec ProjectLayoutRecord
+	rec.ProjectID = projectID
+	err := s.db.QueryRow(`SELECT layout, revision, updated_at FROM project_layouts WHERE project_id=?`, projectID).
+		Scan(&rec.Layout, &rec.Revision, &rec.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return ProjectLayoutRecord{
+			ProjectID: projectID,
+			Layout:    "{}",
+			Revision:  0,
+			UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}, nil
+	}
+	return rec, err
 }
 
 func (s *Store) scanProject(row *sql.Row) (Project, error) {
