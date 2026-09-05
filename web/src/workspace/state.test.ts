@@ -4,7 +4,12 @@ import { deserializeWorkspace, serializeWorkspace, workspaceStorageKey } from '.
 
 describe('workspace persistence', () => {
   it('round-trips valid models', () => {
-    const model = createWorkspace({ id: 'overview', type: 'overview', title: 'Overview', closable: false });
+    const model = createWorkspace({
+      id: 'overview',
+      type: 'overview',
+      title: 'Overview',
+      closable: false,
+    });
     expect(deserializeWorkspace(serializeWorkspace(model), model)).toEqual(model);
   });
 
@@ -15,7 +20,9 @@ describe('workspace persistence', () => {
 
   it('falls back for unsupported versions', () => {
     const fallback = createWorkspace({ id: 'home', type: 'home', title: 'Home' });
-    expect(deserializeWorkspace(JSON.stringify({ version: 99, root: {} }), fallback)).toEqual(fallback);
+    expect(deserializeWorkspace(JSON.stringify({ version: 99, root: {} }), fallback)).toEqual(
+      fallback,
+    );
   });
 
   it('migrates v1 layouts into v2 and deduplicates the same logical view', () => {
@@ -28,7 +35,12 @@ describe('workspace persistence', () => {
         activeId: 'agent-copy',
         tabs: [
           { id: 'agent-old', type: 'terminal', title: 'Agent', logicalKey: 'agent:1:terminal' },
-          { id: 'agent-copy', type: 'terminal', title: 'Agent copy', logicalKey: 'agent:1:terminal' },
+          {
+            id: 'agent-copy',
+            type: 'terminal',
+            title: 'Agent copy',
+            logicalKey: 'agent:1:terminal',
+          },
         ],
       },
     });
@@ -56,9 +68,19 @@ describe('workspace persistence', () => {
         activeId: 'project-overview',
         tabs: [
           { id: 'project-overview', type: 'overview', title: 'Overview' },
-          { id: 'project:prj_1:overview', type: 'overview', title: 'Visão Geral', logicalKey: 'project:prj_1:overview' },
+          {
+            id: 'project:prj_1:overview',
+            type: 'overview',
+            title: 'Visão Geral',
+            logicalKey: 'project:prj_1:overview',
+          },
           { id: 'resources', type: 'resources', title: 'Uso' },
-          { id: 'project:prj_1:resources', type: 'resources', title: 'Resources', logicalKey: 'project:prj_1:resources' },
+          {
+            id: 'project:prj_1:resources',
+            type: 'resources',
+            title: 'Resources',
+            logicalKey: 'project:prj_1:resources',
+          },
           { id: 'projects', type: 'projects', title: 'Desktops' },
           { id: 'project:prj_1:projects', type: 'projects', title: 'Workspace Desktops' },
         ],
@@ -92,10 +114,30 @@ describe('workspace persistence', () => {
         id: 'stack-main',
         activeId: 'project:prj_target:overview',
         tabs: [
-          { id: 'project:prj_target:overview', type: 'overview', title: 'Target Overview', data: { projectId: 'prj_target' } },
-          { id: 'project:prj_old:overview', type: 'overview', title: 'Old Overview', data: { projectId: 'prj_old' } },
-          { id: 'project:prj_old:resources', type: 'resources', title: 'Old Resources', data: { projectId: 'prj_old' } },
-          { id: 'agent:agt_1:terminal', type: 'terminal', title: 'Agent', data: { agentId: 'agt_1' } },
+          {
+            id: 'project:prj_target:overview',
+            type: 'overview',
+            title: 'Target Overview',
+            data: { projectId: 'prj_target' },
+          },
+          {
+            id: 'project:prj_old:overview',
+            type: 'overview',
+            title: 'Old Overview',
+            data: { projectId: 'prj_old' },
+          },
+          {
+            id: 'project:prj_old:resources',
+            type: 'resources',
+            title: 'Old Resources',
+            data: { projectId: 'prj_old' },
+          },
+          {
+            id: 'agent:agt_1:terminal',
+            type: 'terminal',
+            title: 'Agent',
+            data: { agentId: 'agt_1' },
+          },
         ],
       },
     });
@@ -130,7 +172,14 @@ describe('workspace persistence', () => {
           kind: 'stack',
           id: 'stack-b',
           activeId: 'agent:agt_1:terminal',
-          tabs: [{ id: 'agent:agt_1:terminal', type: 'terminal', title: 'Agent', data: { agentId: 'agt_1' } }],
+          tabs: [
+            {
+              id: 'agent:agt_1:terminal',
+              type: 'terminal',
+              title: 'Agent',
+              data: { agentId: 'agt_1' },
+            },
+          ],
         },
       },
     });

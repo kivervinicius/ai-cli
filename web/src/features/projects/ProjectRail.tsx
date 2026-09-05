@@ -12,7 +12,13 @@ import {
   Workflow,
   X,
 } from 'lucide-react';
-import { IconButton, ContextMenu, contextMenuFromEvent, Tooltip, type ContextMenuPoint } from '../../design-system';
+import {
+  IconButton,
+  ContextMenu,
+  contextMenuFromEvent,
+  Tooltip,
+  type ContextMenuPoint,
+} from '../../design-system';
 import { AddProjectModal } from './AddProjectModal';
 import type { Agent, Project } from '../../types';
 import { useTranslation } from 'react-i18next';
@@ -25,7 +31,17 @@ export const ProjectRail: React.FC<{
   onSelect: (project: Project) => void;
   onCreated: (project: Project) => void;
   onOpenGlobal: (
-    kind: 'projects' | 'overview' | 'agents' | 'resources' | 'maestro' | 'sessions' | 'settings' | 'work' | 'missions' | 'terminals'
+    kind:
+      | 'projects'
+      | 'overview'
+      | 'agents'
+      | 'resources'
+      | 'maestro'
+      | 'sessions'
+      | 'settings'
+      | 'work'
+      | 'missions'
+      | 'terminals',
   ) => void;
   agents?: Agent[];
   onOpenAgent?: (agent: Agent) => void;
@@ -86,7 +102,9 @@ export const ProjectRail: React.FC<{
   const toggleProjects = () => {
     setProjectsExpanded((prev) => {
       const next = !prev;
-      try { localStorage.setItem('nx_rail_projects_open', String(next)); } catch {}
+      try {
+        localStorage.setItem('nx_rail_projects_open', String(next));
+      } catch {}
       return next;
     });
   };
@@ -94,7 +112,9 @@ export const ProjectRail: React.FC<{
   const toggleAgents = () => {
     setAgentsExpanded((prev) => {
       const next = !prev;
-      try { localStorage.setItem('nx_rail_agents_open', String(next)); } catch {}
+      try {
+        localStorage.setItem('nx_rail_agents_open', String(next));
+      } catch {}
       return next;
     });
   };
@@ -102,18 +122,26 @@ export const ProjectRail: React.FC<{
   const toggleTools = () => {
     setToolsExpanded((prev) => {
       const next = !prev;
-      try { localStorage.setItem('nx_rail_tools_open', String(next)); } catch {}
+      try {
+        localStorage.setItem('nx_rail_tools_open', String(next));
+      } catch {}
       return next;
     });
   };
 
   const q = searchQuery.trim().toLowerCase();
   const filteredProjects = q
-    ? projects.filter((p) => (p.name || p.id).toLowerCase().includes(q) || (p.canonical_path || '').toLowerCase().includes(q))
+    ? projects.filter(
+        (p) =>
+          (p.name || p.id).toLowerCase().includes(q) ||
+          (p.canonical_path || '').toLowerCase().includes(q),
+      )
     : projects;
 
   const filteredAgents = q
-    ? agents.filter((a) => (a.name || '').toLowerCase().includes(q) || (a.role || '').toLowerCase().includes(q))
+    ? agents.filter(
+        (a) => (a.name || '').toLowerCase().includes(q) || (a.role || '').toLowerCase().includes(q),
+      )
     : agents;
 
   const optionalTools = [
@@ -167,8 +195,19 @@ export const ProjectRail: React.FC<{
         )}
 
         {/* Projects Accordion Section */}
-        <div className="nx-rail-accordion-section" data-expanded={projectsExpanded ? 'true' : 'false'}>
-          <div className="nx-project-rail__heading nx-rail-section-header" onClick={toggleProjects} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleProjects(); }}>
+        <div
+          className="nx-rail-accordion-section"
+          data-expanded={projectsExpanded ? 'true' : 'false'}
+        >
+          <div
+            className="nx-project-rail__heading nx-rail-section-header"
+            onClick={toggleProjects}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') toggleProjects();
+            }}
+          >
             <span className="nx-rail-header-label">
               <span className="nx-rail-chevron">{projectsExpanded ? '▾' : '▸'}</span>
               <span>{t('rail.projects')}</span>
@@ -182,7 +221,10 @@ export const ProjectRail: React.FC<{
           </div>
 
           {projectsExpanded && (
-            <div className="nx-project-list nx-rail-scrollable" style={{ maxHeight: '160px', flex: '0 0 auto' }}>
+            <div
+              className="nx-project-list nx-rail-scrollable"
+              style={{ maxHeight: '160px', flex: '0 0 auto' }}
+            >
               {filteredProjects.map((project) => (
                 <button
                   type="button"
@@ -193,7 +235,9 @@ export const ProjectRail: React.FC<{
                     onSelect(project);
                     onClose();
                   }}
-                  onContextMenu={(event) => setRailMenu({ kind: 'project', project, point: contextMenuFromEvent(event) })}
+                  onContextMenu={(event) =>
+                    setRailMenu({ kind: 'project', project, point: contextMenuFromEvent(event) })
+                  }
                   title={project.canonical_path}
                 >
                   <span className="nx-project-avatar nx-rail-avatar-compact">
@@ -206,14 +250,29 @@ export const ProjectRail: React.FC<{
                   {selected?.id === project.id && <span className="nx-project-active-dot" />}
                 </button>
               ))}
-              {filteredProjects.length === 0 && <p className="nx-rail-empty-msg">{searchQuery ? 'Nenhum projeto encontrado' : t('rail.empty')}</p>}
+              {filteredProjects.length === 0 && (
+                <p className="nx-rail-empty-msg">
+                  {searchQuery ? 'Nenhum projeto encontrado' : t('rail.empty')}
+                </p>
+              )}
             </div>
           )}
         </div>
 
         {/* Agents Accordion Section (Primary Workload) */}
-        <div className="nx-rail-accordion-section nx-rail-section-agents" data-expanded={agentsExpanded ? 'true' : 'false'}>
-          <div className="nx-project-rail__heading nx-rail-section-header" onClick={toggleAgents} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleAgents(); }}>
+        <div
+          className="nx-rail-accordion-section nx-rail-section-agents"
+          data-expanded={agentsExpanded ? 'true' : 'false'}
+        >
+          <div
+            className="nx-project-rail__heading nx-rail-section-header"
+            onClick={toggleAgents}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') toggleAgents();
+            }}
+          >
             <span className="nx-rail-header-label">
               <span className="nx-rail-chevron">{agentsExpanded ? '▾' : '▸'}</span>
               <span>Agentes</span>
@@ -229,7 +288,10 @@ export const ProjectRail: React.FC<{
           </div>
 
           {agentsExpanded && (
-            <div className="nx-project-list nx-rail-scrollable nx-agents-list-scroll" style={{ flex: 1, minHeight: '100px' }}>
+            <div
+              className="nx-project-list nx-rail-scrollable nx-agents-list-scroll"
+              style={{ flex: 1, minHeight: '100px' }}
+            >
               {filteredAgents.map((agent) => (
                 <button
                   type="button"
@@ -239,7 +301,9 @@ export const ProjectRail: React.FC<{
                     if (onOpenAgent) onOpenAgent(agent);
                     onClose();
                   }}
-                  onContextMenu={(event) => setRailMenu({ kind: 'agent', agent, point: contextMenuFromEvent(event) })}
+                  onContextMenu={(event) =>
+                    setRailMenu({ kind: 'agent', agent, point: contextMenuFromEvent(event) })
+                  }
                   title={`${agent.name} · ${agent.role || 'developer'} (${agent.status})`}
                 >
                   <span
@@ -249,23 +313,26 @@ export const ProjectRail: React.FC<{
                         agent.status === 'WORKING'
                           ? 'var(--nx-success, #10b981)'
                           : agent.status === 'RECOVERABLE' || agent.status === 'WAITING'
-                          ? 'var(--nx-warning, #f59e0b)'
-                          : agent.status === 'FAILED' || agent.status === 'STALE'
-                          ? 'var(--nx-danger, #ef4444)'
-                          : 'var(--nx-muted, #64748b)',
+                            ? 'var(--nx-warning, #f59e0b)'
+                            : agent.status === 'FAILED' || agent.status === 'STALE'
+                              ? 'var(--nx-danger, #ef4444)'
+                              : 'var(--nx-muted, #64748b)',
                       boxShadow:
                         agent.status === 'WORKING'
                           ? '0 0 6px var(--nx-success, #10b981)'
                           : agent.status === 'RECOVERABLE'
-                          ? '0 0 6px var(--nx-warning, #f59e0b)'
-                          : 'none',
+                            ? '0 0 6px var(--nx-warning, #f59e0b)'
+                            : 'none',
                     }}
                   />
                   <span className="nx-rail-item-copy">
                     <strong>{agent.name}</strong>
                     <small>{agent.role || 'developer'}</small>
                   </span>
-                  <TerminalSquare size={12} style={{ color: 'var(--nx-subtle)', marginLeft: 'auto' }} />
+                  <TerminalSquare
+                    size={12}
+                    style={{ color: 'var(--nx-subtle)', marginLeft: 'auto' }}
+                  />
                 </button>
               ))}
               {filteredAgents.length === 0 && (
@@ -278,13 +345,18 @@ export const ProjectRail: React.FC<{
         </div>
 
         {/* Secondary Tools Accordion Section (Collapsible & Compact Grid) */}
-        <div className="nx-rail-accordion-section nx-rail-section-tools" data-expanded={toolsExpanded ? 'true' : 'false'}>
+        <div
+          className="nx-rail-accordion-section nx-rail-section-tools"
+          data-expanded={toolsExpanded ? 'true' : 'false'}
+        >
           <div
             className="nx-project-rail__heading nx-rail-section-header"
             onClick={toggleTools}
             role="button"
             tabIndex={0}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleTools(); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') toggleTools();
+            }}
             style={{ borderTop: '1px solid var(--nx-border)' }}
           >
             <span className="nx-rail-header-label">
@@ -313,7 +385,6 @@ export const ProjectRail: React.FC<{
             </div>
           )}
         </div>
-
       </aside>
       <ContextMenu
         open={railMenu?.point ?? null}

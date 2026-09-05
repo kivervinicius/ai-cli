@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { nexus } from '../nexus/api';
-import type { Agent, EventRecord, ProfileInfo, Project, ProviderInfo, RuntimeSession, Workspace } from '../types';
+import type {
+  Agent,
+  EventRecord,
+  ProfileInfo,
+  Project,
+  ProviderInfo,
+  RuntimeSession,
+  Workspace,
+} from '../types';
 
 export function useNexusData() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -20,9 +28,15 @@ export function useNexusData() {
 
     const request = (async () => {
       try {
-        const [projectList, workspaceList, runtimeList, providerList, profileList, eventList] = await Promise.all([
-          nexus.listProjects(), api.getWorkspaces(), api.getRuntimes(), api.getProviders(), api.getProfiles(), api.getEvents(),
-        ]);
+        const [projectList, workspaceList, runtimeList, providerList, profileList, eventList] =
+          await Promise.all([
+            nexus.listProjects(),
+            api.getWorkspaces(),
+            api.getRuntimes(),
+            api.getProviders(),
+            api.getProfiles(),
+            api.getEvents(),
+          ]);
         setProjects(Array.isArray(projectList) ? projectList : []);
         setWorkspaces(Array.isArray(workspaceList) ? workspaceList : []);
         setRuntimes(Array.isArray(runtimeList) ? runtimeList : []);
@@ -42,7 +56,10 @@ export function useNexusData() {
   }, []);
 
   const refreshAgents = useCallback(async (projectId?: string | null) => {
-    if (!projectId) { setAgents([]); return; }
+    if (!projectId) {
+      setAgents([]);
+      return;
+    }
     try {
       const list = await nexus.listAgents(projectId);
       setAgents(Array.isArray(list) ? list : []);
@@ -64,5 +81,19 @@ export function useNexusData() {
     };
   }, [refreshGlobal]);
 
-  return { projects, setProjects, agents, setAgents, workspaces, runtimes, providers, profiles, events, loading, error, refreshGlobal, refreshAgents };
+  return {
+    projects,
+    setProjects,
+    agents,
+    setAgents,
+    workspaces,
+    runtimes,
+    providers,
+    profiles,
+    events,
+    loading,
+    error,
+    refreshGlobal,
+    refreshAgents,
+  };
 }

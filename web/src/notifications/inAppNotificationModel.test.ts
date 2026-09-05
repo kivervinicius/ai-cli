@@ -15,12 +15,22 @@ describe('notificationFromRuntime', () => {
   };
 
   it('creates a transient notification for completion', () => {
-    expect(notificationFromRuntime({ ...runtime, attention_reason: 'TASK_COMPLETED', attention_context: 'Build finalizado.' }))
-      .toMatchObject({ title: 'Tarefa concluída', tone: 'success', message: 'Build finalizado.' });
+    expect(
+      notificationFromRuntime({
+        ...runtime,
+        attention_reason: 'TASK_COMPLETED',
+        attention_context: 'Build finalizado.',
+      }),
+    ).toMatchObject({ title: 'Tarefa concluída', tone: 'success', message: 'Build finalizado.' });
   });
 
   it('creates a warning notification for interactive attention', () => {
-    expect(notificationFromRuntime({ ...runtime, attention_reason: 'QUESTION', attention_context: 'Continue?' }))
-      .toMatchObject({ title: 'Confirmação pendente', tone: 'warning', message: 'Continue?' });
+    expect(
+      notificationFromRuntime({
+        ...runtime,
+        attention_reason: 'QUESTION',
+        attention_context: 'Continue?',
+      }),
+    ).toMatchObject({ title: 'Confirmação pendente', tone: 'warning', message: 'Continue?' });
   });
 });

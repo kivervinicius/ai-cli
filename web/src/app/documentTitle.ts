@@ -56,7 +56,7 @@ export function buildDocumentTitle(projectName: string, runtimes: RuntimeSession
   }
   if (fingerprints.length === 1) {
     const sample = runtimes.find(
-      (runtime) => isHonestNeedsUser(runtime) && attentionMessageKey(runtime) === fingerprints[0]
+      (runtime) => isHonestNeedsUser(runtime) && attentionMessageKey(runtime) === fingerprints[0],
     );
     const question = honestContext(sample || ({} as RuntimeSession)).split(/\n/)[0] || '';
     const short = question.length > 64 ? `${question.slice(0, 61)}...` : question;

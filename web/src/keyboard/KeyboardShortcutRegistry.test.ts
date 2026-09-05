@@ -49,7 +49,9 @@ describe('KeyboardShortcutRegistry', () => {
       ctrlOrMeta: true,
       scope: 'global',
       description: 'Command Palette',
-      action: () => { triggered = true; },
+      action: () => {
+        triggered = true;
+      },
     });
 
     const event = new (globalThis as any).KeyboardEvent('keydown', { key: 'k', ctrlKey: true });
@@ -64,10 +66,15 @@ describe('KeyboardShortcutRegistry', () => {
       key: 'Enter',
       scope: 'chat',
       description: 'Send',
-      action: () => { triggered = true; },
+      action: () => {
+        triggered = true;
+      },
     });
 
-    const event = new (globalThis as any).KeyboardEvent('keydown', { key: 'Enter', isComposing: true });
+    const event = new (globalThis as any).KeyboardEvent('keydown', {
+      key: 'Enter',
+      isComposing: true,
+    });
     registry.handleKeyDown(event);
     expect(triggered).toBe(false);
   });
@@ -79,7 +86,9 @@ describe('KeyboardShortcutRegistry', () => {
       key: 'Enter',
       scope: 'chat',
       description: 'Send Chat',
-      action: () => { chatTriggered = true; },
+      action: () => {
+        chatTriggered = true;
+      },
     });
 
     registry.setScope('global');

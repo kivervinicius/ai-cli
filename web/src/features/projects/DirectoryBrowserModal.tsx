@@ -87,7 +87,7 @@ export const DirectoryBrowserModal: React.FC<{
   };
 
   const filteredEntries = (data?.entries || []).filter(
-    (e) => e.is_dir && e.name.toLowerCase().includes(query.toLowerCase())
+    (e) => e.is_dir && e.name.toLowerCase().includes(query.toLowerCase()),
   );
 
   const getBookmarkIcon = (icon: string) => {
@@ -106,12 +106,7 @@ export const DirectoryBrowserModal: React.FC<{
   };
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      title={t('projectManager.browseOS')}
-      wide
-    >
+    <Dialog open={open} onClose={onClose} title={t('projectManager.browseOS')} wide>
       <div className="nx-dir-picker">
         {/* Top OS Breadcrumbs bar */}
         <div className="nx-dir-picker__breadcrumbs">
@@ -145,11 +140,7 @@ export const DirectoryBrowserModal: React.FC<{
           </div>
 
           <div className="nx-dir-picker__top-actions">
-            <Button
-              size="sm"
-              tone="ghost"
-              onClick={() => setNewFolderOpen((prev) => !prev)}
-            >
+            <Button size="sm" tone="ghost" onClick={() => setNewFolderOpen((prev) => !prev)}>
               <FolderPlus size={13} />
               <span>{t('projectManager.newFolder')}</span>
             </Button>
@@ -206,11 +197,7 @@ export const DirectoryBrowserModal: React.FC<{
           <div className="nx-dir-picker__main">
             <div className="nx-dir-search-bar">
               <Search size={13} className="nx-dir-search-icon" />
-              <Input
-                value={query}
-                onChange={setQuery}
-                placeholder={t('common.search')}
-              />
+              <Input value={query} onChange={setQuery} placeholder={t('common.search')} />
             </div>
 
             {loading ? (

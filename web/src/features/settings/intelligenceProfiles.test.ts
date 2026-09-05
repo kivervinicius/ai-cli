@@ -6,7 +6,9 @@ import {
   isIntelligenceCLICapable,
 } from './intelligenceProfiles';
 
-function account(partial: Partial<ProviderAccount> & Pick<ProviderAccount, 'provider' | 'profile'>): ProviderAccount {
+function account(
+  partial: Partial<ProviderAccount> & Pick<ProviderAccount, 'provider' | 'profile'>,
+): ProviderAccount {
   return {
     id: `${partial.provider}:${partial.profile}`,
     display_name: `${partial.provider} (${partial.profile})`,
@@ -38,7 +40,12 @@ describe('intelligenceCLIProfiles', () => {
       available: true,
       capabilities: { headless: 'UNSUPPORTED', submit_prompt: 'UNSUPPORTED' },
     });
-    const profiles = intelligenceCLIProfiles([agy, claude, codex, account({ provider: 'shell', profile: 'local' })]);
+    const profiles = intelligenceCLIProfiles([
+      agy,
+      claude,
+      codex,
+      account({ provider: 'shell', profile: 'local' }),
+    ]);
     expect(profiles.map((item) => `${item.provider}:${item.profile}`)).toEqual([
       'agy:kiveromegasistemas',
       'claude:work',
@@ -48,8 +55,13 @@ describe('intelligenceCLIProfiles', () => {
   });
 
   it('keeps the currently configured profile visible when missing from discovery', () => {
-    const profiles = intelligenceCLIProfiles([], { provider: 'agy', profile: 'kiveromegasistemas' });
-    expect(profiles.map((item) => `${item.provider}:${item.profile}`)).toEqual(['agy:kiveromegasistemas']);
+    const profiles = intelligenceCLIProfiles([], {
+      provider: 'agy',
+      profile: 'kiveromegasistemas',
+    });
+    expect(profiles.map((item) => `${item.provider}:${item.profile}`)).toEqual([
+      'agy:kiveromegasistemas',
+    ]);
   });
 
   it('extracts model families from quota groups so the user can switch models', () => {

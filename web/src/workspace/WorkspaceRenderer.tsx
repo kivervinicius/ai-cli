@@ -1,8 +1,38 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AppWindow, Gauge, History, Home, Layers, LayoutGrid, Maximize2, Minimize2, Minus, Paintbrush, PanelsTopLeft, Settings, Sparkles, TerminalSquare, Workflow, X } from 'lucide-react';
-import { IconButton, ContextMenu, contextMenuFromEvent, type ContextMenuItem, type ContextMenuPoint } from '../design-system';
-import { listStacks, listSurfaces, surfaceViewId, type WorkspaceStack, type WorkspaceSurface } from './model';
+import {
+  AppWindow,
+  Gauge,
+  History,
+  Home,
+  Layers,
+  LayoutGrid,
+  Maximize2,
+  Minimize2,
+  Minus,
+  Paintbrush,
+  PanelsTopLeft,
+  Plus,
+  Settings,
+  Sparkles,
+  TerminalSquare,
+  Workflow,
+  X,
+} from 'lucide-react';
+import {
+  IconButton,
+  ContextMenu,
+  contextMenuFromEvent,
+  type ContextMenuItem,
+  type ContextMenuPoint,
+} from '../design-system';
+import {
+  listStacks,
+  listSurfaces,
+  surfaceViewId,
+  type WorkspaceStack,
+  type WorkspaceSurface,
+} from './model';
 import { useWorkspace } from './WorkspaceProvider';
 import { useWorkspacePresentation } from './WorkspacePresentationProvider';
 import { useTranslation } from 'react-i18next';
@@ -12,11 +42,15 @@ import { isWindowedPresentationMode, mosaicDropTargetViewId } from './presentati
 import { ptyWindowHeading } from './ptyLiveChrome';
 import { liveChromeFor, usePtyLiveChromeOptional } from './PtyLiveChromeContext';
 import { ARRANGE_MENU_PRESETS, type ArrangeMenuPreset } from './arrangePresets';
+import { ProjectCreateMenu } from '../features/projects/ProjectCreateMenu';
 
 const WINDOW_ACCENTS = ['#38bdf8', '#22c55e', '#f59e0b', '#f472b6', '#a78bfa', '#fb7185'];
 const WINDOW_ICONS = ['⌘', '⚡', '◆', '●', '★', '◎'];
 
-const PRODUCT_TAB_ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: number }>> = {
+const PRODUCT_TAB_ICONS: Record<
+  string,
+  React.ComponentType<{ size?: number; strokeWidth?: number }>
+> = {
   overview: Home,
   terminals: TerminalSquare,
   work: Sparkles,
@@ -29,10 +63,15 @@ const PRODUCT_TAB_ICONS: Record<string, React.ComponentType<{ size?: number; str
 };
 
 const isPinnedProductTab = (surface: WorkspaceSurface) =>
-  surface.closable === false || surface.type === 'overview' || surface.type === 'terminals' || surface.type === 'work';
+  surface.closable === false ||
+  surface.type === 'overview' ||
+  surface.type === 'terminals' ||
+  surface.type === 'work';
 
 function surfaceIdentity(surface: WorkspaceSurface, customTitle?: string): string {
-  return customTitle || surface.data?.agentName || surface.title.replace(/\s·\s.*$/, '') || surface.title;
+  return (
+    customTitle || surface.data?.agentName || surface.title.replace(/\s·\s.*$/, '') || surface.title
+  );
 }
 
 const WindowChromeMenu: React.FC<{
@@ -47,7 +86,9 @@ const WindowChromeMenu: React.FC<{
 }> = ({ open, onOpenChange, customTitle, accent, icon, onPatch, position }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState(customTitle);
-  const [menuPos, setMenuPos] = useState<{ top: number; right?: number; left?: number } | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right?: number; left?: number } | null>(
+    null,
+  );
 
   useEffect(() => {
     setDraft(customTitle);
@@ -102,7 +143,10 @@ const WindowChromeMenu: React.FC<{
             className="nx-desktop-window__chrome-menu"
             role="dialog"
             aria-label="Personalizar janela"
-            style={{ top: menuPos.top, ...(menuPos.left != null ? { left: menuPos.left } : { right: menuPos.right }) }}
+            style={{
+              top: menuPos.top,
+              ...(menuPos.left != null ? { left: menuPos.left } : { right: menuPos.right }),
+            }}
             onPointerDown={(event) => event.stopPropagation()}
           >
             <label>
@@ -176,7 +220,7 @@ const WindowChromeMenu: React.FC<{
               ))}
             </div>
           </div>,
-          document.body
+          document.body,
         )
       : null;
 
@@ -267,7 +311,7 @@ const ArrangeLayoutMenu: React.FC<{
               </button>
             ))}
           </div>,
-          document.body
+          document.body,
         )
       : null;
 
@@ -309,9 +353,8 @@ function useCompactViewport(): boolean {
 export const WorkspaceRenderer: React.FC<{
   renderSurface: (surface: WorkspaceSurface) => React.ReactNode;
   onRequestClose?: (surface: WorkspaceSurface) => void;
-  /** @deprecated CTAs live in the topbar/rail; kept optional for call-site compat. */
   createActions?: WorkspaceCreateActions;
-}> = ({ renderSurface, onRequestClose }) => {
+}> = ({ renderSurface, onRequestClose, createActions }) => {
   const workspace = useWorkspace();
   const presentation = useWorkspacePresentation();
   const compact = useCompactViewport();
@@ -328,12 +371,16 @@ export const WorkspaceRenderer: React.FC<{
   const activeStack = stacks.find((stack) => stack.activeId) ?? stacks[0];
 
   return (
-    <div className={compact ? 'nx-workspace nx-workspace--compact' : 'nx-workspace'} data-tour="workspace">
+    <div
+      className={compact ? 'nx-workspace nx-workspace--compact' : 'nx-workspace'}
+      data-tour="workspace"
+    >
       {activeStack && (
         <WorkspaceStackView
           stack={activeStack}
           renderSurface={renderSurface}
           onRequestClose={onRequestClose}
+          createActions={createActions}
         />
       )}
     </div>
@@ -344,11 +391,15 @@ const WorkspaceStackView: React.FC<{
   stack: WorkspaceStack;
   renderSurface: (surface: WorkspaceSurface) => React.ReactNode;
   onRequestClose?: (surface: WorkspaceSurface) => void;
-}> = ({ stack, renderSurface, onRequestClose }) => {
+  createActions?: WorkspaceCreateActions;
+}> = ({ stack, renderSurface, onRequestClose, createActions }) => {
   const { t } = useTranslation();
   const { activate, close, move } = useWorkspace();
   const [draggedSurface, setDraggedSurface] = useState<string | null>(null);
-  const [tabMenu, setTabMenu] = useState<{ surface: WorkspaceSurface; point: ContextMenuPoint } | null>(null);
+  const [tabMenu, setTabMenu] = useState<{
+    surface: WorkspaceSurface;
+    point: ContextMenuPoint;
+  } | null>(null);
   const productTabs = useMemo(() => {
     const pinnedOrder = ['overview', 'terminals', 'work'];
     return [...stack.tabs.filter((tab) => !isPtySurface(tab))].sort((a, b) => {
@@ -369,7 +420,8 @@ const WorkspaceStackView: React.FC<{
       : productTabs.find((tab) => tab.type === 'terminals') || productTabs[0];
   const activeId = activeProduct?.id || stack.activeId;
   const canClose = activeProduct?.closable !== false;
-  const closeSurface = (surface: WorkspaceSurface) => (onRequestClose ? onRequestClose(surface) : close(surface.id));
+  const closeSurface = (surface: WorkspaceSurface) =>
+    onRequestClose ? onRequestClose(surface) : close(surface.id);
   const legacyTitleKeys: Record<string, string> = {
     overview: 'nav.overview',
     work: 'nav.work',
@@ -394,7 +446,8 @@ const WorkspaceStackView: React.FC<{
       className="nx-workspace-stack"
       data-stack-id={stack.id}
       onDragOver={(event) => {
-        if (event.dataTransfer.types.includes('application/x-nexus-surface')) event.preventDefault();
+        if (event.dataTransfer.types.includes('application/x-nexus-surface'))
+          event.preventDefault();
       }}
       onDrop={(event) => {
         const id = event.dataTransfer.getData('application/x-nexus-surface') || draggedSurface;
@@ -408,59 +461,60 @@ const WorkspaceStackView: React.FC<{
             const TabIcon = PRODUCT_TAB_ICONS[surface.type] || Layers;
             const pinned = isPinnedProductTab(surface);
             return (
-            <button
-              draggable={!pinned}
-              key={surface.id}
-              type="button"
-              role="tab"
-              aria-selected={activeId === surface.id}
-              data-active={activeId === surface.id ? 'true' : 'false'}
-              data-pinned={pinned ? 'true' : undefined}
-              data-kind={surface.type}
-              data-attention={surface.data?.hasAttention === 'true' ? 'true' : undefined}
-              data-unread={surface.data?.unreadAttention === 'true' ? 'true' : undefined}
-              className="nx-workspace-tab"
-              onDragStart={(event) => {
-                if (pinned) {
-                  event.preventDefault();
-                  return;
-                }
-                setDraggedSurface(surface.id);
-                event.dataTransfer.setData('application/x-nexus-surface', surface.id);
-                event.dataTransfer.effectAllowed = 'move';
-              }}
-              onClick={() => activate(surface.id)}
-              onContextMenu={(event) => {
-                if (surface.closable === false) return;
-                setTabMenu({ surface, point: contextMenuFromEvent(event) });
-              }}
-            >
-              <span className="nx-workspace-tab__icon" aria-hidden="true">
-                <TabIcon size={16} strokeWidth={2.25} />
-              </span>
-              {(surface.data?.hasAttention === 'true' || surface.data?.unreadAttention === 'true') && (
-                <span
-                  className="nx-workspace-tab__attention-dot"
-                  data-kind={surface.data?.attentionKind || undefined}
-                  data-unread={surface.data?.unreadAttention === 'true' ? 'true' : undefined}
-                  aria-label="needs attention"
-                />
-              )}
-              <span className="nx-workspace-tab__label">{displayTitle(surface)}</span>
-              {surface.closable !== false && (
-                <span
-                  className="nx-workspace-tab__close"
-                  role="button"
-                  aria-label={t('workspace.closeNamed', { name: displayTitle(surface) })}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    closeSurface(surface);
-                  }}
-                >
-                  <X size={11} />
+              <button
+                draggable={!pinned}
+                key={surface.id}
+                type="button"
+                role="tab"
+                aria-selected={activeId === surface.id}
+                data-active={activeId === surface.id ? 'true' : 'false'}
+                data-pinned={pinned ? 'true' : undefined}
+                data-kind={surface.type}
+                data-attention={surface.data?.hasAttention === 'true' ? 'true' : undefined}
+                data-unread={surface.data?.unreadAttention === 'true' ? 'true' : undefined}
+                className="nx-workspace-tab"
+                onDragStart={(event) => {
+                  if (pinned) {
+                    event.preventDefault();
+                    return;
+                  }
+                  setDraggedSurface(surface.id);
+                  event.dataTransfer.setData('application/x-nexus-surface', surface.id);
+                  event.dataTransfer.effectAllowed = 'move';
+                }}
+                onClick={() => activate(surface.id)}
+                onContextMenu={(event) => {
+                  if (surface.closable === false) return;
+                  setTabMenu({ surface, point: contextMenuFromEvent(event) });
+                }}
+              >
+                <span className="nx-workspace-tab__icon" aria-hidden="true">
+                  <TabIcon size={16} strokeWidth={2.25} />
                 </span>
-              )}
-            </button>
+                {(surface.data?.hasAttention === 'true' ||
+                  surface.data?.unreadAttention === 'true') && (
+                  <span
+                    className="nx-workspace-tab__attention-dot"
+                    data-kind={surface.data?.attentionKind || undefined}
+                    data-unread={surface.data?.unreadAttention === 'true' ? 'true' : undefined}
+                    aria-label="needs attention"
+                  />
+                )}
+                <span className="nx-workspace-tab__label">{displayTitle(surface)}</span>
+                {surface.closable !== false && (
+                  <span
+                    className="nx-workspace-tab__close"
+                    role="button"
+                    aria-label={t('workspace.closeNamed', { name: displayTitle(surface) })}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      closeSurface(surface);
+                    }}
+                  >
+                    <X size={11} />
+                  </span>
+                )}
+              </button>
             );
           })}
         </div>
@@ -498,6 +552,7 @@ const WorkspaceStackView: React.FC<{
                 ptySurfaces={ptyTabs}
                 renderSurface={renderSurface}
                 onRequestClose={onRequestClose}
+                createActions={createActions}
                 active={activeId === surface.id}
               />
             ) : (
@@ -515,13 +570,17 @@ const TerminalsHost: React.FC<{
   ptySurfaces: WorkspaceSurface[];
   renderSurface: (surface: WorkspaceSurface) => React.ReactNode;
   onRequestClose?: (surface: WorkspaceSurface) => void;
+  createActions?: WorkspaceCreateActions;
   active: boolean;
-}> = ({ ptySurfaces, renderSurface, onRequestClose, active }) => {
+}> = ({ ptySurfaces, renderSurface, onRequestClose, createActions, active }) => {
   const { t } = useTranslation();
   const presentation = useWorkspacePresentation();
   const liveChrome = usePtyLiveChromeOptional();
   const liveByViewId = liveChrome?.byViewId || {};
-  const [tabMenu, setTabMenu] = useState<{ surface: WorkspaceSurface; point: ContextMenuPoint } | null>(null);
+  const [tabMenu, setTabMenu] = useState<{
+    surface: WorkspaceSurface;
+    point: ContextMenuPoint;
+  } | null>(null);
   const [chromeMenuViewId, setChromeMenuViewId] = useState<string | null>(null);
   const [chromeMenuPoint, setChromeMenuPoint] = useState<ContextMenuPoint | null>(null);
   const focusedPtyId =
@@ -529,7 +588,9 @@ const TerminalsHost: React.FC<{
     ptySurfaces[0]?.id ||
     '';
   const windowed = isWindowedPresentationMode(presentation.state.mode);
-  const minimizedPtys = ptySurfaces.filter((surface) => presentation.state.windows[surfaceViewId(surface)]?.minimized);
+  const minimizedPtys = ptySurfaces.filter(
+    (surface) => presentation.state.windows[surfaceViewId(surface)]?.minimized,
+  );
 
   useEffect(() => {
     const activePtyViewId = presentation.state.activePtyViewId;
@@ -594,6 +655,17 @@ const TerminalsHost: React.FC<{
           <div className="nx-minimized-chips" aria-hidden="true" />
         )}
         <div className="nx-terminals-host__chrome-cluster">
+          {createActions && (
+            <ProjectCreateMenu
+              onNewAgent={createActions.onNewAgent}
+              onNewAISession={createActions.onNewAISession}
+              onProjectShell={createActions.onProjectShell}
+              size="xs"
+              variant="compact"
+              label="Novo"
+              className="nx-terminals-create-menu"
+            />
+          )}
           <div className="nx-presentation-toggle" role="group" aria-label="Terminal presentation">
             <button
               type="button"
@@ -634,12 +706,57 @@ const TerminalsHost: React.FC<{
       <div className="nx-terminals-host__body">
         {ptySurfaces.length === 0 ? (
           <div className="nx-terminals-empty">
-            <TerminalSquare size={22} />
+            <TerminalSquare size={26} />
             <strong>Nenhum terminal aberto</strong>
-            <p>Use Novo Agente, Sessão IA ou Terminal no topbar ou no rail para criar um PTY nesta aba.</p>
+            <p>
+              Inicie um shell de comando, abra uma nova sessão de IA rápida ou configure um agente
+              autônomo neste projeto.
+            </p>
+            {createActions && (
+              <div className="nx-terminals-empty__actions">
+                {createActions.onProjectShell && (
+                  <button
+                    type="button"
+                    className="nx-button nx-button--terminal"
+                    data-size="sm"
+                    onClick={createActions.onProjectShell}
+                  >
+                    <TerminalSquare size={13} />
+                    <span>Abrir Terminal</span>
+                  </button>
+                )}
+                {createActions.onNewAISession && (
+                  <button
+                    type="button"
+                    className="nx-button"
+                    data-size="sm"
+                    onClick={createActions.onNewAISession}
+                  >
+                    <Sparkles size={13} />
+                    <span>Nova Sessão IA</span>
+                  </button>
+                )}
+                {createActions.onNewAgent && (
+                  <button
+                    type="button"
+                    className="nx-button"
+                    data-tone="brand"
+                    data-size="sm"
+                    onClick={createActions.onNewAgent}
+                  >
+                    <Plus size={13} />
+                    <span>Novo Agente</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ) : windowed ? (
-          <DesktopWorkspace surfaces={ptySurfaces} renderSurface={renderSurface} onRequestClose={onRequestClose} />
+          <DesktopWorkspace
+            surfaces={ptySurfaces}
+            renderSurface={renderSurface}
+            onRequestClose={onRequestClose}
+          />
         ) : (
           <div className="nx-terminals-inner-tabs">
             <div className="nx-workspace-tabs nx-pty-tabs" role="tablist" aria-label="PTY tabs">
@@ -660,14 +777,22 @@ const TerminalsHost: React.FC<{
                     className="nx-pty-tab"
                     data-active={focusedPtyId === surface.id ? 'true' : 'false'}
                     data-accented={accent ? 'true' : undefined}
-                    style={accent ? ({ ['--nx-window-accent' as string]: accent } as React.CSSProperties) : undefined}
+                    style={
+                      accent
+                        ? ({ ['--nx-window-accent' as string]: accent } as React.CSSProperties)
+                        : undefined
+                    }
                   >
                     <button
                       type="button"
                       role="tab"
                       className="nx-workspace-tab"
                       data-active={focusedPtyId === surface.id ? 'true' : 'false'}
-                      data-attention={surface.data?.hasAttention === 'true' || live.questionnaire ? 'true' : undefined}
+                      data-attention={
+                        surface.data?.hasAttention === 'true' || live.questionnaire
+                          ? 'true'
+                          : undefined
+                      }
                       data-unread={surface.data?.unreadAttention === 'true' ? 'true' : undefined}
                       aria-selected={focusedPtyId === surface.id}
                       onClick={() => {
@@ -754,7 +879,8 @@ const TerminalsHost: React.FC<{
                               id: 'close',
                               label: t('workspace.closeNamed', {
                                 name:
-                                  presentation.state.windows[surfaceViewId(tabMenu.surface)]?.customTitle ||
+                                  presentation.state.windows[surfaceViewId(tabMenu.surface)]
+                                    ?.customTitle ||
                                   tabMenu.surface.data?.agentName ||
                                   tabMenu.surface.title,
                               }),
@@ -799,7 +925,8 @@ const DesktopWorkspace: React.FC<{
     ghost: { x: number; y: number };
     pointer: { x: number; y: number };
   } | null>(null);
-  const closeSurface = (surface: WorkspaceSurface) => (onRequestClose ? onRequestClose(surface) : workspace.close(surface.id));
+  const closeSurface = (surface: WorkspaceSurface) =>
+    onRequestClose ? onRequestClose(surface) : workspace.close(surface.id);
   const terminalSurfaces = surfaces.filter(isPtySurface);
   const mosaic = presentation.state.mode === 'MOSAIC';
   const activeViewId = presentation.state.activePtyViewId;
@@ -819,7 +946,9 @@ const DesktopWorkspace: React.FC<{
     .filter((item) => Boolean(item.win))
     .sort((a, b) => surfaceViewId(a.surface).localeCompare(surfaceViewId(b.surface)));
   const mosaicDropViewId =
-    mosaic && mosaicDrag ? mosaicDropTargetViewId(presentation.state, mosaicDrag.viewId, mosaicDrag.pointer) : '';
+    mosaic && mosaicDrag
+      ? mosaicDropTargetViewId(presentation.state, mosaicDrag.viewId, mosaicDrag.pointer)
+      : '';
 
   const splitters = useMemo(() => {
     if (!mosaic) return [];
@@ -842,7 +971,8 @@ const DesktopWorkspace: React.FC<{
       });
     };
     publish();
-    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => publish()) : null;
+    const observer =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => publish()) : null;
     observer?.observe(host);
     return () => observer?.disconnect();
   }, [presentation]);
@@ -876,7 +1006,11 @@ const DesktopWorkspace: React.FC<{
         });
         return;
       }
-      presentation.move(viewId, origin.x + (move.clientX - startX), origin.y + (move.clientY - startY));
+      presentation.move(
+        viewId,
+        origin.x + (move.clientX - startX),
+        origin.y + (move.clientY - startY),
+      );
     };
     const onUp = (up: PointerEvent) => {
       window.removeEventListener('pointermove', onMove);
@@ -900,7 +1034,11 @@ const DesktopWorkspace: React.FC<{
     const originW = win.width;
     const originH = win.height;
     const onMove = (move: PointerEvent) => {
-      presentation.resize(viewId, originW + (move.clientX - startX), originH + (move.clientY - startY));
+      presentation.resize(
+        viewId,
+        originW + (move.clientX - startX),
+        originH + (move.clientY - startY),
+      );
     };
     const onUp = () => {
       window.removeEventListener('pointermove', onMove);
@@ -912,7 +1050,7 @@ const DesktopWorkspace: React.FC<{
 
   const startSplitter = (
     splitter: { firstId: string; secondId: string; orientation: 'vertical' | 'horizontal' },
-    event: React.PointerEvent
+    event: React.PointerEvent,
   ) => {
     if (event.button !== 0) return;
     event.preventDefault();
@@ -1009,18 +1147,28 @@ const DesktopWorkspace: React.FC<{
             >
               <div
                 className="nx-desktop-window__title"
-                title={[heading.heading, heading.identityHint || providerLabel, dynamicTitle || statusSuffix]
+                title={[
+                  heading.heading,
+                  heading.identityHint || providerLabel,
+                  dynamicTitle || statusSuffix,
+                ]
                   .filter(Boolean)
                   .join(' · ')}
               >
                 <div className="nx-desktop-window__title-primary">
-                  {icon && <span className="nx-desktop-window__icon" aria-hidden="true">{icon}</span>}
+                  {icon && (
+                    <span className="nx-desktop-window__icon" aria-hidden="true">
+                      {icon}
+                    </span>
+                  )}
                   {(attention || unread) && (
                     <span
                       className="nx-desktop-window__attention-dot"
                       data-kind={attentionKind || 'needs_user'}
                       data-unread={unread ? 'true' : undefined}
-                      aria-label={unread ? 'unread attention' : questionnaire ? 'questionnaire' : 'attention'}
+                      aria-label={
+                        unread ? 'unread attention' : questionnaire ? 'questionnaire' : 'attention'
+                      }
                     />
                   )}
                   <strong>{heading.heading}</strong>
@@ -1032,15 +1180,23 @@ const DesktopWorkspace: React.FC<{
                   {!heading.identityHint && providerLabel && (
                     <small className="nx-desktop-window__provider">{providerLabel}</small>
                   )}
-                  {dynamicTitle && <small className="nx-desktop-window__dynamic">{dynamicTitle}</small>}
+                  {dynamicTitle && (
+                    <small className="nx-desktop-window__dynamic">{dynamicTitle}</small>
+                  )}
                   {!dynamicTitle && statusSuffix && (
-                    <small className="nx-desktop-window__status" data-kind={attentionKind || undefined}>
+                    <small
+                      className="nx-desktop-window__status"
+                      data-kind={attentionKind || undefined}
+                    >
                       {statusSuffix}
                     </small>
                   )}
                 </div>
               </div>
-              <div className="nx-desktop-window__actions" onPointerDown={(event) => event.stopPropagation()}>
+              <div
+                className="nx-desktop-window__actions"
+                onPointerDown={(event) => event.stopPropagation()}
+              >
                 <WindowChromeMenu
                   viewId={viewId}
                   open={chromeMenuViewId === viewId}
@@ -1054,7 +1210,10 @@ const DesktopWorkspace: React.FC<{
                   icon={win.icon || ''}
                   onPatch={(chrome) => presentation.patchChrome(viewId, chrome)}
                 />
-                <IconButton label={`Minimize ${agentName}`} onClick={() => presentation.minimize(viewId)}>
+                <IconButton
+                  label={`Minimize ${agentName}`}
+                  onClick={() => presentation.minimize(viewId)}
+                >
                   <Minus size={13} />
                 </IconButton>
                 {!mosaic && (
@@ -1149,15 +1308,13 @@ const DesktopWorkspace: React.FC<{
             />
           );
         })}
-      {mosaic &&
-        windows.length > 0 &&
-        windows.every(({ win }) => win?.minimized) && (
-          <div className="nx-mosaic-all-minimized">
-            <Minus size={18} />
-            <strong>{t('workspace.minimizedShelf')}</strong>
-            <p>{t('workspace.mosaicAllMinimized')}</p>
-          </div>
-        )}
+      {mosaic && windows.length > 0 && windows.every(({ win }) => win?.minimized) && (
+        <div className="nx-mosaic-all-minimized">
+          <Minus size={18} />
+          <strong>{t('workspace.minimizedShelf')}</strong>
+          <p>{t('workspace.mosaicAllMinimized')}</p>
+        </div>
+      )}
       <div
         className="nx-desktop-dock"
         data-kind={mosaic ? 'shelf' : 'float'}
@@ -1239,7 +1396,9 @@ const DesktopWorkspace: React.FC<{
               items.push({
                 type: 'item',
                 id: 'max',
-                label: win?.maximized ? t('workspace.windowRestore') : t('workspace.windowMaximize'),
+                label: win?.maximized
+                  ? t('workspace.windowRestore')
+                  : t('workspace.windowMaximize'),
                 icon: win?.maximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />,
                 onSelect: () => presentation.maximize(windowMenu.viewId),
               });

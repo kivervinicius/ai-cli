@@ -4,7 +4,7 @@ import { initReactI18next } from 'react-i18next';
 import { en, es, ptBR } from './resources';
 
 export const supportedLanguages = ['pt-BR', 'en', 'es'] as const;
-export type SupportedLanguage = typeof supportedLanguages[number];
+export type SupportedLanguage = (typeof supportedLanguages)[number];
 export const languageStorageKey = 'iapro:nexus:language:v1';
 
 export function normalizeLanguage(value?: string | null): SupportedLanguage {
@@ -15,15 +15,23 @@ export function normalizeLanguage(value?: string | null): SupportedLanguage {
   return 'en';
 }
 
-const initialization = i18n.use(LanguageDetector).use(initReactI18next).init({
-  resources: { en: { translation: en }, 'pt-BR': { translation: ptBR }, es: { translation: es } },
-  supportedLngs: [...supportedLanguages],
-  fallbackLng: 'en',
-  load: 'currentOnly',
-  interpolation: { escapeValue: false },
-  detection: { order: ['localStorage', 'navigator'], lookupLocalStorage: languageStorageKey, caches: ['localStorage'], convertDetectedLanguage: normalizeLanguage },
-  react: { useSuspense: false },
-});
+const initialization = i18n
+  .use(LanguageDetector)
+  .use(initReactI18next)
+  .init({
+    resources: { en: { translation: en }, 'pt-BR': { translation: ptBR }, es: { translation: es } },
+    supportedLngs: [...supportedLanguages],
+    fallbackLng: 'en',
+    load: 'currentOnly',
+    interpolation: { escapeValue: false },
+    detection: {
+      order: ['localStorage', 'navigator'],
+      lookupLocalStorage: languageStorageKey,
+      caches: ['localStorage'],
+      convertDetectedLanguage: normalizeLanguage,
+    },
+    react: { useSuspense: false },
+  });
 
 const syncDocumentLanguage = (language: string) => {
   const normalized = normalizeLanguage(language);

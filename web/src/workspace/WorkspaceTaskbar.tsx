@@ -9,7 +9,8 @@ import type { Agent, Project } from '../types';
 export const WorkspaceTaskbar: React.FC<{
   project?: Project;
   agents?: Agent[];
-}> = ({ project, agents = [] }) => {
+  onFocusAgent?: (agentId: string) => void;
+}> = ({ project, agents = [], onFocusAgent }) => {
   const { t } = useTranslation();
   const [branchModalOpen, setBranchModalOpen] = useState(false);
   const [currentBranch, setCurrentBranch] = useState<string>('');
@@ -19,11 +20,20 @@ export const WorkspaceTaskbar: React.FC<{
     maestro_available: boolean;
   } | null>(null);
 
-  const [intelligence, setIntelligence] = useState<{ available: boolean; provider?: string } | null>(null);
+  const [intelligence, setIntelligence] = useState<{
+    available: boolean;
+    provider?: string;
+  } | null>(null);
 
   useEffect(() => {
-    nexus.getSystemUpdates().then(setSysInfo).catch(() => undefined);
-    nexus.getIntelligence(project?.id).then(setIntelligence).catch(() => undefined);
+    nexus
+      .getSystemUpdates()
+      .then(setSysInfo)
+      .catch(() => undefined);
+    nexus
+      .getIntelligence(project?.id)
+      .then(setIntelligence)
+      .catch(() => undefined);
   }, [project?.id]);
 
   useEffect(() => {
@@ -35,11 +45,16 @@ export const WorkspaceTaskbar: React.FC<{
   const working = agents.filter((a) => a.status === 'WORKING').length;
   // Agent health (FAILED/STALE/…) is not the same as Radar "needs you" waits.
   const degraded = agents.filter((a) =>
-    ['FAILED', 'STALE', 'RECOVERABLE', 'RATE_LIMITED'].includes(a.status)
+    ['FAILED', 'STALE', 'RECOVERABLE', 'RATE_LIMITED'].includes(a.status),
   ).length;
 
   return (
-    <footer className="nx-workspace-statusbar" data-tour="taskbar" role="status" aria-label="Status Bar">
+    <footer
+      className="nx-workspace-statusbar"
+      data-tour="taskbar"
+      role="status"
+      aria-label="Status Bar"
+    >
       {/* Left: Project & Branch */}
       <div className="nx-statusbar-left">
         {project && (
@@ -50,7 +65,10 @@ export const WorkspaceTaskbar: React.FC<{
                 <span>{project.name}</span>
               </span>
             </Tooltip>
-            <Tooltip content={t('git.switchBranchTooltip', 'Clique para alternar ou criar branches Git')} side="top">
+            <Tooltip
+              content={t('git.switchBranchTooltip', 'Clique para alternar ou criar branches Git')}
+              side="top"
+            >
               <button
                 type="button"
                 className="nx-statusbar-item nx-statusbar-branch nx-statusbar-btn"
@@ -74,10 +92,24 @@ export const WorkspaceTaskbar: React.FC<{
       {/* Center: Agents status */}
       <div className="nx-statusbar-center">
         {degraded > 0 ? (
-          <span className="nx-statusbar-item" style={{ color: 'var(--nx-warning, #f59e0b)' }}>
-            <AlertTriangle size={12} />
-            <span>{t('statusBar.degraded', { count: degraded })}</span>
-          </span>
+          <Tooltip content="Clique para focar no agente com erro ou atenção" side="top">
+            <button
+              type="button"
+              className="nx-statusbar-item nx-statusbar-btn"
+              style={{ color: 'var(--nx-warning, #f59e0b)' }}
+              onClick={() => {
+                const degradedAgent = agents.find((a) =>
+                  ['FAILED', 'STALE', 'RECOVERABLE', 'RATE_LIMITED'].includes(a.status),
+                );
+                if (degradedAgent && onFocusAgent) {
+                  onFocusAgent(degradedAgent.id);
+                }
+              }}
+            >
+              <AlertTriangle size={12} />
+              <span>{t('statusBar.degraded', { count: degraded })}</span>
+            </button>
+          </Tooltip>
         ) : working > 0 ? (
           <span className="nx-statusbar-item nx-statusbar-working">
             <span className="nx-status-dot nx-status-dot--working" />
@@ -99,8 +131,14 @@ export const WorkspaceTaskbar: React.FC<{
           </span>
         </Tooltip>
         {intelligence?.available && (
-          <Tooltip content={`Inteligência Nexus ativa: ${intelligence.provider || 'default'}`} side="top">
-            <span className="nx-statusbar-item" style={{ color: 'var(--nx-accent-text)', fontWeight: 600 }}>
+          <Tooltip
+            content={`Inteligência Nexus ativa: ${intelligence.provider || 'default'}`}
+            side="top"
+          >
+            <span
+              className="nx-statusbar-item"
+              style={{ color: 'var(--nx-accent-text)', fontWeight: 600 }}
+            >
               <span className="nx-status-dot" style={{ background: 'var(--nx-accent)' }} />
               <span>{intelligence.provider || 'Intelligence'}</span>
             </span>

@@ -25,7 +25,11 @@ interface WorkspaceContextValue {
   activate: (surfaceId: string) => void;
   close: (surfaceId: string) => void;
   updateSurface: (surfaceId: string, patch: Partial<WorkspaceSurface>) => void;
-  split: (relativeSurfaceId: string, surface: WorkspaceSurface, direction: WorkspaceDirection) => void;
+  split: (
+    relativeSurfaceId: string,
+    surface: WorkspaceSurface,
+    direction: WorkspaceDirection,
+  ) => void;
   move: (surfaceId: string, targetStackId: string) => void;
   resize: (splitId: string, ratio: number) => void;
   maximize: (surfaceId: string) => void;
@@ -39,23 +43,38 @@ type Action =
   | { type: 'activate'; surfaceId: string }
   | { type: 'close'; surfaceId: string }
   | { type: 'updateSurface'; surfaceId: string; patch: Partial<WorkspaceSurface> }
-  | { type: 'split'; relativeSurfaceId: string; surface: WorkspaceSurface; direction: WorkspaceDirection }
+  | {
+      type: 'split';
+      relativeSurfaceId: string;
+      surface: WorkspaceSurface;
+      direction: WorkspaceDirection;
+    }
   | { type: 'move'; surfaceId: string; targetStackId: string }
   | { type: 'resize'; splitId: string; ratio: number }
   | { type: 'maximize'; surfaceId: string };
 
 function reducer(model: WorkspaceModel, action: Action): WorkspaceModel {
   switch (action.type) {
-    case 'replace': return action.model;
-    case 'open': return openSurface(model, action.surface, action.stackId);
-    case 'ensure': return ensureSurface(model, action.surface, action.stackId);
-    case 'activate': return setActiveSurface(model, action.surfaceId);
-    case 'close': return closeSurface(model, action.surfaceId);
-    case 'updateSurface': return updateSurface(model, action.surfaceId, action.patch);
-    case 'split': return splitWithSurface(model, action.relativeSurfaceId, action.surface, action.direction);
-    case 'move': return moveSurface(model, action.surfaceId, action.targetStackId);
-    case 'resize': return setSplitRatio(model, action.splitId, action.ratio);
-    case 'maximize': return toggleMaximize(model, action.surfaceId);
+    case 'replace':
+      return action.model;
+    case 'open':
+      return openSurface(model, action.surface, action.stackId);
+    case 'ensure':
+      return ensureSurface(model, action.surface, action.stackId);
+    case 'activate':
+      return setActiveSurface(model, action.surfaceId);
+    case 'close':
+      return closeSurface(model, action.surfaceId);
+    case 'updateSurface':
+      return updateSurface(model, action.surfaceId, action.patch);
+    case 'split':
+      return splitWithSurface(model, action.relativeSurfaceId, action.surface, action.direction);
+    case 'move':
+      return moveSurface(model, action.surfaceId, action.targetStackId);
+    case 'resize':
+      return setSplitRatio(model, action.splitId, action.ratio);
+    case 'maximize':
+      return toggleMaximize(model, action.surfaceId);
   }
 }
 
@@ -84,21 +103,20 @@ export const WorkspaceProvider: React.FC<{
 }> = ({ projectId, initialLayout, saveLayout, onSurfaceClosed, children }) => {
   const layoutService = useMemo(() => new WorkspaceLayoutService(projectId), [projectId]);
   const fallback = useMemo(() => createWorkspace(defaultSurface(projectId)), [projectId]);
-  const [model, dispatch] = useReducer(
-    reducer,
-    projectId,
-    (projId) => {
-      const fb = createWorkspace(defaultSurface(projId));
-      if (initialLayout) {
-        return deserializeWorkspace(initialLayout, fb, projId);
-      }
-      return new WorkspaceLayoutService(projId).load(fb).model;
+  const [model, dispatch] = useReducer(reducer, projectId, (projId) => {
+    const fb = createWorkspace(defaultSurface(projId));
+    if (initialLayout) {
+      return deserializeWorkspace(initialLayout, fb, projId);
     }
-  );
+    return new WorkspaceLayoutService(projId).load(fb).model;
+  });
 
   useEffect(() => {
     if (initialLayout) {
-      dispatch({ type: 'replace', model: deserializeWorkspace(initialLayout, fallback, projectId) });
+      dispatch({
+        type: 'replace',
+        model: deserializeWorkspace(initialLayout, fallback, projectId),
+      });
     }
   }, [projectId, initialLayout, fallback]);
 
@@ -106,29 +124,40 @@ export const WorkspaceProvider: React.FC<{
     const serialized = serializeWorkspace(model);
     window.localStorage.setItem(workspaceStorageKey(projectId), serialized);
     if (!saveLayout) return;
-    const timer = window.setTimeout(() => { void saveLayout(serialized).catch(() => undefined); }, 500);
+    const timer = window.setTimeout(() => {
+      void saveLayout(serialized).catch(() => undefined);
+    }, 500);
     return () => window.clearTimeout(timer);
   }, [model, projectId, saveLayout]);
 
-  const value = useMemo<WorkspaceContextValue>(() => ({
-    model,
-    open: (surface, stackId) => dispatch({ type: 'open', surface, stackId }),
-    ensure: (surface, stackId) => dispatch({ type: 'ensure', surface, stackId }),
-    activate: (surfaceId) => dispatch({ type: 'activate', surfaceId }),
-    close: (surfaceId) => {
-      const surface = listSurfaces(model.root).find((candidate) =>
-        candidate.id === surfaceId || candidate.viewId === surfaceId || candidate.legacyId === surfaceId || candidate.logicalKey === surfaceId
-      );
-      if (surface && onSurfaceClosed) void Promise.resolve(onSurfaceClosed(surface)).catch(() => undefined);
-      dispatch({ type: 'close', surfaceId });
-    },
-    updateSurface: (surfaceId, patch) => dispatch({ type: 'updateSurface', surfaceId, patch }),
-    split: (relativeSurfaceId, surface, direction) => dispatch({ type: 'split', relativeSurfaceId, surface, direction }),
-    move: (surfaceId, targetStackId) => dispatch({ type: 'move', surfaceId, targetStackId }),
-    resize: (splitId, ratio) => dispatch({ type: 'resize', splitId, ratio }),
-    maximize: (surfaceId) => dispatch({ type: 'maximize', surfaceId }),
-    reset: () => dispatch({ type: 'replace', model: fallback }),
-  }), [model, fallback, onSurfaceClosed]);
+  const value = useMemo<WorkspaceContextValue>(
+    () => ({
+      model,
+      open: (surface, stackId) => dispatch({ type: 'open', surface, stackId }),
+      ensure: (surface, stackId) => dispatch({ type: 'ensure', surface, stackId }),
+      activate: (surfaceId) => dispatch({ type: 'activate', surfaceId }),
+      close: (surfaceId) => {
+        const surface = listSurfaces(model.root).find(
+          (candidate) =>
+            candidate.id === surfaceId ||
+            candidate.viewId === surfaceId ||
+            candidate.legacyId === surfaceId ||
+            candidate.logicalKey === surfaceId,
+        );
+        if (surface && onSurfaceClosed)
+          void Promise.resolve(onSurfaceClosed(surface)).catch(() => undefined);
+        dispatch({ type: 'close', surfaceId });
+      },
+      updateSurface: (surfaceId, patch) => dispatch({ type: 'updateSurface', surfaceId, patch }),
+      split: (relativeSurfaceId, surface, direction) =>
+        dispatch({ type: 'split', relativeSurfaceId, surface, direction }),
+      move: (surfaceId, targetStackId) => dispatch({ type: 'move', surfaceId, targetStackId }),
+      resize: (splitId, ratio) => dispatch({ type: 'resize', splitId, ratio }),
+      maximize: (surfaceId) => dispatch({ type: 'maximize', surfaceId }),
+      reset: () => dispatch({ type: 'replace', model: fallback }),
+    }),
+    [model, fallback, onSurfaceClosed],
+  );
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 };

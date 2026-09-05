@@ -1,7 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, GitBranch, Plus, RefreshCw } from 'lucide-react';
-import { Button, Dialog, Input, SearchInput, Badge, Spinner, InlineAlert } from '../../design-system';
+import {
+  Button,
+  Dialog,
+  Input,
+  SearchInput,
+  Badge,
+  Spinner,
+  InlineAlert,
+} from '../../design-system';
 import { nexus } from '../../nexus/api';
 import type { GitBranchesResult, Project } from '../../types';
 
@@ -76,9 +84,7 @@ export const BranchSwitcherModal: React.FC<BranchSwitcherModalProps> = ({
 
   const currentBranch = data?.current_branch || project.default_branch || 'main';
   const allBranches = data?.branches || [currentBranch];
-  const filtered = allBranches.filter((b) =>
-    b.toLowerCase().includes(search.toLowerCase().trim())
-  );
+  const filtered = allBranches.filter((b) => b.toLowerCase().includes(search.toLowerCase().trim()));
 
   return (
     <Dialog
@@ -109,11 +115,7 @@ export const BranchSwitcherModal: React.FC<BranchSwitcherModalProps> = ({
           </InlineAlert>
         )}
 
-        {successMsg && (
-          <InlineAlert tone="success">
-            {successMsg}
-          </InlineAlert>
-        )}
+        {successMsg && <InlineAlert tone="success">{successMsg}</InlineAlert>}
 
         {/* Search Input & Action */}
         <div className="nx-branch-search-row">
@@ -177,11 +179,7 @@ export const BranchSwitcherModal: React.FC<BranchSwitcherModalProps> = ({
             <div className="nx-branch-empty">
               <p>{t('git.noBranchesFound', 'Nenhuma branch encontrada com esse filtro.')}</p>
               {search.trim() && !allBranches.includes(search.trim()) && (
-                <Button
-                  size="sm"
-                  tone="brand"
-                  onClick={() => handleCheckout(search.trim(), true)}
-                >
+                <Button size="sm" tone="brand" onClick={() => handleCheckout(search.trim(), true)}>
                   <Plus size={12} /> {t('git.createBranchNamed', `Criar branch "${search.trim()}"`)}
                 </Button>
               )}
@@ -221,7 +219,10 @@ export const BranchSwitcherModal: React.FC<BranchSwitcherModalProps> = ({
         {data && data.remote_branches && data.remote_branches.length > 0 && (
           <div className="nx-branch-footer-info">
             <small className="nx-muted-copy">
-              {t('git.remotesDetected', `${data.remote_branches.length} branches remotas detectadas no Git origin.`)}
+              {t(
+                'git.remotesDetected',
+                `${data.remote_branches.length} branches remotas detectadas no Git origin.`,
+              )}
             </small>
           </div>
         )}

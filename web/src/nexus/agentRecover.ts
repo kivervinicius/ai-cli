@@ -16,8 +16,10 @@ export class RequiredResourceError extends Error {
 }
 
 export function isRequiredResourceError(err: unknown): err is RequiredResourceError {
-  return err instanceof RequiredResourceError ||
-    (err instanceof Error && isRequiredResourceSelection(err.message));
+  return (
+    err instanceof RequiredResourceError ||
+    (err instanceof Error && isRequiredResourceSelection(err.message))
+  );
 }
 
 /**

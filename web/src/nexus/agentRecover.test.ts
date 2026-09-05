@@ -8,7 +8,11 @@ vi.mock('./api', () => ({
 }));
 
 import { nexus } from './api';
-import { isRequiredResourceError, recoverOrStartAgent, RequiredResourceError } from './agentRecover';
+import {
+  isRequiredResourceError,
+  recoverOrStartAgent,
+  RequiredResourceError,
+} from './agentRecover';
 
 describe('recoverOrStartAgent', () => {
   beforeEach(() => {
@@ -24,7 +28,9 @@ describe('recoverOrStartAgent', () => {
   });
 
   it('falls back to start when recover says STOPPED', async () => {
-    vi.mocked(nexus.recoverAgent).mockRejectedValue(new Error('agent is STOPPED (use StartAgent to restart)'));
+    vi.mocked(nexus.recoverAgent).mockRejectedValue(
+      new Error('agent is STOPPED (use StartAgent to restart)'),
+    );
     vi.mocked(nexus.startAgent).mockResolvedValue({ runtime: { runtime_id: 'rt_started' } as any });
     const result = await recoverOrStartAgent('agt_1');
     expect(result.runtime?.runtime_id).toBe('rt_started');
@@ -32,7 +38,7 @@ describe('recoverOrStartAgent', () => {
 
   it('throws RequiredResourceError without calling start when recover lacks provider', async () => {
     vi.mocked(nexus.recoverAgent).mockRejectedValue(
-      new Error('REQUIRED_RESOURCE_SELECTION: agent agt_1 has no configured provider')
+      new Error('REQUIRED_RESOURCE_SELECTION: agent agt_1 has no configured provider'),
     );
     await expect(recoverOrStartAgent('agt_1')).rejects.toBeInstanceOf(RequiredResourceError);
     expect(nexus.startAgent).not.toHaveBeenCalled();
@@ -40,11 +46,13 @@ describe('recoverOrStartAgent', () => {
 
   it('soft-succeeds on legacy already-alive without start', async () => {
     vi.mocked(nexus.recoverAgent).mockRejectedValue(
-      new Error('agent runtime is already alive (no recovery needed)')
+      new Error('agent runtime is already alive (no recovery needed)'),
     );
     const result = await recoverOrStartAgent('agt_1');
     expect(result.runtime).toBeUndefined();
     expect(nexus.startAgent).not.toHaveBeenCalled();
-    expect(isRequiredResourceError(new RequiredResourceError('REQUIRED_RESOURCE_SELECTION'))).toBe(true);
+    expect(isRequiredResourceError(new RequiredResourceError('REQUIRED_RESOURCE_SELECTION'))).toBe(
+      true,
+    );
   });
 });

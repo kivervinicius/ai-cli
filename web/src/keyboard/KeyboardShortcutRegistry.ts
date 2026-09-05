@@ -63,14 +63,19 @@ export class KeyboardShortcutRegistry {
     }
 
     const target = event.target as HTMLElement | null;
-    const isInputOrTextarea = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
-    const isTerminalTarget = Boolean(target?.closest('.xterm') || target?.classList.contains('xterm-helper-textarea'));
+    const isInputOrTextarea =
+      target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
+    const isTerminalTarget = Boolean(
+      target?.closest('.xterm') || target?.classList.contains('xterm-helper-textarea'),
+    );
 
     // If focus is inside terminal, NEVER hijack standard shell / terminal keys
     if (isTerminalTarget && this.activeScope !== 'dialog') {
       // Allow only Global palette triggers like Ctrl+Shift+P or Ctrl+K if desired,
       // but DO NOT hijack Ctrl+C, Ctrl+V, Ctrl+Shift+C, Ctrl+Shift+V, Enter, Arrows, etc.
-      const isGlobalCmd = (event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === 'k' || (event.shiftKey && event.key.toLowerCase() === 'p'));
+      const isGlobalCmd =
+        (event.ctrlKey || event.metaKey) &&
+        (event.key.toLowerCase() === 'k' || (event.shiftKey && event.key.toLowerCase() === 'p'));
       if (!isGlobalCmd) {
         return;
       }
@@ -90,7 +95,12 @@ export class KeyboardShortcutRegistry {
 
       if (matchKey && matchCtrl && matchShift && matchAlt) {
         // If typing in input, don't intercept plain navigation keys without modifier
-        if (isInputOrTextarea && !shortcut.ctrlOrMeta && !shortcut.alt && shortcut.key !== 'Escape') {
+        if (
+          isInputOrTextarea &&
+          !shortcut.ctrlOrMeta &&
+          !shortcut.alt &&
+          shortcut.key !== 'Escape'
+        ) {
           continue;
         }
 

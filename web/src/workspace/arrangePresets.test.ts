@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  ARRANGE_MENU_PRESETS,
-  arrangeByPreset,
-  resolveArrangePreset,
-} from './arrangePresets';
+import { ARRANGE_MENU_PRESETS, arrangeByPreset, resolveArrangePreset } from './arrangePresets';
 
 describe('arrangeByPreset', () => {
   const bounds = { x: 8, y: 8, width: 1200, height: 800 };
@@ -43,7 +39,12 @@ describe('arrangeByPreset', () => {
   });
 
   it('prioritizes activeViewId in terminal-focus', () => {
-    const tiles = arrangeByPreset('terminal-focus', bounds, ['term-1', 'term-2', 'term-3'], 'term-2');
+    const tiles = arrangeByPreset(
+      'terminal-focus',
+      bounds,
+      ['term-1', 'term-2', 'term-3'],
+      'term-2',
+    );
     expect(tiles[0].viewId).toBe('term-2');
     expect(tiles[0].width).toBeGreaterThan(tiles[1].width);
   });
@@ -80,7 +81,13 @@ describe('arrangeByPreset', () => {
   });
 
   it('zero overlap between any arranged tiles', () => {
-    const presets = ['automatic', 'terminal-focus', 'two-columns', 'three-columns', 'terminal-chat'] as const;
+    const presets = [
+      'automatic',
+      'terminal-focus',
+      'two-columns',
+      'three-columns',
+      'terminal-chat',
+    ] as const;
     const views = ['v1', 'v2', 'v3', 'v4'];
 
     for (const p of presets) {

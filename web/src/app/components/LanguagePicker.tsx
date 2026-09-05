@@ -12,7 +12,8 @@ const LANGUAGES = [
 export const LanguagePicker: React.FC = () => {
   const { i18n } = useTranslation();
 
-  const currentLang = LANGUAGES.find((l) => l.code === i18n.language) ||
+  const currentLang =
+    LANGUAGES.find((l) => l.code === i18n.language) ||
     LANGUAGES.find((l) => i18n.language?.startsWith(l.code.slice(0, 2))) ||
     LANGUAGES[0];
 
@@ -41,11 +42,7 @@ export const LanguagePicker: React.FC = () => {
         <DropdownMenu.Portal>
           <DropdownMenu.Content className="nx-lang-dropdown" sideOffset={4} align="end">
             {LANGUAGES.map((lang) => (
-              <DropdownMenu.Item
-                key={lang.code}
-                asChild
-                onSelect={() => handleSelect(lang.code)}
-              >
+              <DropdownMenu.Item key={lang.code} asChild onSelect={() => handleSelect(lang.code)}>
                 <button
                   type="button"
                   className={`nx-lang-option ${lang.code === currentLang.code ? 'nx-lang-option--active' : ''}`}

@@ -24,7 +24,9 @@ describe('Attention Notification Card sanitization & logic', () => {
   });
 
   it('provides safe fallback when context is empty or corrupted', () => {
-    expect(sanitizeAttentionText(null, 'O agente requer atenção.')).toBe('O agente requer atenção.');
+    expect(sanitizeAttentionText(null, 'O agente requer atenção.')).toBe(
+      'O agente requer atenção.',
+    );
     expect(sanitizeAttentionText('', 'O agente requer atenção.')).toBe('O agente requer atenção.');
   });
 
@@ -36,8 +38,8 @@ describe('Attention Notification Card sanitization & logic', () => {
           attention_kind: 'needs_user',
           prompt_kind: 'none',
           attention_context: '',
-        })
-      )
+        }),
+      ),
     ).toBe(false);
   });
 
@@ -49,8 +51,8 @@ describe('Attention Notification Card sanitization & logic', () => {
           attention_kind: 'needs_user',
           prompt_kind: 'yn',
           attention_context: 'Deseja continuar? [y/N]',
-        })
-      )
+        }),
+      ),
     ).toBe(true);
   });
 
@@ -61,7 +63,7 @@ describe('Attention Notification Card sanitization & logic', () => {
         attention_kind: 'needs_user',
         prompt_kind: 'yn',
         attention_context: 'Deseja continuar? [y/N]',
-      })
+      }),
     );
     expect(yn.showYesNo).toBe(true);
 
@@ -71,7 +73,7 @@ describe('Attention Notification Card sanitization & logic', () => {
         attention_kind: 'needs_user',
         prompt_kind: 'free_text',
         attention_context: 'Por favor, revise o plano.',
-      })
+      }),
     );
     expect(free.showYesNo).toBe(false);
     expect(free.showTextInput).toBe(true);
@@ -83,7 +85,7 @@ describe('Attention Notification Card sanitization & logic', () => {
         attention_kind: 'needs_user',
         prompt_kind: 'choice',
         attention_context: 'Choice [1-3]:',
-      })
+      }),
     );
     expect(choice.showYesNo).toBe(false);
     expect(choice.showOpenTerminal).toBe(true);

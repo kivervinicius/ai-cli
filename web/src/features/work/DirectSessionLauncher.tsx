@@ -1,10 +1,23 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Bot, Play, ShieldAlert, TerminalSquare } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { Badge, Button, Dialog, EmptyState, Input, InlineAlert, Spinner } from '../../design-system';
+import {
+  Badge,
+  Button,
+  Dialog,
+  EmptyState,
+  Input,
+  InlineAlert,
+  Spinner,
+} from '../../design-system';
 import { nexus } from '../../nexus/api';
 import type { Agent, Project } from '../../types';
-import { buildDirectAgentName, directAccountTitle, directQuotaDisplay, eligibleDirectResources } from './directSessionModel';
+import {
+  buildDirectAgentName,
+  directAccountTitle,
+  directQuotaDisplay,
+  eligibleDirectResources,
+} from './directSessionModel';
 
 interface DirectResource {
   id: string;
@@ -20,7 +33,11 @@ interface DirectResource {
   quota_view?: {
     status?: string;
     fetched_at?: string;
-    model_groups?: Array<{ key?: string; name?: string; windows?: Array<{ kind?: string; remaining?: number }> }>;
+    model_groups?: Array<{
+      key?: string;
+      name?: string;
+      windows?: Array<{ kind?: string; remaining?: number }>;
+    }>;
   };
 }
 
@@ -50,7 +67,8 @@ export const DirectSessionLauncher: React.FC<{
     let mounted = true;
     setLoading(true);
     setError('');
-    void nexus.listResources()
+    void nexus
+      .listResources()
       .then((result) => {
         if (!mounted) return;
         const eligible = eligibleDirectResources((result.accounts || []) as DirectResource[]);
@@ -60,10 +78,15 @@ export const DirectSessionLauncher: React.FC<{
       })
       .catch((err) => mounted && setError(err instanceof Error ? err.message : String(err)))
       .finally(() => mounted && setLoading(false));
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [open, request?.prompt]);
 
-  const selected = useMemo(() => resources.find((resource) => resource.id === selectedID) || null, [resources, selectedID]);
+  const selected = useMemo(
+    () => resources.find((resource) => resource.id === selectedID) || null,
+    [resources, selectedID],
+  );
 
   useEffect(() => {
     if (!selected || name.trim()) return;
@@ -80,7 +103,11 @@ export const DirectSessionLauncher: React.FC<{
     setStarting(true);
     setError('');
     try {
-      const agent = await nexus.createAgent(project.id, name.trim() || buildDirectAgentName(request.prompt, selected.provider), 'developer');
+      const agent = await nexus.createAgent(
+        project.id,
+        name.trim() || buildDirectAgentName(request.prompt, selected.provider),
+        'developer',
+      );
       await nexus.selectResource(agent.id, selected.provider, selected.profile, 'MANUAL');
       await nexus.applyAgentConfig(agent.id, {
         provider: selected.provider,
@@ -106,18 +133,36 @@ export const DirectSessionLauncher: React.FC<{
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={request?.mode === 'assisted' ? t('directSession.assistedTitle') : t('directSession.title')} wide>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={
+        request?.mode === 'assisted' ? t('directSession.assistedTitle') : t('directSession.title')
+      }
+      wide
+    >
       <div className="nx-form-stack">
-        <Input value={name} onChange={setName} placeholder={t('directSession.namePlaceholder')} aria-label={t('directSession.name')} />
+        <Input
+          value={name}
+          onChange={setName}
+          placeholder={t('directSession.namePlaceholder')}
+          aria-label={t('directSession.name')}
+        />
 
-        {loading ? <Spinner label={t('directSession.loading')} /> : resources.length === 0 ? (
+        {loading ? (
+          <Spinner label={t('directSession.loading')} />
+        ) : resources.length === 0 ? (
           <EmptyState
             icon={<Bot size={22} />}
             title={t('directSession.empty')}
             hint={t('directSession.emptyHint')}
           />
         ) : (
-          <div className="nx-direct-resource-list" role="radiogroup" aria-label={t('directSession.chooseAccount')}>
+          <div
+            className="nx-direct-resource-list"
+            role="radiogroup"
+            aria-label={t('directSession.chooseAccount')}
+          >
             {resources.map((resource) => {
               const checked = resource.id === selectedID;
               const quota = directQuotaDisplay(resource);
@@ -131,13 +176,23 @@ export const DirectSessionLauncher: React.FC<{
                   key={resource.id}
                   onClick={() => choose(resource)}
                 >
-                  <span className="nx-direct-resource__icon">{resource.rate_limited ? <ShieldAlert size={17} /> : <TerminalSquare size={17} />}</span>
+                  <span className="nx-direct-resource__icon">
+                    {resource.rate_limited ? (
+                      <ShieldAlert size={17} />
+                    ) : (
+                      <TerminalSquare size={17} />
+                    )}
+                  </span>
                   <span className="nx-direct-resource__body">
                     <span className="nx-direct-resource__title">
                       <strong>{directAccountTitle(resource)}</strong>
                       {healthBadge(resource.health)}
                     </span>
-                    <small>{quota === null ? t('directSession.quotaUnknown') : t('directSession.remainingLabel', { value: quota })}</small>
+                    <small>
+                      {quota === null
+                        ? t('directSession.quotaUnknown')
+                        : t('directSession.remainingLabel', { value: quota })}
+                    </small>
                   </span>
                 </button>
               );
@@ -151,10 +206,18 @@ export const DirectSessionLauncher: React.FC<{
             <pre>{request.prompt}</pre>
           </div>
         )}
-        {error && <InlineAlert tone="danger" title={t('directSession.startError')}>{error}</InlineAlert>}
+        {error && (
+          <InlineAlert tone="danger" title={t('directSession.startError')}>
+            {error}
+          </InlineAlert>
+        )}
         <div className="nx-dialog-actions">
           <Button onClick={onClose}>{t('directSession.cancel')}</Button>
-          <Button tone="brand" disabled={!selected || starting || !name.trim()} onClick={() => void start()}>
+          <Button
+            tone="brand"
+            disabled={!selected || starting || !name.trim()}
+            onClick={() => void start()}
+          >
             <Play size={14} /> {starting ? t('directSession.starting') : t('directSession.start')}
           </Button>
         </div>

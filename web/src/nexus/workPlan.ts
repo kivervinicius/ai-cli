@@ -3,7 +3,9 @@ import type { WorkPackage, WorkPlan } from '../types';
 type UnknownRecord = Record<string, unknown>;
 
 function asRecord(value: unknown): UnknownRecord {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as UnknownRecord : {};
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as UnknownRecord)
+    : {};
 }
 
 function normalizePackage(value: unknown): WorkPackage {

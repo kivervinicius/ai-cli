@@ -8,7 +8,10 @@ const steps: TourStep[] = [
 ];
 
 describe('tour model', () => {
-  it('keeps only visible targets', () => expect(availableTourSteps(steps, (selector) => selector !== '[data-tour="missing"]')).toHaveLength(2));
+  it('keeps only visible targets', () =>
+    expect(
+      availableTourSteps(steps, (selector) => selector !== '[data-tour="missing"]'),
+    ).toHaveLength(2));
   it('advances within bounds', () => expect(nextTourIndex(0, 3)).toBe(1));
   it('stays at final step', () => expect(nextTourIndex(2, 3)).toBe(2));
   it('moves backward within bounds', () => expect(previousTourIndex(2)).toBe(1));

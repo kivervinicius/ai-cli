@@ -1,11 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  FolderOpen,
-  RefreshCw,
-  Check,
-  Plus,
-} from 'lucide-react';
+import { FolderOpen, RefreshCw, Check, Plus } from 'lucide-react';
 import { Button, Dialog, IconButton, Input, Badge } from '../../design-system';
 import { nexus } from '../../nexus/api';
 import type { FSInspectResult, Project } from '../../types';
@@ -85,19 +80,11 @@ export const AddProjectModal: React.FC<{
         <div className="nx-form-stack">
           {/* OS Integration Helper Buttons */}
           <div className="nx-pm-add-helpers">
-            <Button
-              size="sm"
-              tone="ghost"
-              onClick={() => setDirPickerOpen(true)}
-            >
+            <Button size="sm" tone="ghost" onClick={() => setDirPickerOpen(true)}>
               <FolderOpen size={13} />
               <span>{t('projectManager.browseOS')}</span>
             </Button>
-            <Button
-              size="sm"
-              tone="ghost"
-              onClick={() => setScanModalOpen(true)}
-            >
+            <Button size="sm" tone="ghost" onClick={() => setScanModalOpen(true)}>
               <RefreshCw size={13} />
               <span>{t('projectManager.scanOS')}</span>
             </Button>
@@ -129,7 +116,8 @@ export const AddProjectModal: React.FC<{
             <div className="nx-inspect-badge-row">
               {inspectInfo.is_git ? (
                 <Badge tone="success">
-                  <Check size={11} /> {t('projectManager.gitDetected', { branch: inspectInfo.git_branch || 'main' })}
+                  <Check size={11} />{' '}
+                  {t('projectManager.gitDetected', { branch: inspectInfo.git_branch || 'main' })}
                 </Badge>
               ) : (
                 <Badge tone="default">Diretório Local (Sem Git)</Badge>
@@ -157,11 +145,7 @@ export const AddProjectModal: React.FC<{
 
           <div className="nx-dialog-actions">
             <Button onClick={onClose}>{t('rail.cancel')}</Button>
-            <Button
-              tone="brand"
-              disabled={!path.trim() || busy}
-              onClick={handleCreate}
-            >
+            <Button tone="brand" disabled={!path.trim() || busy} onClick={handleCreate}>
               <Plus size={13} />
               <span>{busy ? t('rail.adding') : t('projectManager.createButton')}</span>
             </Button>

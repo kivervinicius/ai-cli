@@ -66,13 +66,19 @@ interface SchedulerDecision {
 }
 
 interface Props {
-	agentId?: string;
-	preferProvider?: string;
-	onSelected?: (provider: string, profile: string) => void | Promise<void>;
+  agentId?: string;
+  preferProvider?: string;
+  onSelected?: (provider: string, profile: string) => void | Promise<void>;
 }
 
 const healthTone = (health: string) =>
-  health === 'healthy' ? 'success' : health === 'degraded' ? 'warning' : health === 'unhealthy' ? 'danger' : 'default';
+  health === 'healthy'
+    ? 'success'
+    : health === 'degraded'
+      ? 'warning'
+      : health === 'unhealthy'
+        ? 'danger'
+        : 'default';
 
 const QuotaBar: React.FC<{ w: QuotaWindow }> = ({ w }) => (
   <span className="nx-resource-account__quota-row">
@@ -82,7 +88,8 @@ const QuotaBar: React.FC<{ w: QuotaWindow }> = ({ w }) => (
   </span>
 );
 
-const groupAvailable = (group: QuotaModelGroup) => group.windows.some((w) => w.kind !== 'unknown' && w.remaining > 0);
+const groupAvailable = (group: QuotaModelGroup) =>
+  group.windows.some((w) => w.kind !== 'unknown' && w.remaining > 0);
 
 export const ResourcePicker: React.FC<Props> = ({ agentId, preferProvider, onSelected }) => {
   const { t } = useTranslation();
@@ -93,27 +100,40 @@ export const ResourcePicker: React.FC<Props> = ({ agentId, preferProvider, onSel
 
   useEffect(() => {
     let mounted = true;
-    void nexus.listResources().then(async (data) => {
-      if (!mounted) return;
-      setAccounts(data.accounts || []);
-    }).catch(() => undefined).finally(() => mounted && setLoading(false));
-    return () => { mounted = false; };
+    void nexus
+      .listResources()
+      .then(async (data) => {
+        if (!mounted) return;
+        setAccounts(data.accounts || []);
+      })
+      .catch(() => undefined)
+      .finally(() => mounted && setLoading(false));
+    return () => {
+      mounted = false;
+    };
   }, [preferProvider]);
 
   const choose = async (account: ProviderAccount) => {
-	if (!agentId) return;
-	setSelecting(account.id);
+    if (!agentId) return;
+    setSelecting(account.id);
     try {
-	      const result = await nexus.selectResource(agentId, account.provider, account.profile);
+      const result = await nexus.selectResource(agentId, account.provider, account.profile);
       setDecision(result.decision);
-	      await onSelected?.(account.provider, account.profile);
+      await onSelected?.(account.provider, account.profile);
     } finally {
       setSelecting(null);
     }
   };
 
   if (loading) return <Spinner label={t('resources.loading')} />;
-  if (accounts.length === 0) return <EmptyState icon={<Gauge size={20} />} title={t('resources.empty')} hint={t('resources.emptyHint')} />;
+  if (accounts.length === 0)
+    return (
+      <EmptyState
+        icon={<Gauge size={20} />}
+        title={t('resources.empty')}
+        hint={t('resources.emptyHint')}
+      />
+    );
 
   return (
     <div className="nx-resource-picker">
@@ -131,7 +151,9 @@ export const ResourcePicker: React.FC<Props> = ({ agentId, preferProvider, onSel
               className="nx-resource-account"
               data-selected={selected}
               onClick={() => void choose(account)}
-              disabled={!agentId || !account.authenticated || !account.available || selecting === account.id}
+              disabled={
+                !agentId || !account.authenticated || !account.available || selecting === account.id
+              }
             >
               <span className="nx-resource-account__icon">
                 {account.rate_limited ? <ShieldAlert size={17} /> : <Activity size={17} />}
@@ -142,10 +164,20 @@ export const ResourcePicker: React.FC<Props> = ({ agentId, preferProvider, onSel
                   <Badge>{account.profile}</Badge>
                   <Badge tone={healthTone(account.health)}>{translateStatus(account.health)}</Badge>
                   <Badge tone={account.available ? 'success' : 'danger'}>
-                    {account.available ? 'DISPONIVEL' : account.avail_reasons?.rate_limited ? 'RATE LIMITED' : account.avail_reasons?.exhausted_windows ? 'QUOTA ESGOTADA' : 'INDISPONIVEL'}
+                    {account.available
+                      ? 'DISPONIVEL'
+                      : account.avail_reasons?.rate_limited
+                        ? 'RATE LIMITED'
+                        : account.avail_reasons?.exhausted_windows
+                          ? 'QUOTA ESGOTADA'
+                          : 'INDISPONIVEL'}
                   </Badge>
                   {account.is_default && <Badge>{t('common.default')}</Badge>}
-                  {selected && <Badge><Check size={12} /> {t('common.selected')}</Badge>}
+                  {selected && (
+                    <Badge>
+                      <Check size={12} /> {t('common.selected')}
+                    </Badge>
+                  )}
                 </span>
                 <span className="nx-resource-account__quota">
                   {hasGroups ? (
@@ -154,7 +186,9 @@ export const ResourcePicker: React.FC<Props> = ({ agentId, preferProvider, onSel
                         {multiGroups && group.name && (
                           <span className="nx-resource-account__group-heading">
                             <span className="nx-resource-account__group-name">{group.name}</span>
-                            <Badge tone={groupAvailable(group) ? 'success' : 'danger'}>{groupAvailable(group) ? 'DISPONIVEL' : 'INDISPONIVEL'}</Badge>
+                            <Badge tone={groupAvailable(group) ? 'success' : 'danger'}>
+                              {groupAvailable(group) ? 'DISPONIVEL' : 'INDISPONIVEL'}
+                            </Badge>
                           </span>
                         )}
                         {group.windows.map((w) => (

@@ -522,6 +522,116 @@ button { color:inherit; }
 .nx-notification-toast__body{min-width:0;display:grid;gap:2px;color:var(--nx-text-soft)}.nx-notification-toast__body strong{font-size:12px}.nx-notification-toast__body span{overflow:hidden;color:var(--nx-muted);font-size:11.5px;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:560px){.nx-notification-center{right:8px;bottom:calc(var(--nx-taskbar) + 8px);width:calc(100vw - 16px)}.nx-notification-toast{padding:8px}}
 
+/* Notification & Attention Center Drawer */
+.nx-notification-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+}
+.nx-notification-drawer__tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--nx-border);
+  padding-bottom: 8px;
+}
+.nx-notification-drawer__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--nx-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.nx-notification-drawer__tab:hover {
+  color: var(--nx-text);
+  background: var(--nx-surface-2);
+}
+.nx-notification-drawer__tab--active {
+  color: var(--nx-accent-text);
+  background: var(--nx-accent-soft);
+  border-color: color-mix(in srgb, var(--nx-accent) 30%, transparent);
+}
+.nx-notification-drawer__badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--nx-warning);
+  color: #000;
+  font-size: 10px;
+  font-weight: 750;
+}
+.nx-notification-drawer__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  max-height: calc(100vh - 180px);
+}
+.nx-notification-drawer__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 16px;
+  color: var(--nx-subtle);
+  font-size: 12.5px;
+  text-align: center;
+}
+.nx-notification-drawer__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--nx-border);
+  border-radius: 8px;
+  background: var(--nx-surface-2);
+}
+.nx-notification-drawer__item[data-tone="warning"] {
+  border-left: 3px solid var(--nx-warning);
+}
+.nx-notification-drawer__item[data-tone="danger"] {
+  border-left: 3px solid var(--nx-danger);
+}
+.nx-notification-drawer__item[data-tone="success"] {
+  border-left: 3px solid var(--nx-success);
+}
+.nx-notification-drawer__item-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.nx-notification-drawer__item-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.nx-notification-drawer__item-header strong {
+  font-size: 12px;
+  color: var(--nx-text);
+}
+.nx-notification-drawer__item-header small {
+  font-size: 11px;
+  color: var(--nx-subtle);
+}
+.nx-notification-drawer__item-main p {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--nx-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 
 
 .nx-direct-resource-list{display:grid;gap:7px}.nx-direct-resource{width:100%;display:grid;grid-template-columns:34px minmax(0,1fr);align-items:center;gap:10px;padding:11px;border:1px solid var(--nx-border);border-radius:8px;background:var(--nx-bg-elevated);color:var(--nx-text-soft);text-align:left;cursor:pointer}.nx-direct-resource:hover,.nx-direct-resource[data-selected="true"]{border-color:color-mix(in srgb,var(--nx-accent) 55%,var(--nx-border));background:var(--nx-accent-soft)}.nx-direct-resource__icon{width:32px;height:32px;display:grid;place-items:center;border-radius:7px;background:var(--nx-surface-2);color:var(--nx-accent-text)}.nx-direct-resource__body{min-width:0;display:grid;gap:5px}.nx-direct-resource__title{display:flex;align-items:center;gap:5px;flex-wrap:wrap}.nx-direct-resource__body small{color:var(--nx-muted);font-size:11.5px}.nx-direct-prompt-preview{display:grid;gap:7px}.nx-direct-prompt-preview strong{font-size:12px}.nx-direct-prompt-preview pre{max-height:160px;overflow:auto;margin:0;padding:10px;border:1px solid var(--nx-border);border-radius:8px;background:var(--nx-bg-elevated);color:var(--nx-text-soft);font:12px/1.5 var(--nx-font-mono);white-space:pre-wrap}
@@ -1492,3 +1602,175 @@ button { color:inherit; }
   from { opacity: 0; transform: translateY(8px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+/* Settings Surface Segmented Tabs & Controls */
+.nx-settings-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--nx-border);
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  overflow-x: auto;
+}
+.nx-settings-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--nx-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.nx-settings-tab:hover {
+  color: var(--nx-text);
+  background: var(--nx-surface-2);
+}
+.nx-settings-tab--active {
+  color: var(--nx-accent-text);
+  background: var(--nx-accent-soft);
+  border-color: color-mix(in srgb, var(--nx-accent) 35%, transparent);
+}
+.nx-font-scale-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nx-font-scale-btn {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--nx-border);
+  background: var(--nx-surface-2);
+  color: var(--nx-text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.nx-font-scale-btn:hover {
+  background: var(--nx-surface-3);
+  border-color: var(--nx-border-strong);
+}
+.nx-font-scale-btn[data-active="true"] {
+  border-color: var(--nx-accent);
+  background: var(--nx-accent-soft);
+  color: var(--nx-accent-text);
+}
+
+/* Project Create Menu (Dropdown) */
+.nx-create-menu {
+  position: relative;
+  display: inline-flex;
+}
+.nx-create-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+}
+.nx-create-menu__label {
+  white-space: nowrap;
+}
+.nx-create-menu__chevron {
+  opacity: 0.7;
+  transition: transform 0.15s ease;
+}
+.nx-create-menu__trigger[aria-expanded="true"] .nx-create-menu__chevron {
+  transform: rotate(180deg);
+}
+.nx-create-menu__panel {
+  position: fixed;
+  z-index: var(--nx-z-contextmenu, 1000);
+  min-width: 220px;
+  max-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid var(--nx-border);
+  border-radius: 9px;
+  background: var(--nx-bg-elevated, #11141d);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(12px);
+  animation: nx-splash-fade-in 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.nx-create-menu__item {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--nx-text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.nx-create-menu__item:hover {
+  background: var(--nx-surface-2);
+}
+.nx-create-menu__icon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.nx-create-menu__icon--agent {
+  background: color-mix(in srgb, var(--nx-accent) 22%, transparent);
+  color: var(--nx-accent-text);
+}
+.nx-create-menu__icon--session {
+  background: rgba(245, 158, 11, 0.18);
+  color: #f59e0b;
+}
+.nx-create-menu__icon--terminal {
+  background: rgba(16, 185, 129, 0.18);
+  color: #10b981;
+}
+.nx-create-menu__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.nx-create-menu__text strong {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--nx-text);
+}
+.nx-create-menu__text small {
+  font-size: 11px;
+  color: var(--nx-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Empty Terminals Actions */
+.nx-terminals-empty__actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 600px) {
+  .nx-create-menu__label {
+    display: none !important;
+  }
+  .nx-create-menu__trigger {
+    padding: 0 6px !important;
+  }
+}
+

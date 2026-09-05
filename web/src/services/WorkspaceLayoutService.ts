@@ -55,7 +55,8 @@ export class WorkspaceLayoutService {
    */
   load(fallbackModel: WorkspaceModel): PersistedWorkbenchLayout {
     try {
-      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(this.storageKey) : null;
+      const raw =
+        typeof window !== 'undefined' ? window.localStorage.getItem(this.storageKey) : null;
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === 'object') {
@@ -118,7 +119,10 @@ export class WorkspaceLayoutService {
       window.localStorage.setItem(this.storageKey, serialized);
       // Also update compatibility keys so older observers don't crash
       window.localStorage.setItem(this.legacyModelKey, serializeWorkspace(normalized.model));
-      window.localStorage.setItem(this.legacyPresentationKey, JSON.stringify(normalized.presentation));
+      window.localStorage.setItem(
+        this.legacyPresentationKey,
+        JSON.stringify(normalized.presentation),
+      );
     } catch {
       // Storage quota or private browsing error — safe ignore
     }
@@ -139,7 +143,7 @@ export class WorkspaceLayoutService {
       const model = deserializeWorkspace(
         candidate.model ? JSON.stringify(candidate.model) : null,
         fallbackModel,
-        this.projectId
+        this.projectId,
       );
       const presentation = migratePresentationState(candidate.presentation);
 
@@ -157,7 +161,7 @@ export class WorkspaceLayoutService {
     const model = deserializeWorkspace(
       candidate.model ? JSON.stringify(candidate.model) : null,
       fallbackModel,
-      this.projectId
+      this.projectId,
     );
     const presentation = migratePresentationState(candidate.presentation);
 
@@ -213,8 +217,10 @@ export class WorkspaceLayoutService {
       updatedAt: new Date().toISOString(),
       model: fallbackModel,
       presentation: createPresentationState(),
-      activeSurfaceId: fallbackModel.root.kind === 'stack' ? fallbackModel.root.activeId : undefined,
-      openSurfaceIds: fallbackModel.root.kind === 'stack' ? fallbackModel.root.tabs.map(surfaceViewId) : [],
+      activeSurfaceId:
+        fallbackModel.root.kind === 'stack' ? fallbackModel.root.activeId : undefined,
+      openSurfaceIds:
+        fallbackModel.root.kind === 'stack' ? fallbackModel.root.tabs.map(surfaceViewId) : [],
     });
     this.save(layout);
     return layout;

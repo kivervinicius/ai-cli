@@ -3,29 +3,42 @@ import { isProtocolControlLine, parseTerminalFrame, scrubProtocolOutput } from '
 
 describe('terminal protocol', () => {
   it('renders provider JSON as output when it is not a control envelope', () => {
-    expect(parseTerminalFrame('{"hello":"world"}')).toEqual({ type: 'output', data: '{"hello":"world"}' });
+    expect(parseTerminalFrame('{"hello":"world"}')).toEqual({
+      type: 'output',
+      data: '{"hello":"world"}',
+    });
   });
 
   it('parses agent_state without terminal output', () => {
-    expect(parseTerminalFrame(JSON.stringify({
-      type: 'agent_state',
-      agent_id: 'a1',
-      state: 'WORKING',
-    }))).toEqual({ type: 'agent_state', agent_id: 'a1', state: 'WORKING' });
+    expect(
+      parseTerminalFrame(
+        JSON.stringify({
+          type: 'agent_state',
+          agent_id: 'a1',
+          state: 'WORKING',
+        }),
+      ),
+    ).toEqual({ type: 'agent_state', agent_id: 'a1', state: 'WORKING' });
   });
 
   it('parses continuity_state without terminal output', () => {
-    expect(parseTerminalFrame(JSON.stringify({
-      type: 'continuity_state',
-      agent_id: 'a1',
-      continuity_state: 'PRESERVED',
-    }))).toEqual({ type: 'continuity_state', agent_id: 'a1', continuity_state: 'PRESERVED' });
+    expect(
+      parseTerminalFrame(
+        JSON.stringify({
+          type: 'continuity_state',
+          agent_id: 'a1',
+          continuity_state: 'PRESERVED',
+        }),
+      ),
+    ).toEqual({ type: 'continuity_state', agent_id: 'a1', continuity_state: 'PRESERVED' });
   });
 
   it('keeps ANSI payload byte-for-byte', () => {
     const ansi = '\u001b[32mPASS\u001b[0m\r\n';
-    expect(parseTerminalFrame(JSON.stringify({ type: 'output', data: ansi })))
-      .toEqual({ type: 'output', data: ansi });
+    expect(parseTerminalFrame(JSON.stringify({ type: 'output', data: ansi }))).toEqual({
+      type: 'output',
+      data: ansi,
+    });
   });
 
   it('isolates valid control frames from terminal output', () => {

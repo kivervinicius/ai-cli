@@ -1,5 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MessageSquare, Play, RefreshCw, Send, ShieldAlert, Sparkles, Trash2, Unplug, X } from 'lucide-react';
+import {
+  MessageSquare,
+  Play,
+  RefreshCw,
+  Send,
+  ShieldAlert,
+  Sparkles,
+  Trash2,
+  Unplug,
+  X,
+} from 'lucide-react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { nexus } from './api';
@@ -39,14 +49,32 @@ export const AgentTerminal: React.FC<{
   /** Workspace view id so Janelas/Mosaico can mirror OSC settitle. */
   liveTitleKey?: string;
   onRecover?: () => Promise<RuntimeSession | void> | RuntimeSession | void;
-  onRestartWithMode?: (mode: 'Safe' | 'YOLO') => Promise<RuntimeSession | void> | RuntimeSession | void;
+  onRestartWithMode?: (
+    mode: 'Safe' | 'YOLO',
+  ) => Promise<RuntimeSession | void> | RuntimeSession | void;
   onClose?: (stopRuntime: boolean) => void | Promise<void>;
   onDelete?: () => void | Promise<void>;
-}> = ({ agentId, runtimeId, initialPrompt, provider, profile, mode = 'Safe', agentName, chrome = 'full', liveTitleKey, onRecover, onRestartWithMode, onClose, onDelete }) => {
+}> = ({
+  agentId,
+  runtimeId,
+  initialPrompt,
+  provider,
+  profile,
+  mode = 'Safe',
+  agentName,
+  chrome = 'full',
+  liveTitleKey,
+  onRecover,
+  onRestartWithMode,
+  onClose,
+  onDelete,
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const [connection, setConnection] = useState<'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('CONNECTING');
+  const [connection, setConnection] = useState<
+    'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR'
+  >('CONNECTING');
   const [message, setMessage] = useState('');
   const [role, setRole] = useState<TerminalRole>('VIEW_ONLY');
   const [ptyTitle, setPtyTitle] = useState('');
@@ -56,12 +84,18 @@ export const AgentTerminal: React.FC<{
   const [connectNonce, setConnectNonce] = useState(0);
   const [askOpen, setAskOpen] = useState(false);
   const [askPrompt, setAskPrompt] = useState('');
-  const [availableSkills, setAvailableSkills] = useState<Array<{ id: string; name?: string; description?: string }>>([]);
+  const [availableSkills, setAvailableSkills] = useState<
+    Array<{ id: string; name?: string; description?: string }>
+  >([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [asking, setAsking] = useState(false);
   const [askFeedback, setAskFeedback] = useState('');
-  const [modeAction, setModeAction] = useState<'Applying' | 'Restarting' | 'Ready' | 'Error' | ''>('');
-  const [selectedMode, setSelectedMode] = useState<'Safe' | 'YOLO'>(mode === 'YOLO' ? 'YOLO' : 'Safe');
+  const [modeAction, setModeAction] = useState<'Applying' | 'Restarting' | 'Ready' | 'Error' | ''>(
+    '',
+  );
+  const [selectedMode, setSelectedMode] = useState<'Safe' | 'YOLO'>(
+    mode === 'YOLO' ? 'YOLO' : 'Safe',
+  );
   const [pendingMode, setPendingMode] = useState<'Safe' | 'YOLO' | null>(null);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -179,7 +213,10 @@ export const AgentTerminal: React.FC<{
 
     const ingestOutput = (data: string) => {
       const next = consumePtyOutputForChrome(data, ptyChromeRef.current);
-      if (next.title !== ptyChromeRef.current.title || next.questionnaire !== ptyChromeRef.current.questionnaire) {
+      if (
+        next.title !== ptyChromeRef.current.title ||
+        next.questionnaire !== ptyChromeRef.current.questionnaire
+      ) {
         publishChrome(next.title, next.questionnaire);
       } else {
         ptyChromeRef.current = next;
@@ -194,7 +231,13 @@ export const AgentTerminal: React.FC<{
     const fitAndResize = (force = false) => {
       if (disposed) return;
       try {
-        if (term.element && term.element.isConnected && container.isConnected && container.clientWidth > 0 && container.clientHeight > 0) {
+        if (
+          term.element &&
+          term.element.isConnected &&
+          container.isConnected &&
+          container.clientWidth > 0 &&
+          container.clientHeight > 0
+        ) {
           fit.fit();
         }
       } catch {
@@ -315,14 +358,22 @@ export const AgentTerminal: React.FC<{
         previous.onclose = null;
         previous.onerror = null;
         previous.onmessage = null;
-        if (previous.readyState === WebSocket.OPEN || previous.readyState === WebSocket.CONNECTING) {
+        if (
+          previous.readyState === WebSocket.OPEN ||
+          previous.readyState === WebSocket.CONNECTING
+        ) {
           previous.close();
         }
         if (wsRef.current === previous) wsRef.current = null;
       }
 
       const ws = new WebSocket(
-        agentTerminalWebSocketURL(window.location.protocol, window.location.host, agentId, boundRuntimeId)
+        agentTerminalWebSocketURL(
+          window.location.protocol,
+          window.location.host,
+          agentId,
+          boundRuntimeId,
+        ),
       );
       wsRef.current = ws;
       roleRef.current = 'VIEW_ONLY';
@@ -332,8 +383,8 @@ export const AgentTerminal: React.FC<{
         openedOnce = true;
         setRecovering(false);
         setConnection('CONNECTED');
-        setModeAction((current) => current === 'Restarting' ? 'Ready' : current);
-        setMessage((current) => current === 'Reiniciando runtime…' ? 'Pronto' : '');
+        setModeAction((current) => (current === 'Restarting' ? 'Ready' : current));
+        setMessage((current) => (current === 'Reiniciando runtime…' ? 'Pronto' : ''));
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'lease_acquire' }));
         }
@@ -359,7 +410,11 @@ export const AgentTerminal: React.FC<{
             reconnectAttempt = 0;
             roleRef.current = next;
             setRole(next);
-            setMessage(next === 'CONTROL' ? '' : 'Somente leitura — outro acesso está digitando neste runtime.');
+            setMessage(
+              next === 'CONTROL'
+                ? ''
+                : 'Somente leitura — outro acesso está digitando neste runtime.',
+            );
             if (next === 'CONTROL') {
               window.requestAnimationFrame(() => term.focus());
             }
@@ -373,7 +428,12 @@ export const AgentTerminal: React.FC<{
           } else if (payload.type === 'attention') {
             if (payload.dynamic_title) publishChrome(String(payload.dynamic_title));
             const kind = String(payload.attention_kind || payload.prompt_kind || '');
-            if (kind === 'needs_user' || kind === 'choice' || kind === 'yn' || kind === 'free_text') {
+            if (
+              kind === 'needs_user' ||
+              kind === 'choice' ||
+              kind === 'yn' ||
+              kind === 'free_text'
+            ) {
               publishChrome(undefined, true);
             }
           } else if (payload.type === 'error') {
@@ -551,7 +611,7 @@ export const AgentTerminal: React.FC<{
 
   const handleToggleSkill = (id: string) => {
     setSelectedSkills((prev) =>
-      prev.includes(id) ? prev.filter((s) => s !== id) : prev.length < 3 ? [...prev, id] : prev
+      prev.includes(id) ? prev.filter((s) => s !== id) : prev.length < 3 ? [...prev, id] : prev,
     );
   };
 
@@ -560,7 +620,12 @@ export const AgentTerminal: React.FC<{
     setAsking(true);
     setAskFeedback('');
     try {
-      await nexus.askAgent(agentId, askPrompt.trim(), true, selectedSkills.length > 0 ? selectedSkills : undefined);
+      await nexus.askAgent(
+        agentId,
+        askPrompt.trim(),
+        true,
+        selectedSkills.length > 0 ? selectedSkills : undefined,
+      );
       setAskPrompt('');
       setSelectedSkills([]);
       setAskOpen(false);
@@ -573,12 +638,24 @@ export const AgentTerminal: React.FC<{
   };
 
   const requestModeChange = (nextMode: 'Safe' | 'YOLO') => {
-    if (!onRestartWithMode || nextMode === selectedMode || modeAction === 'Applying' || modeAction === 'Restarting') return;
+    if (
+      !onRestartWithMode ||
+      nextMode === selectedMode ||
+      modeAction === 'Applying' ||
+      modeAction === 'Restarting'
+    )
+      return;
     setPendingMode(nextMode);
   };
 
   const handleModeChange = async () => {
-    if (!onRestartWithMode || !pendingMode || modeAction === 'Applying' || modeAction === 'Restarting') return;
+    if (
+      !onRestartWithMode ||
+      !pendingMode ||
+      modeAction === 'Applying' ||
+      modeAction === 'Restarting'
+    )
+      return;
     const nextMode = pendingMode;
     setPendingMode(null);
     setModeAction('Applying');
@@ -647,10 +724,14 @@ export const AgentTerminal: React.FC<{
   const terminalActions = (
     <div className="nx-agent-terminal__controls">
       {role === 'CONTROL' ? (
-        <span className="nx-agent-terminal__lease" data-role="CONTROL">CONTROL</span>
+        <span className="nx-agent-terminal__lease" data-role="CONTROL">
+          CONTROL
+        </span>
       ) : (
         <>
-          <span className="nx-agent-terminal__lease" data-role="VIEW_ONLY">VIEW ONLY</span>
+          <span className="nx-agent-terminal__lease" data-role="VIEW_ONLY">
+            VIEW ONLY
+          </span>
           <Tooltip content="Assumir controle do teclado">
             <button type="button" className="nx-agent-terminal__ask-btn" onClick={takeControl}>
               Assumir controle
@@ -696,19 +777,42 @@ export const AgentTerminal: React.FC<{
   );
 
   return (
-    <section className="nx-agent-terminal" data-chrome={chrome} aria-label={`Terminal for Agent ${agentId}`} style={{ position: 'relative' }}>
+    <section
+      className="nx-agent-terminal"
+      data-chrome={chrome}
+      aria-label={`Terminal for Agent ${agentId}`}
+      style={{ position: 'relative' }}
+    >
       {!windowChrome && (
         <header className="nx-agent-terminal__header">
           <div className="nx-agent-terminal__identity">
-            <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', background: 'var(--nx-accent)', color: 'white', fontWeight: 700 }}>
+            <span
+              style={{
+                fontSize: '10px',
+                padding: '1px 5px',
+                borderRadius: '4px',
+                background: 'var(--nx-accent)',
+                color: 'white',
+                fontWeight: 700,
+              }}
+            >
               AGENT
             </span>
             <strong style={{ fontSize: '12px', color: 'var(--nx-text)' }} title={agentId}>
               {displayName}
             </strong>
             {provider && (
-              <span style={{ fontSize: '11px', color: 'var(--nx-text-soft)', border: '1px solid var(--nx-border)', padding: '1px 6px', borderRadius: '4px' }}>
-                nexus {provider}{profile && profile !== 'default' ? `:${profile}` : ''}
+              <span
+                style={{
+                  fontSize: '11px',
+                  color: 'var(--nx-text-soft)',
+                  border: '1px solid var(--nx-border)',
+                  padding: '1px 6px',
+                  borderRadius: '4px',
+                }}
+              >
+                nexus {provider}
+                {profile && profile !== 'default' ? `:${profile}` : ''}
               </span>
             )}
             <span data-state={connection}>{connection.toLowerCase()}</span>
@@ -720,18 +824,47 @@ export const AgentTerminal: React.FC<{
         </header>
       )}
       {windowChrome && (
-        <div className="nx-agent-terminal__toolbar nx-agent-terminal__toolbar--actions" aria-label="Terminal actions">
+        <div
+          className="nx-agent-terminal__toolbar nx-agent-terminal__toolbar--actions"
+          aria-label="Terminal actions"
+        >
           {modeButtons}
           {terminalActions}
         </div>
       )}
       {askOpen && (
-        <div className="nx-agent-terminal__composer" style={{ padding: '8px 12px', background: 'var(--nx-surface-2)', borderBottom: '1px solid var(--nx-border)', display: 'grid', gap: '8px' }}>
+        <div
+          className="nx-agent-terminal__composer"
+          style={{
+            padding: '8px 12px',
+            background: 'var(--nx-surface-2)',
+            borderBottom: '1px solid var(--nx-border)',
+            display: 'grid',
+            gap: '8px',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span
+              style={{
+                fontSize: '12px',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
               <MessageSquare size={13} /> Enviar instrução ao agente (One-shot)
             </span>
-            <button type="button" onClick={() => setAskOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--nx-muted)' }}>
+            <button
+              type="button"
+              onClick={() => setAskOpen(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--nx-muted)',
+              }}
+            >
               <X size={13} />
             </button>
           </div>
@@ -764,7 +897,9 @@ export const AgentTerminal: React.FC<{
           </div>
           {availableSkills.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-              <span style={{ fontSize: '11px', color: 'var(--nx-muted)' }}>Skills Maestro (até 3 no próximo prompt):</span>
+              <span style={{ fontSize: '11px', color: 'var(--nx-muted)' }}>
+                Skills Maestro (até 3 no próximo prompt):
+              </span>
               {availableSkills.slice(0, 8).map((s) => {
                 const active = selectedSkills.includes(s.id);
                 return (
@@ -784,14 +919,23 @@ export const AgentTerminal: React.FC<{
                     }}
                     title={s.description || s.name || s.id}
                   >
-                    {active ? '✓ ' : '+ '}{s.name || s.id}
+                    {active ? '✓ ' : '+ '}
+                    {s.name || s.id}
                   </button>
                 );
               })}
             </div>
           )}
           {askFeedback && (
-            <span style={{ fontSize: '11px', color: askFeedback.includes('erro') || askFeedback.includes('failed') ? 'var(--nx-danger)' : 'var(--nx-accent)' }}>
+            <span
+              style={{
+                fontSize: '11px',
+                color:
+                  askFeedback.includes('erro') || askFeedback.includes('failed')
+                    ? 'var(--nx-danger)'
+                    : 'var(--nx-accent)',
+              }}
+            >
               {askFeedback}
             </span>
           )}
@@ -835,7 +979,14 @@ export const AgentTerminal: React.FC<{
             textAlign: 'center',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--nx-warning)' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              color: 'var(--nx-warning)',
+            }}
+          >
             {recovering ? <RefreshCw size={18} className="nx-spin-slow" /> : <Unplug size={18} />}
             <strong style={{ fontSize: '14px' }}>
               {recovering || connection === 'CONNECTING'
@@ -843,7 +994,15 @@ export const AgentTerminal: React.FC<{
                 : 'Runtime do Agente desconectado'}
             </strong>
           </div>
-          <p style={{ maxWidth: '420px', fontSize: '12px', color: 'var(--nx-muted)', margin: 0, lineHeight: 1.5 }}>
+          <p
+            style={{
+              maxWidth: '420px',
+              fontSize: '12px',
+              color: 'var(--nx-muted)',
+              margin: 0,
+              lineHeight: 1.5,
+            }}
+          >
             {recovering || connection === 'CONNECTING'
               ? 'O processo anterior não sobreviveu ao reinício da máquina ou do serviço. O Nexus está relançando o runtime para anexar de novo.'
               : 'O processo do agente não está rodando no momento ou foi finalizado. Inicie o runtime para anexar o terminal e executar comandos.'}
@@ -878,10 +1037,22 @@ export const AgentTerminal: React.FC<{
                 background: 'var(--nx-bg-elevated)',
               }}
             >
-              <ResourcePicker agentId={agentId} preferProvider={provider} onSelected={() => void handleResourceSelected()} />
+              <ResourcePicker
+                agentId={agentId}
+                preferProvider={provider}
+                onSelected={() => void handleResourceSelected()}
+              />
             </div>
           )}
-          <div style={{ display: 'flex', gap: '8px', marginTop: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: '8px',
+              marginTop: '4px',
+              flexWrap: 'wrap',
+              justifyContent: 'center',
+            }}
+          >
             <button
               type="button"
               className="nx-button"

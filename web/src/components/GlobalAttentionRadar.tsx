@@ -1,7 +1,11 @@
 import React from 'react';
 import { AlertTriangle, CheckCircle2, Circle, Loader2, Radio } from 'lucide-react';
 import type { RuntimeSession } from '../types';
-import { buildAttentionRadar, type RadarBadge, type RadarRuntimeItem } from '../app/attentionRadarModel';
+import {
+  buildAttentionRadar,
+  type RadarBadge,
+  type RadarRuntimeItem,
+} from '../app/attentionRadarModel';
 import { sanitizeAttentionText } from './attentionText';
 
 const badgeIcon: Record<RadarBadge, React.ReactNode> = {

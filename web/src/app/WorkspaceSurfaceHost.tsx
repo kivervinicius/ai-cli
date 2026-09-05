@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Gauge, Network } from 'lucide-react';
+import { Network } from 'lucide-react';
 import { Button, Card, EmptyState } from '../design-system';
 import { Dashboard } from '../components/Dashboard';
 import { ProvidersView } from '../components/ProvidersView';
@@ -13,7 +13,15 @@ import { recoverOrStartAgent } from '../nexus/agentRecover';
 import { ResourcePicker } from '../nexus/ResourcePicker';
 import { nexus } from '../nexus/api';
 import { api } from '../api';
-import type { Agent, EventRecord, ProfileInfo, Project, ProviderInfo, RuntimeSession, Workspace } from '../types';
+import type {
+  Agent,
+  EventRecord,
+  ProfileInfo,
+  Project,
+  ProviderInfo,
+  RuntimeSession,
+  Workspace,
+} from '../types';
 import type { WorkspaceSurface } from '../workspace/model';
 import { ProjectManagerSurface } from '../features/projects/ProjectManagerSurface';
 import { ProjectOverviewSurface } from '../features/overview/ProjectOverviewSurface';
@@ -26,7 +34,13 @@ import { SessionsSurface } from '../features/sessions/SessionsSurface';
 import { SettingsSurface } from '../features/settings/SettingsSurface';
 import { ProjectShellSurface } from '../features/shell/ProjectShellSurface';
 import { useTranslation } from 'react-i18next';
-import { agentConfigSurface, agentTerminalSurface, flowRunSurface, projectSurface, projectShellSurface } from './surfaces';
+import {
+  agentConfigSurface,
+  agentTerminalSurface,
+  flowRunSurface,
+  projectSurface,
+  projectShellSurface,
+} from './surfaces';
 import { surfaceViewId } from '../workspace/model';
 import { useWorkspacePresentation } from '../workspace/WorkspacePresentationProvider';
 
@@ -69,10 +83,13 @@ export const WorkspaceSurfaceHost: React.FC<{
 }) => {
   const { t } = useTranslation();
   const presentation = useWorkspacePresentation();
-  const terminalChrome = presentation.state.mode === 'DESKTOP' || presentation.state.mode === 'MOSAIC' ? 'window' : 'full';
+  const terminalChrome =
+    presentation.state.mode === 'DESKTOP' || presentation.state.mode === 'MOSAIC'
+      ? 'window'
+      : 'full';
   const agent = useMemo(
     () => agents.find((item) => item.id === surface.data?.agentId),
-    [agents, surface.data?.agentId]
+    [agents, surface.data?.agentId],
   );
   const [showStart, setShowStart] = useState(false);
   const [handoff, setHandoff] = useState<RuntimeSession | null>(null);
@@ -123,13 +140,20 @@ export const WorkspaceSurfaceHost: React.FC<{
         project={project}
         agents={agents}
         onDirect={terminal}
-        onFlowRun={(run) => openSurface(flowRunSurface(run.id, `Flow Run · ${(run.id || '').slice(-6)}`))}
+        onFlowRun={(run) =>
+          openSurface(flowRunSurface(run.id, `Flow Run · ${(run.id || '').slice(-6)}`))
+        }
       />
     );
 
   if (surface.type === 'flow-run')
     return surface.data?.runId ? (
-      <FlowRunSurface runId={surface.data.runId} project={project} agents={agents} onOpenAgent={terminal} />
+      <FlowRunSurface
+        runId={surface.data.runId}
+        project={project}
+        agents={agents}
+        onOpenAgent={terminal}
+      />
     ) : (
       <EmptyState title="Flow Run unavailable" />
     );
@@ -163,8 +187,8 @@ export const WorkspaceSurfaceHost: React.FC<{
             projectShellSurface(
               project.id,
               result.runtime.runtime_id,
-              result.runtime.title || surface.title || 'Terminal'
-            )
+              result.runtime.title || surface.title || 'Terminal',
+            ),
           );
           await refreshGlobal();
         }}
@@ -200,7 +224,7 @@ export const WorkspaceSurfaceHost: React.FC<{
               throw err instanceof Error
                 ? err
                 : new Error(
-                    'Não foi possível iniciar ou recuperar o runtime do agente. Verifique o provedor e a conta configurados.'
+                    'Não foi possível iniciar ou recuperar o runtime do agente. Verifique o provedor e a conta configurados.',
                   );
             }
           }}
@@ -214,7 +238,9 @@ export const WorkspaceSurfaceHost: React.FC<{
             // the selected CLI actually supports it: Codex has no `--plan`
             // flag, so forwarding that canonical alias makes it abort before
             // starting. The persisted mode still keeps the UI state explicit.
-            const extraArgs = configuredArgs.filter((arg) => arg !== '--plan' && arg !== '--yolo' && arg !== '-y');
+            const extraArgs = configuredArgs.filter(
+              (arg) => arg !== '--plan' && arg !== '--yolo' && arg !== '-y',
+            );
             if (newMode === 'YOLO') extraArgs.push('--yolo');
             await nexus.applyAgentConfig(agent.id, {
               ...currentCfg.config,
@@ -231,7 +257,9 @@ export const WorkspaceSurfaceHost: React.FC<{
           }}
           onClose={async (stopRuntime) => {
             if (stopRuntime) {
-              const currentRuntime = runtimes.find((item) => item.agent_id === surface.data?.agentId);
+              const currentRuntime = runtimes.find(
+                (item) => item.agent_id === surface.data?.agentId,
+              );
               if (currentRuntime?.runtime_id) await api.stopRuntime(currentRuntime.runtime_id);
               else if (surface.data?.agentId) await nexus.stopAgent(surface.data.agentId);
               await refreshGlobal();
@@ -268,19 +296,9 @@ export const WorkspaceSurfaceHost: React.FC<{
             <p>{t('surfaces.resourcesIntro')}</p>
           </div>
         </div>
-        <div className="nx-resource-layout">
+        <div className="nx-resource-layout nx-resource-layout--full">
           <Card className="nx-resource-card">
             <ResourcePicker />
-          </Card>
-          <Card className="nx-resource-card">
-            <div className="nx-feature-heading">
-              <Gauge size={18} />
-              <div>
-                <strong>{t('surfaces.allocation')}</strong>
-                <small>{project.resource_policy || 'BALANCED'}</small>
-              </div>
-            </div>
-            <p className="nx-muted-copy">{t('surfaces.allocationBody')}</p>
           </Card>
         </div>
       </div>

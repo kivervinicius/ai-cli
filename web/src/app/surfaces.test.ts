@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { agentConfigSurface, agentTerminalSurface, flowRunSurface, projectShellSurface, projectSurface } from './surfaces';
+import {
+  agentConfigSurface,
+  agentTerminalSurface,
+  flowRunSurface,
+  projectShellSurface,
+  projectSurface,
+} from './surfaces';
 
 describe('workspace surfaces', () => {
   it('creates stable project surface ids', () => {
@@ -46,5 +52,4 @@ describe('workspace surfaces', () => {
     expect(surface.viewId).toBe('view:flow-run:run_123');
     expect(surface.data).toEqual({ runId: 'run_123' });
   });
-
 });

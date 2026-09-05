@@ -1,5 +1,35 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-05 — Refatoração Arquitetural Workspace OS: Topbar Limpo, Gaveta de Atenção e Notificações, Tarefas Degradadas Interativas, Persistência de Janelas e Segregação de Settings
+
+- **Objetivo**: Concluir a refatoração completa solicitada no `/plan` (`workspace_os_refactor_plan.md`), resolvendo sobrecarga visual no Topbar, unificando radar e notificações sob o ícone de sino, tornando o status degraded na taskbar interativo com foco direto, garantindo persistência sólida de posições de janelas e dividindo Configurações em 5 módulos organizados.
+- **Alterações Realizadas**:
+  1. **Topbar Limpo & Drawer Unificado de Atenção / Notificações (`NexusShell.tsx` & `InAppNotificationCenter.tsx`)**:
+     - Removidos o radar flutuante (`GlobalAttentionRadar`) e o resumo estático de agentes (`nx-agent-summary-wrap`) do Topbar.
+     - Ícone de sino do Topbar (`data-testid="topbar-notifications-btn"`) agora aciona a `Central de Atenção & Notificações` em drawer lateral direito com 2 abas:
+       - *Radar de Atenção*: lista rádio de terminais e agentes em tempo real com status ao vivo (`idle`, `running`, `attention`, etc.), agrupados por projeto com ação direta de foco.
+       - *Notificações*: histórico persistente de notificações e alertas do sistema.
+     - Badge visual com dot pulsante de alerta no sino sempre que houver terminais ou agentes degradados/aguardando ação.
+  2. **Status de Agente Degradado Interativo na Taskbar (`WorkspaceTaskbar.tsx` & `NexusWorkspaceApp.tsx`)**:
+     - Quando houver agentes em estado crítico (`FAILED`, `STALE`, `RECOVERABLE`, `RATE_LIMITED`), o rodapé exibe o indicador `▲ N degradado`.
+     - O botão é agora interativo com tooltip e clique direto (`onFocusAgent`) que abre/focaliza imediatamente a janela ou terminal do agente com falha.
+  3. **Correção de Persistência de Coordenadas de Janelas (`WorkspaceProvider.tsx`)**:
+     - Eliminado o reset de posições de janelas no diálogo/canvas ao trocar de projeto através da inicialização síncrona de estado via `useReducer`, proteção contra arrays vazios em `syncDesktopWindows` e cálculo de scale responsivo seguro sem descaracterizar posições absolutas salvas.
+  4. **Segregação de Configurações em 5 Abas Especializadas (`SettingsSurface.tsx`)**:
+     - `Aparência & Estilo`: Presets de temas visuais em sanfona/accordion com amostras de cor.
+     - `Acessibilidade`: Controle de zoom/escala de fonte sob demanda (`A- 90%`, `100%`, `A+ 115%`, `A++ 130%`) conectado a `--nx-font-scale`, alternador de densidade e redução de animação.
+     - `Atualizações & Sistema`: Verificação sob demanda via `nexus.getSystemUpdates()` ("Verificar Atualizações Agora") e ação direta de atualização de release.
+     - `Nexus Intelligence`: Configuração de perfis de CLI e credenciais de modelos/chaves de API.
+     - `Notificações`: Preferências de push no navegador e alertas sonoros.
+     - Removido seletor de idioma duplicado das configurações (permanecendo exclusivamente centralizado no Topbar).
+  5. **Limpeza da Superfície de Recursos (`WorkspaceSurfaceHost.tsx`)**:
+     - Removido card informativo estático obsoleto de política de alocação que poluía o painel.
+  6. **Validação Rigorosa**:
+     - `make web-verify`: 8/8 gates aprovados (typecheck, lint, null-arrays, vitest 51 arquivos / 252 testes, i18n, build, embed-sync, ui-markers).
+     - `npm --prefix web run test:e2e-hardening`: 6/6 viewports PASS (320px a 1440px).
+     - Binário Go `nexus` v0.5.0-beta.23 recompilado com assets integrados e servidor reiniciado na porta 3000.
+
+
 ## 2026-09-05 — Redesign de Alta Densidade e Seções Retráteis no Rail Lateral (ProjectRail)
 
 - **Objetivo**: Redesenhar a barra lateral (`ProjectRail.tsx` e `workspace-os.css`) para acomodar e escalar confortavelmente com muitos itens (projetos, agentes e ferramentas) sem encavalar, sem esgotar o espaço vertical e permitindo busca instantânea.

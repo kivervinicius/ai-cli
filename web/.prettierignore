@@ -1,0 +1,6 @@
+dist/
+node_modules/
+*.md
+yarn.lock
+bun.lock
+package-lock.json

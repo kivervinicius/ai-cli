@@ -32,15 +32,17 @@ export const StartModal: React.FC<StartModalProps> = ({
 
   const installedProviders = safeProviders.filter((p) => p.installed);
   const [selectedProvider, setSelectedProvider] = useState<string>(
-    installedProviders.length > 0 ? installedProviders[0].id : 'agy'
+    installedProviders.length > 0 ? installedProviders[0].id : 'agy',
   );
 
   const availableProfiles = safeProfiles.filter((p) => p.provider === selectedProvider);
   const [selectedProfile, setSelectedProfile] = useState<string>(
-    availableProfiles.length > 0 ? availableProfiles[0].name : 'default'
+    availableProfiles.length > 0 ? availableProfiles[0].name : 'default',
   );
 
-  const [selectedWorkspace, setSelectedWorkspace] = useState<string>(workspace || (safeWorkspaces.length > 0 ? safeWorkspaces[0].path : ''));
+  const [selectedWorkspace, setSelectedWorkspace] = useState<string>(
+    workspace || (safeWorkspaces.length > 0 ? safeWorkspaces[0].path : ''),
+  );
   const [isCustomWorkspace, setIsCustomWorkspace] = useState(false);
   const [customWorkspace, setCustomWorkspace] = useState('');
   const [sessionTitle, setSessionTitle] = useState('');
@@ -79,7 +81,7 @@ export const StartModal: React.FC<StartModalProps> = ({
         selectedProfile,
         targetWs,
         [],
-        sessionTitle.trim() || undefined
+        sessionTitle.trim() || undefined,
       );
       onSuccess(res);
       onClose();
@@ -91,12 +93,19 @@ export const StartModal: React.FC<StartModalProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={t('legacy.startRuntimeBtn', 'Start Agent Runtime')}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={t('legacy.startRuntimeBtn', 'Start Agent Runtime')}
+    >
       <div className="space-y-4 font-mono">
         <div className="space-y-3 text-xs">
           {/* Target Project / Workspace */}
           <div>
-            <label className="flex items-center space-x-1.5" style={{ color: 'var(--nx-text-soft)' }}>
+            <label
+              className="flex items-center space-x-1.5"
+              style={{ color: 'var(--nx-text-soft)' }}
+            >
               <FolderGit2 className="w-3.5 h-3.5" style={{ color: 'var(--nx-accent-text)' }} />
               <span>{t('legacy.targetWorkspace', 'Target Project / Workspace:')}</span>
             </label>
@@ -108,7 +117,10 @@ export const StartModal: React.FC<StartModalProps> = ({
                   value: ws.path,
                   label: `${ws.name} (${ws.path})`,
                 })),
-                { value: '__custom__', label: t('legacy.enterCustomPath', '+ Enter Custom Path...') },
+                {
+                  value: '__custom__',
+                  label: t('legacy.enterCustomPath', '+ Enter Custom Path...'),
+                },
               ]}
             />
             {isCustomWorkspace && (
@@ -191,7 +203,11 @@ export const StartModal: React.FC<StartModalProps> = ({
             onClick={handleStart}
           >
             <Play className="w-3.5 h-3.5 fill-current" />
-            <span>{loading ? t('legacy.startingRuntime', 'Starting Runtime...') : t('legacy.startRuntimeBtn', 'Start Agent Runtime')}</span>
+            <span>
+              {loading
+                ? t('legacy.startingRuntime', 'Starting Runtime...')
+                : t('legacy.startRuntimeBtn', 'Start Agent Runtime')}
+            </span>
           </Button>
         </div>
       </div>

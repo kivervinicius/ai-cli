@@ -19,7 +19,8 @@ export interface QuotaGroupLike {
   windows?: QuotaWindowLike[];
 }
 
-const providerLabel = (provider: string) => provider.trim().replace(/(^|[-_\s])\w/g, (part) => part.toUpperCase());
+const providerLabel = (provider: string) =>
+  provider.trim().replace(/(^|[-_\s])\w/g, (part) => part.toUpperCase());
 
 export function buildDirectAgentName(prompt: string, provider: string): string {
   const label = providerLabel(provider || 'AI');
@@ -30,7 +31,11 @@ export function buildDirectAgentName(prompt: string, provider: string): string {
   return `${label} · ${short}`;
 }
 
-export function directAccountTitle(resource: { display_name?: string; provider: string; profile: string }): string {
+export function directAccountTitle(resource: {
+  display_name?: string;
+  provider: string;
+  profile: string;
+}): string {
   const name = (resource.display_name || '').trim();
   if (name) return name;
   const profile = (resource.profile || '').trim();
@@ -99,19 +104,23 @@ function shortWindowLabel(kind?: string): string {
 }
 
 /** Compact label: "Gemini 0% · Claude 100%" or "5h 70% · weekly 95%". */
-export function compactQuotaLabel(view?: {
-  model_groups?: QuotaGroupLike[];
-}): string | null {
-  const groups = asArray<QuotaGroupLike>(view?.model_groups).filter((group) => groupRemaining(group) != null);
+export function compactQuotaLabel(view?: { model_groups?: QuotaGroupLike[] }): string | null {
+  const groups = asArray<QuotaGroupLike>(view?.model_groups).filter(
+    (group) => groupRemaining(group) != null,
+  );
   if (groups.length === 0) return null;
   if (groups.length > 1) {
     return groups
       .map((group) => `${shortGroupLabel(group)} ${Math.round(groupRemaining(group) as number)}%`)
       .join(' · ');
   }
-  const windows = asArray<QuotaWindowLike>(groups[0].windows).filter((w) => w && w.kind !== 'unknown' && Number.isFinite(Number(w.remaining)));
+  const windows = asArray<QuotaWindowLike>(groups[0].windows).filter(
+    (w) => w && w.kind !== 'unknown' && Number.isFinite(Number(w.remaining)),
+  );
   if (windows.length === 0) return null;
-  return windows.map((w) => `${shortWindowLabel(w.kind)} ${Math.round(Number(w.remaining))}%`).join(' · ');
+  return windows
+    .map((w) => `${shortWindowLabel(w.kind)} ${Math.round(Number(w.remaining))}%`)
+    .join(' · ');
 }
 
 export function directQuotaPercent(resource: {
@@ -141,7 +150,10 @@ export function directQuotaDisplay(resource: {
   return pct == null ? null : `${pct}%`;
 }
 
-export function eligibleDirectResources<T extends DirectResourceLike>(accounts: T[], preferProvider = ''): T[] {
+export function eligibleDirectResources<T extends DirectResourceLike>(
+  accounts: T[],
+  preferProvider = '',
+): T[] {
   const preferred = preferProvider.trim().toLowerCase();
   return accounts
     .filter((account) => account.authenticated && account.available)

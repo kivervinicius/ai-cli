@@ -65,11 +65,17 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers }) => {
                   </td>
                   <td className="px-4 py-3">
                     {p.installed ? (
-                      <span className="inline-flex items-center font-semibold" style={{ color: 'var(--nx-success)' }}>
+                      <span
+                        className="inline-flex items-center font-semibold"
+                        style={{ color: 'var(--nx-success)' }}
+                      >
                         <CheckCircle2 className="w-4 h-4 mr-1" /> {t('legacy.yes', 'Yes')}
                       </span>
                     ) : (
-                      <span className="inline-flex items-center" style={{ color: 'var(--nx-muted)' }}>
+                      <span
+                        className="inline-flex items-center"
+                        style={{ color: 'var(--nx-muted)' }}
+                      >
                         <XCircle className="w-4 h-4 mr-1" /> {t('legacy.no', 'No')}
                       </span>
                     )}
@@ -93,29 +99,40 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers }) => {
                     <span
                       className="font-medium"
                       style={{
-                        color: (p.capabilities?.terminal?.status || 'SUPPORTED') === 'SUPPORTED'
-                          ? 'var(--nx-success)'
-                          : 'var(--nx-muted)',
+                        color:
+                          (p.capabilities?.terminal?.status || 'SUPPORTED') === 'SUPPORTED'
+                            ? 'var(--nx-success)'
+                            : 'var(--nx-muted)',
                       }}
                     >
-                      {t(`status.${p.capabilities?.terminal?.status || 'SUPPORTED'}`, p.capabilities?.terminal?.status || 'SUPPORTED')}
+                      {t(
+                        `status.${p.capabilities?.terminal?.status || 'SUPPORTED'}`,
+                        p.capabilities?.terminal?.status || 'SUPPORTED',
+                      )}
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     <span style={{ color: 'var(--nx-muted)' }}>
-                      {t(`status.${p.capabilities?.structured_events?.status || 'UNSUPPORTED'}`, p.capabilities?.structured_events?.status || 'UNSUPPORTED')}
+                      {t(
+                        `status.${p.capabilities?.structured_events?.status || 'UNSUPPORTED'}`,
+                        p.capabilities?.structured_events?.status || 'UNSUPPORTED',
+                      )}
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     <span
                       className="font-medium"
                       style={{
-                        color: (p.capabilities?.resume?.status || 'SUPPORTED') === 'SUPPORTED'
-                          ? 'var(--nx-success)'
-                          : 'var(--nx-muted)',
+                        color:
+                          (p.capabilities?.resume?.status || 'SUPPORTED') === 'SUPPORTED'
+                            ? 'var(--nx-success)'
+                            : 'var(--nx-muted)',
                       }}
                     >
-                      {t(`status.${p.capabilities?.resume?.status || 'SUPPORTED'}`, p.capabilities?.resume?.status || 'SUPPORTED')}
+                      {t(
+                        `status.${p.capabilities?.resume?.status || 'SUPPORTED'}`,
+                        p.capabilities?.resume?.status || 'SUPPORTED',
+                      )}
                     </span>
                   </td>
                 </tr>

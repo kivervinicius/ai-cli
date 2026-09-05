@@ -2,7 +2,17 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RuntimeSession, ProviderInfo, Workspace } from '../types';
 import { asArray } from '../lib/safeArray';
-import { Cpu, Play, Square, ArrowRightLeft, FastForward, Trash2, Folder, Layers, History } from 'lucide-react';
+import {
+  Cpu,
+  Play,
+  Square,
+  ArrowRightLeft,
+  FastForward,
+  Trash2,
+  Folder,
+  Layers,
+  History,
+} from 'lucide-react';
 
 interface DashboardProps {
   runtimes: RuntimeSession[];
@@ -38,7 +48,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const safeProviders = asArray<ProviderInfo>(providers);
   const safeWorkspaces = asArray<Workspace>(workspaces);
 
-  const normalize = (p?: string) => (p || '').trim().replace(/[\\/]+$/, '').toLowerCase();
+  const normalize = (p?: string) =>
+    (p || '')
+      .trim()
+      .replace(/[\\/]+$/, '')
+      .toLowerCase();
 
   // Filter runtimes by active workspace unless "All Projects" is toggled
   const projectRuntimes = safeRuntimes.filter((r) => {
@@ -50,15 +64,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Only truly running or starting agents are "Live"
   const liveRuntimes = projectRuntimes.filter(
-    (r) => r.state === 'RUNNING' || r.state === 'STARTING' || r.state === 'HANDOFF'
+    (r) => r.state === 'RUNNING' || r.state === 'STARTING' || r.state === 'HANDOFF',
   );
 
   // Past/offline sessions go to Session History
   const pastRuntimes = projectRuntimes.filter(
-    (r) => r.state !== 'RUNNING' && r.state !== 'STARTING' && r.state !== 'HANDOFF'
+    (r) => r.state !== 'RUNNING' && r.state !== 'STARTING' && r.state !== 'HANDOFF',
   );
 
-  const activeTotalCount = safeRuntimes.filter((r) => r.state === 'RUNNING' || r.state === 'STARTING').length;
+  const activeTotalCount = safeRuntimes.filter(
+    (r) => r.state === 'RUNNING' || r.state === 'STARTING',
+  ).length;
   const installedCount = safeProviders.filter((p) => p.installed).length;
 
   return (
@@ -100,7 +116,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="text-xs font-mono" style={{ color: 'var(--nx-text-soft)' }}>
             {t('legacy.availableProviders', 'Available Providers')}
           </div>
-          <div className="mt-2 text-2xl font-bold font-mono" style={{ color: 'var(--nx-accent-text)' }}>
+          <div
+            className="mt-2 text-2xl font-bold font-mono"
+            style={{ color: 'var(--nx-accent-text)' }}
+          >
             {installedCount} / {safeProviders.length}
           </div>
           <div className="mt-1 text-[11px]" style={{ color: 'var(--nx-muted)' }}>
@@ -215,12 +234,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
           style={{ borderBottom: '1px solid var(--nx-border)' }}
         >
           <div className="flex items-center space-x-2.5">
-            <span className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: 'var(--nx-success)' }} />
+            <span
+              className="w-2.5 h-2.5 rounded-full animate-pulse"
+              style={{ background: 'var(--nx-success)' }}
+            />
             <h2
               className="text-xs font-bold font-mono uppercase tracking-wider"
               style={{ color: 'var(--nx-text)' }}
             >
-              {t('legacy.liveRuntimesTitle', { count: liveRuntimes.length, defaultValue: `Live Runtimes (${liveRuntimes.length})` })}
+              {t('legacy.liveRuntimesTitle', {
+                count: liveRuntimes.length,
+                defaultValue: `Live Runtimes (${liveRuntimes.length})`,
+              })}
             </h2>
           </div>
           <span className="text-[11px] font-mono" style={{ color: 'var(--nx-muted)' }}>
@@ -229,10 +254,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {liveRuntimes.length === 0 ? (
-          <div className="p-8 text-center text-xs font-mono space-y-2" style={{ color: 'var(--nx-muted)' }}>
+          <div
+            className="p-8 text-center text-xs font-mono space-y-2"
+            style={{ color: 'var(--nx-muted)' }}
+          >
             <div>{t('legacy.noLiveAgents', 'No live agent runtimes active in this project.')}</div>
             <div className="text-[11px]">
-              {t('legacy.launchHint', 'Click "Launch Agent" above or run nexus start <provider> to start one.')}
+              {t(
+                'legacy.launchHint',
+                'Click "Launch Agent" above or run nexus start <provider> to start one.',
+              )}
             </div>
           </div>
         ) : (
@@ -248,10 +279,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   style={{ borderBottom: '1px solid var(--nx-border)' }}
                 >
                   <div className="flex items-center space-x-3">
-                    <div className="w-3 h-3 rounded-full animate-pulse" style={{ background: 'var(--nx-success)' }} />
+                    <div
+                      className="w-3 h-3 rounded-full animate-pulse"
+                      style={{ background: 'var(--nx-success)' }}
+                    />
                     <div>
                       <div className="flex items-center space-x-2">
-                        <span className="font-bold text-sm font-sans" style={{ color: 'var(--nx-text)' }}>{title}</span>
+                        <span
+                          className="font-bold text-sm font-sans"
+                          style={{ color: 'var(--nx-text)' }}
+                        >
+                          {title}
+                        </span>
                         <span
                           className="text-[10px] px-1.5 py-0.5 rounded font-mono uppercase"
                           style={{
@@ -272,7 +311,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         >
                           {prof}
                         </span>
-                        <span className="text-xs font-mono" style={{ color: 'var(--nx-muted)' }}>ID: {r.runtime_id}</span>
+                        <span className="text-xs font-mono" style={{ color: 'var(--nx-muted)' }}>
+                          ID: {r.runtime_id}
+                        </span>
                         {r.handoff_type && (
                           <span
                             className="text-[10px] px-1.5 py-0.5 rounded font-mono"
@@ -286,7 +327,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </span>
                         )}
                       </div>
-                      <div className="mt-1 text-xs font-mono truncate max-w-md" style={{ color: 'var(--nx-text-soft)' }}>
+                      <div
+                        className="mt-1 text-xs font-mono truncate max-w-md"
+                        style={{ color: 'var(--nx-text-soft)' }}
+                      >
                         {r.workspace}
                       </div>
                     </div>
@@ -376,7 +420,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 className="text-xs font-bold font-mono uppercase tracking-wider"
                 style={{ color: 'var(--nx-text-soft)' }}
               >
-                {t('legacy.sessionHistoryTitle', { count: pastRuntimes.length, defaultValue: `Session History (${pastRuntimes.length})` })}
+                {t('legacy.sessionHistoryTitle', {
+                  count: pastRuntimes.length,
+                  defaultValue: `Session History (${pastRuntimes.length})`,
+                })}
               </h2>
             </div>
             {onCleanInactive && (
@@ -407,10 +454,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   style={{ borderBottom: '1px solid var(--nx-border)' }}
                 >
                   <div className="flex items-center space-x-3">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--nx-muted)' }} />
+                    <div
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{ background: 'var(--nx-muted)' }}
+                    />
                     <div>
                       <div className="flex items-center space-x-2">
-                        <span className="font-semibold text-sm font-sans" style={{ color: 'var(--nx-text)' }}>{title}</span>
+                        <span
+                          className="font-semibold text-sm font-sans"
+                          style={{ color: 'var(--nx-text)' }}
+                        >
+                          {title}
+                        </span>
                         <span
                           className="text-[10px] px-1.5 py-0.5 rounded font-mono uppercase"
                           style={{
@@ -431,19 +486,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         >
                           {prof}
                         </span>
-                        <span className="text-xs font-mono" style={{ color: 'var(--nx-muted)' }}>ID: {r.runtime_id}</span>
+                        <span className="text-xs font-mono" style={{ color: 'var(--nx-muted)' }}>
+                          ID: {r.runtime_id}
+                        </span>
                         <span
                           className="text-[10px] px-1.5 py-0.5 rounded font-mono uppercase"
                           style={{
                             background: 'var(--nx-surface-2)',
-                            color: r.state === 'STOPPED' ? 'var(--nx-text-soft)' : r.state === 'FAILED' ? 'var(--nx-danger)' : 'var(--nx-warning)',
+                            color:
+                              r.state === 'STOPPED'
+                                ? 'var(--nx-text-soft)'
+                                : r.state === 'FAILED'
+                                  ? 'var(--nx-danger)'
+                                  : 'var(--nx-warning)',
                             border: '1px solid var(--nx-border)',
                           }}
                         >
                           {r.state}
                         </span>
                       </div>
-                      <div className="mt-0.5 text-xs font-mono truncate max-w-md" style={{ color: 'var(--nx-muted)' }}>
+                      <div
+                        className="mt-0.5 text-xs font-mono truncate max-w-md"
+                        style={{ color: 'var(--nx-muted)' }}
+                      >
                         {r.workspace}
                       </div>
                     </div>
@@ -484,4 +549,3 @@ export const Dashboard: React.FC<DashboardProps> = ({
     </div>
   );
 };
-

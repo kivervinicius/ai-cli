@@ -34,7 +34,11 @@ export const SessionsSurface: React.FC<{ agents: Agent[] }> = ({ agents }) => {
         </div>
       </div>
       {details.length === 0 ? (
-        <EmptyState icon={<History size={22} />} title={t('sessions.empty')} hint={t('sessions.emptyHint')} />
+        <EmptyState
+          icon={<History size={22} />}
+          title={t('sessions.empty')}
+          hint={t('sessions.emptyHint')}
+        />
       ) : (
         <div className="nx-session-list">
           {details.map((detail) => {
@@ -60,11 +64,18 @@ export const SessionsSurface: React.FC<{ agents: Agent[] }> = ({ agents }) => {
                             {generation.provider}/{generation.profile}
                           </strong>
                           <small>
-                            {generation.runtime_id} · {generation.provider_session || t('sessions.unknown')}
+                            {generation.runtime_id} ·{' '}
+                            {generation.provider_session || t('sessions.unknown')}
                           </small>
                         </div>
                         <Badge>{generation.state}</Badge>
-                        <Badge tone={generation.continuity === 'NATIVE_RESUME_VERIFIED' ? 'success' : 'default'}>
+                        <Badge
+                          tone={
+                            generation.continuity === 'NATIVE_RESUME_VERIFIED'
+                              ? 'success'
+                              : 'default'
+                          }
+                        >
                           {generation.continuity}
                         </Badge>
                       </div>

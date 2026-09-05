@@ -16,7 +16,7 @@ on:
 
 jobs:
   frontend:
-    name: Frontend (Typecheck, Lint, Unit & Build)
+    name: Frontend (Format, Lint, Styles, Typecheck, Unit & Build)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -31,6 +31,10 @@ jobs:
         working-directory: ./web
         run: bun install --frozen-lockfile
 
+      - name: Format Check
+        working-directory: ./web
+        run: bun run format:check
+
       - name: Typecheck Frontend
         working-directory: ./web
         run: bun run typecheck
@@ -38,6 +42,10 @@ jobs:
       - name: Lint Frontend
         working-directory: ./web
         run: bun run lint
+
+      - name: Lint Styles
+        working-directory: ./web
+        run: bun run lint:styles
 
       - name: Unit Tests
         working-directory: ./web
@@ -67,10 +75,16 @@ jobs:
           cache: true
 
       - name: Gofmt Check
-        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+        run: test -z "$(gofmt -l . | grep -v .worktrees)" || (gofmt -l . | grep -v .worktrees && exit 1)
 
       - name: Vet
         run: go vet ./...
+
+      - name: GolangCI-Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
 
       - name: Test with Race Detector
         run: go test -v -race ./...

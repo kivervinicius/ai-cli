@@ -5,10 +5,20 @@ import { Spinner } from '../design-system';
 import { ThemeProvider } from '../design-system';
 import { NexusSplashScreen } from './NexusSplashScreen';
 import { WorkspaceProvider, useWorkspace } from '../workspace/WorkspaceProvider';
-import { WorkspacePresentationProvider, useWorkspacePresentation } from '../workspace/WorkspacePresentationProvider';
+import {
+  WorkspacePresentationProvider,
+  useWorkspacePresentation,
+} from '../workspace/WorkspacePresentationProvider';
 import { PtyLiveChromeProvider } from '../workspace/PtyLiveChromeContext';
 import { WorkspaceRenderer } from '../workspace/WorkspaceRenderer';
-import { createWorkspace, isSurfaceMatch, listStacks, listSurfaces, surfaceViewId, type WorkspaceSurface } from '../workspace/model';
+import {
+  createWorkspace,
+  isSurfaceMatch,
+  listStacks,
+  listSurfaces,
+  surfaceViewId,
+  type WorkspaceSurface,
+} from '../workspace/model';
 import { serializeWorkspace } from '../workspace/state';
 import { ProjectRail } from '../features/projects/ProjectRail';
 import { ProjectHub } from '../features/projects/ProjectHub';
@@ -18,10 +28,19 @@ import { ProductTour } from './tour/ProductTour';
 import { WelcomeModal } from './modals/WelcomeModal';
 import { MaestroControlModal } from './modals/MaestroControlModal';
 import { NewAgentModal } from '../features/agents/NewAgentModal';
-import { DirectSessionLauncher, type DirectSessionRequest } from '../features/work/DirectSessionLauncher';
+import {
+  DirectSessionLauncher,
+  type DirectSessionRequest,
+} from '../features/work/DirectSessionLauncher';
 import { NexusShell } from './NexusShell';
 import { WorkspaceSurfaceHost } from './WorkspaceSurfaceHost';
-import { agentConfigSurface, agentTerminalSurface, flowRunSurface, projectShellSurface, projectSurface } from './surfaces';
+import {
+  agentConfigSurface,
+  agentTerminalSurface,
+  flowRunSurface,
+  projectShellSurface,
+  projectSurface,
+} from './surfaces';
 import { attentionFingerprintOf, buildDocumentTitle, isHonestNeedsUser } from './documentTitle';
 import { planFocusAttention, type RadarRuntimeItem } from './attentionRadarModel';
 import { resolveProjectSelection } from './projectSelection';
@@ -31,10 +50,7 @@ import { useTranslation } from 'react-i18next';
 import { shouldMarkUnread, surfaceTitleFromAgent } from '../workspace/surfaceAttention';
 import { KeyboardShortcutRegistry } from '../keyboard/KeyboardShortcutRegistry';
 import { pushNotifications } from '../notifications/PushNotificationManager';
-import {
-  loadNotificationPrefs,
-  playAttentionSound,
-} from '../notifications/notificationPrefs';
+import { loadNotificationPrefs, playAttentionSound } from '../notifications/notificationPrefs';
 import { formatAttentionPushBody } from '../notifications/attentionPushCopy';
 import { isPtyAttentionFocused } from '../notifications/attentionDelivery';
 import { TerminalActionDialog } from '../nexus/TerminalActionDialog';
@@ -42,13 +58,15 @@ import { TerminalActionDialog } from '../nexus/TerminalActionDialog';
 const selectedProjectKey = 'iapro:nexus:selected-project:v1';
 const tourKey = 'iapro:nexus:tour-complete:v1';
 
-export const NexusWorkspaceApp: React.FC<{ popoutSurface?: WorkspaceSurface }> = ({ popoutSurface }) => {
+export const NexusWorkspaceApp: React.FC<{ popoutSurface?: WorkspaceSurface }> = ({
+  popoutSurface,
+}) => {
   const { t } = useTranslation();
   const [sessionReady, setSessionReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(true);
 
   useEffect(() => {
-    let rotationTimer: ReturnType<typeof window.setTimeout> | undefined;
+    let rotationTimer: number | undefined;
     const scheduleRotation = (session: BrowserSession) => {
       if (!session.expires_at) return;
       const expiresAt = Date.parse(session.expires_at);
@@ -82,36 +100,55 @@ export const NexusWorkspaceApp: React.FC<{ popoutSurface?: WorkspaceSurface }> =
   if (!authenticated) {
     return (
       <ThemeProvider>
-        <div className="nx-app-unauthorized" style={{
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '24px',
-          background: 'var(--nx-bg)',
-          color: 'var(--nx-text)',
-          textAlign: 'center',
-        }}>
-          <div style={{
-            maxWidth: '480px',
-            background: 'var(--nx-surface)',
-            border: '1px solid var(--nx-border)',
-            borderRadius: 'var(--nx-radius-lg)',
-            padding: '32px',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+        <div
+          className="nx-app-unauthorized"
+          style={{
+            minHeight: '100vh',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: '12px',
-          }}>
+            justifyContent: 'center',
+            padding: '24px',
+            background: 'var(--nx-bg)',
+            color: 'var(--nx-text)',
+            textAlign: 'center',
+          }}
+        >
+          <div
+            style={{
+              maxWidth: '480px',
+              background: 'var(--nx-surface)',
+              border: '1px solid var(--nx-border)',
+              borderRadius: 'var(--nx-radius-lg)',
+              padding: '32px',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '12px',
+            }}
+          >
             <span className="nx-brand-mark nx-brand-mark--hero">
               <img src="./nexus-icon.png" alt="Nexus" className="nx-brand-mark__img" />
             </span>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, margin: '6px 0 0', color: 'var(--nx-text)' }}>
+            <h2
+              style={{
+                fontSize: '18px',
+                fontWeight: 700,
+                margin: '6px 0 0',
+                color: 'var(--nx-text)',
+              }}
+            >
               {t('auth.sessionExpired')}
             </h2>
-            <p style={{ fontSize: '12.5px', color: 'var(--nx-muted)', lineHeight: 1.6, margin: '0 0 12px' }}>
+            <p
+              style={{
+                fontSize: '12.5px',
+                color: 'var(--nx-muted)',
+                lineHeight: 1.6,
+                margin: '0 0 12px',
+              }}
+            >
               {t('auth.sessionExpiredDesc')}
             </p>
             <button
@@ -135,10 +172,14 @@ export const NexusWorkspaceApp: React.FC<{ popoutSurface?: WorkspaceSurface }> =
   );
 };
 
-const NexusWorkspaceSession: React.FC<{ popoutSurface?: WorkspaceSurface }> = ({ popoutSurface }) => {
+const NexusWorkspaceSession: React.FC<{ popoutSurface?: WorkspaceSurface }> = ({
+  popoutSurface,
+}) => {
   const { t } = useTranslation();
   const data = useNexusData();
-  const [selectedId, setSelectedId] = useState(() => window.localStorage.getItem(selectedProjectKey) || '');
+  const [selectedId, setSelectedId] = useState(
+    () => window.localStorage.getItem(selectedProjectKey) || '',
+  );
   const selected = resolveProjectSelection(data.projects, selectedId);
   const [layout, setLayout] = useState<string | undefined>();
 
@@ -179,12 +220,12 @@ const NexusWorkspaceSession: React.FC<{ popoutSurface?: WorkspaceSurface }> = ({
     >
       <WorkspacePresentationProvider projectId={selected.id}>
         <PtyLiveChromeProvider>
-        <WorkspaceCoordinator
-          project={selected}
-          setProject={(project) => setSelectedId(project.id)}
-          data={data}
-          popout={Boolean(popoutSurface)}
-        />
+          <WorkspaceCoordinator
+            project={selected}
+            setProject={(project) => setSelectedId(project.id)}
+            data={data}
+            popout={Boolean(popoutSurface)}
+          />
         </PtyLiveChromeProvider>
       </WorkspacePresentationProvider>
     </WorkspaceProvider>
@@ -214,14 +255,22 @@ const WorkspaceCoordinator: React.FC<{
 
   useEffect(() => {
     let mounted = true;
-    void nexus.getRuns()
+    void nexus
+      .getRuns()
       .then((runs) => {
         if (!mounted) return;
-        const active = runs.filter((run) => !['COMPLETED_VERIFIED', 'CANCELED_BY_USER', 'FAILED_BUDGET_EXCEEDED'].includes(run.state));
+        const active = runs.filter(
+          (run) =>
+            !['COMPLETED_VERIFIED', 'CANCELED_BY_USER', 'FAILED_BUDGET_EXCEEDED'].includes(
+              run.state,
+            ),
+        );
         setFlowRuns(active);
       })
       .catch(() => mounted && setFlowRuns([]));
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [project.id, palette]);
 
   const open = (surface: WorkspaceSurface) => workspace.open(surface);
@@ -261,7 +310,11 @@ const WorkspaceCoordinator: React.FC<{
     try {
       const result = await nexus.startProjectShell(project.id);
       workspace.open(
-        projectShellSurface(project.id, result.runtime.runtime_id, result.runtime.title || 'Terminal')
+        projectShellSurface(
+          project.id,
+          result.runtime.runtime_id,
+          result.runtime.title || 'Terminal',
+        ),
       );
       workspace.open(projectSurface(project.id, 'terminals'));
       await data.refreshGlobal().catch(() => undefined);
@@ -296,25 +349,127 @@ const WorkspaceCoordinator: React.FC<{
 
   const commands = useMemo<NexusCommand[]>(
     () => [
-      { id: 'projects', label: t('commands.open', { name: t('projectManager.desktopsTitle') }), group: t('commands.project'), keywords: ['workspace', 'desktops', 'hub'], run: () => openKind('projects') },
-      { id: 'overview', label: t('commands.open', { name: t('nav.overview') }), group: t('commands.project'), keywords: ['home'], run: () => openKind('overview') },
-      { id: 'terminals', label: t('commands.open', { name: t('nav.terminals') }), group: t('commands.project'), keywords: ['pty', 'shell'], run: () => openKind('terminals') },
-      { id: 'new-ai-session', label: 'New AI Session', group: t('commands.project'), keywords: ['agent', 'session', 'direct', 'create', 'terminal'], run: openNewAISession },
-      { id: 'project-shell', label: 'New Terminal', group: t('commands.project'), keywords: ['shell', 'terminal', 'bash', 'powershell'], run: () => void shell() },
-      { id: 'agents', label: t('commands.open', { name: t('nav.agents') }), group: t('commands.project'), keywords: ['fleet', 'workers', 'terminals'], run: () => openKind('agents') },
+      {
+        id: 'projects',
+        label: t('commands.open', { name: t('projectManager.desktopsTitle') }),
+        group: t('commands.project'),
+        keywords: ['workspace', 'desktops', 'hub'],
+        run: () => openKind('projects'),
+      },
+      {
+        id: 'overview',
+        label: t('commands.open', { name: t('nav.overview') }),
+        group: t('commands.project'),
+        keywords: ['home'],
+        run: () => openKind('overview'),
+      },
+      {
+        id: 'terminals',
+        label: t('commands.open', { name: t('nav.terminals') }),
+        group: t('commands.project'),
+        keywords: ['pty', 'shell'],
+        run: () => openKind('terminals'),
+      },
+      {
+        id: 'new-ai-session',
+        label: 'New AI Session',
+        group: t('commands.project'),
+        keywords: ['agent', 'session', 'direct', 'create', 'terminal'],
+        run: openNewAISession,
+      },
+      {
+        id: 'project-shell',
+        label: 'New Terminal',
+        group: t('commands.project'),
+        keywords: ['shell', 'terminal', 'bash', 'powershell'],
+        run: () => void shell(),
+      },
+      {
+        id: 'agents',
+        label: t('commands.open', { name: t('nav.agents') }),
+        group: t('commands.project'),
+        keywords: ['fleet', 'workers', 'terminals'],
+        run: () => openKind('agents'),
+      },
       ...data.agents.flatMap((agent) => [
-        { id: `terminal-${agent.id}`, label: t('commands.open', { name: `${agent.name} terminal` }), group: t('nav.agents'), keywords: ['terminal', agent.role], run: () => terminal(agent) },
-        { id: `config-${agent.id}`, label: t('commands.configure', { name: agent.name }), group: t('nav.agents'), keywords: ['settings', agent.role], run: () => config(agent) },
+        {
+          id: `terminal-${agent.id}`,
+          label: t('commands.open', { name: `${agent.name} terminal` }),
+          group: t('nav.agents'),
+          keywords: ['terminal', agent.role],
+          run: () => terminal(agent),
+        },
+        {
+          id: `config-${agent.id}`,
+          label: t('commands.configure', { name: agent.name }),
+          group: t('nav.agents'),
+          keywords: ['settings', agent.role],
+          run: () => config(agent),
+        },
       ]),
-      { id: 'work', label: 'Open Composer', group: t('commands.project'), keywords: ['composer', 'prompt', 'goal', 'plan'], run: () => openKind('work') },
-      { id: 'plan', label: 'Open Flow Runs history', group: t('commands.project'), keywords: ['flow', 'mission', 'history', 'runs'], run: () => openKind('missions') },
-      { id: 'resources', label: t('commands.open', { name: t('nav.resources') }), group: 'Nexus', keywords: ['quota', 'provider', 'accounts'], run: () => openKind('resources') },
-      { id: 'maestro-control', label: t('maestroControl.title'), group: 'Nexus', keywords: ['skills', 'gates', 'update', 'library'], run: () => setMaestroControlOpen(true) },
-      { id: 'project-manager', label: t('projectManager.title'), group: t('commands.project'), keywords: ['switch', 'create', 'workspace'], run: () => openKind('projects') },
-      { id: 'sessions', label: t('commands.open', { name: t('nav.sessions') }), group: t('commands.project'), keywords: ['resume', 'continuity'], run: () => openKind('sessions') },
-      { id: 'settings', label: t('commands.open', { name: t('nav.settings') }), group: 'Nexus', keywords: ['theme', 'accessibility'], run: () => openKind('settings') },
-      { id: 'runtime', label: t('commands.open', { name: t('nav.runtimes') }), group: t('commands.advanced'), keywords: ['runtime', 'legacy'], run: () => openKind('legacy-runtimes') },
-      { id: 'providers', label: t('commands.open', { name: t('nav.providers') }), group: t('commands.advanced'), keywords: ['provider'], run: () => openKind('legacy-providers') },
+      {
+        id: 'work',
+        label: 'Open Composer',
+        group: t('commands.project'),
+        keywords: ['composer', 'prompt', 'goal', 'plan'],
+        run: () => openKind('work'),
+      },
+      {
+        id: 'plan',
+        label: 'Open Flow Runs history',
+        group: t('commands.project'),
+        keywords: ['flow', 'mission', 'history', 'runs'],
+        run: () => openKind('missions'),
+      },
+      {
+        id: 'resources',
+        label: t('commands.open', { name: t('nav.resources') }),
+        group: 'Nexus',
+        keywords: ['quota', 'provider', 'accounts'],
+        run: () => openKind('resources'),
+      },
+      {
+        id: 'maestro-control',
+        label: t('maestroControl.title'),
+        group: 'Nexus',
+        keywords: ['skills', 'gates', 'update', 'library'],
+        run: () => setMaestroControlOpen(true),
+      },
+      {
+        id: 'project-manager',
+        label: t('projectManager.title'),
+        group: t('commands.project'),
+        keywords: ['switch', 'create', 'workspace'],
+        run: () => openKind('projects'),
+      },
+      {
+        id: 'sessions',
+        label: t('commands.open', { name: t('nav.sessions') }),
+        group: t('commands.project'),
+        keywords: ['resume', 'continuity'],
+        run: () => openKind('sessions'),
+      },
+      {
+        id: 'settings',
+        label: t('commands.open', { name: t('nav.settings') }),
+        group: 'Nexus',
+        keywords: ['theme', 'accessibility'],
+        run: () => openKind('settings'),
+      },
+      {
+        id: 'runtime',
+        label: t('commands.open', { name: t('nav.runtimes') }),
+        group: t('commands.advanced'),
+        keywords: ['runtime', 'legacy'],
+        run: () => openKind('legacy-runtimes'),
+      },
+      {
+        id: 'providers',
+        label: t('commands.open', { name: t('nav.providers') }),
+        group: t('commands.advanced'),
+        keywords: ['provider'],
+        run: () => openKind('legacy-providers'),
+      },
       ...flowRuns.map((run) => ({
         id: `flow-run-${run.id}`,
         label: `Flow Run · ${run.id.slice(-6)}`,
@@ -322,15 +477,55 @@ const WorkspaceCoordinator: React.FC<{
         keywords: ['flow', 'run', 'mission', run.state],
         run: () => open(flowRunSurface(run.id, `Flow Run · ${run.id.slice(-6)}`)),
       })),
-      ...([
-        { id: 'preset-automatic', label: 'Layout: Automatic (Smart)', group: 'Layout Presets', preset: 'automatic' as const },
-        { id: 'preset-terminal-focus', label: 'Layout: Terminal Focus (68/32)', group: 'Layout Presets', preset: 'terminal-focus' as const },
-        { id: 'preset-two-columns', label: 'Layout: Two Columns (50/50)', group: 'Layout Presets', preset: 'two-columns' as const },
-        { id: 'preset-three-columns', label: 'Layout: Three Columns (33/33/33)', group: 'Layout Presets', preset: 'three-columns' as const },
-        { id: 'preset-terminal-chat', label: 'Layout: Terminal + Chat', group: 'Layout Presets', preset: 'terminal-chat' as const },
-        { id: 'preset-terminal-flow', label: 'Layout: Terminal + Flow', group: 'Layout Presets', preset: 'terminal-flow' as const },
-        { id: 'preset-focus-mode', label: 'Layout: Focus Mode (Active window)', group: 'Layout Presets', preset: 'focus-mode' as const },
-        { id: 'preset-restore-default', label: 'Layout: Restore Default', group: 'Layout Presets', preset: 'restore-default' as const },
+      ...[
+        {
+          id: 'preset-automatic',
+          label: 'Layout: Automatic (Smart)',
+          group: 'Layout Presets',
+          preset: 'automatic' as const,
+        },
+        {
+          id: 'preset-terminal-focus',
+          label: 'Layout: Terminal Focus (68/32)',
+          group: 'Layout Presets',
+          preset: 'terminal-focus' as const,
+        },
+        {
+          id: 'preset-two-columns',
+          label: 'Layout: Two Columns (50/50)',
+          group: 'Layout Presets',
+          preset: 'two-columns' as const,
+        },
+        {
+          id: 'preset-three-columns',
+          label: 'Layout: Three Columns (33/33/33)',
+          group: 'Layout Presets',
+          preset: 'three-columns' as const,
+        },
+        {
+          id: 'preset-terminal-chat',
+          label: 'Layout: Terminal + Chat',
+          group: 'Layout Presets',
+          preset: 'terminal-chat' as const,
+        },
+        {
+          id: 'preset-terminal-flow',
+          label: 'Layout: Terminal + Flow',
+          group: 'Layout Presets',
+          preset: 'terminal-flow' as const,
+        },
+        {
+          id: 'preset-focus-mode',
+          label: 'Layout: Focus Mode (Active window)',
+          group: 'Layout Presets',
+          preset: 'focus-mode' as const,
+        },
+        {
+          id: 'preset-restore-default',
+          label: 'Layout: Restore Default',
+          group: 'Layout Presets',
+          preset: 'restore-default' as const,
+        },
       ].map((p) => ({
         id: p.id,
         label: p.label,
@@ -340,11 +535,23 @@ const WorkspaceCoordinator: React.FC<{
           presentation.setMode('MOSAIC');
           presentation.rearrangePreset(p.preset);
         },
-      }))),
-      { id: 'welcome', label: t('welcome.title'), group: t('commands.help'), keywords: ['guide', 'help', 'onboarding'], run: () => setWelcomeOpen(true) },
-      { id: 'tour', label: t('commands.tour'), group: t('commands.help'), keywords: ['help', 'onboarding'], run: () => setTour(true) },
+      })),
+      {
+        id: 'welcome',
+        label: t('welcome.title'),
+        group: t('commands.help'),
+        keywords: ['guide', 'help', 'onboarding'],
+        run: () => setWelcomeOpen(true),
+      },
+      {
+        id: 'tour',
+        label: t('commands.tour'),
+        group: t('commands.help'),
+        keywords: ['help', 'onboarding'],
+        run: () => setTour(true),
+      },
     ],
-    [project.id, data.agents, flowRuns, t, i18n.language, presentation]
+    [project.id, data.agents, flowRuns, t, i18n.language, presentation],
   );
 
   // Scoped Keyboard Shortcuts via KeyboardShortcutRegistry
@@ -424,7 +631,9 @@ const WorkspaceCoordinator: React.FC<{
       createActions={{
         onNewAgent: () => setNewAgentOpen(true),
         onNewAISession: openNewAISession,
-        onProjectShell: () => { void shell(); },
+        onProjectShell: () => {
+          void shell();
+        },
       }}
     />
   );
@@ -446,7 +655,9 @@ const WorkspaceCoordinator: React.FC<{
       onOpenAgent={(agent) => terminal(agent)}
       onNewAgent={() => setNewAgentOpen(true)}
       onNewAISession={openNewAISession}
-      onProjectShell={() => { void shell(); }}
+      onProjectShell={() => {
+        void shell();
+      }}
       onOpenGlobal={(kind) => {
         if (kind === 'overview') openKind('overview');
         else openKind(kind);
@@ -454,7 +665,9 @@ const WorkspaceCoordinator: React.FC<{
     />
   );
 
-  const handleFocusAttention = (item: RadarRuntimeItem | { runtimeId: string; projectId?: string; agentId?: string }) => {
+  const handleFocusAttention = (
+    item: RadarRuntimeItem | { runtimeId: string; projectId?: string; agentId?: string },
+  ) => {
     const runtimeId = item.runtimeId;
     const runtime = data.runtimes.find((entry) => entry.runtime_id === runtimeId);
     const projectId = 'projectId' in item && item.projectId ? item.projectId : runtime?.project_id;
@@ -466,7 +679,7 @@ const WorkspaceCoordinator: React.FC<{
 
     const actions = planFocusAttention(
       { projectId, agentId, runtimeId },
-      { currentProjectId: project.id, runtime, agentName }
+      { currentProjectId: project.id, runtime, agentName },
     );
 
     const switchAction = actions.find((action) => action.type === 'switch-project');
@@ -588,7 +801,14 @@ const WorkspaceCoordinator: React.FC<{
     });
 
     document.title = buildDocumentTitle(project.name, data.runtimes);
-  }, [data.runtimes, data.agents, project.name, project.id, workspace.model.root, presentation.state.activePtyViewId]);
+  }, [
+    data.runtimes,
+    data.agents,
+    project.name,
+    project.id,
+    workspace.model.root,
+    presentation.state.activePtyViewId,
+  ]);
 
   // Attention watcher for the focused project only (radar remains global).
   useEffect(() => {
@@ -607,7 +827,12 @@ const WorkspaceCoordinator: React.FC<{
       if (provider === 'shell') continue;
 
       const reason = runtime.attention_reason;
-      if (reason !== 'QUESTION' && reason !== 'APPROVAL' && reason !== 'TASK_COMPLETED' && reason !== 'ERROR') {
+      if (
+        reason !== 'QUESTION' &&
+        reason !== 'APPROVAL' &&
+        reason !== 'TASK_COMPLETED' &&
+        reason !== 'ERROR'
+      ) {
         continue;
       }
       if (reason === 'QUESTION' || reason === 'APPROVAL') {
@@ -617,7 +842,10 @@ const WorkspaceCoordinator: React.FC<{
       if (!fingerprint || notifiedFingerprints.current.has(fingerprint)) continue;
 
       const agentSurface = allSurfaces.find(
-        (surface) => surface.type === 'terminal' && surface.data?.agentId && surface.data.agentId === runtime.agent_id
+        (surface) =>
+          surface.type === 'terminal' &&
+          surface.data?.agentId &&
+          surface.data.agentId === runtime.agent_id,
       );
       const focused = agentSurface
         ? isPtyAttentionFocused({
@@ -670,7 +898,14 @@ const WorkspaceCoordinator: React.FC<{
         });
       }
     }
-  }, [data.runtimes, data.agents, project.id, project.name, workspace.model.root, presentation.state.activePtyViewId]);
+  }, [
+    data.runtimes,
+    data.agents,
+    project.id,
+    project.name,
+    workspace.model.root,
+    presentation.state.activePtyViewId,
+  ]);
 
   return (
     <>
@@ -687,11 +922,25 @@ const WorkspaceCoordinator: React.FC<{
         onSettings={() => openKind('settings')}
         onNewAgent={() => setNewAgentOpen(true)}
         onNewAISession={openNewAISession}
-        onProjectShell={() => { void shell(); }}
+        onProjectShell={() => {
+          void shell();
+        }}
         onFocusRuntime={handleFocusRuntime}
         onFocusAttention={handleFocusAttention}
+        onFocusAgent={(agentId) => {
+          const agent = data.agents.find((a) => a.id === agentId);
+          if (agent) terminal(agent);
+          else {
+            const rt = data.runtimes.find((r) => r.agent_id === agentId);
+            if (rt) handleFocusRuntime(rt.runtime_id);
+          }
+        }}
       >
-        {shellError && <div className="nx-workspace-global-error" role="alert">{shellError}</div>}
+        {shellError && (
+          <div className="nx-workspace-global-error" role="alert">
+            {shellError}
+          </div>
+        )}
         {renderer}
       </NexusShell>
 
@@ -706,10 +955,7 @@ const WorkspaceCoordinator: React.FC<{
         }}
       />
 
-      <MaestroControlModal
-        open={maestroControlOpen}
-        onClose={() => setMaestroControlOpen(false)}
-      />
+      <MaestroControlModal open={maestroControlOpen} onClose={() => setMaestroControlOpen(false)} />
 
       <NewAgentModal
         open={newAgentOpen}

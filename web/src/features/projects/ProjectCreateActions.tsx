@@ -23,7 +23,12 @@ export const ProjectCreateActions: React.FC<ProjectCreateActionsProps> = ({
   if (!onNewAgent && !onNewAISession && !onProjectShell) return null;
 
   return (
-    <div className={`nx-project-create-actions${className ? ` ${className}` : ''}`} data-size={size} role="group" aria-label="Criar no projeto">
+    <div
+      className={`nx-project-create-actions${className ? ` ${className}` : ''}`}
+      data-size={size}
+      role="group"
+      aria-label="Criar no projeto"
+    >
       {onNewAgent && (
         <button
           type="button"

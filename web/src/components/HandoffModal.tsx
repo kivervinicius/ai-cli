@@ -26,10 +26,10 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
   const runtimeProvider = runtime.provider_id || runtime.provider || '';
   const runtimeProfile = runtime.profile_id || runtime.profile || '';
   const availableProfiles = safeProfiles.filter(
-    (p) => p.provider === runtimeProvider && p.name !== runtimeProfile
+    (p) => p.provider === runtimeProvider && p.name !== runtimeProfile,
   );
   const [selectedProfile, setSelectedProfile] = useState<string>(
-    availableProfiles.length > 0 ? availableProfiles[0].name : ''
+    availableProfiles.length > 0 ? availableProfiles[0].name : '',
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -62,15 +62,26 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
             }}
           >
             <div>
-              <span style={{ color: 'var(--nx-muted)' }}>{t('legacy.handoffSource', 'Source:')}</span>{' '}
-              <span className="uppercase font-bold" style={{ color: 'var(--nx-text)' }}>{runtimeProvider}</span> ({runtimeProfile})
+              <span style={{ color: 'var(--nx-muted)' }}>
+                {t('legacy.handoffSource', 'Source:')}
+              </span>{' '}
+              <span className="uppercase font-bold" style={{ color: 'var(--nx-text)' }}>
+                {runtimeProvider}
+              </span>{' '}
+              ({runtimeProfile})
             </div>
             <div className="mt-1">
-              <span style={{ color: 'var(--nx-muted)' }}>{t('legacy.handoffRuntime', 'Runtime:')}</span> {runtime.runtime_id}
+              <span style={{ color: 'var(--nx-muted)' }}>
+                {t('legacy.handoffRuntime', 'Runtime:')}
+              </span>{' '}
+              {runtime.runtime_id}
             </div>
           </div>
           <p className="text-[11px]" style={{ color: 'var(--nx-muted)' }}>
-            {t('legacy.handoffDesc', 'Switches active execution to another account while resuming the exact same conversation thread.')}
+            {t(
+              'legacy.handoffDesc',
+              'Switches active execution to another account while resuming the exact same conversation thread.',
+            )}
           </p>
         </div>
 
@@ -83,11 +94,17 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
               color: 'var(--nx-warning)',
             }}
           >
-            {t('legacy.noOtherProfiles', { provider: runtimeProvider, defaultValue: `No alternative profiles found for provider ${runtimeProvider}. Add more accounts via nexus add ${runtimeProvider}.` })}
+            {t('legacy.noOtherProfiles', {
+              provider: runtimeProvider,
+              defaultValue: `No alternative profiles found for provider ${runtimeProvider}. Add more accounts via nexus add ${runtimeProvider}.`,
+            })}
           </div>
         ) : (
           <div className="space-y-2 text-xs">
-            <label className="text-xs" style={{ color: 'var(--nx-text-soft)', display: 'block', marginBottom: 4 }}>
+            <label
+              className="text-xs"
+              style={{ color: 'var(--nx-text-soft)', display: 'block', marginBottom: 4 }}
+            >
               {t('legacy.targetProfile', 'Target Profile:')}
             </label>
             <Select
@@ -95,7 +112,8 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
               onChange={(val) => setSelectedProfile(val)}
               options={availableProfiles.map((p) => ({
                 value: p.name,
-                label: `${p.name} ${p.account_email ? `(${p.account_email})` : ''} ${p.plan ? `[${p.plan}]` : ''}`.trim(),
+                label:
+                  `${p.name} ${p.account_email ? `(${p.account_email})` : ''} ${p.plan ? `[${p.plan}]` : ''}`.trim(),
               }))}
             />
           </div>
@@ -121,7 +139,9 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
             disabled={loading || availableProfiles.length === 0}
             onClick={handleHandoff}
           >
-            {loading ? t('legacy.executingHandoff', 'Performing Handoff...') : t('legacy.executeHandoff', 'Execute Handoff')}
+            {loading
+              ? t('legacy.executingHandoff', 'Performing Handoff...')
+              : t('legacy.executeHandoff', 'Execute Handoff')}
           </Button>
         </div>
       </div>

@@ -1,14 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  FolderGit2,
-  GitBranch,
-  Search,
-  Check,
-  Plus,
-  Loader2,
-  RefreshCw,
-} from 'lucide-react';
+import { FolderGit2, GitBranch, Search, Check, Plus, Loader2, RefreshCw } from 'lucide-react';
 import { Dialog, Button, Input, Badge, Card } from '../../design-system';
 import { toast } from 'sonner';
 import { nexus } from '../../nexus/api';
@@ -49,7 +41,7 @@ export const ProjectScanModal: React.FC<{
       const proj = await nexus.createProject(item.path, item.name);
       onProjectImported(proj);
       setResults((current) =>
-        current.map((r) => (r.path === item.path ? { ...r, is_imported: true } : r))
+        current.map((r) => (r.path === item.path ? { ...r, is_imported: true } : r)),
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -62,26 +54,16 @@ export const ProjectScanModal: React.FC<{
     (r) =>
       r.name.toLowerCase().includes(query.toLowerCase()) ||
       r.path.toLowerCase().includes(query.toLowerCase()) ||
-      r.branch.toLowerCase().includes(query.toLowerCase())
+      r.branch.toLowerCase().includes(query.toLowerCase()),
   );
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      title={t('projectManager.scanOS')}
-      wide
-    >
+    <Dialog open={open} onClose={onClose} title={t('projectManager.scanOS')} wide>
       <div className="nx-scan-modal">
         <div className="nx-scan-toolbar">
           <div className="nx-scan-search">
             <Search size={14} className="nx-scan-search-icon" />
-            <Input
-              value={query}
-              onChange={setQuery}
-              placeholder={t('common.search')}
-              autoFocus
-            />
+            <Input value={query} onChange={setQuery} placeholder={t('common.search')} autoFocus />
           </div>
           <Button size="sm" onClick={startScan} disabled={loading}>
             <RefreshCw size={13} className={loading ? 'nx-spin' : ''} />

@@ -3,14 +3,29 @@
   "private": true,
   "description": "Convenience scripts for the IAPro Nexus workspace",
   "scripts": {
+    "format": "make format",
+    "format:check": "make format-check",
+    "lint": "make lint-frontend lint-go",
+    "lint:fix": "make lint-fix",
+    "lint:frontend": "make lint-frontend",
+    "lint:styles": "make lint-styles",
+    "lint:go": "make lint-go",
+    "typecheck": "make typecheck",
+    "test": "make test-go test-frontend",
+    "test:frontend": "make test-frontend",
+    "test:go": "make test-go",
+    "test:e2e": "make test-e2e",
+    "security": "make security",
+    "quality": "make quality",
+    "quality:full": "make quality-full",
+    "build": "make build",
     "web:build": "env -u NODE_OPTIONS npm --prefix web run build",
     "web:test": "env -u NODE_OPTIONS npm --prefix web test",
     "web:typecheck": "env -u NODE_OPTIONS npm --prefix web run typecheck",
     "web:dev": "nexus web --listen 127.0.0.1 --port 3000",
     "dev": "nexus web --listen 127.0.0.1 --port 3000",
-    "build": "make build",
-    "test": "make test",
     "release": "make release-local",
-    "release:beta": "node scripts/release-beta.mjs"
+    "release:beta": "node scripts/release-beta.mjs",
+    "prepare": "husky"
   }
 }

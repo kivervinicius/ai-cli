@@ -6,9 +6,15 @@ import { createWorkspace } from '../workspace/model';
 const store = new Map<string, string>();
 const mockLocalStorage = {
   getItem: (key: string) => store.get(key) ?? null,
-  setItem: (key: string, val: string) => { store.set(key, String(val)); },
-  removeItem: (key: string) => { store.delete(key); },
-  clear: () => { store.clear(); },
+  setItem: (key: string, val: string) => {
+    store.set(key, String(val));
+  },
+  removeItem: (key: string) => {
+    store.delete(key);
+  },
+  clear: () => {
+    store.clear();
+  },
 };
 
 (globalThis as any).window = globalThis;
@@ -53,7 +59,7 @@ describe('WorkspaceLayoutService', () => {
     mockLocalStorage.setItem(service.legacyModelKey, JSON.stringify(fallback));
     mockLocalStorage.setItem(
       service.legacyPresentationKey,
-      JSON.stringify({ mode: 'MOSAIC', windows: {}, nextZ: 2 })
+      JSON.stringify({ mode: 'MOSAIC', windows: {}, nextZ: 2 }),
     );
 
     const migrated = service.load(fallback);

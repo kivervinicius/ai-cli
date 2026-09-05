@@ -41,7 +41,7 @@ function columns(bounds: ArrangeBounds, viewIds: string[]): TileRect[] {
       y: bounds.y,
       width: cellW,
       height: bounds.height,
-    })
+    }),
   );
 }
 
@@ -57,7 +57,7 @@ function rows(bounds: ArrangeBounds, viewIds: string[]): TileRect[] {
       y: bounds.y + index * (cellH + GAP),
       width: bounds.width,
       height: cellH,
-    })
+    }),
   );
 }
 
@@ -78,7 +78,7 @@ function grid2x2(bounds: ArrangeBounds, viewIds: string[]): TileRect[] {
       y: positions[index].y,
       width: halfW,
       height: halfH,
-    })
+    }),
   );
 }
 
@@ -138,7 +138,7 @@ export function arrangeSmart(bounds: ArrangeBounds, viewIds: string[]): TileRect
         y: bounds.y,
         width: Math.max(MIN_W, bounds.width),
         height: Math.max(MIN_H, bounds.height),
-      })
+      }),
     );
   }
   switch (ids.length) {
@@ -158,9 +158,13 @@ export function arrangeSmart(bounds: ArrangeBounds, viewIds: string[]): TileRect
 export function scaleTilesToCanvas(
   tiles: Array<{ viewId: string; x: number; y: number; width: number; height: number }>,
   from: ArrangeBounds,
-  to: ArrangeBounds
+  to: ArrangeBounds,
 ): TileRect[] {
-  if (from.width <= 0 || from.height <= 0) return arrangeSmart(to, tiles.map((t) => t.viewId));
+  if (from.width <= 0 || from.height <= 0)
+    return arrangeSmart(
+      to,
+      tiles.map((t) => t.viewId),
+    );
   const sx = to.width / from.width;
   const sy = to.height / from.height;
   return tiles.map((tile) =>
@@ -170,7 +174,7 @@ export function scaleTilesToCanvas(
       y: to.y + (tile.y - from.y) * sy,
       width: tile.width * sx,
       height: tile.height * sy,
-    })
+    }),
   );
 }
 
@@ -268,7 +272,7 @@ export function applySharedEdgeDelta(
   first: RectLike,
   second: RectLike,
   orientation: 'vertical' | 'horizontal',
-  delta: number
+  delta: number,
 ): { first: RectLike; second: RectLike } | null {
   const vertical = orientation === 'vertical';
   const leading = vertical

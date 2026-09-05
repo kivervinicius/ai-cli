@@ -60,18 +60,21 @@ export const ProjectOverviewSurface: React.FC<{
 
   useEffect(() => {
     let active = true;
-    nexus.getSystemUpdates()
+    nexus
+      .getSystemUpdates()
       .then((data) => {
         if (active) setUpdateInfo(data);
       })
       .catch(() => {});
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, []);
 
   const agentList = Array.isArray(agents) ? agents : [];
   const working = agentList.filter((agent) => agent.status === 'WORKING').length;
   const degraded = agentList.filter((agent) =>
-    ['FAILED', 'STALE', 'RECOVERABLE', 'RATE_LIMITED'].includes(agent.status)
+    ['FAILED', 'STALE', 'RECOVERABLE', 'RATE_LIMITED'].includes(agent.status),
   ).length;
 
   const handleRecover = async (agent: Agent) => {
@@ -80,7 +83,10 @@ export const ProjectOverviewSurface: React.FC<{
     try {
       const res = await (onRecoverAgent ? onRecoverAgent(agent) : nexus.recoverAgent(agent.id));
       await refreshAgents?.();
-      const runtimeId = res && typeof res === 'object' && 'runtime' in res ? (res as any).runtime?.runtime_id : undefined;
+      const runtimeId =
+        res && typeof res === 'object' && 'runtime' in res
+          ? (res as any).runtime?.runtime_id
+          : undefined;
       onOpenAgent(agent, runtimeId);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -100,7 +106,10 @@ export const ProjectOverviewSurface: React.FC<{
     try {
       const res = await (onStartAgent ? onStartAgent(agent) : nexus.startAgent(agent.id));
       await refreshAgents?.();
-      const runtimeId = res && typeof res === 'object' && 'runtime' in res ? (res as any).runtime?.runtime_id : undefined;
+      const runtimeId =
+        res && typeof res === 'object' && 'runtime' in res
+          ? (res as any).runtime?.runtime_id
+          : undefined;
       onOpenAgent(agent, runtimeId);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -136,7 +145,12 @@ export const ProjectOverviewSurface: React.FC<{
         <div>
           <span className="nx-eyebrow">Workspace OS · Terminais do Projeto</span>
           <h1>{project.name}</h1>
-          <p>{project.canonical_path} · <code style={{ color: 'var(--nx-accent-text)' }}>{project.default_branch || 'main'}</code></p>
+          <p>
+            {project.canonical_path} ·{' '}
+            <code style={{ color: 'var(--nx-accent-text)' }}>
+              {project.default_branch || 'main'}
+            </code>
+          </p>
         </div>
         <div className="nx-page-header__actions">
           <ProjectCreateActions
@@ -154,13 +168,25 @@ export const ProjectOverviewSurface: React.FC<{
       </div>
 
       {updateInfo?.update_available && (
-        <Card className="nx-inline-alert" data-tone="warning" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+        <Card
+          className="nx-inline-alert"
+          data-tone="warning"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '16px',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <ArrowUpCircle size={18} className="nx-spin-slow" />
             <div>
               <strong>{t('settings.updates', 'Atualização disponível')}</strong>
               <p style={{ margin: 0, fontSize: '12px', color: 'var(--nx-muted)' }}>
-                Nexus v{updateInfo.nexus_version} · Maestro {updateInfo.maestro_latest_version ? `v${updateInfo.maestro_latest_version}` : 'nova versão disponível'}
+                Nexus v{updateInfo.nexus_version} · Maestro{' '}
+                {updateInfo.maestro_latest_version
+                  ? `v${updateInfo.maestro_latest_version}`
+                  : 'nova versão disponível'}
               </p>
             </div>
           </div>
@@ -180,20 +206,21 @@ export const ProjectOverviewSurface: React.FC<{
       <div style={{ display: 'grid', gap: '16px' }}>
         <div className="nx-section-title">
           <div>
-            <h2>{t('overview.fleet')} ({agentList.length})</h2>
+            <h2>
+              {t('overview.fleet')} ({agentList.length})
+            </h2>
             <p>{t('overview.fleetDescription')}</p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Badge tone={degraded > 0 ? 'warning' : 'success'}>
               {degraded > 0
-                ? t('overview.degraded', { count: degraded, defaultValue: `${degraded} degradados` })
+                ? t('overview.degraded', {
+                    count: degraded,
+                    defaultValue: `${degraded} degradados`,
+                  })
                 : t('overview.healthy')}
             </Badge>
-            {working > 0 && (
-              <Badge tone="success">
-                {working} em execução
-              </Badge>
-            )}
+            {working > 0 && <Badge tone="success">{working} em execução</Badge>}
           </div>
         </div>
 
@@ -204,26 +231,44 @@ export const ProjectOverviewSurface: React.FC<{
             icon={<TerminalSquare size={36} />}
             title={t('overview.noAgents')}
             hint={t('overview.noAgentsHint')}
-            action={(
-              <div className="nx-project-create-actions" data-size="md" style={{ marginTop: 4, justifyContent: 'center' }}>
+            action={
+              <div
+                className="nx-project-create-actions"
+                data-size="md"
+                style={{ marginTop: 4, justifyContent: 'center' }}
+              >
                 {onNewAgent && (
-                  <Button tone="brand" onClick={onNewAgent}>Novo Agente</Button>
+                  <Button tone="brand" onClick={onNewAgent}>
+                    Novo Agente
+                  </Button>
                 )}
                 <Button onClick={onNewAISession}>{t('overview.newAISession')}</Button>
                 <Button onClick={onProjectShell}>{t('overview.projectShell')}</Button>
               </div>
-            )}
+            }
           />
         ) : (
           <div className="nx-agent-grid">
             {agentList.map((agent) => (
-              <Card key={agent.id} className="nx-agent-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <Card
+                key={agent.id}
+                className="nx-agent-card"
+                style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}
+              >
                 <div className="nx-agent-card__head">
                   <span className="nx-agent-avatar nx-agent-avatar--large">
                     {(agent.name || 'AG').slice(0, 2).toUpperCase()}
                   </span>
                   <div style={{ minWidth: 0, overflow: 'hidden' }}>
-                    <strong style={{ fontSize: '14px', display: 'block', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                    <strong
+                      style={{
+                        fontSize: '14px',
+                        display: 'block',
+                        textOverflow: 'ellipsis',
+                        overflow: 'hidden',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
                       {agent.name || agent.id}
                     </strong>
                     <small style={{ color: 'var(--nx-muted)', fontSize: '11.5px' }}>
@@ -244,7 +289,14 @@ export const ProjectOverviewSurface: React.FC<{
                   <strong>{agent.last_started_at || t('common.never')}</strong>
                 </div>
 
-                <div className="nx-agent-card__actions" style={{ marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid var(--nx-border)' }}>
+                <div
+                  className="nx-agent-card__actions"
+                  style={{
+                    marginTop: 'auto',
+                    paddingTop: '8px',
+                    borderTop: '1px solid var(--nx-border)',
+                  }}
+                >
                   <Button size="sm" tone="brand" onClick={() => onOpenAgent(agent)}>
                     <TerminalSquare size={13} /> {t('overview.openTerminal', 'Abrir Terminal')}
                   </Button>
@@ -259,7 +311,9 @@ export const ProjectOverviewSurface: React.FC<{
                       }}
                     >
                       <RotateCcw size={12} />{' '}
-                      {busy === agent.id ? t('overview.recovering', 'Recuperando…') : t('overview.recover', 'Recuperar')}
+                      {busy === agent.id
+                        ? t('overview.recovering', 'Recuperando…')
+                        : t('overview.recover', 'Recuperar')}
                     </Button>
                   ) : agent.status === 'STOPPED' ? (
                     <Button
@@ -272,7 +326,9 @@ export const ProjectOverviewSurface: React.FC<{
                       }}
                     >
                       <Play size={12} />{' '}
-                      {busy === agent.id ? t('overview.starting', 'Iniciando…') : t('overview.start', 'Iniciar')}
+                      {busy === agent.id
+                        ? t('overview.starting', 'Iniciando…')
+                        : t('overview.start', 'Iniciar')}
                     </Button>
                   ) : null}
                   {onConfigureAgent && (

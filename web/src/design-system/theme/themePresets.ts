@@ -53,7 +53,7 @@ export const THEME_PRESETS: Record<string, ThemeDefinition> = {
       '--nx-accent-text': '#6d28d9',
     },
   },
-  'midnight': {
+  midnight: {
     id: 'midnight',
     name: 'Midnight',
     scheme: 'dark',
@@ -76,7 +76,7 @@ export const THEME_PRESETS: Record<string, ThemeDefinition> = {
       '--nx-accent-text': '#7dd3fc',
     },
   },
-  'nord': {
+  nord: {
     id: 'nord',
     name: 'Nord',
     scheme: 'dark',
@@ -99,7 +99,7 @@ export const THEME_PRESETS: Record<string, ThemeDefinition> = {
       '--nx-accent-text': '#8fbcbb',
     },
   },
-  'dracula': {
+  dracula: {
     id: 'dracula',
     name: 'Dracula',
     scheme: 'dark',
@@ -122,7 +122,7 @@ export const THEME_PRESETS: Record<string, ThemeDefinition> = {
       '--nx-accent-text': '#ff79c6',
     },
   },
-  'monokai': {
+  monokai: {
     id: 'monokai',
     name: 'Monokai',
     scheme: 'dark',

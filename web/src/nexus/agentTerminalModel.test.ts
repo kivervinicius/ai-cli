@@ -19,19 +19,19 @@ import {
 describe('Agent terminal model', () => {
   it('builds agent-scoped websocket URLs', () =>
     expect(agentTerminalWebSocketURL('https:', 'nexus.local', 'agt_1')).toBe(
-      'wss://nexus.local/api/v1/agents/agt_1/terminal'
+      'wss://nexus.local/api/v1/agents/agt_1/terminal',
     ));
   it('appends runtime_id when focusing a specific radar runtime', () =>
     expect(agentTerminalWebSocketURL('http:', 'localhost:3000', 'agt_1', 'rt_9')).toBe(
-      'ws://localhost:3000/api/v1/agents/agt_1/terminal?runtime_id=rt_9'
+      'ws://localhost:3000/api/v1/agents/agt_1/terminal?runtime_id=rt_9',
     ));
   it('supports agent-scoped reattachment after a runtime generation changes', () =>
     expect(agentTerminalWebSocketURL('http:', 'localhost:3000', 'agt_1')).toBe(
-      'ws://localhost:3000/api/v1/agents/agt_1/terminal'
+      'ws://localhost:3000/api/v1/agents/agt_1/terminal',
     ));
   it('uses ws on http and encodes AgentID', () =>
     expect(agentTerminalWebSocketURL('http:', 'localhost:8080', 'a b')).toBe(
-      'ws://localhost:8080/api/v1/agents/a%20b/terminal'
+      'ws://localhost:8080/api/v1/agents/a%20b/terminal',
     ));
   it('only grants control for explicit CONTROL lease', () => {
     expect(normalizeTerminalRole('CONTROL')).toBe('CONTROL');
@@ -55,7 +55,9 @@ describe('Agent terminal model', () => {
 
   it('auto-recovers missing agent runtimes instead of looping reconnect', () => {
     expect(shouldAutoRecoverAgentTerminal(false, '')).toBe(true);
-    expect(shouldAutoRecoverAgentTerminal(false, 'agent has no active runtime: not live')).toBe(true);
+    expect(shouldAutoRecoverAgentTerminal(false, 'agent has no active runtime: not live')).toBe(
+      true,
+    );
     expect(shouldAutoRecoverAgentTerminal(true, 'Runtime host is not running (eof)')).toBe(true);
     expect(shouldAutoRecoverAgentTerminal(true, '')).toBe(false);
     expect(shouldAutoRecoverAgentTerminal(false, 'authentication required')).toBe(false);
@@ -67,11 +69,33 @@ describe('Agent terminal model', () => {
     expect(terminalAttachFailureMessage('runtime not found: rt_x')).toContain('Recover/Start');
   });
   it('shows recover overlay while reconnecting after reboot, not only on ERROR', () => {
-    expect(shouldShowTerminalRecoverOverlay({ connection: 'CONNECTED', recovering: false })).toBe(false);
-    expect(shouldShowTerminalRecoverOverlay({ connection: 'CONNECTING', recovering: false, connectingForMs: 0 })).toBe(false);
-    expect(shouldShowTerminalRecoverOverlay({ connection: 'CONNECTING', recovering: false, connectingForMs: 400 })).toBe(false);
-    expect(shouldShowTerminalRecoverOverlay({ connection: 'CONNECTING', recovering: false, connectingForMs: 800 })).toBe(true);
-    expect(shouldShowTerminalRecoverOverlay({ connection: 'CONNECTING', recovering: true })).toBe(true);
+    expect(shouldShowTerminalRecoverOverlay({ connection: 'CONNECTED', recovering: false })).toBe(
+      false,
+    );
+    expect(
+      shouldShowTerminalRecoverOverlay({
+        connection: 'CONNECTING',
+        recovering: false,
+        connectingForMs: 0,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowTerminalRecoverOverlay({
+        connection: 'CONNECTING',
+        recovering: false,
+        connectingForMs: 400,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowTerminalRecoverOverlay({
+        connection: 'CONNECTING',
+        recovering: false,
+        connectingForMs: 800,
+      }),
+    ).toBe(true);
+    expect(shouldShowTerminalRecoverOverlay({ connection: 'CONNECTING', recovering: true })).toBe(
+      true,
+    );
     expect(shouldShowTerminalRecoverOverlay({ connection: 'ERROR', recovering: false })).toBe(true);
   });
   it('falls back recover→start for recoverable host failures', () => {
@@ -81,7 +105,9 @@ describe('Agent terminal model', () => {
 
   it('treats already-alive recover as soft success, not stop+start', () => {
     expect(isRecoverAlreadyAlive('agent runtime is already alive (no recovery needed)')).toBe(true);
-    expect(shouldFallbackRecoverToStart('agent runtime is already alive (no recovery needed)')).toBe(false);
+    expect(
+      shouldFallbackRecoverToStart('agent runtime is already alive (no recovery needed)'),
+    ).toBe(false);
   });
 
   it('detects required resource selection and extracts runtime ids', () => {

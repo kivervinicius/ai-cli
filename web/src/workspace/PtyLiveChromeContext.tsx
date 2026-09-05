@@ -1,4 +1,12 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { PtyLiveChrome } from './ptyLiveChrome';
 
 const emptyChrome: PtyLiveChrome = { title: '', questionnaire: false };
@@ -51,7 +59,8 @@ export const PtyLiveChromeProvider: React.FC<{ children: React.ReactNode }> = ({
       const staged = pendingRef.current[key] || published;
       const next: PtyLiveChrome = {
         title: patch.title !== undefined ? patch.title : staged.title,
-        questionnaire: patch.questionnaire !== undefined ? patch.questionnaire : staged.questionnaire,
+        questionnaire:
+          patch.questionnaire !== undefined ? patch.questionnaire : staged.questionnaire,
       };
       if (next.title === staged.title && next.questionnaire === staged.questionnaire) return;
       pendingRef.current[key] = next;
@@ -59,7 +68,7 @@ export const PtyLiveChromeProvider: React.FC<{ children: React.ReactNode }> = ({
         flushTimerRef.current = window.setTimeout(flush, 80);
       }
     },
-    [flush]
+    [flush],
   );
 
   const clearLive = useCallback((viewId: string) => {
@@ -94,6 +103,9 @@ export function usePtyLiveChromeOptional(): PtyLiveChromeContextValue | null {
   return useContext(PtyLiveChromeContext);
 }
 
-export function liveChromeFor(byViewId: Record<string, PtyLiveChrome>, viewId: string): PtyLiveChrome {
+export function liveChromeFor(
+  byViewId: Record<string, PtyLiveChrome>,
+  viewId: string,
+): PtyLiveChrome {
   return byViewId[viewId] || emptyChrome;
 }

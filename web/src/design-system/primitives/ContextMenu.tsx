@@ -28,7 +28,7 @@ export function clampMenuPosition(
   height: number,
   viewportWidth: number,
   viewportHeight: number,
-  pad = 8
+  pad = 8,
 ): ContextMenuPoint {
   return {
     x: Math.min(Math.max(pad, Math.round(x)), Math.max(pad, viewportWidth - width - pad)),
@@ -48,7 +48,14 @@ export const ContextMenu: React.FC<{
     const menu = menuRef.current;
     if (!open || !menu) return;
     const rect = menu.getBoundingClientRect();
-    const next = clampMenuPosition(open.x, open.y, rect.width, rect.height, window.innerWidth, window.innerHeight);
+    const next = clampMenuPosition(
+      open.x,
+      open.y,
+      rect.width,
+      rect.height,
+      window.innerWidth,
+      window.innerHeight,
+    );
     menu.style.left = `${next.x}px`;
     menu.style.top = `${next.y}px`;
   }, [open, items]);
@@ -102,9 +109,9 @@ export const ContextMenu: React.FC<{
             {item.icon}
             <span>{item.label}</span>
           </button>
-        )
+        ),
       )}
     </div>,
-    document.body
+    document.body,
   );
 };

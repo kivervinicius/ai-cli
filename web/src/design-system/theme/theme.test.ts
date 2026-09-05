@@ -44,7 +44,11 @@ describe('theme model', () => {
   });
 
   it('normalizes invalid persisted values', () => {
-    const value = normalizeThemePreferences({ scheme: 'pink', accent: 'orange', density: 'huge' } as unknown as ThemePreferences);
+    const value = normalizeThemePreferences({
+      scheme: 'pink',
+      accent: 'orange',
+      density: 'huge',
+    } as unknown as ThemePreferences);
     expect(value).toEqual({
       scheme: 'system',
       accent: 'purple',
@@ -91,8 +95,15 @@ describe('theme model', () => {
 describe('resolveThemeStyleVariables', () => {
   it('aplica variáveis nativas do preset quando isCustomized é false', () => {
     const vars = resolveThemeStyleVariables(
-      { preset: 'nord', scheme: 'dark', accent: 'blue', density: 'compact', reducedMotion: false, isCustomized: false },
-      'dark'
+      {
+        preset: 'nord',
+        scheme: 'dark',
+        accent: 'blue',
+        density: 'compact',
+        reducedMotion: false,
+        isCustomized: false,
+      },
+      'dark',
     );
     expect(vars['--nx-bg']).toBe('#242933'); // Fundo nativo do Nord
     expect(vars['--nx-accent']).toBe('#88c0d0'); // Acento nativo do Nord
@@ -101,8 +112,15 @@ describe('resolveThemeStyleVariables', () => {
   it('honra precedência autêntica de conflito: Nord nativo dark com override manual de esquema light e acento purple', () => {
     // Quando isCustomized é true, deve vencer o override manual
     const vars = resolveThemeStyleVariables(
-      { preset: 'nord', scheme: 'light', accent: 'purple', density: 'compact', reducedMotion: false, isCustomized: true },
-      'light'
+      {
+        preset: 'nord',
+        scheme: 'light',
+        accent: 'purple',
+        density: 'compact',
+        reducedMotion: false,
+        isCustomized: true,
+      },
+      'light',
     );
     expect(vars['--nx-bg']).toBe('#f4f6fa'); // Sobrescrito pelo Light
     expect(vars['--nx-accent']).toBe('#8b5cf6'); // Sobrescrito pelo Purple
@@ -142,9 +160,16 @@ describe('WCAG AA Contrast Automation for all 10 presets', () => {
       const accentOnBg = contrastRatio(accent, bg);
       const accentOnSurface = contrastRatio(accent, surface);
 
-      expect(textOnBg, `Preset ${id} text/bg contrast must be >= 4.5:1`).toBeGreaterThanOrEqual(4.5);
-      expect(accentOnBg, `Preset ${id} accent/bg contrast must be >= 3.0:1`).toBeGreaterThanOrEqual(3.0);
-      expect(accentOnSurface, `Preset ${id} accent/surface contrast must be >= 3.0:1`).toBeGreaterThanOrEqual(3.0);
+      expect(textOnBg, `Preset ${id} text/bg contrast must be >= 4.5:1`).toBeGreaterThanOrEqual(
+        4.5,
+      );
+      expect(accentOnBg, `Preset ${id} accent/bg contrast must be >= 3.0:1`).toBeGreaterThanOrEqual(
+        3.0,
+      );
+      expect(
+        accentOnSurface,
+        `Preset ${id} accent/surface contrast must be >= 3.0:1`,
+      ).toBeGreaterThanOrEqual(3.0);
     }
   });
 });

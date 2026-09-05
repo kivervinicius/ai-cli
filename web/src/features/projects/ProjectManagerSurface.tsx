@@ -24,7 +24,20 @@ import {
   Terminal,
   Code2,
 } from 'lucide-react';
-import { Button, Card, ConfirmDialog, Dialog, EmptyState, IconButton, Input, Badge, Segmented, Select, InlineAlert, Spinner } from '../../design-system';
+import {
+  Button,
+  Card,
+  ConfirmDialog,
+  Dialog,
+  EmptyState,
+  IconButton,
+  Input,
+  Badge,
+  Segmented,
+  Select,
+  InlineAlert,
+  Spinner,
+} from '../../design-system';
 import { toast } from 'sonner';
 import { nexus } from '../../nexus/api';
 import type { Agent, Project } from '../../types';
@@ -71,10 +84,16 @@ export const ProjectManagerSurface: React.FC<{
   const [cfgBusy, setCfgBusy] = useState(false);
   const [cfgSuccess, setCfgSuccess] = useState(false);
   const [cfgBranchList, setCfgBranchList] = useState<string[]>([]);
-  const [cfgBranchStatus, setCfgBranchStatus] = useState<{ isClean: boolean; count: number } | null>(null);
+  const [cfgBranchStatus, setCfgBranchStatus] = useState<{
+    isClean: boolean;
+    count: number;
+  } | null>(null);
   const [_cfgBranchLoading, setCfgBranchLoading] = useState(false);
   const [cfgBranchSwitching, setCfgBranchSwitching] = useState(false);
-  const [cfgBranchAlert, setCfgBranchAlert] = useState<{ tone: 'success' | 'danger'; message: string } | null>(null);
+  const [cfgBranchAlert, setCfgBranchAlert] = useState<{
+    tone: 'success' | 'danger';
+    message: string;
+  } | null>(null);
 
   // Stats calculation
   const totalAgents = agents.length;
@@ -91,7 +110,7 @@ export const ProjectManagerSurface: React.FC<{
       (p) =>
         p.name.toLowerCase().includes(query.toLowerCase()) ||
         p.canonical_path.toLowerCase().includes(query.toLowerCase()) ||
-        (p.default_branch || '').toLowerCase().includes(query.toLowerCase())
+        (p.default_branch || '').toLowerCase().includes(query.toLowerCase()),
     );
     if (sortBy === 'name') {
       list = [...list].sort((a, b) => a.name.localeCompare(b.name));
@@ -131,7 +150,10 @@ export const ProjectManagerSurface: React.FC<{
       const res = await nexus.checkoutProjectBranch(configProject.id, targetBranch.trim());
       if (res.success) {
         setCfgBranch(res.current_branch);
-        setCfgBranchAlert({ tone: 'success', message: `✓ Alternado com sucesso para branch ${res.current_branch}` });
+        setCfgBranchAlert({
+          tone: 'success',
+          message: `✓ Alternado com sucesso para branch ${res.current_branch}`,
+        });
         const updated = { ...configProject, default_branch: res.current_branch };
         onProjectUpdated(updated);
       }
@@ -538,31 +560,67 @@ export const ProjectManagerSurface: React.FC<{
         title={t('projectManager.templatesTitle')}
       >
         <div className="nx-templates-modal">
-          <div className="nx-template-card" onClick={() => { setNewName('Fullstack SaaS App'); setNewPath('/projetos/saas-app'); setTemplateOpen(false); setAddOpen(true); }}>
-            <div className="nx-template-icon"><Layers size={20} /></div>
+          <div
+            className="nx-template-card"
+            onClick={() => {
+              setNewName('Fullstack SaaS App');
+              setNewPath('/projetos/saas-app');
+              setTemplateOpen(false);
+              setAddOpen(true);
+            }}
+          >
+            <div className="nx-template-icon">
+              <Layers size={20} />
+            </div>
             <div>
               <strong>{t('projectManager.templateFullstack')}</strong>
               <p>React + Go/Node microservices with Maestro SaaS architecture guidelines.</p>
             </div>
-            <Button size="sm" tone="brand">{t('projectManager.useTemplate')}</Button>
+            <Button size="sm" tone="brand">
+              {t('projectManager.useTemplate')}
+            </Button>
           </div>
 
-          <div className="nx-template-card" onClick={() => { setNewName('Core Microservice API'); setNewPath('/projetos/api-service'); setTemplateOpen(false); setAddOpen(true); }}>
-            <div className="nx-template-icon"><Zap size={20} /></div>
+          <div
+            className="nx-template-card"
+            onClick={() => {
+              setNewName('Core Microservice API');
+              setNewPath('/projetos/api-service');
+              setTemplateOpen(false);
+              setAddOpen(true);
+            }}
+          >
+            <div className="nx-template-icon">
+              <Zap size={20} />
+            </div>
             <div>
               <strong>{t('projectManager.templateApi')}</strong>
               <p>REST / gRPC microservice scaffolded with TDD loop and schema verification.</p>
             </div>
-            <Button size="sm" tone="brand">{t('projectManager.useTemplate')}</Button>
+            <Button size="sm" tone="brand">
+              {t('projectManager.useTemplate')}
+            </Button>
           </div>
 
-          <div className="nx-template-card" onClick={() => { setNewName('Developer CLI Tool'); setNewPath('/projetos/cli-tool'); setTemplateOpen(false); setAddOpen(true); }}>
-            <div className="nx-template-icon"><Bot size={20} /></div>
+          <div
+            className="nx-template-card"
+            onClick={() => {
+              setNewName('Developer CLI Tool');
+              setNewPath('/projetos/cli-tool');
+              setTemplateOpen(false);
+              setAddOpen(true);
+            }}
+          >
+            <div className="nx-template-icon">
+              <Bot size={20} />
+            </div>
             <div>
               <strong>{t('projectManager.templateCli')}</strong>
               <p>Cobra / Commander command-line application with automated integration tests.</p>
             </div>
-            <Button size="sm" tone="brand">{t('projectManager.useTemplate')}</Button>
+            <Button size="sm" tone="brand">
+              {t('projectManager.useTemplate')}
+            </Button>
           </div>
         </div>
       </Dialog>
@@ -584,8 +642,18 @@ export const ProjectManagerSurface: React.FC<{
 
             {/* Git Branch Management & Selector */}
             <div className="nx-config-branch-section">
-              <div className="nx-config-branch-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--nx-text-primary)' }}>
+              <div
+                className="nx-config-branch-header"
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '6px',
+                }}
+              >
+                <span
+                  style={{ fontSize: '12px', fontWeight: 600, color: 'var(--nx-text-primary)' }}
+                >
                   {t('projectManager.branch', 'Branch Padrão / Galho')}
                 </span>
                 {cfgBranchStatus && (
@@ -599,13 +667,14 @@ export const ProjectManagerSurface: React.FC<{
 
               {cfgBranchAlert && (
                 <div style={{ marginBottom: '8px' }}>
-                  <InlineAlert tone={cfgBranchAlert.tone}>
-                    {cfgBranchAlert.message}
-                  </InlineAlert>
+                  <InlineAlert tone={cfgBranchAlert.tone}>{cfgBranchAlert.message}</InlineAlert>
                 </div>
               )}
 
-              <div className="nx-config-branch-controls" style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '12px' }}>
+              <div
+                className="nx-config-branch-controls"
+                style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '12px' }}
+              >
                 {cfgBranchList.length > 0 ? (
                   <Select
                     value={cfgBranch}
@@ -629,7 +698,13 @@ export const ProjectManagerSurface: React.FC<{
                   onClick={() => handleDirectCheckout(cfgBranch)}
                   title={t('git.checkoutNow', 'Trocar de branch agora no repositório local')}
                 >
-                  {cfgBranchSwitching ? <Spinner label="" /> : <><GitBranch size={12} /> {t('git.checkoutBtn', 'Checkout')}</>}
+                  {cfgBranchSwitching ? (
+                    <Spinner label="" />
+                  ) : (
+                    <>
+                      <GitBranch size={12} /> {t('git.checkoutBtn', 'Checkout')}
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
@@ -648,11 +723,7 @@ export const ProjectManagerSurface: React.FC<{
               />
             </label>
 
-            {cfgSuccess && (
-              <InlineAlert tone="success">
-                {t('projectManager.saved')}
-              </InlineAlert>
-            )}
+            {cfgSuccess && <InlineAlert tone="success">{t('projectManager.saved')}</InlineAlert>}
 
             <div className="nx-dialog-actions">
               <Button onClick={() => setConfigProject(null)}>{t('common.closeDialog')}</Button>

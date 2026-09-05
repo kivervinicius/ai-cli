@@ -1,10 +1,9 @@
-// @ts-expect-error Vitest executes in Node; browser tsconfig intentionally omits @types/node.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const overviewSource = readFileSync(
   new URL('./ProjectOverviewSurface.tsx', import.meta.url),
-  'utf8'
+  'utf8',
 );
 
 describe('Overview Recover and Start honest actions', () => {

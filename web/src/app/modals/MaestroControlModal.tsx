@@ -49,7 +49,10 @@ export const MaestroControlModal: React.FC<{
     setLoading(true);
     setUpdateError('');
     try {
-      const [status, info] = await Promise.all([nexus.getMaestroStatus(), nexus.getSystemUpdates()]);
+      const [status, info] = await Promise.all([
+        nexus.getMaestroStatus(),
+        nexus.getSystemUpdates(),
+      ]);
       setMaestroStatus(status);
       setUpdates(info);
     } catch {
@@ -97,7 +100,10 @@ export const MaestroControlModal: React.FC<{
         <div className="nx-maestro-status-card">
           <div className="nx-maestro-status-header">
             <div className="nx-maestro-status-icon">
-              <BrainCircuit size={22} className={isAvailable ? 'nx-icon--brand' : 'nx-icon--warning'} />
+              <BrainCircuit
+                size={22}
+                className={isAvailable ? 'nx-icon--brand' : 'nx-icon--warning'}
+              />
             </div>
             <div>
               <strong>{t('maestroControl.status')}</strong>
@@ -108,11 +114,18 @@ export const MaestroControlModal: React.FC<{
                 </Badge>
                 {version && <Badge tone="brand">v{version}</Badge>}
                 {updates?.update_available && latest && (
-                  <Badge tone="warning">{t('maestroControl.latest')}: v{latest}</Badge>
+                  <Badge tone="warning">
+                    {t('maestroControl.latest')}: v{latest}
+                  </Badge>
                 )}
               </div>
             </div>
-            <Button size="sm" tone="ghost" onClick={() => void fetchStatus()} disabled={loading || updating}>
+            <Button
+              size="sm"
+              tone="ghost"
+              onClick={() => void fetchStatus()}
+              disabled={loading || updating}
+            >
               <RefreshCw size={12} className={loading ? 'nx-spin' : ''} />
             </Button>
           </div>
@@ -124,11 +137,15 @@ export const MaestroControlModal: React.FC<{
         </div>
 
         {updateResult && (
-          <InlineAlert tone={updateResult.maestro_updated ? 'success' : 'info'} title={t('maestroControl.updateResult')}>
+          <InlineAlert
+            tone={updateResult.maestro_updated ? 'success' : 'info'}
+            title={t('maestroControl.updateResult')}
+          >
             {updateResult.maestro_updated
               ? t('maestroControl.updateMaestroDone', { version: updateResult.maestro_version })
-              : t('maestroControl.updateMaestroSame', { version: updateResult.maestro_version })}
-            {' '}
+              : t('maestroControl.updateMaestroSame', {
+                  version: updateResult.maestro_version,
+                })}{' '}
             {t('maestroControl.nexusBinaryNote', { version: updateResult.nexus_version })}
           </InlineAlert>
         )}
@@ -141,7 +158,9 @@ export const MaestroControlModal: React.FC<{
         <div className="nx-maestro-skills-section">
           <div className="nx-section-header">
             <Layers size={14} />
-            <h4>{t('maestroControl.skillsTitle')} ({skills.length})</h4>
+            <h4>
+              {t('maestroControl.skillsTitle')} ({skills.length})
+            </h4>
           </div>
           {skills.length === 0 ? (
             <p className="nx-maestro-subtitle">{t('maestroControl.noSkills')}</p>

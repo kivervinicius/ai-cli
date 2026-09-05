@@ -129,7 +129,7 @@ export const NewAgentModal: React.FC<{
   const [provider, setProvider] = useState(CANONICAL_AGENT_TYPES[1].defaultProvider);
   const [mode, setMode] = useState<'Safe' | 'YOLO'>('Safe');
   const [commandTemplate, setCommandTemplate] = useState(
-    'docker exec -it -w "{cwd}" vpn-dev-workspace-terminal-1 opencode {args}'
+    'docker exec -it -w "{cwd}" vpn-dev-workspace-terminal-1 opencode {args}',
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -175,16 +175,13 @@ export const NewAgentModal: React.FC<{
         configOptions.execution_adapter = 'native_alias';
       }
 
-      await nexus.applyAgentConfig(
-        created.id,
-        {
-          provider: origin === 'custom' ? 'opencode' : provider,
-          profile: 'default',
-          isolation: 'project',
-          workspace: project.canonical_path || undefined,
-          options: configOptions,
-        }
-      );
+      await nexus.applyAgentConfig(created.id, {
+        provider: origin === 'custom' ? 'opencode' : provider,
+        profile: 'default',
+        isolation: 'project',
+        workspace: project.canonical_path || undefined,
+        options: configOptions,
+      });
 
       onCreated(created);
       onClose();
@@ -197,15 +194,37 @@ export const NewAgentModal: React.FC<{
 
   return (
     <Dialog open={open} onClose={onClose} title="Novo Agente Especialista" wide>
-      <div style={{ display: 'grid', gap: '16px', maxHeight: '72vh', overflowY: 'auto', paddingRight: '4px' }}>
+      <div
+        style={{
+          display: 'grid',
+          gap: '16px',
+          maxHeight: '72vh',
+          overflowY: 'auto',
+          paddingRight: '4px',
+        }}
+      >
         {error && <Card className="nx-inline-error">{error}</Card>}
 
         {/* 1. Escolha da Especialidade */}
         <div>
-          <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '8px', color: 'var(--nx-text-soft)' }}>
+          <label
+            style={{
+              display: 'block',
+              fontSize: '12px',
+              fontWeight: 700,
+              marginBottom: '8px',
+              color: 'var(--nx-text-soft)',
+            }}
+          >
             1. Selecione a especialidade do agente
           </label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+              gap: '8px',
+            }}
+          >
             {CANONICAL_AGENT_TYPES.map((preset) => {
               const Icon = preset.icon;
               const isSelected = selectedType.id === preset.id;
@@ -245,7 +264,14 @@ export const NewAgentModal: React.FC<{
                   </span>
                   <div style={{ minWidth: 0 }}>
                     <strong style={{ fontSize: '12.5px', display: 'block' }}>{preset.name}</strong>
-                    <small style={{ fontSize: '11px', color: 'var(--nx-muted)', lineHeight: '1.3', display: 'block' }}>
+                    <small
+                      style={{
+                        fontSize: '11px',
+                        color: 'var(--nx-muted)',
+                        lineHeight: '1.3',
+                        display: 'block',
+                      }}
+                    >
                       {preset.description}
                     </small>
                   </div>
@@ -291,7 +317,9 @@ export const NewAgentModal: React.FC<{
 
           {origin === 'native' ? (
             <div style={{ display: 'grid', gap: '6px', marginTop: '4px' }}>
-              <label style={{ fontSize: '11.5px', color: 'var(--nx-muted)' }}>Provedor e Alias Nexus</label>
+              <label style={{ fontSize: '11.5px', color: 'var(--nx-muted)' }}>
+                Provedor e Alias Nexus
+              </label>
               <Select
                 value={provider}
                 onChange={(val) => setProvider(val)}
@@ -304,7 +332,8 @@ export const NewAgentModal: React.FC<{
           ) : (
             <div style={{ display: 'grid', gap: '6px', marginTop: '4px' }}>
               <label style={{ fontSize: '11.5px', color: 'var(--nx-muted)' }}>
-                Template de comando com placeholders (<code>{'{cwd}'}</code>, <code>{'{args}'}</code>)
+                Template de comando com placeholders (<code>{'{cwd}'}</code>,{' '}
+                <code>{'{args}'}</code>)
               </label>
               <Input
                 value={commandTemplate}
@@ -313,7 +342,10 @@ export const NewAgentModal: React.FC<{
                 placeholder='docker exec -it -w "{cwd}" vpn-dev-workspace-terminal-1 opencode {args}'
               />
               <small style={{ fontSize: '11px', color: 'var(--nx-subtle)' }}>
-                Use <code>{'{args}'}</code> como argumento separado. O Nexus não executa shell: operadores como <code>|</code> e <code>;</code> são bloqueados. Para OpenCode no Docker, a autenticação deve existir dentro do mesmo container (<code>opencode auth login &lt;provider&gt;</code>).
+                Use <code>{'{args}'}</code> como argumento separado. O Nexus não executa shell:
+                operadores como <code>|</code> e <code>;</code> são bloqueados. Para OpenCode no
+                Docker, a autenticação deve existir dentro do mesmo container (
+                <code>opencode auth login &lt;provider&gt;</code>).
               </small>
             </div>
           )}
@@ -341,19 +373,47 @@ export const NewAgentModal: React.FC<{
         </div>
 
         {/* 5. Preview do Comando Resolvido */}
-        <div style={{ padding: '10px', background: 'var(--nx-surface-3)', borderRadius: '8px', border: '1px solid var(--nx-border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', fontSize: '11.5px', color: 'var(--nx-subtle)' }}>
+        <div
+          style={{
+            padding: '10px',
+            background: 'var(--nx-surface-3)',
+            borderRadius: '8px',
+            border: '1px solid var(--nx-border)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              marginBottom: '4px',
+              fontSize: '11.5px',
+              color: 'var(--nx-subtle)',
+            }}
+          >
             <Terminal size={12} />
             <span>Comando supervisionado final:</span>
           </div>
-          <code style={{ fontSize: '12px', color: 'var(--nx-accent-text)', wordBreak: 'break-all' }}>
+          <code
+            style={{ fontSize: '12px', color: 'var(--nx-accent-text)', wordBreak: 'break-all' }}
+          >
             {resolvedPreview}
           </code>
         </div>
 
         {/* Ações */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '8px', borderTop: '1px solid var(--nx-border)' }}>
-          <Button onClick={onClose} disabled={busy}>Cancelar</Button>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: '8px',
+            paddingTop: '8px',
+            borderTop: '1px solid var(--nx-border)',
+          }}
+        >
+          <Button onClick={onClose} disabled={busy}>
+            Cancelar
+          </Button>
           <Button tone="brand" onClick={handleCreate} disabled={busy || !name.trim()}>
             <Play size={13} /> {busy ? 'Criando...' : 'Criar e Abrir Terminal'}
           </Button>

@@ -7,17 +7,44 @@ const checkpoint = {
   project_id: 'proj-1',
   goal: 'Build product',
   status: 'PENDING' as const,
-  intent: { intent: 'Build product', scope: 'project', risk_level: 'medium', identified_goals: [], constraints: [], assumptions: [], created_at: '' },
+  intent: {
+    intent: 'Build product',
+    scope: 'project',
+    risk_level: 'medium',
+    identified_goals: [],
+    constraints: [],
+    assumptions: [],
+    created_at: '',
+  },
   unknowns: [
-    { key: 'platform', level: 'BLOCKING' as const, question: 'Platform?', rationale: 'Changes architecture', suggested_options: ['web', 'mobile'], is_resolved: false },
-    { key: 'theme', level: 'LOW_IMPACT' as const, question: 'Theme?', rationale: '', default_choice: 'system', answer: 'system', is_resolved: true },
+    {
+      key: 'platform',
+      level: 'BLOCKING' as const,
+      question: 'Platform?',
+      rationale: 'Changes architecture',
+      suggested_options: ['web', 'mobile'],
+      is_resolved: false,
+    },
+    {
+      key: 'theme',
+      level: 'LOW_IMPACT' as const,
+      question: 'Theme?',
+      rationale: '',
+      default_choice: 'system',
+      answer: 'system',
+      is_resolved: true,
+    },
   ],
   facts: {},
 };
 
 describe('clarification model', () => {
   it('extracts a structured checkpoint only from clarification_required errors', () => {
-    const err = new NexusAPIError(409, { error: 'clarification_required', clarification: checkpoint }, 'clarification_required');
+    const err = new NexusAPIError(
+      409,
+      { error: 'clarification_required', clarification: checkpoint },
+      'clarification_required',
+    );
     expect(clarificationFromError(err)?.id).toBe('clr-1');
     expect(clarificationFromError(new Error('boom'))).toBeNull();
   });

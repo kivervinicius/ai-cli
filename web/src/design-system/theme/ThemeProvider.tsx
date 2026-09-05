@@ -28,7 +28,9 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 function loadPreferences(): ThemePreferences {
   if (typeof window === 'undefined') return defaultThemePreferences;
   try {
-    return normalizeThemePreferences(JSON.parse(window.localStorage.getItem(themeStorageKey) || 'null'));
+    return normalizeThemePreferences(
+      JSON.parse(window.localStorage.getItem(themeStorageKey) || 'null'),
+    );
   } catch {
     return defaultThemePreferences;
   }
@@ -36,7 +38,10 @@ function loadPreferences(): ThemePreferences {
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [preferences, setPreferences] = useState<ThemePreferences>(loadPreferences);
-  const [systemDark, setSystemDark] = useState(() => typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches);
+  const [systemDark, setSystemDark] = useState(
+    () =>
+      typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches,
+  );
 
   useEffect(() => {
     const media = window.matchMedia?.('(prefers-color-scheme: dark)');
@@ -73,23 +78,30 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [preferences, resolvedScheme]);
 
-  const value = useMemo<ThemeContextValue>(() => ({
-    ...preferences,
-    resolvedScheme,
-    setScheme: (scheme) => setPreferences((current) => ({ ...current, scheme, isCustomized: true })),
-    setAccent: (accent) => setPreferences((current) => ({ ...current, accent, isCustomized: true })),
-    setDensity: (density) => setPreferences((current) => ({ ...current, density })),
-    setReducedMotion: (reducedMotion) => setPreferences((current) => ({ ...current, reducedMotion })),
-    setPreset: (preset) => setPreferences((current) => {
-      const def = THEME_PRESETS[preset];
-      return {
-        ...current,
-        preset,
-        scheme: def ? def.scheme : current.scheme,
-        isCustomized: false, // Ao trocar de preset, restaura fidelidade total ao preset
-      };
+  const value = useMemo<ThemeContextValue>(
+    () => ({
+      ...preferences,
+      resolvedScheme,
+      setScheme: (scheme) =>
+        setPreferences((current) => ({ ...current, scheme, isCustomized: true })),
+      setAccent: (accent) =>
+        setPreferences((current) => ({ ...current, accent, isCustomized: true })),
+      setDensity: (density) => setPreferences((current) => ({ ...current, density })),
+      setReducedMotion: (reducedMotion) =>
+        setPreferences((current) => ({ ...current, reducedMotion })),
+      setPreset: (preset) =>
+        setPreferences((current) => {
+          const def = THEME_PRESETS[preset];
+          return {
+            ...current,
+            preset,
+            scheme: def ? def.scheme : current.scheme,
+            isCustomized: false, // Ao trocar de preset, restaura fidelidade total ao preset
+          };
+        }),
     }),
-  }), [preferences, resolvedScheme]);
+    [preferences, resolvedScheme],
+  );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 };

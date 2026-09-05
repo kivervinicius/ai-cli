@@ -21,7 +21,17 @@ export interface RuntimeSession {
   workspace: string;
   pid: number;
   host_pid: number;
-  state: 'STARTING' | 'RUNNING' | 'HANDOFF' | 'WAITING' | 'APPROVAL' | 'DETACHED' | 'STOPPING' | 'STOPPED' | 'FAILED' | 'STALE';
+  state:
+    | 'STARTING'
+    | 'RUNNING'
+    | 'HANDOFF'
+    | 'WAITING'
+    | 'APPROVAL'
+    | 'DETACHED'
+    | 'STOPPING'
+    | 'STOPPED'
+    | 'FAILED'
+    | 'STALE';
   control_level: string;
   control_endpoint: string;
   parent_runtime_id?: string;
@@ -109,7 +119,13 @@ export interface ProviderAccount {
     model_groups?: Array<{
       key?: string;
       name?: string;
-      windows?: Array<{ kind?: string; label?: string; remaining?: number; reset_desc?: string; status?: string }>;
+      windows?: Array<{
+        kind?: string;
+        label?: string;
+        remaining?: number;
+        reset_desc?: string;
+        status?: string;
+      }>;
     }>;
   };
 }
@@ -328,7 +344,17 @@ export interface WorkPackage {
   title: string;
   goal: string;
   priority: 'CRITICAL' | 'HIGH' | 'NORMAL' | 'LOW';
-  status: 'PENDING' | 'READY' | 'ALLOCATING' | 'COMPILING' | 'EXECUTING' | 'TESTING' | 'REVIEWING' | 'VERIFIED' | 'FAILED' | 'BLOCKED';
+  status:
+    | 'PENDING'
+    | 'READY'
+    | 'ALLOCATING'
+    | 'COMPILING'
+    | 'EXECUTING'
+    | 'TESTING'
+    | 'REVIEWING'
+    | 'VERIFIED'
+    | 'FAILED'
+    | 'BLOCKED';
   dependencies: string[];
   parallel_group?: string;
   role: string;
@@ -368,7 +394,13 @@ export interface WorkPlan {
   created_at: string;
   updated_at: string;
 }
-export interface FlowLeaderPolicy { role: string; preferred_agent_id?: string; strategy: 'EXISTING' | 'AUTO'; skills?: string[]; why?: string; }
+export interface FlowLeaderPolicy {
+  role: string;
+  preferred_agent_id?: string;
+  strategy: 'EXISTING' | 'AUTO';
+  skills?: string[];
+  why?: string;
+}
 
 export type IntelligenceMode = 'OFF' | 'CLI' | 'OPENAI_COMPATIBLE';
 
@@ -395,11 +427,68 @@ export interface ComposerSession {
   created_at: string;
   updated_at: string;
 }
-export interface ComposerTurn { id: string; session_id: string; sequence: number; role: 'USER' | 'ASSISTANT'; content: string; created_at: string; }
-export interface ComposerSkillProposal { session_id: string; skill_id: string; state: 'SUGGESTED' | 'ACCEPTED' | 'APPLIED' | 'REJECTED' | 'UNAVAILABLE'; reason: string; applicability: string; risk: string; updated_at: string; }
-export interface PromptArtifact { id: string; session_id: string; version: number; content: string; hash: string; context_json: string; skill_ids_json: string; created_at: string; }
-export interface PromptReadinessCheck { key: string; label: string; score: number; summary: string; }
-export interface ComposerSessionView { session: ComposerSession; brief: { goal: string; context?: string[] | Record<string, unknown>; constraints?: string[] | Record<string, unknown>; decisions?: string[]; assumptions?: Array<string | { value?: string; status?: string; confidence?: string }>; alternatives?: string[]; risks?: string[]; success_criteria?: string[]; open_questions?: string[]; intent?: { archetype?: string }; readiness?: { score: number; state: string; summary: string; checks?: PromptReadinessCheck[] }; unknowns?: Array<{ id: string; question: string; rationale?: string; severity: string; status: string; answer?: string; inferred_value?: string; confidence?: string }>; }; turns: ComposerTurn[]; skills: ComposerSkillProposal[]; artifacts?: PromptArtifact[]; }
+export interface ComposerTurn {
+  id: string;
+  session_id: string;
+  sequence: number;
+  role: 'USER' | 'ASSISTANT';
+  content: string;
+  created_at: string;
+}
+export interface ComposerSkillProposal {
+  session_id: string;
+  skill_id: string;
+  state: 'SUGGESTED' | 'ACCEPTED' | 'APPLIED' | 'REJECTED' | 'UNAVAILABLE';
+  reason: string;
+  applicability: string;
+  risk: string;
+  updated_at: string;
+}
+export interface PromptArtifact {
+  id: string;
+  session_id: string;
+  version: number;
+  content: string;
+  hash: string;
+  context_json: string;
+  skill_ids_json: string;
+  created_at: string;
+}
+export interface PromptReadinessCheck {
+  key: string;
+  label: string;
+  score: number;
+  summary: string;
+}
+export interface ComposerSessionView {
+  session: ComposerSession;
+  brief: {
+    goal: string;
+    context?: string[] | Record<string, unknown>;
+    constraints?: string[] | Record<string, unknown>;
+    decisions?: string[];
+    assumptions?: Array<string | { value?: string; status?: string; confidence?: string }>;
+    alternatives?: string[];
+    risks?: string[];
+    success_criteria?: string[];
+    open_questions?: string[];
+    intent?: { archetype?: string };
+    readiness?: { score: number; state: string; summary: string; checks?: PromptReadinessCheck[] };
+    unknowns?: Array<{
+      id: string;
+      question: string;
+      rationale?: string;
+      severity: string;
+      status: string;
+      answer?: string;
+      inferred_value?: string;
+      confidence?: string;
+    }>;
+  };
+  turns: ComposerTurn[];
+  skills: ComposerSkillProposal[];
+  artifacts?: PromptArtifact[];
+}
 
 export interface ClarificationUnknown {
   key: string;

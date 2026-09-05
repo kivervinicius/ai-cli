@@ -29,7 +29,12 @@ describe('workspace model', () => {
   });
 
   it('splits an existing stack with a new surface', () => {
-    const ws = splitWithSurface(createWorkspace(surface('home')), 'home', surface('terminal:a'), 'horizontal');
+    const ws = splitWithSurface(
+      createWorkspace(surface('home')),
+      'home',
+      surface('terminal:a'),
+      'horizontal',
+    );
     expect(ws.root.kind).toBe('split');
     if (ws.root.kind !== 'split') return;
     expect(ws.root.direction).toBe('horizontal');
@@ -37,10 +42,17 @@ describe('workspace model', () => {
   });
 
   it('moves a surface between stacks without duplication', () => {
-    let ws = splitWithSurface(createWorkspace(surface('home')), 'home', surface('terminal:a'), 'horizontal');
-    if (ws.root.kind !== 'split' || ws.root.second.kind !== 'stack') throw new Error('unexpected model');
+    let ws = splitWithSurface(
+      createWorkspace(surface('home')),
+      'home',
+      surface('terminal:a'),
+      'horizontal',
+    );
+    if (ws.root.kind !== 'split' || ws.root.second.kind !== 'stack')
+      throw new Error('unexpected model');
     ws = openSurface(ws, surface('plan'), ws.root.second.id);
-    const targetStack = ws.root.kind === 'split' && ws.root.first.kind === 'stack' ? ws.root.first.id : '';
+    const targetStack =
+      ws.root.kind === 'split' && ws.root.first.kind === 'stack' ? ws.root.first.id : '';
     ws = moveSurface(ws, 'plan', targetStack);
     expect(findStackContaining(ws.root, 'plan')?.id).toBe(targetStack);
     const all = JSON.stringify(ws.root).match(/"id":"plan"/g) ?? [];
@@ -48,7 +60,12 @@ describe('workspace model', () => {
   });
 
   it('closes a tab and collapses an empty split', () => {
-    let ws = splitWithSurface(createWorkspace(surface('home')), 'home', surface('terminal:a'), 'vertical');
+    let ws = splitWithSurface(
+      createWorkspace(surface('home')),
+      'home',
+      surface('terminal:a'),
+      'vertical',
+    );
     ws = closeSurface(ws, 'terminal:a');
     expect(ws.root.kind).toBe('stack');
     expect(findStackContaining(ws.root, 'home')?.activeId).toBe('home');
@@ -66,8 +83,16 @@ describe('workspace model', () => {
   });
 
   it('uses logical identity to focus an existing view instead of duplicating it', () => {
-    let ws = createWorkspace({ ...surface('overview-1'), logicalKey: 'project:p1:overview', viewId: 'view:overview' });
-    ws = openSurface(ws, { ...surface('overview-2'), logicalKey: 'project:p1:overview', viewId: 'view:overview-new' });
+    let ws = createWorkspace({
+      ...surface('overview-1'),
+      logicalKey: 'project:p1:overview',
+      viewId: 'view:overview',
+    });
+    ws = openSurface(ws, {
+      ...surface('overview-2'),
+      logicalKey: 'project:p1:overview',
+      viewId: 'view:overview-new',
+    });
     const stack = findStackContaining(ws.root, 'view:overview');
     expect(stack?.tabs).toHaveLength(1);
     expect(surfaceLogicalKey(stack!.tabs[0])).toBe('project:p1:overview');
@@ -96,7 +121,13 @@ describe('workspace model', () => {
   });
 
   it('finds a migrated surface by legacy id and stable view id', () => {
-    const ws = createWorkspace({ id: 'legacy-agent', viewId: 'view:agent:1', logicalKey: 'agent:1:terminal', type: 'terminal', title: 'Agent' });
+    const ws = createWorkspace({
+      id: 'legacy-agent',
+      viewId: 'view:agent:1',
+      logicalKey: 'agent:1:terminal',
+      type: 'terminal',
+      title: 'Agent',
+    });
     expect(findStackContaining(ws.root, 'legacy-agent')).not.toBeNull();
     expect(findStackContaining(ws.root, 'view:agent:1')).not.toBeNull();
     expect(findStackContaining(ws.root, 'agent:1:terminal')).not.toBeNull();
@@ -109,11 +140,20 @@ describe('workspace model', () => {
   });
 
   it('flattens split layouts into a single stack and drops maximize', () => {
-    let ws = splitWithSurface(createWorkspace(surface('home')), 'home', surface('terminal:a'), 'horizontal');
+    let ws = splitWithSurface(
+      createWorkspace(surface('home')),
+      'home',
+      surface('terminal:a'),
+      'horizontal',
+    );
     ws = { ...ws, maximizedSurfaceId: 'home' };
     const flat = flattenToSingleStack(ws);
     expect(flat.root.kind).toBe('stack');
     expect(flat.maximizedSurfaceId).toBeUndefined();
-    expect(listSurfaces(flat.root).map((tab) => tab.id).sort()).toEqual(['home', 'terminal:a']);
+    expect(
+      listSurfaces(flat.root)
+        .map((tab) => tab.id)
+        .sort(),
+    ).toEqual(['home', 'terminal:a']);
   });
 });

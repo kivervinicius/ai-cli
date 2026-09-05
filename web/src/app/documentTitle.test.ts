@@ -32,7 +32,7 @@ describe('buildDocumentTitle', () => {
       }),
     ];
     expect(buildDocumentTitle('proxy-nginx', runtimes)).toBe(
-      'Nexus · proxy-nginx · Deseja executar a migração? [y/N]'
+      'Nexus · proxy-nginx · Deseja executar a migração? [y/N]',
     );
   });
 

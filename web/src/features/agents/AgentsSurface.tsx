@@ -1,5 +1,15 @@
 import React, { useState } from 'react';
-import { Bot, MessageSquareText, Play, Plus, RotateCcw, Settings2, Square, TerminalSquare, Trash2 } from 'lucide-react';
+import {
+  Bot,
+  MessageSquareText,
+  Play,
+  Plus,
+  RotateCcw,
+  Settings2,
+  Square,
+  TerminalSquare,
+  Trash2,
+} from 'lucide-react';
 import { Badge, Button, Card, ConfirmDialog, Dialog, EmptyState, Input } from '../../design-system';
 import { nexus } from '../../nexus/api';
 import { ResourcePicker } from '../../nexus/ResourcePicker';
@@ -55,7 +65,8 @@ export const AgentsSurface: React.FC<{
       await refresh();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (kind === 'start' && message.includes('REQUIRED_RESOURCE_SELECTION')) setResourceAgent(agent);
+      if (kind === 'start' && message.includes('REQUIRED_RESOURCE_SELECTION'))
+        setResourceAgent(agent);
       else setError(message);
     } finally {
       setBusy('');
@@ -120,13 +131,19 @@ export const AgentsSurface: React.FC<{
       </div>
       {error && <Card className="nx-inline-error">{error}</Card>}
       {agents.length === 0 ? (
-        <EmptyState icon={<Bot size={22} />} title={t('agents.empty')} hint={t('agents.emptyHint')} />
+        <EmptyState
+          icon={<Bot size={22} />}
+          title={t('agents.empty')}
+          hint={t('agents.emptyHint')}
+        />
       ) : (
         <div className="nx-agent-grid">
           {agents.map((agent) => (
             <Card key={agent.id} className="nx-agent-card">
               <div className="nx-agent-card__head">
-                <span className="nx-agent-avatar nx-agent-avatar--large">{(agent.name || 'AG').slice(0, 2).toUpperCase()}</span>
+                <span className="nx-agent-avatar nx-agent-avatar--large">
+                  {(agent.name || 'AG').slice(0, 2).toUpperCase()}
+                </span>
                 <div>
                   <strong>{agent.name || agent.id}</strong>
                   <small>
@@ -152,19 +169,39 @@ export const AgentsSurface: React.FC<{
                   <Settings2 size={13} /> {t('agents.configure')}
                 </Button>
                 {agent.status === 'WORKING' ? (
-                  <Button size="sm" tone="danger" disabled={busy === agent.id} onClick={() => void action(agent, 'stop')}>
+                  <Button
+                    size="sm"
+                    tone="danger"
+                    disabled={busy === agent.id}
+                    onClick={() => void action(agent, 'stop')}
+                  >
                     <Square size={12} /> {t('agents.stop')}
                   </Button>
                 ) : agent.status === 'RECOVERABLE' ? (
-                  <Button size="sm" tone="warning" disabled={busy === agent.id} onClick={() => void action(agent, 'recover')}>
+                  <Button
+                    size="sm"
+                    tone="warning"
+                    disabled={busy === agent.id}
+                    onClick={() => void action(agent, 'recover')}
+                  >
                     <RotateCcw size={13} /> {t('agents.recover')}
                   </Button>
                 ) : (
-                  <Button size="sm" tone="brand" disabled={busy === agent.id} onClick={() => void action(agent, 'start')}>
+                  <Button
+                    size="sm"
+                    tone="brand"
+                    disabled={busy === agent.id}
+                    onClick={() => void action(agent, 'start')}
+                  >
                     <Play size={13} /> {t('agents.start')}
                   </Button>
                 )}
-                <Button size="sm" tone="danger" disabled={busy === agent.id} onClick={() => void remove(agent)}>
+                <Button
+                  size="sm"
+                  tone="danger"
+                  disabled={busy === agent.id}
+                  onClick={() => void remove(agent)}
+                >
                   <Trash2 size={13} /> {t('agents.remove')}
                 </Button>
               </div>

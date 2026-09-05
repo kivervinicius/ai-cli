@@ -132,7 +132,7 @@ describe('planFocusAttention', () => {
   it('switches project then opens agent terminal by agent_id', () => {
     const actions = planFocusAttention(
       { projectId: 'p2', agentId: 'ag-9', runtimeId: 'rt-9' },
-      { currentProjectId: 'p1', agentName: 'Backend' }
+      { currentProjectId: 'p1', agentName: 'Backend' },
     );
     expect(actions).toEqual([
       { type: 'switch-project', projectId: 'p2' },
@@ -147,10 +147,15 @@ describe('planFocusAttention', () => {
       {
         currentProjectId: 'p1',
         runtime: rt({ runtime_id: 'rt-shell', project_id: 'p1', title: 'Project Shell' }),
-      }
+      },
     );
     expect(actions).toEqual([
-      { type: 'open-project-shell', projectId: 'p1', runtimeId: 'rt-shell', title: 'Project Shell' },
+      {
+        type: 'open-project-shell',
+        projectId: 'p1',
+        runtimeId: 'rt-shell',
+        title: 'Project Shell',
+      },
       { type: 'refresh-agents', projectId: 'p1' },
     ]);
   });

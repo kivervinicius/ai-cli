@@ -3,20 +3,83 @@ MODULE=github.com/kivervinicius/ai-cli
 HOST_LOCAL_BIN = /home/desenvolvedor/.local/bin
 LOCAL_BIN ?= $(HOST_LOCAL_BIN)
 
-.PHONY: all build web web-verify test race vet lint install install-local release-local bump clean
+.PHONY: all build web web-verify test race vet install install-local release-local bump clean format format-check lint-frontend lint-styles lint-styles-fix lint-fix lint-go typecheck test-frontend test-go test-e2e security quality quality-full golangci-lint
 
 all: build
 
 bump:
 	@echo "Version bumps are managed by: make release-local"
 
+# ─── Frontend ───────────────────────────────────────────────────────
+
 web:
 	@echo "Building frontend..."
 	@cd web && node scripts/build.mjs
-	@echo "✓ Frontend bundle ready for embedding"
+	@echo "Frontend bundle ready for embedding"
 
 web-verify:
 	@cd web && node scripts/verify-report.mjs
+
+lint-frontend:
+	@cd web && npx eslint src
+
+lint-styles:
+	@cd web && npx stylelint "src/**/*.css"
+
+lint-styles-fix:
+	@cd web && npx stylelint "src/**/*.css" --fix
+
+lint-fix:
+	@cd web && npx eslint src --fix
+
+typecheck:
+	@cd web && npx tsc --noEmit
+
+test-frontend:
+	@cd web && npx vitest run
+
+test-go:
+	@go test -v ./...
+
+test-e2e:
+	@go test -race -v -count=1 ./internal/control/terminal/... ./internal/control/protocol/... ./internal/control/host/... ./internal/control/web/...
+
+race:
+	@go test -race ./...
+
+# ─── Formatting ─────────────────────────────────────────────────────
+
+format:
+	@cd web && npx prettier --write "src/**/*.{ts,tsx,css,json}"
+	@gofmt -w -s .
+
+format-check:
+	@cd web && npx prettier --check "src/**/*.{ts,tsx,json}"
+	@test -z "$$(gofmt -l . | grep -v .worktrees)" || (gofmt -l . | grep -v .worktrees && exit 1)
+
+# ─── Go linting ─────────────────────────────────────────────────────
+
+lint-go:
+	@PATH="$(HOME)/go/bin:$(PATH)" golangci-lint run ./...
+
+golangci-lint:
+	@PATH="$(HOME)/go/bin:$(PATH)" golangci-lint run ./...
+
+vet:
+	@go vet ./...
+
+# ─── Security ───────────────────────────────────────────────────────
+
+security:
+	@PATH="$(HOME)/go/bin:$(PATH)" govulncheck ./...
+
+# ─── Quality gates ──────────────────────────────────────────────────
+
+quality: format-check lint-frontend lint-styles typecheck lint-go test-go test-frontend
+
+quality-full: quality race security
+
+# ─── Build ──────────────────────────────────────────────────────────
 
 build: web
 	@set -e; VERSION=$$(cat VERSION 2>/dev/null || echo "dev"); \
@@ -31,7 +94,7 @@ build: web
 	chmod +x $(LOCAL_BIN)/$(BINARY).tmp; \
 	mv -f $(LOCAL_BIN)/$(BINARY).tmp $(LOCAL_BIN)/$(BINARY); \
 	ln -sf $(LOCAL_BIN)/$(BINARY) $(LOCAL_BIN)/ai; \
-	echo "✓ Built and installed $(BINARY) v$$VERSION to $(LOCAL_BIN)/$(BINARY) (alias: ai)"
+	echo "Built and installed $(BINARY) v$$VERSION to $(LOCAL_BIN)/$(BINARY) (alias: ai)"
 
 release-local:
 	go run ./cmd/nexus release
@@ -41,18 +104,6 @@ install: build
 		install -d $(DESTDIR)/usr/local/bin; \
 		install -m 755 $(BINARY) $(DESTDIR)/usr/local/bin/$(BINARY); \
 	fi
-
-test:
-	go test -v ./...
-
-race:
-	go test -race ./...
-
-vet:
-	go vet ./...
-
-lint:
-	go vet ./...
 
 clean:
 	rm -f $(BINARY)

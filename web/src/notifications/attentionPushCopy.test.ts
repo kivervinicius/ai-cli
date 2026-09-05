@@ -9,9 +9,9 @@ describe('attention push copy', () => {
         promptKind: 'yn',
         agentName: 'Codex · revise o projeto',
         context: 'Continue anyway? [y/N]:',
-      })
+      }),
     ).toBe(
-      'Codex · revise o projeto pede confirmação (Sim/Não): Continue anyway? [y/N]: — Abra o Nexus e responda no terminal.'
+      'Codex · revise o projeto pede confirmação (Sim/Não): Continue anyway? [y/N]: — Abra o Nexus e responda no terminal.',
     );
   });
 
@@ -23,7 +23,7 @@ describe('attention push copy', () => {
         reason: 'QUESTION',
         promptKind: 'yn',
         context: 'Continue anyway? [y/N]:',
-      })
+      }),
     ).toBe(false);
   });
 
@@ -35,7 +35,7 @@ describe('attention push copy', () => {
         reason: 'QUESTION',
         promptKind: 'yn',
         context: 'Continue anyway? [y/N]:',
-      })
+      }),
     ).toBe(true);
   });
 });

@@ -10,29 +10,39 @@ export const MissionAutonomyCard: React.FC<{
   onChange: (value: AutonomyContract) => void;
 }> = ({ value, onChange }) => {
   const { t } = useTranslation();
-  const patch = <K extends keyof AutonomyContract,>(key: K, next: AutonomyContract[K]) => {
+  const patch = <K extends keyof AutonomyContract>(key: K, next: AutonomyContract[K]) => {
     onChange({ ...value, [key]: next });
   };
 
-  const toggle = (key: keyof Pick<AutonomyContract,
-    | 'auto_remediate'
-    | 'require_verification'
-    | 'disallow_destructive_git'
-    | 'escalate_on_failure'
-    | 'allow_tool_auto_approval'
-    | 'allow_git_push'
-    | 'allow_deploy'
-    | 'allow_external_network'
-    | 'allow_secret_access'
-    | 'allow_paid_services'>, label: string, dangerous = false) => (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}>
+  const toggle = (
+    key: keyof Pick<
+      AutonomyContract,
+      | 'auto_remediate'
+      | 'require_verification'
+      | 'disallow_destructive_git'
+      | 'escalate_on_failure'
+      | 'allow_tool_auto_approval'
+      | 'allow_git_push'
+      | 'allow_deploy'
+      | 'allow_external_network'
+      | 'allow_secret_access'
+      | 'allow_paid_services'
+    >,
+    label: string,
+    dangerous = false,
+  ) => (
+    <label
+      style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}
+    >
       <input
         type="checkbox"
         checked={value[key]}
         onChange={(event) => patch(key, event.target.checked)}
       />
       <span>{label}</span>
-      {dangerous && value[key] ? <Badge tone="warning">{t('autonomyContract.explicitlyAllowed')}</Badge> : null}
+      {dangerous && value[key] ? (
+        <Badge tone="warning">{t('autonomyContract.explicitlyAllowed')}</Badge>
+      ) : null}
     </label>
   );
 
@@ -56,19 +66,35 @@ export const MissionAutonomyCard: React.FC<{
         min={min}
         value={value[key]}
         onChange={(event) => patch(key, Math.max(min, Number(event.target.value) || min))}
-        style={{ padding: '7px 8px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'inherit' }}
+        style={{
+          padding: '7px 8px',
+          borderRadius: 6,
+          border: '1px solid var(--color-border)',
+          background: 'var(--color-surface)',
+          color: 'inherit',
+        }}
       />
     </label>
   );
 
   return (
     <Card style={{ padding: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: 10,
+          alignItems: 'center',
+          marginBottom: 10,
+        }}
+      >
         <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
           <ShieldCheck size={15} /> {t('autonomyContract.title')}
         </div>
         <Badge tone={sensitiveEnabled > 0 ? 'warning' : 'success'}>
-          {sensitiveEnabled > 0 ? t('autonomyContract.sensitiveGrants', { count: sensitiveEnabled }) : t('autonomyContract.localFirst')}
+          {sensitiveEnabled > 0
+            ? t('autonomyContract.sensitiveGrants', { count: sensitiveEnabled })
+            : t('autonomyContract.localFirst')}
         </Badge>
       </div>
       <p style={{ margin: '0 0 12px', fontSize: 11, color: 'var(--color-text-muted)' }}>
@@ -91,7 +117,9 @@ export const MissionAutonomyCard: React.FC<{
       </div>
 
       <details style={{ marginBottom: 12 }}>
-        <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>{t('autonomyContract.sensitivePerms')}</summary>
+        <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+          {t('autonomyContract.sensitivePerms')}
+        </summary>
         <div style={{ display: 'grid', gap: 7, paddingTop: 8 }}>
           {toggle('allow_git_push', t('autonomyContract.allowGitPush'), true)}
           {toggle('allow_deploy', t('autonomyContract.allowDeploy'), true)}
@@ -101,14 +129,29 @@ export const MissionAutonomyCard: React.FC<{
         </div>
       </details>
 
-      <label style={{ display: 'grid', gap: 4, fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 10 }}>
+      <label
+        style={{
+          display: 'grid',
+          gap: 4,
+          fontSize: 11,
+          color: 'var(--color-text-muted)',
+          marginBottom: 10,
+        }}
+      >
         <span>{t('autonomyContract.allowedFilePatterns')}</span>
         <textarea
           rows={3}
           value={listToLines(value.allowed_file_patterns)}
           onChange={(event) => patch('allowed_file_patterns', linesToList(event.target.value))}
           placeholder={'src/**\ntests/**'}
-          style={{ padding: 8, borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'inherit', resize: 'vertical' }}
+          style={{
+            padding: 8,
+            borderRadius: 6,
+            border: '1px solid var(--color-border)',
+            background: 'var(--color-surface)',
+            color: 'inherit',
+            resize: 'vertical',
+          }}
         />
       </label>
 
@@ -120,7 +163,14 @@ export const MissionAutonomyCard: React.FC<{
           onChange={(event) => patch('verification_commands', linesToList(event.target.value))}
           placeholder={'go test ./...\nnpm test'}
           disabled={!value.require_verification}
-          style={{ padding: 8, borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'inherit', resize: 'vertical' }}
+          style={{
+            padding: 8,
+            borderRadius: 6,
+            border: '1px solid var(--color-border)',
+            background: 'var(--color-surface)',
+            color: 'inherit',
+            resize: 'vertical',
+          }}
         />
       </label>
     </Card>

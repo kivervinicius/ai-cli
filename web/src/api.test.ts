@@ -8,12 +8,15 @@ describe('api request layer', () => {
   });
 
   it('throws on non-ok responses', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: false,
-      status: 401,
-      statusText: 'Unauthorized',
-      json: () => Promise.resolve({ error: 'authentication required' }),
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        json: () => Promise.resolve({ error: 'authentication required' }),
+      }),
+    );
 
     await expect(api.getWorkspaces()).rejects.toThrow('authentication required');
   });

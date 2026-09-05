@@ -61,7 +61,10 @@ export const MANAGED_THEME_COLOR_VARS = [
   '--nx-info-soft',
 ] as const;
 
-export const SCHEME_OVERRIDE_VARS: Record<Exclude<ThemeScheme, 'system'>, Record<string, string>> = {
+export const SCHEME_OVERRIDE_VARS: Record<
+  Exclude<ThemeScheme, 'system'>,
+  Record<string, string>
+> = {
   dark: {
     '--nx-bg': '#080a0f',
     '--nx-bg-elevated': '#0c0f15',
@@ -130,13 +133,16 @@ export const ACCENT_OVERRIDE_VARS: Record<ThemeAccent, Record<string, string>> =
   },
 };
 
-export function resolveScheme(scheme: ThemeScheme, systemDark: boolean): Exclude<ThemeScheme, 'system'> {
+export function resolveScheme(
+  scheme: ThemeScheme,
+  systemDark: boolean,
+): Exclude<ThemeScheme, 'system'> {
   return scheme === 'system' ? (systemDark ? 'dark' : 'light') : scheme;
 }
 
 export function resolveThemeStyleVariables(
   prefs: ThemePreferences,
-  resolvedScheme: Exclude<ThemeScheme, 'system'>
+  resolvedScheme: Exclude<ThemeScheme, 'system'>,
 ): Record<string, string> {
   const presetKey = prefs.preset || defaultThemePreferences.preset;
   const preset = THEME_PRESETS[presetKey] || THEME_PRESETS['nexus-dark'];
@@ -168,20 +174,29 @@ export function getThemePresetPalette(preset: ThemeDefinition): ThemeColorPalett
   };
 }
 
-export function normalizeThemePreferences(input?: Partial<ThemePreferences> | null): ThemePreferences {
+export function normalizeThemePreferences(
+  input?: Partial<ThemePreferences> | null,
+): ThemePreferences {
   const schemes: ThemeScheme[] = ['system', 'dark', 'light', 'high-contrast'];
   const accents: ThemeAccent[] = ['purple', 'blue', 'cyan', 'neutral'];
   const densities: ThemeDensity[] = ['compact', 'comfortable'];
   const presetKeys = Object.keys(THEME_PRESETS) as ThemePresetKey[];
 
   return {
-    scheme: schemes.includes(input?.scheme as ThemeScheme) ? input!.scheme! : defaultThemePreferences.scheme,
-    accent: accents.includes(input?.accent as ThemeAccent) ? input!.accent! : defaultThemePreferences.accent,
-    density: densities.includes(input?.density as ThemeDensity) ? input!.density! : defaultThemePreferences.density,
+    scheme: schemes.includes(input?.scheme as ThemeScheme)
+      ? input!.scheme!
+      : defaultThemePreferences.scheme,
+    accent: accents.includes(input?.accent as ThemeAccent)
+      ? input!.accent!
+      : defaultThemePreferences.accent,
+    density: densities.includes(input?.density as ThemeDensity)
+      ? input!.density!
+      : defaultThemePreferences.density,
     reducedMotion: Boolean(input?.reducedMotion),
-    preset: input?.preset && presetKeys.includes(input.preset as ThemePresetKey)
-      ? (input.preset as ThemePresetKey)
-      : defaultThemePreferences.preset,
+    preset:
+      input?.preset && presetKeys.includes(input.preset as ThemePresetKey)
+        ? (input.preset as ThemePresetKey)
+        : defaultThemePreferences.preset,
     isCustomized: Boolean(input?.isCustomized),
   };
 }

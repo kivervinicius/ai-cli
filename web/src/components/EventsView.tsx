@@ -29,7 +29,10 @@ export const EventsView: React.FC<EventsViewProps> = ({ events }) => {
           {t('legacy.auditEventLog', 'Runtime Audit Event Log')}
         </h2>
         <span className="text-xs font-mono" style={{ color: 'var(--nx-muted)' }}>
-          {t('legacy.eventsRecorded', { count: events.length, defaultValue: `${events.length} events recorded` })}
+          {t('legacy.eventsRecorded', {
+            count: events.length,
+            defaultValue: `${events.length} events recorded`,
+          })}
         </span>
       </div>
 
@@ -45,7 +48,10 @@ export const EventsView: React.FC<EventsViewProps> = ({ events }) => {
               className="p-3 transition hover:bg-[var(--nx-surface-2)]"
               style={{ borderBottom: '1px solid var(--nx-border)' }}
             >
-              <div className="flex items-center justify-between" style={{ color: 'var(--nx-text-soft)' }}>
+              <div
+                className="flex items-center justify-between"
+                style={{ color: 'var(--nx-text-soft)' }}
+              >
                 <div className="flex items-center space-x-2">
                   <span
                     className="text-[10px] px-1.5 py-0.5 rounded font-bold"

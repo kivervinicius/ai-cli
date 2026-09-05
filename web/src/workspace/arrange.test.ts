@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { applySharedEdgeDelta, arrangeSmart, findTileSplitters, scaleTilesToCanvas } from './arrange';
+import {
+  applySharedEdgeDelta,
+  arrangeSmart,
+  findTileSplitters,
+  scaleTilesToCanvas,
+} from './arrange';
 
 const bounds = { x: 8, y: 8, width: 1000, height: 600 };
 
@@ -55,7 +60,11 @@ describe('findTileSplitters', () => {
     const tiles = arrangeSmart(bounds, ['a', 'b', 'c']);
     const splitters = findTileSplitters(tiles);
     expect(splitters.some((s) => s.orientation === 'vertical' && s.firstId === 'a')).toBe(true);
-    expect(splitters.some((s) => s.orientation === 'horizontal' && s.firstId === 'b' && s.secondId === 'c')).toBe(true);
+    expect(
+      splitters.some(
+        (s) => s.orientation === 'horizontal' && s.firstId === 'b' && s.secondId === 'c',
+      ),
+    ).toBe(true);
   });
 });
 

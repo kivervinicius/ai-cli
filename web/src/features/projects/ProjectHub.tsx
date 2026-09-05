@@ -124,7 +124,9 @@ export const ProjectHub: React.FC<{ onCreated: (project: Project) => void }> = (
               className="nx-hub-template-card"
               onClick={() => create('/projetos/saas-app', 'Fullstack SaaS App')}
             >
-              <div className="nx-hub-template-icon"><Layers size={16} /></div>
+              <div className="nx-hub-template-icon">
+                <Layers size={16} />
+              </div>
               <div>
                 <strong>{t('projectManager.templateFullstack')}</strong>
                 <small>React + Go/Node + Maestro</small>
@@ -136,7 +138,9 @@ export const ProjectHub: React.FC<{ onCreated: (project: Project) => void }> = (
               className="nx-hub-template-card"
               onClick={() => create('/projetos/api-service', 'Core API Service')}
             >
-              <div className="nx-hub-template-icon"><Zap size={16} /></div>
+              <div className="nx-hub-template-icon">
+                <Zap size={16} />
+              </div>
               <div>
                 <strong>{t('projectManager.templateApi')}</strong>
                 <small>REST / gRPC with TDD engine</small>
@@ -148,7 +152,9 @@ export const ProjectHub: React.FC<{ onCreated: (project: Project) => void }> = (
               className="nx-hub-template-card"
               onClick={() => create('/projetos/cli-tool', 'Developer CLI Tool')}
             >
-              <div className="nx-hub-template-icon"><Bot size={16} /></div>
+              <div className="nx-hub-template-icon">
+                <Bot size={16} />
+              </div>
               <div>
                 <strong>{t('projectManager.templateCli')}</strong>
                 <small>CLI Tool with tests</small>

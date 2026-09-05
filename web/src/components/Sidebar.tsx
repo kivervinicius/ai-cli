@@ -1,7 +1,17 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Workspace } from '../types';
-import { LayoutDashboard, Terminal, Cpu, History, FolderGit2, ShieldCheck, Plus, Trash2, ExternalLink } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Terminal,
+  Cpu,
+  History,
+  FolderGit2,
+  ShieldCheck,
+  Plus,
+  Trash2,
+  ExternalLink,
+} from 'lucide-react';
 
 interface SidebarProps {
   currentTab: string;
@@ -40,7 +50,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
   const navItems = [
     { id: 'dashboard', label: t('nav.overview', 'Dashboard'), icon: LayoutDashboard },
-    { id: 'terminals', label: t('nav.terminals', 'Terminals'), icon: Terminal, badge: runtimeCount > 0 ? runtimeCount : undefined },
+    {
+      id: 'terminals',
+      label: t('nav.terminals', 'Terminals'),
+      icon: Terminal,
+      badge: runtimeCount > 0 ? runtimeCount : undefined,
+    },
     { id: 'runtimes', label: t('nav.runtimes', 'Runtimes'), icon: Cpu },
     { id: 'providers', label: t('nav.providers', 'Providers'), icon: ShieldCheck },
     { id: 'events', label: t('nav.events', 'Event Log'), icon: History },
@@ -60,26 +75,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
         className="p-4 flex items-center space-x-3"
         style={{ borderBottom: '1px solid var(--nx-border)' }}
       >
-        <div className="w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0"
-             style={{ background: 'var(--nx-surface-2)', border: '1px solid var(--nx-border)' }}>
-          <img
-            src="./nexus-icon.png"
-            alt="IAPro Nexus"
-            className="w-full h-full object-contain"
-          />
+        <div
+          className="w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0"
+          style={{ background: 'var(--nx-surface-2)', border: '1px solid var(--nx-border)' }}
+        >
+          <img src="./nexus-icon.png" alt="IAPro Nexus" className="w-full h-full object-contain" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center space-x-1.5">
-            <h1 className="text-sm font-extrabold iapro-gradient-text tracking-wide truncate">IAPro</h1>
-            <span className="text-[10px] font-bold tracking-wider" style={{ color: 'var(--nx-text-soft)' }}>NEXUS</span>
+            <h1 className="text-sm font-extrabold iapro-gradient-text tracking-wide truncate">
+              IAPro
+            </h1>
+            <span
+              className="text-[10px] font-bold tracking-wider"
+              style={{ color: 'var(--nx-text-soft)' }}
+            >
+              NEXUS
+            </span>
           </div>
-          <p className="text-[10px] font-mono font-medium truncate" style={{ color: 'var(--nx-accent-text)' }}>Workspace OS</p>
+          <p
+            className="text-[10px] font-mono font-medium truncate"
+            style={{ color: 'var(--nx-accent-text)' }}
+          >
+            Workspace OS
+          </p>
         </div>
       </div>
 
       {/* Navigation Links */}
       <div className="p-3 space-y-1">
-        <div className="px-3 py-1.5 text-[10px] font-semibold font-mono tracking-wider uppercase" style={{ color: 'var(--nx-subtle)' }}>
+        <div
+          className="px-3 py-1.5 text-[10px] font-semibold font-mono tracking-wider uppercase"
+          style={{ color: 'var(--nx-subtle)' }}
+        >
           {t('shell.navigation', 'Navigation')}
         </div>
         {navItems.map((item) => {
@@ -99,7 +127,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }}
             >
               <div className="flex items-center space-x-2.5">
-                <Icon className="w-4 h-4" style={{ color: isActive ? 'var(--nx-accent-text)' : 'var(--nx-muted)' }} />
+                <Icon
+                  className="w-4 h-4"
+                  style={{ color: isActive ? 'var(--nx-accent-text)' : 'var(--nx-muted)' }}
+                />
                 <span className={isActive ? 'font-semibold' : ''}>{item.label}</span>
               </div>
               {item.badge !== undefined && (
@@ -216,7 +247,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="flex-1 text-left truncate min-w-0"
                 >
                   <div className="truncate font-medium">{ws.name}</div>
-                  <div className="truncate text-[10px] font-mono" style={{ color: 'var(--nx-muted)' }}>{ws.path}</div>
+                  <div
+                    className="truncate text-[10px] font-mono"
+                    style={{ color: 'var(--nx-muted)' }}
+                  >
+                    {ws.path}
+                  </div>
                 </button>
                 {onRemoveWorkspace && workspaces.length > 1 && (
                   <button

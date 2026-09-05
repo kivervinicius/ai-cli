@@ -7,7 +7,7 @@ export function agentTerminalWebSocketURL(
   protocol: string,
   host: string,
   agentId: string,
-  runtimeId?: string
+  runtimeId?: string,
 ): string {
   const base = `${protocol === 'https:' ? 'wss:' : 'ws:'}//${host}/api/v1/agents/${encodeURIComponent(agentId)}/terminal`;
   const trimmed = (runtimeId || '').trim();
@@ -21,7 +21,7 @@ export function normalizeTerminalRole(role: unknown): TerminalRole {
 
 export function terminalReconnectDelay(attempt: number): number {
   const safeAttempt = Number.isFinite(attempt) ? Math.max(0, Math.floor(attempt)) : 0;
-  return Math.min(3000, 250 * (2 ** safeAttempt));
+  return Math.min(3000, 250 * 2 ** safeAttempt);
 }
 
 export function normalizeInitialPrompt(prompt?: string): string {
@@ -110,8 +110,9 @@ export function runtimeIdFromRecoverResult(result: unknown): string {
   const record = result as { runtime_id?: unknown; runtime?: { runtime_id?: unknown } };
   const direct = typeof record.runtime_id === 'string' ? record.runtime_id.trim() : '';
   if (direct) return direct;
-  const nested = record.runtime && typeof record.runtime.runtime_id === 'string'
-    ? record.runtime.runtime_id.trim()
-    : '';
+  const nested =
+    record.runtime && typeof record.runtime.runtime_id === 'string'
+      ? record.runtime.runtime_id.trim()
+      : '';
   return nested;
 }

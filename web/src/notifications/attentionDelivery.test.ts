@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { ATTENTION_ATTACH_WS_ROLE, ATTENTION_PUSH_AUTHORITY, isPtyAttentionFocused } from './attentionDelivery';
+import {
+  ATTENTION_ATTACH_WS_ROLE,
+  ATTENTION_PUSH_AUTHORITY,
+  isPtyAttentionFocused,
+} from './attentionDelivery';
 
 describe('attention delivery contract', () => {
   it('documents a single browser push authority and display-only attach WS', () => {
@@ -15,7 +19,7 @@ describe('attention delivery contract', () => {
         agentViewId: 'view:agent:a1:terminal',
         stackActiveIds,
         activePtyViewId: 'view:agent:a1:terminal',
-      })
+      }),
     ).toBe(true);
     expect(
       isPtyAttentionFocused({
@@ -23,7 +27,7 @@ describe('attention delivery contract', () => {
         agentViewId: 'view:agent:a1:terminal',
         stackActiveIds: new Set(['project:p1:overview']),
         activePtyViewId: 'view:agent:a1:terminal',
-      })
+      }),
     ).toBe(false);
     expect(
       isPtyAttentionFocused({
@@ -31,7 +35,7 @@ describe('attention delivery contract', () => {
         agentViewId: 'view:agent:a1:terminal',
         stackActiveIds,
         activePtyViewId: 'view:agent:a2:terminal',
-      })
+      }),
     ).toBe(false);
   });
 });

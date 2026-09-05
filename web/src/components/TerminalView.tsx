@@ -34,7 +34,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     return (
       <div className="flex flex-col items-center justify-center h-full text-slate-500 font-mono text-xs">
         <p>No active supervised runtimes.</p>
-        <p className="mt-1 text-[11px] text-slate-600">Start an agent runtime from Dashboard to open terminal.</p>
+        <p className="mt-1 text-[11px] text-slate-600">
+          Start an agent runtime from Dashboard to open terminal.
+        </p>
       </div>
     );
   }
@@ -87,11 +89,20 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
                 }`}
               >
                 {isWaiting ? (
-                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" title="Aguardando resposta"></span>
+                  <span
+                    className="w-2 h-2 rounded-full bg-amber-400 animate-ping"
+                    title="Aguardando resposta"
+                  ></span>
                 ) : isApproval ? (
-                  <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse" title="Aprovação necessária"></span>
+                  <span
+                    className="w-2 h-2 rounded-full bg-rose-400 animate-pulse"
+                    title="Aprovação necessária"
+                  ></span>
                 ) : isDone ? (
-                  <span className="w-2 h-2 rounded-full bg-emerald-400" title="Tarefa concluída"></span>
+                  <span
+                    className="w-2 h-2 rounded-full bg-emerald-400"
+                    title="Tarefa concluída"
+                  ></span>
                 ) : (
                   <span className="w-2 h-2 rounded-full bg-sky-400" title="Em execução"></span>
                 )}
@@ -107,7 +118,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           <button
             onClick={() => setSplitMode('single')}
             className={`p-1 rounded transition ${
-              splitMode === 'single' ? 'bg-slate-800 text-sky-400' : 'text-slate-400 hover:text-white'
+              splitMode === 'single'
+                ? 'bg-slate-800 text-sky-400'
+                : 'text-slate-400 hover:text-white'
             }`}
             title="Single Terminal"
           >
@@ -116,7 +129,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           <button
             onClick={() => setSplitMode('split-h')}
             className={`p-1 rounded transition ${
-              splitMode === 'split-h' ? 'bg-slate-800 text-sky-400' : 'text-slate-400 hover:text-white'
+              splitMode === 'split-h'
+                ? 'bg-slate-800 text-sky-400'
+                : 'text-slate-400 hover:text-white'
             }`}
             title="Split Side-by-Side"
           >
@@ -140,8 +155,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           splitMode === 'single'
             ? 'grid-cols-1 grid-rows-1'
             : splitMode === 'split-h'
-            ? 'grid-cols-1 md:grid-cols-2 grid-rows-1'
-            : 'grid-cols-1 md:grid-cols-2 grid-rows-2'
+              ? 'grid-cols-1 md:grid-cols-2 grid-rows-1'
+              : 'grid-cols-1 md:grid-cols-2 grid-rows-2'
         }`}
       >
         {renderSessions.map((r) => (

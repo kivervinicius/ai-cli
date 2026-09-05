@@ -17,7 +17,12 @@ describe('surfaceAttention', () => {
   it('keeps the agent name and appends a short status suffix', () => {
     const titled = surfaceTitleFromAgent(
       'Backend',
-      runtime({ attention_reason: 'QUESTION', attention_context: 'Continue?', prompt_kind: 'yn', attention_kind: 'needs_user' })
+      runtime({
+        attention_reason: 'QUESTION',
+        attention_context: 'Continue?',
+        prompt_kind: 'yn',
+        attention_kind: 'needs_user',
+      }),
     );
     expect(titled.title).toBe('Backend · pergunta');
     expect(titled.statusSuffix).toBe('pergunta');
@@ -33,7 +38,7 @@ describe('surfaceAttention', () => {
         prompt_kind: 'yn',
         attention_kind: 'needs_user',
         dynamic_title: 'ai-chat · Apply changes?',
-      })
+      }),
     );
     expect(titled.title.startsWith('Frontend')).toBe(true);
     expect(titled.title).not.toContain('ai-chat');
@@ -47,14 +52,18 @@ describe('surfaceAttention', () => {
   });
 
   it('maps completion and error suffixes', () => {
-    expect(statusSuffixFromRuntime(runtime({ attention_reason: 'TASK_COMPLETED' }))).toBe('concluído');
+    expect(statusSuffixFromRuntime(runtime({ attention_reason: 'TASK_COMPLETED' }))).toBe(
+      'concluído',
+    );
     expect(statusSuffixFromRuntime(runtime({ attention_reason: 'ERROR' }))).toBe('erro');
   });
 
   it('does not treat bare RUNNING as trabalhando', () => {
     expect(statusSuffixFromRuntime(runtime({ state: 'RUNNING', attention_kind: 'idle' }))).toBe('');
     expect(
-      statusSuffixFromRuntime(runtime({ state: 'RUNNING', attention_kind: 'working', attention_reason: 'WORKING' }))
+      statusSuffixFromRuntime(
+        runtime({ state: 'RUNNING', attention_kind: 'working', attention_reason: 'WORKING' }),
+      ),
     ).toBe('trabalhando');
   });
 
@@ -66,7 +75,7 @@ describe('surfaceAttention', () => {
         hasAttention: true,
         surfaceFocused: false,
         attentionKind: 'needs_user',
-      })
+      }),
     ).toBe(true);
     expect(
       shouldMarkUnread({
@@ -75,7 +84,7 @@ describe('surfaceAttention', () => {
         hasAttention: true,
         surfaceFocused: false,
         attentionKind: 'needs_user',
-      })
+      }),
     ).toBe(false);
     expect(
       shouldMarkUnread({
@@ -84,7 +93,7 @@ describe('surfaceAttention', () => {
         hasAttention: true,
         surfaceFocused: true,
         attentionKind: 'needs_user',
-      })
+      }),
     ).toBe(false);
     expect(
       shouldMarkUnread({
@@ -93,7 +102,7 @@ describe('surfaceAttention', () => {
         hasAttention: true,
         surfaceFocused: false,
         attentionKind: 'working',
-      })
+      }),
     ).toBe(false);
   });
 });

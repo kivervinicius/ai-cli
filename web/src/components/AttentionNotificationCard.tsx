@@ -46,7 +46,8 @@ export const AttentionNotificationCard: React.FC<AttentionNotificationCardProps>
   const promptKind = runtime.prompt_kind || 'free_text';
   const isApproval = runtime.attention_reason === 'APPROVAL';
   const contextText = sanitizeAttentionText(runtime.attention_context, '');
-  const runtimeLabel = runtime.runtime_id.length > 16 ? `${runtime.runtime_id.slice(0, 16)}…` : runtime.runtime_id;
+  const runtimeLabel =
+    runtime.runtime_id.length > 16 ? `${runtime.runtime_id.slice(0, 16)}…` : runtime.runtime_id;
   const actions = attentionCardActions(runtime);
 
   if (!contextText) {
@@ -68,8 +69,14 @@ export const AttentionNotificationCard: React.FC<AttentionNotificationCardProps>
   };
 
   const dialogLabel = isApproval
-    ? t('attention.approvalRequired', { project: projName, defaultValue: `Approval required in ${projName}` })
-    : t('attention.agentWaiting', { project: projName, defaultValue: `Agent waiting in ${projName}` });
+    ? t('attention.approvalRequired', {
+        project: projName,
+        defaultValue: `Approval required in ${projName}`,
+      })
+    : t('attention.agentWaiting', {
+        project: projName,
+        defaultValue: `Agent waiting in ${projName}`,
+      });
 
   return (
     <article
@@ -79,8 +86,14 @@ export const AttentionNotificationCard: React.FC<AttentionNotificationCardProps>
       aria-label={dialogLabel}
     >
       <div className="nx-uui-notification__container">
-        <div className={`nx-uui-notification__icon-wrap nx-uui-notification__icon-wrap--${isApproval ? 'rose' : 'amber'}`}>
-          {isApproval ? <AlertCircle className="nx-uui-notification__icon text-rose-400" size={20} /> : <HelpCircle className="nx-uui-notification__icon text-amber-400" size={20} />}
+        <div
+          className={`nx-uui-notification__icon-wrap nx-uui-notification__icon-wrap--${isApproval ? 'rose' : 'amber'}`}
+        >
+          {isApproval ? (
+            <AlertCircle className="nx-uui-notification__icon text-rose-400" size={20} />
+          ) : (
+            <HelpCircle className="nx-uui-notification__icon text-amber-400" size={20} />
+          )}
         </div>
 
         <div className="nx-uui-notification__content">
@@ -91,10 +104,10 @@ export const AttentionNotificationCard: React.FC<AttentionNotificationCardProps>
                 {isApproval
                   ? t('attention.approval', 'Approval')
                   : promptKind === 'yn'
-                  ? t('attention.yesNo', 'Yes/No')
-                  : promptKind === 'choice'
-                  ? t('attention.choice', 'Choice')
-                  : t('attention.response', 'Response')}
+                    ? t('attention.yesNo', 'Yes/No')
+                    : promptKind === 'choice'
+                      ? t('attention.choice', 'Choice')
+                      : t('attention.response', 'Response')}
               </span>
               <span className="nx-uui-notification__id" title={runtime.runtime_id}>
                 {runtimeLabel}
@@ -113,12 +126,21 @@ export const AttentionNotificationCard: React.FC<AttentionNotificationCardProps>
 
           <p className="nx-uui-notification__text">
             {promptKind === 'yn'
-              ? t('attention.confirmationPending', { context: contextText, defaultValue: `Confirmation pending: ${contextText}` })
+              ? t('attention.confirmationPending', {
+                  context: contextText,
+                  defaultValue: `Confirmation pending: ${contextText}`,
+                })
               : promptKind === 'choice'
-              ? t('attention.choicePending', { context: contextText, defaultValue: `Choice pending: ${contextText}` })
-              : contextText}
+                ? t('attention.choicePending', {
+                    context: contextText,
+                    defaultValue: `Choice pending: ${contextText}`,
+                  })
+                : contextText}
           </p>
-          <p className="nx-uui-notification__hint" style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--nx-muted)' }}>
+          <p
+            className="nx-uui-notification__hint"
+            style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--nx-muted)' }}
+          >
             {t('attention.hint', 'Reply here or open the agent terminal.')}
           </p>
 
@@ -146,14 +168,14 @@ export const AttentionNotificationCard: React.FC<AttentionNotificationCardProps>
                 </>
               ) : null}
               {actions.showOpenTerminal ? (
-              <button
-                type="button"
-                className="nx-uui-btn nx-uui-btn--tertiary"
-                onClick={() => onFocusRuntime(runtime.runtime_id)}
-              >
-                <Terminal size={13} />
-                <span>{t('attention.viewTerminal', 'View Terminal')}</span>
-              </button>
+                <button
+                  type="button"
+                  className="nx-uui-btn nx-uui-btn--tertiary"
+                  onClick={() => onFocusRuntime(runtime.runtime_id)}
+                >
+                  <Terminal size={13} />
+                  <span>{t('attention.viewTerminal', 'View Terminal')}</span>
+                </button>
               ) : null}
             </div>
 
@@ -168,7 +190,11 @@ export const AttentionNotificationCard: React.FC<AttentionNotificationCardProps>
                 <input
                   type="text"
                   className="nx-uui-input"
-                  placeholder={promptKind === 'choice' ? t('attention.placeholderChoice', 'Type choice number…') : t('attention.placeholderText', 'Type response…')}
+                  placeholder={
+                    promptKind === 'choice'
+                      ? t('attention.placeholderChoice', 'Type choice number…')
+                      : t('attention.placeholderText', 'Type response…')
+                  }
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   disabled={sending}

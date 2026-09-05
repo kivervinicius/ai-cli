@@ -1,7 +1,12 @@
 import { Workspace, RuntimeSession, ProviderInfo, ProfileInfo, EventRecord } from './types';
 
 let csrfToken = '';
-export type BrowserSession = { authenticated: boolean; csrf_token?: string; expires_at?: string; idle_timeout?: number };
+export type BrowserSession = {
+  authenticated: boolean;
+  csrf_token?: string;
+  expires_at?: string;
+  idle_timeout?: number;
+};
 
 function notifySessionExpired() {
   if (typeof window !== 'undefined') {
@@ -69,8 +74,15 @@ export const api = {
       method: 'DELETE',
     }),
   getRuntimes: () => request<RuntimeSession[]>('/api/v1/runtimes'),
-  getRuntime: (id: string) => request<{ session: RuntimeSession; capabilities: any }>(`/api/v1/runtimes/${id}`),
-  startRuntime: (provider: string, profile: string, workspace: string, args: string[] = [], title?: string) =>
+  getRuntime: (id: string) =>
+    request<{ session: RuntimeSession; capabilities: any }>(`/api/v1/runtimes/${id}`),
+  startRuntime: (
+    provider: string,
+    profile: string,
+    workspace: string,
+    args: string[] = [],
+    title?: string,
+  ) =>
     request<RuntimeSession>('/api/v1/runtimes', {
       method: 'POST',
       body: JSON.stringify({ provider, profile, workspace, args, title }),

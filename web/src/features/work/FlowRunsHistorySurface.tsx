@@ -21,7 +21,10 @@ export const FlowRunsHistorySurface: React.FC<{
     try {
       const list = asArray(await nexusApi.getRuns()).filter((run): run is MissionRun => {
         const item = run as MissionRun;
-        return Boolean(item && typeof item === 'object' && item.id) && (!item.project_id || item.project_id === project.id);
+        return (
+          Boolean(item && typeof item === 'object' && item.id) &&
+          (!item.project_id || item.project_id === project.id)
+        );
       });
       setRuns(list);
     } catch (err) {
@@ -38,8 +41,10 @@ export const FlowRunsHistorySurface: React.FC<{
 
   const sorted = useMemo(
     () =>
-      [...runs].sort((a, b) => String(b.started_at || b.id).localeCompare(String(a.started_at || a.id))),
-    [runs]
+      [...runs].sort((a, b) =>
+        String(b.started_at || b.id).localeCompare(String(a.started_at || a.id)),
+      ),
+    [runs],
   );
 
   return (
@@ -114,7 +119,15 @@ export const FlowRunsHistorySurface: React.FC<{
                     {run.started_at || 'sem horário'} · plano {(run.plan_id || '').slice(-6) || '—'}
                   </small>
                 </div>
-                <Badge tone={state === 'COMPLETED' ? 'success' : state === 'FAILED' || state === 'CANCELED' ? 'danger' : 'brand'}>
+                <Badge
+                  tone={
+                    state === 'COMPLETED'
+                      ? 'success'
+                      : state === 'FAILED' || state === 'CANCELED'
+                        ? 'danger'
+                        : 'brand'
+                  }
+                >
                   {state}
                 </Badge>
               </button>

@@ -38,7 +38,7 @@ interface ContextValue {
   commitMove: (
     viewId: string,
     origin: { x: number; y: number; width: number; height: number },
-    pointer?: { x: number; y: number }
+    pointer?: { x: number; y: number },
   ) => void;
   resize: (viewId: string, width: number, height: number) => void;
   resizeMosaic: (viewId: string, edge: MosaicResizeEdge, deltaX: number, deltaY: number) => void;
@@ -46,11 +46,11 @@ interface ContextValue {
     firstId: string,
     secondId: string,
     orientation: 'vertical' | 'horizontal',
-    delta: number
+    delta: number,
   ) => void;
   patchChrome: (
     viewId: string,
-    chrome: { customTitle?: string; accent?: string; icon?: string }
+    chrome: { customTitle?: string; accent?: string; icon?: string },
   ) => void;
   minimize: (viewId: string) => void;
   maximize: (viewId: string) => void;
@@ -97,8 +97,13 @@ type Action =
   | { type: 'rearrange' }
   | { type: 'rearrangePreset'; preset: ArrangePresetName };
 
-function applyPreset(state: WorkspacePresentationState, preset: ArrangePresetName): WorkspacePresentationState {
-  const visible = Object.values(state.windows).filter((win) => !win.minimized).map((win) => win.viewId);
+function applyPreset(
+  state: WorkspacePresentationState,
+  preset: ArrangePresetName,
+): WorkspacePresentationState {
+  const visible = Object.values(state.windows)
+    .filter((win) => !win.minimized)
+    .map((win) => win.viewId);
   if (visible.length === 0) return state;
   const resolved = resolveArrangePreset(preset);
   const tiles = arrangeByPreset(resolved, state.canvas, visible, state.activePtyViewId);
@@ -121,14 +126,20 @@ function applyPreset(state: WorkspacePresentationState, preset: ArrangePresetNam
 
 function reducer(state: WorkspacePresentationState, action: Action): WorkspacePresentationState {
   switch (action.type) {
-    case 'mode': return setPresentationMode(state, action.mode);
-    case 'sync': return syncDesktopWindows(state, action.surfaces);
-    case 'focus': return focusDesktopWindow(state, action.viewId);
-    case 'setActivePty': return setActivePtyView(state, action.viewId);
-    case 'move': return moveDesktopWindow(state, action.viewId, action.x, action.y);
+    case 'mode':
+      return setPresentationMode(state, action.mode);
+    case 'sync':
+      return syncDesktopWindows(state, action.surfaces);
+    case 'focus':
+      return focusDesktopWindow(state, action.viewId);
+    case 'setActivePty':
+      return setActivePtyView(state, action.viewId);
+    case 'move':
+      return moveDesktopWindow(state, action.viewId, action.x, action.y);
     case 'commitMove':
       return commitMosaicMove(state, action.viewId, action.origin, action.pointer);
-    case 'resize': return resizeDesktopWindow(state, action.viewId, action.width, action.height);
+    case 'resize':
+      return resizeDesktopWindow(state, action.viewId, action.width, action.height);
     case 'resizeMosaic':
       return resizeMosaicWindow(state, action.viewId, action.edge, action.deltaX, action.deltaY);
     case 'resizeAdjacent':
@@ -137,14 +148,20 @@ function reducer(state: WorkspacePresentationState, action: Action): WorkspacePr
         action.firstId,
         action.secondId,
         action.orientation,
-        action.delta
+        action.delta,
       );
-    case 'patchChrome': return patchDesktopWindowChrome(state, action.viewId, action.chrome);
-    case 'minimize': return toggleDesktopMinimize(state, action.viewId);
-    case 'maximize': return toggleDesktopMaximize(state, action.viewId);
-    case 'canvas': return setPresentationCanvas(state, action.canvas);
-    case 'rearrange': return rearrangeSmart(state);
-    case 'rearrangePreset': return applyPreset(state, action.preset);
+    case 'patchChrome':
+      return patchDesktopWindowChrome(state, action.viewId, action.chrome);
+    case 'minimize':
+      return toggleDesktopMinimize(state, action.viewId);
+    case 'maximize':
+      return toggleDesktopMaximize(state, action.viewId);
+    case 'canvas':
+      return setPresentationCanvas(state, action.canvas);
+    case 'rearrange':
+      return rearrangeSmart(state);
+    case 'rearrangePreset':
+      return applyPreset(state, action.preset);
   }
 }
 
@@ -160,34 +177,48 @@ function load(projectId: string): WorkspacePresentationState {
 
 const WorkspacePresentationContext = createContext<ContextValue | null>(null);
 
-export const WorkspacePresentationProvider: React.FC<{ projectId: string; children: React.ReactNode }> = ({ projectId, children }) => {
+export const WorkspacePresentationProvider: React.FC<{
+  projectId: string;
+  children: React.ReactNode;
+}> = ({ projectId, children }) => {
   const [state, dispatch] = useReducer(reducer, projectId, load);
-  useEffect(() => { window.localStorage.setItem(storageKey(projectId), JSON.stringify(state)); }, [projectId, state]);
-  const value = useMemo<ContextValue>(() => ({
-    state,
-    setMode: (mode) => dispatch({ type: 'mode', mode }),
-    sync: (surfaces) => dispatch({ type: 'sync', surfaces }),
-    focus: (viewId) => dispatch({ type: 'focus', viewId }),
-    setActivePty: (viewId) => dispatch({ type: 'setActivePty', viewId }),
-    move: (viewId, x, y) => dispatch({ type: 'move', viewId, x, y }),
-    commitMove: (viewId, origin, pointer) => dispatch({ type: 'commitMove', viewId, origin, pointer }),
-    resize: (viewId, width, height) => dispatch({ type: 'resize', viewId, width, height }),
-    resizeMosaic: (viewId, edge, deltaX, deltaY) =>
-      dispatch({ type: 'resizeMosaic', viewId, edge, deltaX, deltaY }),
-    resizeAdjacent: (firstId, secondId, orientation, delta) =>
-      dispatch({ type: 'resizeAdjacent', firstId, secondId, orientation, delta }),
-    patchChrome: (viewId, chrome) => dispatch({ type: 'patchChrome', viewId, chrome }),
-    minimize: (viewId) => dispatch({ type: 'minimize', viewId }),
-    maximize: (viewId) => dispatch({ type: 'maximize', viewId }),
-    setCanvas: (canvas) => dispatch({ type: 'canvas', canvas }),
-    rearrange: () => dispatch({ type: 'rearrange' }),
-    rearrangePreset: (preset) => dispatch({ type: 'rearrangePreset', preset }),
-  }), [state]);
-  return <WorkspacePresentationContext.Provider value={value}>{children}</WorkspacePresentationContext.Provider>;
+  useEffect(() => {
+    window.localStorage.setItem(storageKey(projectId), JSON.stringify(state));
+  }, [projectId, state]);
+  const value = useMemo<ContextValue>(
+    () => ({
+      state,
+      setMode: (mode) => dispatch({ type: 'mode', mode }),
+      sync: (surfaces) => dispatch({ type: 'sync', surfaces }),
+      focus: (viewId) => dispatch({ type: 'focus', viewId }),
+      setActivePty: (viewId) => dispatch({ type: 'setActivePty', viewId }),
+      move: (viewId, x, y) => dispatch({ type: 'move', viewId, x, y }),
+      commitMove: (viewId, origin, pointer) =>
+        dispatch({ type: 'commitMove', viewId, origin, pointer }),
+      resize: (viewId, width, height) => dispatch({ type: 'resize', viewId, width, height }),
+      resizeMosaic: (viewId, edge, deltaX, deltaY) =>
+        dispatch({ type: 'resizeMosaic', viewId, edge, deltaX, deltaY }),
+      resizeAdjacent: (firstId, secondId, orientation, delta) =>
+        dispatch({ type: 'resizeAdjacent', firstId, secondId, orientation, delta }),
+      patchChrome: (viewId, chrome) => dispatch({ type: 'patchChrome', viewId, chrome }),
+      minimize: (viewId) => dispatch({ type: 'minimize', viewId }),
+      maximize: (viewId) => dispatch({ type: 'maximize', viewId }),
+      setCanvas: (canvas) => dispatch({ type: 'canvas', canvas }),
+      rearrange: () => dispatch({ type: 'rearrange' }),
+      rearrangePreset: (preset) => dispatch({ type: 'rearrangePreset', preset }),
+    }),
+    [state],
+  );
+  return (
+    <WorkspacePresentationContext.Provider value={value}>
+      {children}
+    </WorkspacePresentationContext.Provider>
+  );
 };
 
 export function useWorkspacePresentation(): ContextValue {
   const value = useContext(WorkspacePresentationContext);
-  if (!value) throw new Error('useWorkspacePresentation must be used inside WorkspacePresentationProvider');
+  if (!value)
+    throw new Error('useWorkspacePresentation must be used inside WorkspacePresentationProvider');
   return value;
 }

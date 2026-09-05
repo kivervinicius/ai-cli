@@ -30,12 +30,12 @@ export const ContinueModal: React.FC<ContinueModalProps> = ({
   const runtimeProvider = runtime.provider_id || runtime.provider;
   const otherProviders = safeProviders.filter((p) => p.id !== runtimeProvider && p.installed);
   const [selectedProvider, setSelectedProvider] = useState<string>(
-    otherProviders.length > 0 ? otherProviders[0].id : ''
+    otherProviders.length > 0 ? otherProviders[0].id : '',
   );
 
   const availableProfiles = safeProfiles.filter((p) => p.provider === selectedProvider);
   const [selectedProfile, setSelectedProfile] = useState<string>(
-    availableProfiles.length > 0 ? availableProfiles[0].name : 'default'
+    availableProfiles.length > 0 ? availableProfiles[0].name : 'default',
   );
 
   const [loading, setLoading] = useState(false);
@@ -63,7 +63,11 @@ export const ContinueModal: React.FC<ContinueModalProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={t('legacy.continueModalTitle', 'Continue with Another AI')}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={t('legacy.continueModalTitle', 'Continue with Another AI')}
+    >
       <div className="space-y-4 font-mono">
         <div
           className="p-3 rounded flex items-start space-x-2.5 text-xs"
@@ -73,11 +77,17 @@ export const ContinueModal: React.FC<ContinueModalProps> = ({
             color: 'var(--nx-accent-text)',
           }}
         >
-          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--nx-accent-text)' }} />
+          <AlertTriangle
+            className="w-4 h-4 flex-shrink-0 mt-0.5"
+            style={{ color: 'var(--nx-accent-text)' }}
+          />
           <div>
             <strong>{t('legacy.continueWarning', 'A NEW SESSION WILL BE CREATED.')}</strong>
             <p className="mt-1 text-[11px]" style={{ color: 'var(--nx-text-soft)' }}>
-              {t('legacy.continueDesc', 'Captures current git status, diff stats, and modified files with sensitive secrets redacted, and boots a clean agent thread in the target CLI.')}
+              {t(
+                'legacy.continueDesc',
+                'Captures current git status, diff stats, and modified files with sensitive secrets redacted, and boots a clean agent thread in the target CLI.',
+              )}
             </p>
           </div>
         </div>
@@ -91,12 +101,18 @@ export const ContinueModal: React.FC<ContinueModalProps> = ({
               color: 'var(--nx-warning)',
             }}
           >
-            {t('legacy.noOtherClis', 'No other installed coding CLIs detected. Install Claude, Codex, Gemini, or OpenCode to continue across providers.')}
+            {t(
+              'legacy.noOtherClis',
+              'No other installed coding CLIs detected. Install Claude, Codex, Gemini, or OpenCode to continue across providers.',
+            )}
           </div>
         ) : (
           <div className="space-y-3 text-xs">
             <div>
-              <label className="text-xs" style={{ color: 'var(--nx-text-soft)', display: 'block', marginBottom: 4 }}>
+              <label
+                className="text-xs"
+                style={{ color: 'var(--nx-text-soft)', display: 'block', marginBottom: 4 }}
+              >
                 {t('legacy.destProvider', 'Destination Provider:')}
               </label>
               <Select
@@ -110,7 +126,10 @@ export const ContinueModal: React.FC<ContinueModalProps> = ({
             </div>
 
             <div>
-              <label className="text-xs" style={{ color: 'var(--nx-text-soft)', display: 'block', marginBottom: 4 }}>
+              <label
+                className="text-xs"
+                style={{ color: 'var(--nx-text-soft)', display: 'block', marginBottom: 4 }}
+              >
                 {t('legacy.profileAccount', 'Profile / Account:')}
               </label>
               <Select
@@ -149,7 +168,9 @@ export const ContinueModal: React.FC<ContinueModalProps> = ({
             disabled={loading || otherProviders.length === 0}
             onClick={handleContinue}
           >
-            {loading ? t('legacy.startingContinuedSession', 'Starting Continued Session...') : t('legacy.startContinuedSession', 'Start Continued Session')}
+            {loading
+              ? t('legacy.startingContinuedSession', 'Starting Continued Session...')
+              : t('legacy.startContinuedSession', 'Start Continued Session')}
           </Button>
         </div>
       </div>

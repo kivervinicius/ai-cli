@@ -25,7 +25,11 @@ export type RadarProjectGroup = {
 
 function badgeFor(runtime: RuntimeSession): RadarBadge {
   if (runtime.attention_kind === 'needs_user' || isHonestNeedsUser(runtime)) return 'needs_user';
-  if (runtime.attention_kind === 'error' || runtime.attention_reason === 'ERROR' || runtime.state === 'FAILED') {
+  if (
+    runtime.attention_kind === 'error' ||
+    runtime.attention_reason === 'ERROR' ||
+    runtime.state === 'FAILED'
+  ) {
     return 'error';
   }
   if (runtime.attention_kind === 'completed' || runtime.attention_reason === 'TASK_COMPLETED') {
@@ -40,7 +44,7 @@ function badgeFor(runtime: RuntimeSession): RadarBadge {
 export function buildAttentionRadar(runtimes: RuntimeSession[]): RadarProjectGroup[] {
   const list = Array.isArray(runtimes) ? runtimes : [];
   const active = list.filter((runtime) =>
-    ['STARTING', 'RUNNING', 'WAITING', 'APPROVAL', 'DETACHED', 'HANDOFF'].includes(runtime.state)
+    ['STARTING', 'RUNNING', 'WAITING', 'APPROVAL', 'DETACHED', 'HANDOFF'].includes(runtime.state),
   );
 
   const groups = new Map<string, RadarProjectGroup>();
@@ -106,7 +110,7 @@ export function planFocusAttention(
     currentProjectId: string;
     runtime?: RuntimeSession;
     agentName?: string;
-  }
+  },
 ): FocusAttentionAction[] {
   const actions: FocusAttentionAction[] = [];
   const projectId = target.projectId || opts.runtime?.project_id || '';

@@ -36,12 +36,12 @@ export function projectSurface(projectId: string, kind: ProjectSurfaceKind): Wor
     kind === 'projects'
       ? 'desktopsTitle'
       : kind === 'legacy-runtimes'
-      ? 'runtimes'
-      : kind === 'legacy-providers'
-      ? 'providers'
-      : kind === 'legacy-events'
-      ? 'events'
-      : kind;
+        ? 'runtimes'
+        : kind === 'legacy-providers'
+          ? 'providers'
+          : kind === 'legacy-events'
+            ? 'events'
+            : kind;
   const titleKey = kind === 'projects' ? 'projectManager.desktopsTitle' : `nav.${key}`;
   const logicalKey = `project:${projectId}:${kind}`;
   return {
@@ -68,7 +68,7 @@ export function agentTerminalSurface(
   agentId: string,
   agentName: string,
   initialPrompt = '',
-  runtimeId = ''
+  runtimeId = '',
 ): WorkspaceSurface {
   const data: Record<string, string> = { agentId };
   if (initialPrompt) data.initialPrompt = initialPrompt;
@@ -101,7 +101,11 @@ export function agentConfigSurface(agentId: string, agentName: string): Workspac
   };
 }
 
-export function projectShellSurface(projectId: string, runtimeId: string, title = 'Project Shell'): WorkspaceSurface {
+export function projectShellSurface(
+  projectId: string,
+  runtimeId: string,
+  title = 'Project Shell',
+): WorkspaceSurface {
   const logicalKey = `shell:${runtimeId}`;
   return {
     id: logicalKey,

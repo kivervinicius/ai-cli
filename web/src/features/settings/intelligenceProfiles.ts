@@ -36,12 +36,18 @@ export function quotaLabel(account: ProviderAccount): string | null {
   return pct == null ? null : `${pct}%`;
 }
 
-export function intelligenceModelChoices(account?: ProviderAccount | null): Array<{ id: string; label: string; remaining: number | null }> {
-  const groups = asArray<{ name?: string; windows?: Array<{ kind?: string; remaining?: number }> }>(account?.quota_view?.model_groups);
+export function intelligenceModelChoices(
+  account?: ProviderAccount | null,
+): Array<{ id: string; label: string; remaining: number | null }> {
+  const groups = asArray<{ name?: string; windows?: Array<{ kind?: string; remaining?: number }> }>(
+    account?.quota_view?.model_groups,
+  );
   return groups
     .map((group) => {
       const id = String(group.name || '').trim();
-      const windows = asArray<{ kind?: string; remaining?: number }>(group.windows).filter((w) => w.kind !== 'unknown');
+      const windows = asArray<{ kind?: string; remaining?: number }>(group.windows).filter(
+        (w) => w.kind !== 'unknown',
+      );
       const remaining = windows.length
         ? Math.min(...windows.map((w) => (Number.isFinite(w.remaining) ? Number(w.remaining) : 0)))
         : null;
@@ -53,7 +59,7 @@ export function intelligenceModelChoices(account?: ProviderAccount | null): Arra
 /** All discovered provider profiles, with the current Intelligence selection kept visible. */
 export function intelligenceCLIProfiles(
   accounts: ProviderAccount[] | null | undefined,
-  current?: { provider?: string; profile?: string }
+  current?: { provider?: string; profile?: string },
 ): ProviderAccount[] {
   const list = asArray<ProviderAccount>(accounts).filter((account) => !isTerminalOnly(account));
   const provider = current?.provider?.trim();
@@ -62,7 +68,9 @@ export function intelligenceCLIProfiles(
   if (provider && profile) {
     const key = `${provider}:${profile}`;
     if (!merged.some((account) => accountKey(account) === key)) {
-      const existing = asArray<ProviderAccount>(accounts).find((account) => accountKey(account) === key);
+      const existing = asArray<ProviderAccount>(accounts).find(
+        (account) => accountKey(account) === key,
+      );
       merged = [
         existing || {
           id: key,

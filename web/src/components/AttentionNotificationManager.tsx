@@ -53,7 +53,9 @@ export const AttentionNotificationManager: React.FC<AttentionNotificationManager
   };
 
   useEffect(() => {
-    const currentFingerprints = new Set(toastRuntimes.map((runtime) => attentionMessageKey(runtime)));
+    const currentFingerprints = new Set(
+      toastRuntimes.map((runtime) => attentionMessageKey(runtime)),
+    );
 
     activeToastIds.current.forEach((toastId, fingerprint) => {
       if (!currentFingerprints.has(fingerprint)) {
@@ -77,7 +79,7 @@ export const AttentionNotificationManager: React.FC<AttentionNotificationManager
           id: `attention-${fingerprint}`,
           duration: Infinity,
           dismissible: false,
-        }
+        },
       );
       activeToastIds.current.set(fingerprint, id);
     });

@@ -10,7 +10,8 @@ export function normalizeOpenRuntimeIds(
 ): string[] {
   const available = new Set(runtimes.map((runtime) => runtime.runtime_id));
   const next = openIds.filter((id, index, ids) => available.has(id) && ids.indexOf(id) === index);
-  if (activeRuntimeId && available.has(activeRuntimeId) && !next.includes(activeRuntimeId)) next.push(activeRuntimeId);
+  if (activeRuntimeId && available.has(activeRuntimeId) && !next.includes(activeRuntimeId))
+    next.push(activeRuntimeId);
   if (next.length === 0 && runtimes[0]) next.push(runtimes[0].runtime_id);
   return next;
 }

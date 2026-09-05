@@ -6,10 +6,18 @@ export type SurfaceAttentionKind = 'needs_user' | 'completed' | 'error' | 'worki
 
 export function attentionKindFromRuntime(runtime?: RuntimeSession | null): SurfaceAttentionKind {
   if (!runtime) return '';
-  if (isHonestNeedsUser(runtime) || runtime.attention_reason === 'QUESTION' || runtime.attention_reason === 'APPROVAL') {
+  if (
+    isHonestNeedsUser(runtime) ||
+    runtime.attention_reason === 'QUESTION' ||
+    runtime.attention_reason === 'APPROVAL'
+  ) {
     return 'needs_user';
   }
-  if (runtime.attention_reason === 'ERROR' || runtime.attention_kind === 'error' || runtime.state === 'FAILED') {
+  if (
+    runtime.attention_reason === 'ERROR' ||
+    runtime.attention_kind === 'error' ||
+    runtime.state === 'FAILED'
+  ) {
     return 'error';
   }
   if (runtime.attention_reason === 'TASK_COMPLETED' || runtime.attention_kind === 'completed') {
@@ -44,7 +52,7 @@ export function statusSuffixFromRuntime(runtime?: RuntimeSession | null): string
 export function surfaceTitleFromAgent(
   agentName: string,
   runtime?: RuntimeSession | null,
-  customTitle?: string
+  customTitle?: string,
 ): {
   title: string;
   statusSuffix: string;

@@ -9,18 +9,10 @@ import {
 
 /** Canonical UI presets (Portuguese menu). Legacy names remain accepted as aliases. */
 export type ArrangeMenuPreset =
-  | 'automatic'
-  | 'two-columns'
-  | 'three-columns'
-  | 'terminal-focus'
-  | 'focus-mode';
+  'automatic' | 'two-columns' | 'three-columns' | 'terminal-focus' | 'focus-mode';
 
 export type ArrangePresetName =
-  | ArrangeMenuPreset
-  | 'terminal-chat'
-  | 'terminal-flow'
-  | 'agents'
-  | 'restore-default';
+  ArrangeMenuPreset | 'terminal-chat' | 'terminal-flow' | 'agents' | 'restore-default';
 
 export const ARRANGE_MENU_PRESETS: ReadonlyArray<{
   id: ArrangeMenuPreset;
@@ -76,7 +68,7 @@ export function arrangeByPreset(
   preset: ArrangePresetName,
   bounds: ArrangeBounds,
   viewIds: string[],
-  activeViewId?: string
+  activeViewId?: string,
 ): TileRect[] {
   const ids = viewIds.filter(Boolean);
   if (ids.length === 0) return [];
@@ -90,7 +82,7 @@ export function arrangeByPreset(
         y: bounds.y,
         width: Math.max(MIN_W, bounds.width),
         height: Math.max(MIN_H, bounds.height),
-      })
+      }),
     );
   }
 
@@ -142,7 +134,7 @@ export function arrangeByPreset(
           y: bounds.y + idx * (sideH + GAP),
           width: sideW,
           height: sideH,
-        })
+        }),
       );
 
       return [main, ...sideTiles];
@@ -166,7 +158,7 @@ export function arrangeByPreset(
           y: bounds.y + idx * (col1H + GAP),
           width: halfW,
           height: col1H,
-        })
+        }),
       );
 
       const tiles2 = col2.map((viewId, idx) =>
@@ -176,7 +168,7 @@ export function arrangeByPreset(
           y: bounds.y + idx * (col2H + GAP),
           width: halfW,
           height: col2H,
-        })
+        }),
       );
 
       return [...tiles1, ...tiles2];
@@ -203,7 +195,7 @@ export function arrangeByPreset(
               y: bounds.y + rowIdx * (colH + GAP),
               width: colW,
               height: colH,
-            })
+            }),
           );
         });
       });

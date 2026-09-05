@@ -1,12 +1,41 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Accessibility, ArrowUpCircle, Bell, Check, ChevronDown, ChevronRight, MonitorCog, Palette, RefreshCw, RotateCcw, Sliders, Sparkles } from 'lucide-react';
-import { Badge, Button, Card, InlineAlert, Input, Segmented, Select, Switch, THEME_PRESETS, getThemePresetPalette } from '../../design-system';
-import { useTheme, type ThemeAccent, type ThemeDensity, type ThemePresetKey, type ThemeScheme } from '../../design-system';
+import {
+  Accessibility,
+  ArrowUpCircle,
+  Bell,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  MonitorCog,
+  Palette,
+  RefreshCw,
+  RotateCcw,
+  Sliders,
+  Sparkles,
+  Type,
+} from 'lucide-react';
+import {
+  Badge,
+  Button,
+  Card,
+  InlineAlert,
+  Input,
+  Segmented,
+  Switch,
+  THEME_PRESETS,
+  getThemePresetPalette,
+} from '../../design-system';
+import {
+  useTheme,
+  type ThemeAccent,
+  type ThemeDensity,
+  type ThemePresetKey,
+  type ThemeScheme,
+} from '../../design-system';
 import { useWorkspace } from '../../workspace/WorkspaceProvider';
 import { nexus } from '../../nexus/api';
 import type { IntelligenceMode, IntelligenceStatus, ProviderAccount } from '../../types';
 import { useTranslation } from 'react-i18next';
-import { normalizeLanguage, supportedLanguages, type SupportedLanguage } from '../../i18n';
 import { asArray } from '../../lib/safeArray';
 import { intelligenceCLIProfiles } from './intelligenceProfiles';
 import { IntelligenceProviderCombo } from './IntelligenceProviderCombo';
@@ -17,10 +46,38 @@ import {
 } from '../../notifications/notificationPrefs';
 import { pushNotifications } from '../../notifications/PushNotificationManager';
 
+type SettingsTab = 'appearance' | 'accessibility' | 'updates' | 'intelligence' | 'notifications';
+
 export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) => {
   const theme = useTheme();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const workspace = useWorkspace();
+  const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
+  const [fontScale, setFontScale] = useState<number>(() => {
+    if (typeof document !== 'undefined') {
+      const val = document.documentElement.style.getPropertyValue('--nx-font-scale');
+      if (val) return parseFloat(val) || 1;
+    }
+    return 1;
+  });
+
+  const applyFontScale = (scale: number) => {
+    setFontScale(scale);
+    if (typeof document !== 'undefined') {
+      document.documentElement.style.setProperty('--nx-font-scale', String(scale));
+      localStorage.setItem('iapro:nexus:font-scale', String(scale));
+    }
+  };
+
+  useEffect(() => {
+    const saved = localStorage.getItem('iapro:nexus:font-scale');
+    if (saved) {
+      const s = parseFloat(saved);
+      if (s) applyFontScale(s);
+    }
+  }, []);
+
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<{
     nexus_version: string;
     maestro_version: string;
@@ -38,7 +95,10 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
     error?: string;
   } | null>(null);
   const [intelligence, setIntelligence] = useState<IntelligenceStatus | null>(null);
-  const [intelligenceDraft, setIntelligenceDraft] = useState<IntelligenceStatus>({ mode: 'OFF', available: false });
+  const [intelligenceDraft, setIntelligenceDraft] = useState<IntelligenceStatus>({
+    mode: 'OFF',
+    available: false,
+  });
   const [intelligenceResources, setIntelligenceResources] = useState<ProviderAccount[]>([]);
   const [intelligenceSaving, setIntelligenceSaving] = useState(false);
   const [intelligenceError, setIntelligenceError] = useState('');
@@ -60,19 +120,25 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
 
   const checkUpdates = async () => {
     try {
+      setCheckingUpdates(true);
       setUpdateError('');
       const data = await nexus.getSystemUpdates();
       setUpdateInfo(data);
     } catch (error) {
       setUpdateInfo(null);
       setUpdateError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCheckingUpdates(false);
     }
   };
 
   const loadIntelligence = async () => {
     try {
       setIntelligenceError('');
-      const [status, resources] = await Promise.all([nexus.getIntelligence(), nexus.listResources()]);
+      const [status, resources] = await Promise.all([
+        nexus.getIntelligence(),
+        nexus.listResources(),
+      ]);
       setIntelligence(status);
       setIntelligenceDraft(status);
       setIntelligenceResources(asArray(resources.accounts));
@@ -106,7 +172,7 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
 
   const cliResources = useMemo(
     () => intelligenceCLIProfiles(intelligenceResources, intelligenceDraft),
-    [intelligenceResources, intelligenceDraft.provider, intelligenceDraft.profile]
+    [intelligenceResources, intelligenceDraft],
   );
 
   const saveIntelligence = async () => {
@@ -141,185 +207,403 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
           <p>{t('settings.intro')}</p>
         </div>
       </div>
+      {/* 5 Modular Navigation Tabs */}
+      <div className="nx-settings-tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'appearance'}
+          className={`nx-settings-tab ${activeTab === 'appearance' ? 'nx-settings-tab--active' : ''}`}
+          onClick={() => setActiveTab('appearance')}
+        >
+          <Palette size={15} />
+          <span>Aparência & Estilo</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'accessibility'}
+          className={`nx-settings-tab ${activeTab === 'accessibility' ? 'nx-settings-tab--active' : ''}`}
+          onClick={() => setActiveTab('accessibility')}
+        >
+          <Accessibility size={15} />
+          <span>Acessibilidade</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'updates'}
+          className={`nx-settings-tab ${activeTab === 'updates' ? 'nx-settings-tab--active' : ''}`}
+          onClick={() => setActiveTab('updates')}
+        >
+          <ArrowUpCircle size={15} />
+          <span>Atualizações & Sistema</span>
+          {updateInfo?.update_available && (
+            <span className="nx-badge" data-tone="warning" style={{ fontSize: 10 }}>
+              Update
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'intelligence'}
+          className={`nx-settings-tab ${activeTab === 'intelligence' ? 'nx-settings-tab--active' : ''}`}
+          onClick={() => setActiveTab('intelligence')}
+        >
+          <Sparkles size={15} />
+          <span>Nexus Intelligence</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'notifications'}
+          className={`nx-settings-tab ${activeTab === 'notifications' ? 'nx-settings-tab--active' : ''}`}
+          onClick={() => setActiveTab('notifications')}
+        >
+          <Bell size={15} />
+          <span>Notificações</span>
+        </button>
+      </div>
+
       <div className="nx-settings-grid">
-        <Card className="nx-settings-card" style={{ gridColumn: '1 / -1' }}>
-          <div className="nx-settings-card__title">
-            <Palette size={17} />
-            <div>
-              <strong>{t('settings.theme')}</strong>
-              <small>{t('settings.themeDescription')}</small>
+        {/* Tab 1: Appearance */}
+        {activeTab === 'appearance' && (
+          <>
+            <Card className="nx-settings-card" style={{ gridColumn: '1 / -1' }}>
+              <div className="nx-settings-card__title">
+                <Palette size={17} />
+                <div>
+                  <strong>{t('settings.theme')}</strong>
+                  <small>{t('settings.themeDescription')}</small>
+                </div>
+              </div>
+
+              <ThemeAccordionSelector theme={theme} />
+            </Card>
+
+            <Card className="nx-settings-card">
+              <div className="nx-settings-card__title">
+                <MonitorCog size={17} />
+                <div>
+                  <strong>{t('settings.workspace')}</strong>
+                  <small>{t('settings.workspaceDescription')}</small>
+                </div>
+              </div>
+              <p className="nx-muted-copy" style={{ fontSize: '12px' }}>
+                Restaura o layout original do projeto ativo, preservando workspaces e chaves
+                seguras.
+              </p>
+              <Button tone="warning" onClick={workspace.reset}>
+                <RotateCcw size={14} /> {t('settings.reset')}
+              </Button>
+            </Card>
+          </>
+        )}
+
+        {/* Tab 2: Accessibility */}
+        {activeTab === 'accessibility' && (
+          <>
+            <Card className="nx-settings-card">
+              <div className="nx-settings-card__title">
+                <Type size={17} />
+                <div>
+                  <strong>Escala Tipográfica & Zoom</strong>
+                  <small>Ajuste proporcional do tamanho da fonte em toda a interface do OS</small>
+                </div>
+              </div>
+              <div className="nx-font-scale-controls">
+                <button
+                  type="button"
+                  className="nx-font-scale-btn"
+                  data-active={fontScale <= 0.9}
+                  onClick={() => applyFontScale(0.9)}
+                >
+                  A- (90%)
+                </button>
+                <button
+                  type="button"
+                  className="nx-font-scale-btn"
+                  data-active={fontScale === 1}
+                  onClick={() => applyFontScale(1)}
+                >
+                  Padrão (100%)
+                </button>
+                <button
+                  type="button"
+                  className="nx-font-scale-btn"
+                  data-active={fontScale >= 1.15 && fontScale < 1.3}
+                  onClick={() => applyFontScale(1.15)}
+                >
+                  A+ (115%)
+                </button>
+                <button
+                  type="button"
+                  className="nx-font-scale-btn"
+                  data-active={fontScale >= 1.3}
+                  onClick={() => applyFontScale(1.3)}
+                >
+                  A++ (130%)
+                </button>
+              </div>
+            </Card>
+
+            <Card className="nx-settings-card">
+              <div className="nx-settings-card__title">
+                <Accessibility size={17} />
+                <div>
+                  <strong>{t('settings.accessibility')}</strong>
+                  <small>{t('settings.accessibilityDescription')}</small>
+                </div>
+              </div>
+              <Segmented
+                ariaLabel={t('settings.density')}
+                value={theme.density}
+                onChange={(value) => theme.setDensity(value as ThemeDensity)}
+                options={[
+                  { value: 'compact', label: t('settings.compact') },
+                  { value: 'comfortable', label: t('settings.comfortable') },
+                ]}
+              />
+              <Switch
+                checked={theme.reducedMotion}
+                onChange={theme.setReducedMotion}
+                label={t('settings.reduceMotion')}
+                description={t('settings.reduceMotionDescription')}
+              />
+              <Button onClick={onTour}>{t('settings.replayTour')}</Button>
+            </Card>
+          </>
+        )}
+
+        {/* Tab 3: Updates & System */}
+        {activeTab === 'updates' && (
+          <Card className="nx-settings-card" style={{ gridColumn: '1 / -1' }}>
+            <div className="nx-settings-card__title">
+              <ArrowUpCircle size={17} />
+              <div>
+                <strong>{t('settings.updates')}</strong>
+                <small>{t('settings.updatesDescription')}</small>
+              </div>
             </div>
-          </div>
-
-          <ThemeAccordionSelector theme={theme} />
-        </Card>
-
-        <Card className="nx-settings-card">
-          <div className="nx-settings-card__title">
-            <Accessibility size={17} />
-            <div>
-              <strong>{t('settings.accessibility')}</strong>
-              <small>{t('settings.accessibilityDescription')}</small>
+            {updateInfo && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                  fontSize: '13px',
+                  maxWidth: 480,
+                }}
+              >
+                <div
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <span>IAPro Nexus Core:</span>
+                  <Badge tone="success">v{updateInfo.nexus_version}</Badge>
+                </div>
+                <div
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <span>Orquestrador Maestro:</span>
+                  <Badge tone={updateInfo.maestro_available ? 'brand' : 'warning'}>
+                    v{updateInfo.maestro_version}
+                  </Badge>
+                </div>
+                {updateInfo.update_available ? (
+                  <InlineAlert tone="warning" title="Atualização disponível">
+                    Há uma nova versão do Orquestrador Maestro disponível (
+                    {updateInfo.maestro_latest_version
+                      ? `v${updateInfo.maestro_latest_version}`
+                      : 'nova build'}
+                    ).
+                  </InlineAlert>
+                ) : (
+                  <InlineAlert tone="success" title="Sistema em dia">
+                    Você está executando as versões mais recentes estáveis do Nexus e do Maestro.
+                  </InlineAlert>
+                )}
+              </div>
+            )}
+            {updateError && (
+              <InlineAlert tone="danger" title="Status de atualização indisponível">
+                {updateError}
+              </InlineAlert>
+            )}
+            {updateSuccess && updateResult && (
+              <InlineAlert
+                tone={updateResult.maestro_updated ? 'success' : 'info'}
+                title={t('maestroControl.updateResult')}
+              >
+                {updateResult.maestro_updated
+                  ? t('maestroControl.updateMaestroDone', { version: updateResult.maestro_version })
+                  : t('maestroControl.updateMaestroSame', {
+                      version: updateResult.maestro_version,
+                    })}{' '}
+                {t('maestroControl.nexusBinaryNote', { version: updateResult.nexus_version })}
+              </InlineAlert>
+            )}
+            <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+              <Button onClick={() => void checkUpdates()} disabled={checkingUpdates || updating}>
+                <RefreshCw size={14} className={checkingUpdates ? 'nx-spin' : ''} />
+                {checkingUpdates ? 'Verificando…' : 'Verificar Atualizações Agora'}
+              </Button>
+              <Button tone="brand" onClick={handleUpdate} disabled={updating}>
+                <RefreshCw size={14} className={updating ? 'nx-spin' : ''} />
+                {updating ? t('settings.updating') : t('settings.update')}
+              </Button>
             </div>
-          </div>
-          <Segmented
-            ariaLabel={t('settings.density')}
-            value={theme.density}
-            onChange={(value) => theme.setDensity(value as ThemeDensity)}
-            options={[
-              { value: 'compact', label: t('settings.compact') },
-              { value: 'comfortable', label: t('settings.comfortable') },
-            ]}
-          />
-          <Switch
-            checked={theme.reducedMotion}
-            onChange={theme.setReducedMotion}
-            label={t('settings.reduceMotion')}
-            description={t('settings.reduceMotionDescription')}
-          />
-          <Button onClick={onTour}>{t('settings.replayTour')}</Button>
-        </Card>
+          </Card>
+        )}
 
-        <Card className="nx-settings-card">
-          <div className="nx-settings-card__title">
-            <Bell size={17} />
-            <div>
-              <strong>{t('settings.notifications', 'Notificações')}</strong>
-              <small>{t('settings.notificationsDescription', 'Avisos in-app e do navegador quando um agente pergunta ou conclui. Título e marcadores nas janelas continuam ativos.')}</small>
+        {/* Tab 4: Intelligence */}
+        {activeTab === 'intelligence' && (
+          <Card className="nx-settings-card" style={{ gridColumn: '1 / -1' }}>
+            <div className="nx-settings-card__title">
+              <Sparkles size={17} />
+              <div>
+                <strong>Nexus Intelligence</strong>
+                <small>
+                  Planejamento semântico para Composer e Flow. O trabalho direto em terminais
+                  continua sem isso.
+                </small>
+              </div>
             </div>
-          </div>
-          <Switch
-            checked={notifyPrefs.notificationsEnabled}
-            onChange={(checked) => updateNotifyPrefs({ notificationsEnabled: checked })}
-            label={t('settings.notificationsToggle', 'Notificações')}
-            description={t('settings.notificationsToggleDescription', 'Toasts e push do navegador (com a aba em segundo plano).')}
-          />
-          <Switch
-            checked={notifyPrefs.soundEnabled}
-            onChange={(checked) => updateNotifyPrefs({ soundEnabled: checked })}
-            label={t('settings.soundToggle', 'Som')}
-            description={t('settings.soundToggleDescription', 'Beep curto ao receber atenção. Independente das notificações visuais.')}
-          />
-        </Card>
-
-        <Card className="nx-settings-card">
-          <div className="nx-settings-card__title">
-            <Sparkles size={17} />
-            <div><strong>{t('language.title')}</strong><small>{t('language.description')}</small></div>
-          </div>
-          <Segmented ariaLabel={t('language.title')} value={normalizeLanguage(i18n.language)} onChange={(value) => void i18n.changeLanguage(value as SupportedLanguage)} options={supportedLanguages.map((value) => ({ value, label: t(value === 'pt-BR' ? 'language.ptBR' : value === 'en' ? 'language.en' : 'language.es') }))} />
-        </Card>
-
-        <Card className="nx-settings-card">
-          <div className="nx-settings-card__title">
-            <Sparkles size={17} />
-            <div>
-              <strong>Nexus Intelligence</strong>
-              <small>Planejamento semântico para Composer e Flow. O trabalho direto em terminais continua sem isso.</small>
-            </div>
-          </div>
-          <Segmented
-            ariaLabel="Intelligence mode"
-            value={intelligenceDraft.mode}
-            onChange={(value) => setIntelligenceDraft((prev) => ({ ...prev, mode: value as IntelligenceMode }))}
-            options={[
-              { value: 'OFF', label: 'Off' },
-              { value: 'CLI', label: 'Coding CLI' },
-              { value: 'OPENAI_COMPATIBLE', label: 'API' },
-            ]}
-          />
-          {intelligenceDraft.mode === 'CLI' && (
-            <IntelligenceProviderCombo
-              accounts={cliResources}
-              provider={intelligenceDraft.provider}
-              profile={intelligenceDraft.profile}
-              model={intelligenceDraft.model}
-              onChange={(next) =>
-                setIntelligenceDraft((prev) => ({
-                  ...prev,
-                  provider: next.provider,
-                  profile: next.profile,
-                  model: next.model ?? prev.model,
-                }))
+            <Segmented
+              ariaLabel="Intelligence mode"
+              value={intelligenceDraft.mode}
+              onChange={(value) =>
+                setIntelligenceDraft((prev) => ({ ...prev, mode: value as IntelligenceMode }))
               }
+              options={[
+                { value: 'OFF', label: 'Off' },
+                { value: 'CLI', label: 'Coding CLI' },
+                { value: 'OPENAI_COMPATIBLE', label: 'API' },
+              ]}
             />
-          )}
-          {intelligenceDraft.mode === 'OPENAI_COMPATIBLE' && (
-            <>
-              <Input value={intelligenceDraft.base_url || ''} onChange={(value) => setIntelligenceDraft((prev) => ({ ...prev, base_url: value }))} placeholder="Base URL (OpenAI-compatible)" />
-              <Input value={intelligenceDraft.api_key_env || ''} onChange={(value) => setIntelligenceDraft((prev) => ({ ...prev, api_key_env: value }))} placeholder="Environment variable containing API key" />
-              <Input value={intelligenceDraft.api_key_file || ''} onChange={(value) => setIntelligenceDraft((prev) => ({ ...prev, api_key_file: value }))} placeholder="Or secret file path" />
-            </>
-          )}
-          {intelligenceDraft.mode !== 'OFF' && (
-            <Input value={intelligenceDraft.model || ''} onChange={(value) => setIntelligenceDraft((prev) => ({ ...prev, model: value }))} placeholder="Modelo (sobrescrever o padrão)" />
-          )}
-          {intelligence && (
-            <InlineAlert tone={intelligence.available ? 'success' : intelligence.mode === 'OFF' ? 'info' : 'warning'} title={intelligence.available ? 'Provedor de Intelligence pronto' : intelligence.mode === 'OFF' ? 'Intelligence desligada' : 'Provedor não pronto'}>
-              {intelligence.error || (intelligence.mode === 'OFF' ? 'Sessões diretas e WorkPlans manuais continuam funcionando.' : `${intelligence.provider || 'Provider'} ${intelligence.profile || ''}`)}
-            </InlineAlert>
-          )}
-          {intelligenceError && <InlineAlert tone="danger" title="Intelligence configuration error">{intelligenceError}</InlineAlert>}
-          <Button tone="brand" onClick={() => void saveIntelligence()} disabled={intelligenceSaving}>
-            {intelligenceSaving ? 'Saving…' : 'Save Intelligence'}
-          </Button>
-        </Card>
-
-        <Card className="nx-settings-card">
-          <div className="nx-settings-card__title">
-            <ArrowUpCircle size={17} />
-            <div>
-              <strong>{t('settings.updates')}</strong>
-              <small>{t('settings.updatesDescription')}</small>
+            {intelligenceDraft.mode === 'CLI' && (
+              <IntelligenceProviderCombo
+                accounts={cliResources}
+                provider={intelligenceDraft.provider}
+                profile={intelligenceDraft.profile}
+                model={intelligenceDraft.model}
+                onChange={(next) =>
+                  setIntelligenceDraft((prev) => ({
+                    ...prev,
+                    provider: next.provider,
+                    profile: next.profile,
+                    model: next.model ?? prev.model,
+                  }))
+                }
+              />
+            )}
+            {intelligenceDraft.mode === 'OPENAI_COMPATIBLE' && (
+              <>
+                <Input
+                  value={intelligenceDraft.base_url || ''}
+                  onChange={(value) =>
+                    setIntelligenceDraft((prev) => ({ ...prev, base_url: value }))
+                  }
+                  placeholder="Base URL (OpenAI-compatible)"
+                />
+                <Input
+                  value={intelligenceDraft.api_key_env || ''}
+                  onChange={(value) =>
+                    setIntelligenceDraft((prev) => ({ ...prev, api_key_env: value }))
+                  }
+                  placeholder="Environment variable containing API key"
+                />
+                <Input
+                  value={intelligenceDraft.api_key_file || ''}
+                  onChange={(value) =>
+                    setIntelligenceDraft((prev) => ({ ...prev, api_key_file: value }))
+                  }
+                  placeholder="Or secret file path"
+                />
+              </>
+            )}
+            {intelligenceDraft.mode !== 'OFF' && (
+              <Input
+                value={intelligenceDraft.model || ''}
+                onChange={(value) => setIntelligenceDraft((prev) => ({ ...prev, model: value }))}
+                placeholder="Modelo (sobrescrever o padrão)"
+              />
+            )}
+            {intelligence && (
+              <InlineAlert
+                tone={
+                  intelligence.available
+                    ? 'success'
+                    : intelligence.mode === 'OFF'
+                      ? 'info'
+                      : 'warning'
+                }
+                title={
+                  intelligence.available
+                    ? 'Provedor de Intelligence pronto'
+                    : intelligence.mode === 'OFF'
+                      ? 'Intelligence desligada'
+                      : 'Provedor não pronto'
+                }
+              >
+                {intelligence.error ||
+                  (intelligence.mode === 'OFF'
+                    ? 'Sessões diretas e WorkPlans manuais continuam funcionando.'
+                    : `${intelligence.provider || 'Provider'} ${intelligence.profile || ''}`)}
+              </InlineAlert>
+            )}
+            {intelligenceError && (
+              <InlineAlert tone="danger" title="Intelligence configuration error">
+                {intelligenceError}
+              </InlineAlert>
+            )}
+            <div style={{ marginTop: 8 }}>
+              <Button
+                tone="brand"
+                onClick={() => void saveIntelligence()}
+                disabled={intelligenceSaving}
+              >
+                {intelligenceSaving ? 'Saving…' : 'Save Intelligence'}
+              </Button>
             </div>
-          </div>
-          {updateInfo && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>IAPro Nexus:</span>
-                <Badge tone="success">v{updateInfo.nexus_version}</Badge>
+          </Card>
+        )}
+
+        {/* Tab 5: Notifications */}
+        {activeTab === 'notifications' && (
+          <Card className="nx-settings-card" style={{ gridColumn: '1 / -1' }}>
+            <div className="nx-settings-card__title">
+              <Bell size={17} />
+              <div>
+                <strong>{t('settings.notifications', 'Notificações')}</strong>
+                <small>
+                  {t(
+                    'settings.notificationsDescription',
+                    'Avisos in-app e do navegador quando um agente pergunta ou conclui. Título e marcadores nas janelas continuam ativos.',
+                  )}
+                </small>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>Orquestrador Maestro:</span>
-                <Badge tone={updateInfo.maestro_available ? 'brand' : 'warning'}>
-                  v{updateInfo.maestro_version}
-                </Badge>
-              </div>
-              {updateInfo.update_available && updateInfo.maestro_latest_version && (
-                <small>{t('maestroControl.latest')}: v{updateInfo.maestro_latest_version}</small>
+            </div>
+            <Switch
+              checked={notifyPrefs.notificationsEnabled}
+              onChange={(checked) => updateNotifyPrefs({ notificationsEnabled: checked })}
+              label={t('settings.notificationsToggle', 'Notificações no Navegador')}
+              description={t(
+                'settings.notificationsToggleDescription',
+                'Toasts e push do navegador (com a aba em segundo plano).',
               )}
-            </div>
-          )}
-          {updateError && <InlineAlert tone="danger" title="Update status unavailable">{updateError}</InlineAlert>}
-          {updateSuccess && updateResult && (
-            <InlineAlert tone={updateResult.maestro_updated ? 'success' : 'info'} title={t('maestroControl.updateResult')}>
-              {updateResult.maestro_updated
-                ? t('maestroControl.updateMaestroDone', { version: updateResult.maestro_version })
-                : t('maestroControl.updateMaestroSame', { version: updateResult.maestro_version })}
-              {' '}
-              {t('maestroControl.nexusBinaryNote', { version: updateResult.nexus_version })}
-            </InlineAlert>
-          )}
-          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <Button tone="brand" onClick={handleUpdate} disabled={updating}>
-              <RefreshCw size={14} className={updating ? 'nx-spin' : ''} />
-              {updating ? t('settings.updating') : t('settings.update')}
-            </Button>
-          </div>
-        </Card>
-
-        <Card className="nx-settings-card">
-          <div className="nx-settings-card__title">
-            <MonitorCog size={17} />
-            <div>
-              <strong>{t('settings.workspace')}</strong>
-              <small>{t('settings.workspaceDescription')}</small>
-            </div>
-          </div>
-          <Button tone="warning" onClick={workspace.reset}>
-            <RotateCcw size={14} /> {t('settings.reset')}
-          </Button>
-        </Card>
+            />
+            <Switch
+              checked={notifyPrefs.soundEnabled}
+              onChange={(checked) => updateNotifyPrefs({ soundEnabled: checked })}
+              label={t('settings.soundToggle', 'Sons de Alerta')}
+              description={t(
+                'settings.soundToggleDescription',
+                'Beep curto ao receber atenção. Independente das notificações visuais.',
+              )}
+            />
+          </Card>
+        )}
       </div>
     </div>
   );
@@ -409,10 +693,16 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {isOpen ? <ChevronDown size={15} color="var(--nx-accent)" /> : <ChevronRight size={15} color="var(--nx-muted)" />}
+                {isOpen ? (
+                  <ChevronDown size={15} color="var(--nx-accent)" />
+                ) : (
+                  <ChevronRight size={15} color="var(--nx-muted)" />
+                )}
                 <div>
                   <div style={{ color: 'var(--nx-text)' }}>{cat.title}</div>
-                  <div style={{ fontSize: 11, color: 'var(--nx-muted)', fontWeight: 400 }}>{cat.description}</div>
+                  <div style={{ fontSize: 11, color: 'var(--nx-muted)', fontWeight: 400 }}>
+                    {cat.description}
+                  </div>
                 </div>
               </div>
               <span className="nx-badge" data-tone="brand" style={{ fontSize: 10 }}>
@@ -463,41 +753,82 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
                           display: 'grid',
                           gap: 6,
                           padding: '8px 10px',
-                          border: isSelected ? '2px solid var(--nx-accent)' : '1px solid var(--nx-border)',
+                          border: isSelected
+                            ? '2px solid var(--nx-accent)'
+                            : '1px solid var(--nx-border)',
                           borderRadius: 7,
                           background: isSelected ? 'var(--nx-surface-3)' : 'var(--nx-bg-elevated)',
                           cursor: 'pointer',
                           transition: 'all .12s',
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <strong style={{ fontSize: 12.5, color: isSelected ? 'var(--nx-accent-text)' : 'var(--nx-text)' }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                          }}
+                        >
+                          <strong
+                            style={{
+                              fontSize: 12.5,
+                              color: isSelected ? 'var(--nx-accent-text)' : 'var(--nx-text)',
+                            }}
+                          >
                             {preset.name}
                           </strong>
                           {isSelected && <Check size={14} color="var(--nx-accent)" />}
                         </div>
 
                         {/* Amostras de Cores (Swatches) */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} aria-hidden="true">
+                        <div
+                          style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                          aria-hidden="true"
+                        >
                           <span
                             title={`Fundo: ${palette.bg}`}
-                            style={{ width: 22, height: 16, borderRadius: 4, background: palette.bg, border: '1px solid #444' }}
+                            style={{
+                              width: 22,
+                              height: 16,
+                              borderRadius: 4,
+                              background: palette.bg,
+                              border: '1px solid #444',
+                            }}
                           />
                           <span
                             title={`Superfície: ${palette.surface}`}
-                            style={{ width: 22, height: 16, borderRadius: 4, background: palette.surface, border: '1px solid #444' }}
+                            style={{
+                              width: 22,
+                              height: 16,
+                              borderRadius: 4,
+                              background: palette.surface,
+                              border: '1px solid #444',
+                            }}
                           />
                           <span
                             title={`Acento: ${palette.accent}`}
-                            style={{ width: 22, height: 16, borderRadius: 4, background: palette.accent, border: '1px solid #444' }}
+                            style={{
+                              width: 22,
+                              height: 16,
+                              borderRadius: 4,
+                              background: palette.accent,
+                              border: '1px solid #444',
+                            }}
                           />
                           <span
                             title={`Texto: ${palette.text}`}
-                            style={{ width: 22, height: 16, borderRadius: 4, background: palette.text, border: '1px solid #444' }}
+                            style={{
+                              width: 22,
+                              height: 16,
+                              borderRadius: 4,
+                              background: palette.text,
+                              border: '1px solid #444',
+                            }}
                           />
                         </div>
                         <span className="sr-only">
-                          Paleta: Fundo {palette.bg}, Superfície {palette.surface}, Acento {palette.accent}.
+                          Paleta: Fundo {palette.bg}, Superfície {palette.surface}, Acento{' '}
+                          {palette.accent}.
                         </span>
                       </div>
                     );
@@ -555,10 +886,13 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
             }}
           >
             <div style={{ fontSize: 11.5, color: 'var(--nx-subtle)', lineHeight: 1.5 }}>
-              Estes controles manuais sobrescrevem a paleta do preset selecionado. Ao escolher um novo preset no Accordion, as cores voltam a ser restauradas automaticamente.
+              Estes controles manuais sobrescrevem a paleta do preset selecionado. Ao escolher um
+              novo preset no Accordion, as cores voltam a ser restauradas automaticamente.
             </div>
             <div style={{ display: 'grid', gap: 6 }}>
-              <label style={{ fontSize: 12, color: 'var(--nx-muted)' }}>Esquema de cores manual</label>
+              <label style={{ fontSize: 12, color: 'var(--nx-muted)' }}>
+                Esquema de cores manual
+              </label>
               <Segmented
                 ariaLabel={t('settings.colorScheme')}
                 value={theme.scheme}
@@ -572,7 +906,9 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
               />
             </div>
             <div style={{ display: 'grid', gap: 6 }}>
-              <label style={{ fontSize: 12, color: 'var(--nx-muted)' }}>Cor de destaque manual</label>
+              <label style={{ fontSize: 12, color: 'var(--nx-muted)' }}>
+                Cor de destaque manual
+              </label>
               <Segmented
                 ariaLabel={t('settings.accent')}
                 value={theme.accent}
@@ -591,4 +927,3 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
     </div>
   );
 };
-

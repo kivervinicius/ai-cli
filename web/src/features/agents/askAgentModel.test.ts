@@ -9,6 +9,9 @@ describe('Ask existing Agent', () => {
 
   it('uses Start & Ask for stopped or recoverable Agents without changing Agent identity', () => {
     expect(askActionForStatus('STOPPED')).toEqual({ label: 'Start & Ask', startIfNeeded: true });
-    expect(askActionForStatus('RECOVERABLE')).toEqual({ label: 'Start & Ask', startIfNeeded: true });
+    expect(askActionForStatus('RECOVERABLE')).toEqual({
+      label: 'Start & Ask',
+      startIfNeeded: true,
+    });
   });
 });

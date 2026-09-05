@@ -1,4 +1,8 @@
-export function notificationTitle(projectName: string | undefined, reason: string, dynamicTitle?: string): string {
+export function notificationTitle(
+  projectName: string | undefined,
+  reason: string,
+  dynamicTitle?: string,
+): string {
   const project = projectName?.trim() || 'Projeto';
   const dynamic = dynamicTitle?.trim();
   if (dynamic) return `[Nexus | ${project}] ${dynamic}`;

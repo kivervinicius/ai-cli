@@ -31,11 +31,7 @@ export const IntelligenceProviderCombo: React.FC<{
       <span className="nx-intel-combo__label">Provedor e perfil</span>
       <DropdownMenu.Root open={open} onOpenChange={setOpen}>
         <DropdownMenu.Trigger asChild>
-          <button
-            type="button"
-            className="nx-intel-combo__trigger"
-            aria-expanded={open}
-          >
+          <button type="button" className="nx-intel-combo__trigger" aria-expanded={open}>
             <span>
               <strong>{summary}</strong>
               {selected && (
@@ -49,11 +45,7 @@ export const IntelligenceProviderCombo: React.FC<{
           </button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
-          <DropdownMenu.Content
-            className="nx-intel-combo__menu"
-            align="start"
-            sideOffset={4}
-          >
+          <DropdownMenu.Content className="nx-intel-combo__menu" align="start" sideOffset={4}>
             {accounts.length === 0 && (
               <p className="nx-intel-combo__empty">
                 Nenhum provedor descoberto. Autentique um CLI em Usage.
@@ -81,7 +73,15 @@ export const IntelligenceProviderCombo: React.FC<{
                       {active ? <Check size={14} /> : <Gauge size={14} />}
                       <strong>{account.display_name || account.provider}</strong>
                       <Badge>{account.profile}</Badge>
-                      <Badge tone={account.health === 'healthy' ? 'success' : account.health === 'degraded' ? 'warning' : 'default'}>
+                      <Badge
+                        tone={
+                          account.health === 'healthy'
+                            ? 'success'
+                            : account.health === 'degraded'
+                              ? 'warning'
+                              : 'default'
+                        }
+                      >
                         {account.health || 'unknown'}
                       </Badge>
                       {account.rate_limited && (
@@ -89,7 +89,9 @@ export const IntelligenceProviderCombo: React.FC<{
                           <ShieldAlert size={11} /> rate limit
                         </Badge>
                       )}
-                      <Badge tone={capable ? 'success' : 'warning'}>{capable ? 'headless' : 'sem headless'}</Badge>
+                      <Badge tone={capable ? 'success' : 'warning'}>
+                        {capable ? 'headless' : 'sem headless'}
+                      </Badge>
                     </span>
                     <small>
                       {pct == null ? 'Quota desconhecida' : `${pct} restante`}
@@ -115,7 +117,13 @@ export const IntelligenceProviderCombo: React.FC<{
                   type="button"
                   className="nx-intel-combo__model"
                   data-active={active ? 'true' : 'false'}
-                  onClick={() => onChange({ provider: provider || selected?.provider || '', profile: profile || selected?.profile || '', model: active ? '' : choice.id })}
+                  onClick={() =>
+                    onChange({
+                      provider: provider || selected?.provider || '',
+                      profile: profile || selected?.profile || '',
+                      model: active ? '' : choice.id,
+                    })
+                  }
                 >
                   {choice.label}
                   {choice.remaining != null ? ` · ${Math.round(choice.remaining)}%` : ''}

@@ -7,10 +7,7 @@ export type PtyLiveChrome = {
 // mistake the protocol delimiters for accidental control characters.
 const ESC = String.fromCharCode(0x1b);
 const BEL = String.fromCharCode(0x07);
-const OSC_TITLE = new RegExp(
-  `${ESC}\\][02];([^${BEL}${ESC}]+)(?:${BEL}|${ESC}\\\\)`,
-  'g',
-);
+const OSC_TITLE = new RegExp(`${ESC}\\][02];([^${BEL}${ESC}]+)(?:${BEL}|${ESC}\\\\)`, 'g');
 
 const QUESTIONNAIRE =
   /\bask_question\b|question\s+\d+\s+of\s+\d+|pergunta\s+\d+\s+de\s+\d+|question[aá]rio|select all that apply|press\s+(?:space|espaço).{0,40}toggle|space to (?:select|toggle)/i;

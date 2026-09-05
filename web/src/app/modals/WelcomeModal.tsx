@@ -21,7 +21,9 @@ export const WelcomeModal: React.FC<{
   onStartTour: () => void;
 }> = ({ open, onClose, onStartTour }) => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'overview' | 'quickstart' | 'shortcuts' | 'system'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'quickstart' | 'shortcuts' | 'system'>(
+    'overview',
+  );
   const [sysInfo, setSysInfo] = useState<{
     nexus_version: string;
     maestro_version: string;
@@ -31,7 +33,10 @@ export const WelcomeModal: React.FC<{
 
   useEffect(() => {
     if (open) {
-      nexus.getSystemUpdates().then(setSysInfo).catch(() => undefined);
+      nexus
+        .getSystemUpdates()
+        .then(setSysInfo)
+        .catch(() => undefined);
     }
   }, [open]);
 
@@ -95,21 +100,27 @@ export const WelcomeModal: React.FC<{
               <h4>{t('welcome.quickstartTitle')}</h4>
               <div className="nx-quickstart-grid">
                 <div className="nx-quickstart-step">
-                  <div className="nx-step-badge"><FolderGit2 size={16} /></div>
+                  <div className="nx-step-badge">
+                    <FolderGit2 size={16} />
+                  </div>
                   <div className="nx-step-body">
                     <strong>{t('welcome.step1Title')}</strong>
                     <p>{t('welcome.step1Desc')}</p>
                   </div>
                 </div>
                 <div className="nx-quickstart-step">
-                  <div className="nx-step-badge"><Bot size={16} /></div>
+                  <div className="nx-step-badge">
+                    <Bot size={16} />
+                  </div>
                   <div className="nx-step-body">
                     <strong>{t('welcome.step2Title')}</strong>
                     <p>{t('welcome.step2Desc')}</p>
                   </div>
                 </div>
                 <div className="nx-quickstart-step">
-                  <div className="nx-step-badge"><TerminalSquare size={16} /></div>
+                  <div className="nx-step-badge">
+                    <TerminalSquare size={16} />
+                  </div>
                   <div className="nx-step-body">
                     <strong>{t('welcome.step3Title')}</strong>
                     <p>{t('welcome.step3Desc')}</p>
@@ -125,23 +136,33 @@ export const WelcomeModal: React.FC<{
               <table className="nx-shortcuts-table">
                 <tbody>
                   <tr>
-                    <td><kbd>Ctrl</kbd> + <kbd>K</kbd> / <kbd>⌘</kbd> + <kbd>K</kbd></td>
+                    <td>
+                      <kbd>Ctrl</kbd> + <kbd>K</kbd> / <kbd>⌘</kbd> + <kbd>K</kbd>
+                    </td>
                     <td>{t('welcome.cmdPalette')}</td>
                   </tr>
                   <tr>
-                    <td><kbd>Ctrl</kbd> + <kbd>P</kbd> / <kbd>⌘</kbd> + <kbd>P</kbd></td>
+                    <td>
+                      <kbd>Ctrl</kbd> + <kbd>P</kbd> / <kbd>⌘</kbd> + <kbd>P</kbd>
+                    </td>
                     <td>{t('welcome.projManager')}</td>
                   </tr>
                   <tr>
-                    <td><code>/nexus help</code> ou <code>/ai help</code></td>
+                    <td>
+                      <code>/nexus help</code> ou <code>/ai help</code>
+                    </td>
                     <td>{t('welcome.slashHelp')}</td>
                   </tr>
                   <tr>
-                    <td><code>/nexus handoff &lt;account&gt;</code></td>
+                    <td>
+                      <code>/nexus handoff &lt;account&gt;</code>
+                    </td>
                     <td>{t('welcome.slashHandoff')}</td>
                   </tr>
                   <tr>
-                    <td><code>/nexus continue --with &lt;prov&gt;</code></td>
+                    <td>
+                      <code>/nexus continue --with &lt;prov&gt;</code>
+                    </td>
                     <td>{t('welcome.slashContinue')}</td>
                   </tr>
                 </tbody>
@@ -166,7 +187,11 @@ export const WelcomeModal: React.FC<{
                 <div className="nx-version-row">
                   <span>{t('welcome.maestroStatus')}</span>
                   <Badge tone={sysInfo?.maestro_available ? 'success' : 'warning'}>
-                    {sysInfo?.maestro_available ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                    {sysInfo?.maestro_available ? (
+                      <CheckCircle2 size={12} />
+                    ) : (
+                      <AlertCircle size={12} />
+                    )}
                     {sysInfo?.maestro_available ? 'AVAILABLE' : 'DEGRADED'}
                   </Badge>
                 </div>
@@ -174,9 +199,13 @@ export const WelcomeModal: React.FC<{
                   <span>Updates</span>
                   <span style={{ fontSize: '12px' }}>
                     {sysInfo?.update_available ? (
-                      <strong style={{ color: 'var(--nx-warning, #f59e0b)' }}>{t('welcome.updateAvailable')}</strong>
+                      <strong style={{ color: 'var(--nx-warning, #f59e0b)' }}>
+                        {t('welcome.updateAvailable')}
+                      </strong>
                     ) : (
-                      <span style={{ color: 'var(--nx-success, #10b981)' }}>✓ {t('welcome.upToDate')}</span>
+                      <span style={{ color: 'var(--nx-success, #10b981)' }}>
+                        ✓ {t('welcome.upToDate')}
+                      </span>
                     )}
                   </span>
                 </div>
