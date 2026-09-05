@@ -50,7 +50,9 @@ export const validGlobalSurfaces = new Set<GlobalSurfaceKind>([
   'welcome',
 ]);
 
-export function globalSurfaceToProjectSurface(surface: GlobalSurfaceKind): ProjectSurfaceKind | null {
+export function globalSurfaceToProjectSurface(
+  surface: GlobalSurfaceKind,
+): ProjectSurfaceKind | null {
   return surface === 'updates' || surface === 'settings' ? 'settings' : null;
 }
 

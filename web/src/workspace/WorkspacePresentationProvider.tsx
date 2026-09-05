@@ -26,7 +26,6 @@ import type { ArrangePresetName } from './arrangePresets';
 import { arrangeByPreset, resolveArrangePreset } from './arrangePresets';
 import { useWorkspaceLayoutPersistence } from './WorkspaceProvider';
 
-
 interface ContextValue {
   state: WorkspacePresentationState;
   setMode: (mode: WorkspacePresentationMode) => void;

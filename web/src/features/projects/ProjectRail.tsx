@@ -199,10 +199,13 @@ export const ProjectRail: React.FC<{
           className="nx-rail-accordion-section"
           data-expanded={projectsExpanded ? 'true' : 'false'}
         >
-          <div
-            className="nx-project-rail__heading nx-rail-section-header"
-          >
-            <button type="button" className="nx-rail-header-label" onClick={toggleProjects} aria-expanded={projectsExpanded}>
+          <div className="nx-project-rail__heading nx-rail-section-header">
+            <button
+              type="button"
+              className="nx-rail-header-label"
+              onClick={toggleProjects}
+              aria-expanded={projectsExpanded}
+            >
               <span className="nx-rail-chevron">{projectsExpanded ? '▾' : '▸'}</span>
               <span>{t('rail.projects')}</span>
               <span className="nx-rail-count">({filteredProjects.length})</span>
@@ -258,10 +261,13 @@ export const ProjectRail: React.FC<{
           className="nx-rail-accordion-section nx-rail-section-agents"
           data-expanded={agentsExpanded ? 'true' : 'false'}
         >
-          <div
-            className="nx-project-rail__heading nx-rail-section-header"
-          >
-            <button type="button" className="nx-rail-header-label" onClick={toggleAgents} aria-expanded={agentsExpanded}>
+          <div className="nx-project-rail__heading nx-rail-section-header">
+            <button
+              type="button"
+              className="nx-rail-header-label"
+              onClick={toggleAgents}
+              aria-expanded={agentsExpanded}
+            >
               <span className="nx-rail-chevron">{agentsExpanded ? '▾' : '▸'}</span>
               <span>Agentes</span>
               <span className="nx-rail-count">({filteredAgents.length})</span>
@@ -341,7 +347,12 @@ export const ProjectRail: React.FC<{
             className="nx-project-rail__heading nx-rail-section-header"
             style={{ borderTop: '1px solid var(--nx-border)' }}
           >
-            <button type="button" className="nx-rail-header-label" onClick={toggleTools} aria-expanded={toolsExpanded}>
+            <button
+              type="button"
+              className="nx-rail-header-label"
+              onClick={toggleTools}
+              aria-expanded={toolsExpanded}
+            >
               <span className="nx-rail-chevron">{toolsExpanded ? '▾' : '▸'}</span>
               <span>Ferramentas</span>
             </button>

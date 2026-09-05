@@ -170,7 +170,10 @@ export const WorkspaceProvider: React.FC<{
   }, [layoutService, model, initialPersisted, presentation, projectId, saveLayout]);
 
   const persistence = useMemo<WorkspaceLayoutPersistence>(
-    () => ({ initialPresentation: initialPersisted.presentation, registerPresentation: setPresentation }),
+    () => ({
+      initialPresentation: initialPersisted.presentation,
+      registerPresentation: setPresentation,
+    }),
     [initialPersisted.presentation],
   );
 

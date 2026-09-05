@@ -149,12 +149,17 @@ export const WorkspaceSurfaceHost: React.FC<{
   useEffect(() => {
     if (surface.type !== 'legacy-events') return;
     let active = true;
-    void nexus.listProjectEvents(project.id).then((items) => {
-      if (active) setActivityEvents((items || []).map(mapDurableActivity));
-    }).catch(() => {
-      if (active) setActivityEvents([]);
-    });
-    return () => { active = false; };
+    void nexus
+      .listProjectEvents(project.id)
+      .then((items) => {
+        if (active) setActivityEvents((items || []).map(mapDurableActivity));
+      })
+      .catch(() => {
+        if (active) setActivityEvents([]);
+      });
+    return () => {
+      active = false;
+    };
   }, [project.id, surface.type]);
 
   const open = (kind: string) =>

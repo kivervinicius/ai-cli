@@ -42,7 +42,13 @@ import { SystemDiagnosticsCard } from './SystemDiagnosticsCard';
 import type { SystemDoctorReport } from '../../nexus/api';
 
 type SettingsTab = 'appearance' | 'accessibility' | 'updates' | 'intelligence' | 'notifications';
-const SETTINGS_TABS: SettingsTab[] = ['appearance', 'accessibility', 'updates', 'intelligence', 'notifications'];
+const SETTINGS_TABS: SettingsTab[] = [
+  'appearance',
+  'accessibility',
+  'updates',
+  'intelligence',
+  'notifications',
+];
 
 export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) => {
   const theme = useTheme();
@@ -53,7 +59,9 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
     const current = SETTINGS_TABS.indexOf(activeTab);
     if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
     event.preventDefault();
-    const next = (current + (event.key === 'ArrowRight' ? 1 : -1) + SETTINGS_TABS.length) % SETTINGS_TABS.length;
+    const next =
+      (current + (event.key === 'ArrowRight' ? 1 : -1) + SETTINGS_TABS.length) %
+      SETTINGS_TABS.length;
     setActiveTab(SETTINGS_TABS[next]);
     document.getElementById(`settings-tab-${SETTINGS_TABS[next]}`)?.focus();
   };
