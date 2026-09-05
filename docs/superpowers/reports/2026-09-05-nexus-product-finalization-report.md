@@ -97,6 +97,7 @@ integration scenarios remain release conditions.
 ## Git safety
 
 No merge performed. No tag performed. No release published. The user authorized
-publishing this branch after the independent audit; the final push is performed
-after this report commit. User working tree was not modified; implementation
-changes are confined to the requested worktree.
+publishing this branch after the independent audit; a push was attempted after
+this report commit but GitHub rejected the local credential. User working tree
+was not modified; implementation changes are confined to the requested
+worktree.
