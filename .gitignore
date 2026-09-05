@@ -29,7 +29,7 @@ history.jsonl
 *jetski*
 .env
 .env.*
-.superpowers/*
+.superpowers/
 
 # Local Profile and Storage Dirs
 profiles/
@@ -37,6 +37,8 @@ profiles/
 .gemini/
 scratch/
 tmp/
+.worktrees/
+.tempmediaStorage/
 
 # OS and IDE Files
 .DS_Store
@@ -51,8 +53,10 @@ tmp/
 /web/node_modules
 web/node_modules/
 web/dist/
+# Bun is the packageManager (web/package.json); ignore npm lock churn.
+web/package-lock.json
 
-# Local Yarn state; dependencies are managed by web/package-lock.json.
+# Local Yarn state; dependencies are managed by web/bun.lock.
 .pnp.*
 .yarn/*
 !.yarn/patches/
@@ -60,6 +64,7 @@ web/dist/
 !.yarn/releases/
 !.yarn/versions/
 
-# Ephemeral dated test/verification reports
+# Ephemeral dated test/verification reports and gate status crumbs
 DEV/validation/FRONTEND_20*.md
-
+DEV/validation/*.status
+DEV/validation/baseline/*.status
