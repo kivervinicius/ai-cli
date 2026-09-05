@@ -96,6 +96,7 @@ integration scenarios remain release conditions.
 
 ## Git safety
 
-No merge performed. No push performed. No tag performed. No release published.
-User working tree was not modified; implementation changes are confined to the
-requested worktree.
+No merge performed. No tag performed. No release published. The user authorized
+publishing this branch after the independent audit; the final push is performed
+after this report commit. User working tree was not modified; implementation
+changes are confined to the requested worktree.
