@@ -1,0 +1,83 @@
+name: Signed Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version (for example v0.5.0-beta.24)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+env:
+  GOTOOLCHAIN: local
+  GOFLAGS: -mod=readonly
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: beta-signing
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.9
+
+      - name: Install and build frontend
+        working-directory: web
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Verify embedded bundle
+        run: git diff --exit-code -- internal/control/web/dist
+
+      - name: Run release gates
+        run: |
+          go test -race ./...
+          go vet ./...
+
+      - name: Build signed release artifacts
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: v2.18.0
+          args: release --clean
+
+      - name: Generate update manifest
+        env:
+          NEXUS_UPDATE_PRIVATE_KEY: ${{ secrets.NEXUS_UPDATE_PRIVATE_KEY }}
+          NEXUS_UPDATE_KEY_ID: ${{ secrets.NEXUS_UPDATE_KEY_ID }}
+          RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
+        run: |
+          test -n "$NEXUS_UPDATE_PRIVATE_KEY"
+          test -n "$NEXUS_UPDATE_KEY_ID"
+          go run ./scripts/sign-update-manifest --dist dist --version "$RELEASE_VERSION" --key-id "$NEXUS_UPDATE_KEY_ID" --private-key "$NEXUS_UPDATE_PRIVATE_KEY"
+
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'dist/*'
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
