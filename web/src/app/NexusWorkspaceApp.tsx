@@ -435,14 +435,21 @@ const WorkspaceCoordinator: React.FC<{
     [open],
   );
 
+  const lastSyncedRouteRef = useRef<string>('');
   useEffect(() => {
+    const routeKey = `${parsedRoute.kind}:${parsedRoute.kind === 'project' ? parsedRoute.surface : ''}:${location.pathname}`;
+    if (lastSyncedRouteRef.current === routeKey) return;
+    lastSyncedRouteRef.current = routeKey;
+
     if (parsedRoute.kind === 'project' && parsedRoute.projectId === project.id) {
       const targetSurface = routeToWorkspaceSurface(parsedRoute, { agents: data.agents });
       if (targetSurface) {
         workspace.open(targetSurface);
       }
+    } else if (parsedRoute.kind === 'global' && parsedRoute.surface === 'settings') {
+      workspace.open(projectSurface(project.id, 'settings'));
     }
-  }, [parsedRoute, project.id, data.agents, workspace]);
+  }, [parsedRoute, project.id, data.agents, location.pathname]);
   const shell = useCallback(async () => {
     if (shellInFlight.current) return;
     shellInFlight.current = true;

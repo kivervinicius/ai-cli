@@ -119,7 +119,7 @@ async function main() {
       await page.setViewportSize({ width: vp.width, height: vp.height });
       await page.waitForTimeout(400);
 
-      const createBtn = page.locator('[data-testid="topbar-create-menu-btn"]');
+      const createBtn = page.locator('[data-testid="topbar-create-menu-btn"]').first();
       const isVisible = await createBtn.isVisible();
       assert.equal(isVisible, true, `Create menu button must be visible at ${vp.width}x${vp.height}`);
 
@@ -145,20 +145,31 @@ async function main() {
 
     console.log('5. Testing Settings Surface, Accordion WAI-ARIA and Density Delta...');
     await page.setViewportSize({ width: 1280, height: 800 });
-    const settingsBtn = page.locator('button:has-text("Settings")').first();
+    const settingsBtn = page
+      .locator(
+        'button[aria-label*="Aparência"], button[aria-label*="Appearance"], button[title*="Aparência"], button[title*="Appearance"], button:has-text("Settings")',
+      )
+      .first();
     if (await settingsBtn.isVisible()) {
       await settingsBtn.click();
-      await page.waitForTimeout(800);
+      await page.waitForTimeout(1000);
+    }
+
+    const settingsTab = page.locator('.nx-workspace-tab[data-kind="settings"]').first();
+    if (await settingsTab.isVisible()) {
+      await settingsTab.click();
+      await page.waitForTimeout(500);
     }
 
     // Validação do Accordion
     const accordionHeader = page.locator('button[id^="theme-cat-hdr-"]').first();
-    assert.equal(await accordionHeader.isVisible(), true, 'Accordion category header must be visible');
+    await accordionHeader.waitFor({ state: 'visible', timeout: 15000 });
     const ariaExpanded = await accordionHeader.getAttribute('aria-expanded');
     assert.ok(ariaExpanded === 'true' || ariaExpanded === 'false', 'aria-expanded must be boolean string');
 
     // Validação dos Radios com Swatches
     const themeRadio = page.locator('div[role="radio"]').first();
+    await themeRadio.waitFor({ state: 'visible', timeout: 5000 });
     assert.equal(await themeRadio.isVisible(), true, 'Theme radio must be visible');
     const hasSwatches = await themeRadio.locator('.nx-theme-palette, span[title^="Fundo:"]').count();
     assert.ok(hasSwatches > 0, 'Theme radio must display color palette swatches');

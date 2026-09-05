@@ -28,6 +28,7 @@ import {
   type ContextMenuPoint,
 } from '../design-system';
 import {
+  isSurfaceMatch,
   listStacks,
   listSurfaces,
   surfaceViewId,
@@ -448,7 +449,7 @@ const WorkspaceStackView: React.FC<{
     });
   }, [stack.tabs]);
   const ptyTabs = useMemo(() => stack.tabs.filter(isPtySurface), [stack.tabs]);
-  const activeRaw = stack.tabs.find((tab) => tab.id === stack.activeId);
+  const activeRaw = stack.tabs.find((tab) => isSurfaceMatch(tab, stack.activeId));
   // If a PTY was left as activeId (legacy layouts), treat the Terminais product tab as active.
   const activeProduct =
     activeRaw && !isPtySurface(activeRaw)

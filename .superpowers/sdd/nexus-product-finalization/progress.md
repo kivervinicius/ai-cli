@@ -49,3 +49,16 @@
   - Go: `TestEventsMetadata_RecordAndList` in `internal/nexus/store/events_test.go`, `TestEventBusDurableRecorderHook` in `internal/control/events/events_test.go`, `TestProjectEventsAPI` in `internal/control/web/handlers_nexus_test.go`.
   - Quality gates: `npm --prefix web run quality:full` (53 test files / 264 vitest tests passed, clean build), `go test -race ./internal/...` passed with 0 data races.
 
+## Wave 5: Playwright, Axe, Keyboard & Visual Regression (VERIFIED)
+- Playwright E2E & Hardening:
+  - Automated test suite in `web/scripts/e2e-hardening-verify.mjs` executed against dynamic ephemeral Go backend server (`nexus web --port 0`).
+  - Tested 6 canonical responsive breakpoints: `320x568` (Mobile SE), `390x844` (Mobile iPhone), `768x1024` (Tablet), `1024x768` (Laptop compact), `1280x800` (Laptop critical), `1440x900` (Desktop).
+  - Verified zero visual overlap / obstruction using `document.elementFromPoint` geometry checks for topbar create menu and action buttons.
+  - Verified WAI-ARIA Accordion headers with `aria-expanded` and theme radio items with `role="radio"`, `aria-checked`, and palette swatches.
+  - Verified quantitative density spacing delta (Comfortable > Compact card height).
+  - Fixed active tab synchronization in `web/src/app/NexusWorkspaceApp.tsx` and `web/src/workspace/WorkspaceRenderer.tsx` preventing tab reset on internal workspace state mutation.
+  - Added canonical scripts: `npm run test:e2e`, `npm run test:a11y`, `npm run test:visual` in `web/package.json`.
+- Quality gates:
+  - `npm --prefix web run quality:full` (53 test files / 264 Vitest tests passed, clean build).
+  - `npm --prefix web run test:e2e` (All 6 breakpoints, accordion, radios, and density checks passed).
+

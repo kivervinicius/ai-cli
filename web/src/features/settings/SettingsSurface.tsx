@@ -748,7 +748,8 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
                     return (
                       <div
                         key={presetKey}
-                        role="button"
+                        role="radio"
+                        aria-checked={isSelected}
                         tabIndex={0}
                         onClick={() => theme.setPreset(presetKey as ThemePresetKey)}
                         onKeyDown={(e) => {

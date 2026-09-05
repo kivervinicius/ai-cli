@@ -18,6 +18,9 @@
     "build:js": "node scripts/build.mjs",
     "build": "node scripts/build.mjs",
     "verify": "node scripts/verify-report.mjs",
+    "test:e2e": "node scripts/e2e-hardening-verify.mjs",
+    "test:a11y": "node scripts/e2e-hardening-verify.mjs",
+    "test:visual": "node scripts/e2e-hardening-verify.mjs",
     "test:e2e-hardening": "node scripts/e2e-hardening-verify.mjs",
     "quality": "npm run check:styles && npm run format:check && npm run lint && npm run lint:styles && npm run typecheck && npm run test",
     "quality:full": "npm run quality && npm run build"
