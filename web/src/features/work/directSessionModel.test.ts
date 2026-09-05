@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildDirectAgentName, directAccountTitle, directQuotaPercent, eligibleDirectResources } from './directSessionModel';
+import {
+  bestGroupRemainingFromQuotaView,
+  buildDirectAgentName,
+  compactQuotaLabel,
+  directAccountTitle,
+  directQuotaDisplay,
+  directQuotaPercent,
+  eligibleDirectResources,
+} from './directSessionModel';
 
 describe('direct session model', () => {
   it('builds a short useful Agent name from the prompt', () => {
@@ -29,5 +37,39 @@ describe('direct session model', () => {
     expect(directQuotaPercent({ quota_remaining: 0.7, quota_view: { status: 'OK' } })).toBe(70);
     expect(directQuotaPercent({ quota_remaining: 40, quota_view: { status: 'OK' } })).toBe(40);
     expect(directQuotaPercent({ quota_remaining: 0.7, avail_reasons: { unknown_quota: true } })).toBeNull();
+  });
+
+  it('scores the best usable group instead of the global bottleneck for AGY', () => {
+    expect(directQuotaPercent({
+      quota_remaining: 0,
+      quota_view: {
+        status: 'CACHED',
+        model_groups: [
+          { windows: [{ kind: '5h', remaining: 100 }, { kind: 'weekly', remaining: 100 }] },
+        ],
+      },
+    })).toBe(100);
+    const agyView = {
+      status: 'CACHED',
+      model_groups: [
+        { name: 'Gemini Models', windows: [{ kind: '5h', remaining: 0 }, { kind: 'weekly', remaining: 66 }] },
+        { name: 'Claude & GPT Models', windows: [{ kind: 'claude_5h', remaining: 100 }, { kind: 'claude_weekly', remaining: 100 }] },
+      ],
+    };
+    expect(bestGroupRemainingFromQuotaView(agyView)).toBe(100);
+    expect(directQuotaPercent({ quota_remaining: 0, quota_view: agyView })).toBe(100);
+    expect(compactQuotaLabel(agyView)).toBe('Gemini 0% · Claude 100%');
+    expect(directQuotaDisplay({ quota_remaining: 0, quota_view: agyView })).toBe('Gemini 0% · Claude 100%');
+  });
+
+  it('keeps Codex 5h and weekly in the same pool', () => {
+    const view = {
+      status: 'CACHED',
+      model_groups: [
+        { name: 'Claude & GPT Models', windows: [{ kind: '5h', remaining: 0 }, { kind: 'weekly', remaining: 90 }] },
+      ],
+    };
+    expect(directQuotaPercent({ quota_remaining: 0.9, quota_view: view })).toBe(0);
+    expect(compactQuotaLabel(view)).toBe('5h 0% · weekly 90%');
   });
 });

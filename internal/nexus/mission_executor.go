@@ -360,7 +360,7 @@ func (e *nexusPackageExecutor) ensureReviewerAgent(ctx context.Context, st *stor
 	}
 	reviewAccounts := make([]ProviderAccount, 0, len(accounts))
 	for _, account := range accounts {
-		if supportsSafeHeadlessReview(account.Provider) {
+		if accountSupportsHeadlessReview(account) {
 			reviewAccounts = append(reviewAccounts, account)
 		}
 	}
@@ -406,13 +406,19 @@ func (e *nexusPackageExecutor) ensureReviewerAgent(ctx context.Context, st *stor
 	return reviewer, nil
 }
 
-func supportsSafeHeadlessReview(provider string) bool {
-	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "claude", "gemini", "cursor":
-		return true
-	default:
-		return false
+// accountSupportsHeadlessReview returns true when the provider account
+// advertises both "headless" and "submit_prompt" capabilities at SUPPORTED
+// level. This replaces the old provider-name whitelist so that any driver
+// (current or future) that declares these capabilities qualifies automatically.
+func accountSupportsHeadlessReview(acc ProviderAccount) bool {
+	required := []string{"headless", "submit_prompt"}
+	for _, cap := range required {
+		val := strings.ToLower(strings.TrimSpace(acc.Capabilities[cap]))
+		if val != "supported" {
+			return false
+		}
 	}
+	return true
 }
 
 func missionTaskRequirements(pkg *runner.PackageRun) TaskRequirements {

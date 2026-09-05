@@ -162,9 +162,12 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 				}
 
 				capStr := "UNKNOWN"
-				bottleneck, _ := qv.Bottleneck()
-				if qv.Status == string(model.UsageLive) || qv.Status == string(model.UsageCached) {
-					capStr = fmt.Sprintf("%.0f%% left", bottleneck)
+				if summary := qv.CompactGroupSummary(); summary != "" && (qv.Status == string(model.UsageLive) || qv.Status == string(model.UsageCached) || qv.Status == string(model.UsageEstimated)) {
+					capStr = summary
+				} else if qv.Status == string(model.UsageLive) || qv.Status == string(model.UsageCached) || qv.Status == string(model.UsageEstimated) {
+					if rem, ok := qv.BestGroupRemaining(); ok {
+						capStr = fmt.Sprintf("%.0f%% left", rem)
+					}
 				}
 				if qv.Status == string(model.UsageRateLimited) {
 					capStr = "429 LIMITED"
@@ -176,6 +179,9 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 				}
 
 				freshStr := qv.Status
+				if !qv.FetchedAt.IsZero() {
+					freshStr = quota.FormatFreshness(qv.FetchedAt)
+				}
 				resetStr := "-"
 				for _, g := range qv.ModelGroups {
 					for _, w := range g.Windows {
@@ -319,10 +325,17 @@ func formatUsageSummary(snap model.UsageSnapshot) string {
 
 // formatQuotaViewSummary returns a compact one-line summary from a QuotaView.
 func formatQuotaViewSummary(qv quota.QuotaView) string {
-	bottleneck, _ := qv.Bottleneck()
 	status := qv.Status
 	if status == "" {
 		status = "UNKNOWN"
 	}
+	if summary := qv.CompactGroupSummary(); summary != "" {
+		fresh := ""
+		if !qv.FetchedAt.IsZero() {
+			fresh = " · " + quota.FormatFreshness(qv.FetchedAt)
+		}
+		return fmt.Sprintf("%s (%s)%s", summary, status, fresh)
+	}
+	bottleneck, _ := qv.Bottleneck()
 	return fmt.Sprintf("%.0f%% remaining (%s)", bottleneck, status)
 }

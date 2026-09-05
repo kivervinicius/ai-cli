@@ -173,7 +173,7 @@ Context: %s`, goal, string(ctxJSON))
 	}
 	var result struct {
 		IntentAnalysis
-		Unknowns []AmbiguityItem     `json:"unknowns"`
+		Unknowns []AmbiguityItem      `json:"unknowns"`
 		Packages []WorkPackageOutline `json:"packages"`
 	}
 	if err := json.Unmarshal(payload, &result); err != nil {

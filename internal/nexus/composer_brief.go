@@ -284,6 +284,11 @@ func refreshComposerUnknowns(brief LivingBrief) []PromptUnknown {
 		item.Question = bp.Question
 		item.Rationale = bp.Rationale
 		item.Severity = bp.Severity
+		// Preserve user-resolved unknown status and answer if already resolved
+		if item.Status == PromptUnknownAnswered || item.Status == PromptUnknownConfirmed || item.Status == PromptUnknownDismissed {
+			out = append(out, item)
+			continue
+		}
 		summary, status, confidence := evaluateBriefField(brief, bp.Field)
 		switch status {
 		case PromptUnknownConfirmed, PromptUnknownAnswered:

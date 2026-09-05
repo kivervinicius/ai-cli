@@ -295,7 +295,7 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 				Status:     model.UsageCached,
 				Source:     model.SourceLocalFiles,
 				ModelName:  leg.ModelName,
-				FetchedAt:  time.Now(),
+				FetchedAt:  fileModTime(file),
 				Windows: []model.UsageWindow{
 					{
 						Kind:             "5h",
@@ -322,21 +322,28 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 func (a *Adapter) getUsageFromRollouts(ctx context.Context, p model.Profile) (model.UsageSnapshot, bool) {
 	info := a.InspectAuth(ctx, p)
 	targetEmail := strings.TrimSpace(info.Email)
+	hostHome := security.FindHostHome()
+	hostSessions := ""
+	hostAuthEmail := ""
+	if hostHome != "" {
+		hostSessions = filepath.Join(hostHome, ".codex", "sessions")
+		hostAuthEmail = readCodexAuthEmail(filepath.Join(hostHome, ".codex", "auth.json"))
+	}
 
 	dirs := []string{}
 	if h, err := config.ProfileHome(string(a.ID()), p.Name); err == nil {
 		dirs = append(dirs, filepath.Join(h, "sessions"), filepath.Join(h, ".codex", "sessions"))
 	}
-	if targetEmail != "" {
-		if hostHome := security.FindHostHome(); hostHome != "" {
-			dirs = append(dirs, filepath.Join(hostHome, ".codex", "sessions"))
-		}
+	if hostSessions != "" {
+		dirs = append(dirs, hostSessions)
 	}
 
 	type fileInfo struct {
-		path    string
-		modTime time.Time
+		path       string
+		modTime    time.Time
+		sharedHost bool
 	}
+	seen := map[string]bool{}
 	var rolloutFiles []fileInfo
 
 	for _, dir := range dirs {
@@ -347,13 +354,19 @@ func (a *Adapter) getUsageFromRollouts(ctx context.Context, p model.Profile) (mo
 		if _, err := os.Stat(realDir); err != nil {
 			continue
 		}
+		sharedHost := hostSessions != "" && (realDir == hostSessions || strings.HasPrefix(realDir+string(filepath.Separator), hostSessions+string(filepath.Separator)))
 		_ = filepath.Walk(realDir, func(path string, fi os.FileInfo, err error) error {
 			if err != nil || fi == nil || fi.IsDir() {
 				return nil
 			}
-			if strings.HasPrefix(fi.Name(), "rollout-") && strings.HasSuffix(fi.Name(), ".jsonl") {
-				rolloutFiles = append(rolloutFiles, fileInfo{path: path, modTime: fi.ModTime()})
+			if !strings.HasPrefix(fi.Name(), "rollout-") || !strings.HasSuffix(fi.Name(), ".jsonl") {
+				return nil
 			}
+			if seen[path] {
+				return nil
+			}
+			seen[path] = true
+			rolloutFiles = append(rolloutFiles, fileInfo{path: path, modTime: fi.ModTime(), sharedHost: sharedHost})
 			return nil
 		})
 	}
@@ -452,16 +465,20 @@ func (a *Adapter) getUsageFromRollouts(ctx context.Context, p model.Profile) (mo
 		}
 		f.Close()
 
-		// Account matching:
-		// 1. If targetEmail was found in the rollout, it matches.
-		// 2. If the rollout file is located in or references the profile's home directory / profile name, it matches.
-		// 3. If targetEmail is set, and this file is from a shared host directory without matching email/profile, skip it.
+		// Account matching for shared ~/.codex/sessions (often symlinked from every
+		// profile home): modern rollouts rarely embed the email, so claim them only
+		// when this profile owns the current host Codex login.
 		isProfilePath := strings.Contains(rf.path, p.Name)
-		if !isProfilePath && (targetEmail == "" || !matchedAccount) {
+		belongs := matchedAccount || isProfilePath
+		if !belongs && rf.sharedHost {
+			belongs = targetEmail != "" && hostAuthEmail != "" && strings.EqualFold(targetEmail, hostAuthEmail)
+		}
+		if !belongs {
 			continue
 		}
 
 		if lastRateLimit.Primary != nil {
+			// Codex rate_limits expose used_percent; UI "/status" shows remaining.
 			pRem := 100.0 - lastRateLimit.Primary.UsedPercent
 			if pRem < 0 {
 				pRem = 0
@@ -513,6 +530,47 @@ func (a *Adapter) getUsageFromRollouts(ctx context.Context, p model.Profile) (mo
 	}
 
 	return model.UsageSnapshot{}, false
+}
+
+func readCodexAuthEmail(authPath string) string {
+	data, err := os.ReadFile(authPath)
+	if err != nil {
+		return ""
+	}
+	var auth struct {
+		Tokens struct {
+			IDToken string `json:"id_token"`
+		} `json:"tokens"`
+	}
+	if json.Unmarshal(data, &auth) != nil || auth.Tokens.IDToken == "" {
+		return ""
+	}
+	parts := strings.Split(auth.Tokens.IDToken, ".")
+	if len(parts) < 2 {
+		return ""
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		// Some tokens include padding.
+		payload, err = base64.URLEncoding.DecodeString(parts[1])
+		if err != nil {
+			return ""
+		}
+	}
+	var claims struct {
+		Email string `json:"email"`
+	}
+	if json.Unmarshal(payload, &claims) != nil {
+		return ""
+	}
+	return strings.TrimSpace(claims.Email)
+}
+
+func fileModTime(path string) time.Time {
+	if st, err := os.Stat(path); err == nil {
+		return st.ModTime()
+	}
+	return time.Time{}
 }
 
 func formatCodexResetTime(epochSec int64) string {

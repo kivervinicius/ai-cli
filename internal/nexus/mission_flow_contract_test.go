@@ -1,6 +1,7 @@
 package nexus
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -39,5 +40,49 @@ func TestValidateFlowExecutionContractRejectsContradictoryAssignment(t *testing.
 	plan.Phases[0].Packages[0].ResourcePolicy = "MANUAL"
 	if err := validateFlowExecutionContract(plan); err == nil {
 		t.Fatal("MANUAL resource policy without provider/profile must be rejected")
+	}
+}
+
+func TestNorthStar_PromptToFlowToPreflightCycle(t *testing.T) {
+	n := openTestNexus(t)
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := st.CreateProject(store.Project{Name: "NorthStarE2E", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Decompose prompt into flow proposal
+	proposal, err := n.DecomposePromptIntoFlowProposal(context.Background(), FlowDecompositionRequest{
+		ProjectID:    project.ID,
+		Goal:         "Implement responsive layout and run automated regression tests",
+		SourcePrompt: "Ensure container queries adapt smoothly and unit tests pass",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(proposal.Flow.Steps) < 2 {
+		t.Fatalf("expected structured multi-step flow, got %d steps", len(proposal.Flow.Steps))
+	}
+
+	// 2. Materialize Flow into durable WorkPlan
+	plan := WorkPlanFromFlow(proposal.Flow)
+	createdPlan, err := st.CreateWorkPlan(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 3. Run Preflight check before execution
+	report, err := n.PreflightFlow(context.Background(), createdPlan.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Ready {
+		t.Fatalf("expected preflight to pass for valid generated flow, got %+v", report)
+	}
+	if len(report.Checks) == 0 {
+		t.Fatal("expected preflight checks in report")
 	}
 }

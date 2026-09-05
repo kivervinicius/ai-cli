@@ -91,53 +91,38 @@ export const NexusWorkspaceApp: React.FC<{ popoutSurface?: WorkspaceSurface }> =
           alignItems: 'center',
           justifyContent: 'center',
           padding: '24px',
-          background: 'var(--color-background, #080a0f)',
-          color: 'var(--color-text, #f8fafc)',
+          background: 'var(--nx-bg)',
+          color: 'var(--nx-text)',
           textAlign: 'center',
-          fontFamily: 'system-ui, -apple-system, sans-serif'
         }}>
           <div style={{
-            maxWidth: '460px',
-            background: 'var(--color-surface, #10141e)',
-            border: '1px solid var(--color-border, #1e293b)',
-            borderRadius: '12px',
+            maxWidth: '480px',
+            background: 'var(--nx-surface)',
+            border: '1px solid var(--nx-border)',
+            borderRadius: 'var(--nx-radius-lg)',
             padding: '32px',
-            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)'
+            boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '12px',
           }}>
-            <div style={{
-              width: '48px',
-              height: '48px',
-              borderRadius: '50%',
-              background: 'rgba(56, 189, 248, 0.1)',
-              color: '#38bdf8',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 16px',
-              fontSize: '20px',
-              fontWeight: 700
-            }}>N</div>
-            <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Sessão Expirada ou Não Autenticada</h2>
-            <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: 1.5, marginBottom: '24px' }}>
-              Neste computador o cookie local sobrevive ao restart do <code>nexus web</code>. Recarregue esta página.
-              Se ainda falhar, em qualquer terminal rode <code>nexus web open</code> — não é preciso achar o PTY onde o serviço subiu.
-              Bind remoto continua exigindo o link Bootstrap daquele processo.
+            <span className="nx-brand-mark nx-brand-mark--hero">
+              <img src="./nexus-icon.png" alt="Nexus" className="nx-brand-mark__img" />
+            </span>
+            <h2 style={{ fontSize: '18px', fontWeight: 700, margin: '6px 0 0', color: 'var(--nx-text)' }}>
+              {t('auth.sessionExpired')}
+            </h2>
+            <p style={{ fontSize: '12.5px', color: 'var(--nx-muted)', lineHeight: 1.6, margin: '0 0 12px' }}>
+              {t('auth.sessionExpiredDesc')}
             </p>
             <button
               type="button"
+              className="nx-button"
+              data-tone="brand"
               onClick={() => window.location.reload()}
-              style={{
-                background: '#38bdf8',
-                color: '#090d16',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '10px 20px',
-                fontSize: '13px',
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
             >
-              Recarregar Aplicação
+              {t('auth.reloadApp')}
             </button>
           </div>
         </div>

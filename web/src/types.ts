@@ -107,6 +107,7 @@ export interface ProviderAccount {
     plan?: string;
     account?: string;
     model_groups?: Array<{
+      key?: string;
       name?: string;
       windows?: Array<{ kind?: string; label?: string; remaining?: number; reset_desc?: string; status?: string }>;
     }>;
@@ -397,7 +398,8 @@ export interface ComposerSession {
 export interface ComposerTurn { id: string; session_id: string; sequence: number; role: 'USER' | 'ASSISTANT'; content: string; created_at: string; }
 export interface ComposerSkillProposal { session_id: string; skill_id: string; state: 'SUGGESTED' | 'ACCEPTED' | 'APPLIED' | 'REJECTED' | 'UNAVAILABLE'; reason: string; applicability: string; risk: string; updated_at: string; }
 export interface PromptArtifact { id: string; session_id: string; version: number; content: string; hash: string; context_json: string; skill_ids_json: string; created_at: string; }
-export interface ComposerSessionView { session: ComposerSession; brief: { goal: string; context?: string[] | Record<string, unknown>; constraints?: string[] | Record<string, unknown>; decisions?: string[]; assumptions?: Array<string | { value?: string; status?: string; confidence?: string }>; alternatives?: string[]; risks?: string[]; success_criteria?: string[]; open_questions?: string[]; readiness?: { score: number; state: string; summary: string; checks?: Array<{ key: string; label: string; status: string; summary?: string }> }; unknowns?: Array<{ id: string; question: string; rationale?: string; severity: string; status: string; answer?: string; inferred_value?: string; confidence?: string }>; }; turns: ComposerTurn[]; skills: ComposerSkillProposal[]; artifacts?: PromptArtifact[]; }
+export interface PromptReadinessCheck { key: string; label: string; score: number; summary: string; }
+export interface ComposerSessionView { session: ComposerSession; brief: { goal: string; context?: string[] | Record<string, unknown>; constraints?: string[] | Record<string, unknown>; decisions?: string[]; assumptions?: Array<string | { value?: string; status?: string; confidence?: string }>; alternatives?: string[]; risks?: string[]; success_criteria?: string[]; open_questions?: string[]; intent?: { archetype?: string }; readiness?: { score: number; state: string; summary: string; checks?: PromptReadinessCheck[] }; unknowns?: Array<{ id: string; question: string; rationale?: string; severity: string; status: string; answer?: string; inferred_value?: string; confidence?: string }>; }; turns: ComposerTurn[]; skills: ComposerSkillProposal[]; artifacts?: PromptArtifact[]; }
 
 export interface ClarificationUnknown {
   key: string;
@@ -615,4 +617,37 @@ export interface RecommendationResult {
   recommended?: ResourceCandidate;
   candidates: ResourceCandidate[];
   explanation: string;
+}
+
+export interface FlowPreflightCheck {
+  key: string;
+  label: string;
+  status: 'PASS' | 'WARN' | 'FAIL';
+  summary: string;
+}
+
+export interface FlowPreflightReport {
+  plan_id: string;
+  revision: number;
+  ready: boolean;
+  checks: FlowPreflightCheck[];
+  generated_at: string;
+}
+
+export interface FlowDecompositionRequest {
+  project_id: string;
+  artifact_id?: string;
+  goal: string;
+  source_prompt?: string;
+  maestro_skills?: string[];
+  simple?: boolean;
+}
+
+export interface FlowDecompositionProposal {
+  title: string;
+  description: string;
+  archetype: string;
+  flow: import('./features/work/flowModel').FlowDraftModel;
+  reasoning: string;
+  maestro_advice?: string;
 }

@@ -66,10 +66,12 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 
 	quotaFile := filepath.Join(root, "usage.json")
 	data, err := os.ReadFile(quotaFile)
+	sourceFile := quotaFile
 	if err != nil {
 		// Fallback to legacy quota.json if available
 		legacyFile := filepath.Join(root, "quota.json")
 		data, err = os.ReadFile(legacyFile)
+		sourceFile = legacyFile
 		if err != nil {
 			return model.UsageSnapshot{
 				ProviderID: provider,
@@ -100,31 +102,26 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 				ResetsIn    string  `json:"resets_in"`
 			} `json:"weekly"`
 			ClaudeFiveHour struct {
-				PercentLeft float64 `json:"percent_left"`
-				ResetTime   string  `json:"reset_time"`
-				ResetsIn    string  `json:"resets_in"`
+				PercentLeft *float64 `json:"percent_left"`
+				ResetTime   string   `json:"reset_time"`
+				ResetsIn    string   `json:"resets_in"`
 			} `json:"claude_five_hour"`
 			ClaudeWeekly struct {
-				PercentLeft float64 `json:"percent_left"`
-				ResetTime   string  `json:"reset_time"`
-				ResetsIn    string  `json:"resets_in"`
+				PercentLeft *float64 `json:"percent_left"`
+				ResetTime   string   `json:"reset_time"`
+				ResetsIn    string   `json:"resets_in"`
 			} `json:"claude_weekly"`
 		}
-		if json.Unmarshal(data, &leg) == nil && (leg.FiveHour.PercentLeft > 0 || leg.Weekly.PercentLeft > 0 || leg.FiveHour.ResetTime != "" || leg.Weekly.ResetTime != "" || leg.FiveHour.ResetsIn != "" || leg.Weekly.ResetsIn != "" || leg.ClaudeFiveHour.PercentLeft > 0 || leg.ClaudeWeekly.PercentLeft > 0) {
-			var p5h, u5h, pWk, uWk float64
+		if json.Unmarshal(data, &leg) == nil && (leg.FiveHour.PercentLeft > 0 || leg.Weekly.PercentLeft > 0 || leg.FiveHour.ResetTime != "" || leg.Weekly.ResetTime != "" || leg.FiveHour.ResetsIn != "" || leg.Weekly.ResetsIn != "" || leg.ClaudeFiveHour.PercentLeft != nil || leg.ClaudeWeekly.PercentLeft != nil || leg.ClaudeFiveHour.ResetsIn != "" || leg.ClaudeWeekly.ResetsIn != "" || leg.ClaudeFiveHour.ResetTime != "" || leg.ClaudeWeekly.ResetTime != "") {
+			// AGY and Codex legacy files both store remaining capacity in percent_left
+			// (AGY UI label is "Limit Remaining"; a full bar is 100% remaining).
+			p5h := clampPercent(leg.FiveHour.PercentLeft)
+			u5h := 100.0 - p5h
+			pWk := clampPercent(leg.Weekly.PercentLeft)
+			uWk := 100.0 - pWk
 			primaryGroup := "gemini"
 			if provider == "codex" {
-				// For Codex, percent_left is the remaining percentage directly from Codex
-				p5h = leg.FiveHour.PercentLeft
-				u5h = 100.0 - p5h
-				pWk = leg.Weekly.PercentLeft
-				uWk = 100.0 - pWk
 				primaryGroup = "claude_gpt"
-			} else {
-				p5h = legacyAGYRemaining(leg.FiveHour.PercentLeft)
-				u5h = legacyAGYUsed(leg.FiveHour.PercentLeft)
-				pWk = legacyAGYRemaining(leg.Weekly.PercentLeft)
-				uWk = legacyAGYUsed(leg.Weekly.PercentLeft)
 			}
 			r5h := leg.FiveHour.ResetTime
 			if r5h == "" {
@@ -152,9 +149,13 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 				},
 			}
 
-			if leg.ClaudeFiveHour.PercentLeft > 0 || leg.ClaudeFiveHour.ResetsIn != "" || leg.ClaudeFiveHour.ResetTime != "" {
-				pC5h := legacyAGYRemaining(leg.ClaudeFiveHour.PercentLeft)
-				uC5h := legacyAGYUsed(leg.ClaudeFiveHour.PercentLeft)
+			if provider == "agy" && (leg.ClaudeFiveHour.PercentLeft != nil || leg.ClaudeFiveHour.ResetsIn != "" || leg.ClaudeFiveHour.ResetTime != "" || leg.ClaudeWeekly.PercentLeft != nil || leg.ClaudeWeekly.ResetsIn != "" || leg.ClaudeWeekly.ResetTime != "") {
+				c5hVal := 0.0
+				if leg.ClaudeFiveHour.PercentLeft != nil {
+					c5hVal = *leg.ClaudeFiveHour.PercentLeft
+				}
+				pC5h := clampPercent(c5hVal)
+				uC5h := 100.0 - pC5h
 				rC5h := leg.ClaudeFiveHour.ResetTime
 				if rC5h == "" {
 					rC5h = leg.ClaudeFiveHour.ResetsIn
@@ -166,11 +167,13 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 					UsedPercent:      &uC5h,
 					ResetDescription: rC5h,
 				})
-			}
 
-			if leg.ClaudeWeekly.PercentLeft > 0 || leg.ClaudeWeekly.ResetsIn != "" || leg.ClaudeWeekly.ResetTime != "" {
-				pCWk := legacyAGYRemaining(leg.ClaudeWeekly.PercentLeft)
-				uCWk := legacyAGYUsed(leg.ClaudeWeekly.PercentLeft)
+				cWkVal := 0.0
+				if leg.ClaudeWeekly.PercentLeft != nil {
+					cWkVal = *leg.ClaudeWeekly.PercentLeft
+				}
+				pCWk := clampPercent(cWkVal)
+				uCWk := 100.0 - pCWk
 				rCWk := leg.ClaudeWeekly.ResetTime
 				if rCWk == "" {
 					rCWk = leg.ClaudeWeekly.ResetsIn
@@ -191,7 +194,7 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 				Status:     model.UsageCached,
 				Source:     model.SourceLocalFiles,
 				ModelName:  leg.ModelName,
-				FetchedAt:  time.Now(),
+				FetchedAt:  fileFetchedAt(sourceFile),
 				Windows:    windows,
 			}
 			return snap, true
@@ -212,14 +215,21 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 	return snap, true
 }
 
-func legacyAGYRemaining(consumed float64) float64 {
-	if consumed < 0 {
-		consumed = 0
+func clampPercent(v float64) float64 {
+	if v < 0 {
+		return 0
 	}
-	if consumed > 100 {
-		consumed = 100
+	if v > 100 {
+		return 100
 	}
-	return 100 - consumed
+	return v
+}
+
+func fileFetchedAt(path string) time.Time {
+	if st, err := os.Stat(path); err == nil {
+		return st.ModTime()
+	}
+	return time.Time{}
 }
 
 func firstNonEmpty(values ...string) string {
@@ -229,15 +239,6 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-func legacyAGYUsed(consumed float64) float64 {
-	if consumed < 0 {
-		return 0
-	}
-	if consumed > 100 {
-		return 100
-	}
-	return consumed
 }
 
 // SaveUsage persists a usage snapshot to the profile directory.
@@ -290,7 +291,14 @@ func FormatFreshness(fetchedAt time.Time) string {
 	if d < time.Hour {
 		return fmt.Sprintf("%dm ago", int(d.Minutes()))
 	}
-	return fmt.Sprintf("%dh ago", int(d.Hours()))
+	if d < 24*time.Hour {
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	}
+	days := int(d.Hours() / 24)
+	if days == 1 {
+		return "1 day ago"
+	}
+	return fmt.Sprintf("%d days ago", days)
 }
 
 // RenderProgressBar builds an honest visual progress bar.

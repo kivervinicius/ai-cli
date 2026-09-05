@@ -208,3 +208,123 @@ func TestResourceRecommendation_RequiredCapabilitiesAreHardGate(t *testing.T) {
 		}
 	}
 }
+
+// TestCapabilityBasedRoleScoring verifies that accounts with relevant
+// capabilities receive higher role_fit scores than those without, without
+// any provider-name matching.
+func TestCapabilityBasedRoleScoring(t *testing.T) {
+	lowCaps := ProviderAccount{
+		ID:             "low-caps",
+		Provider:       "future-provider",
+		Profile:        "default",
+		Authenticated:  true,
+		Available:      true,
+		QuotaView:      &quota.QuotaView{Status: "LIVE"},
+		QuotaRemaining: 0.85,
+		Health:         "healthy",
+		Capabilities: map[string]string{
+			"headless":      "SUPPORTED",
+			"submit_prompt": "SUPPORTED",
+		},
+	}
+	highCaps := ProviderAccount{
+		ID:             "high-caps",
+		Provider:       "another-future-provider",
+		Profile:        "default",
+		Authenticated:  true,
+		Available:      true,
+		QuotaView:      &quota.QuotaView{Status: "LIVE"},
+		QuotaRemaining: 0.40,
+		Health:         "healthy",
+		Capabilities: map[string]string{
+			"headless":          "SUPPORTED",
+			"submit_prompt":     "SUPPORTED",
+			"sessions":          "SUPPORTED",
+			"resume":            "SUPPORTED",
+			"structured_events": "SUPPORTED",
+			"approvals":         "SUPPORTED",
+		},
+	}
+	t.Run("reviewer role prefers structured_events/approvals capabilities", func(t *testing.T) {
+		res := RecommendResources([]ProviderAccount{lowCaps, highCaps}, TaskRequirements{Role: "reviewer"}, PolicyBalanced)
+		if res.Recommended == nil {
+			t.Fatal("expected a recommendation")
+		}
+		// high-caps has structured_events + approvals → role_fit=20, low-caps → role_fit=10
+		// even though low-caps has more quota, the role bonus should tip high-caps
+		var lowRoleFit, highRoleFit float64
+		for _, c := range res.Candidates {
+			if c.Account.ID == "low-caps" {
+				lowRoleFit = c.ScoreBreakdown["role_fit"]
+			}
+			if c.Account.ID == "high-caps" {
+				highRoleFit = c.ScoreBreakdown["role_fit"]
+			}
+		}
+		if highRoleFit <= lowRoleFit {
+			t.Errorf("high-caps reviewer role_fit (%v) must exceed low-caps (%v)", highRoleFit, lowRoleFit)
+		}
+	})
+	t.Run("architect role prefers sessions+resume capabilities", func(t *testing.T) {
+		var lowRoleFit, highRoleFit float64
+		for _, c := range []ResourceCandidate{
+			evaluateCandidate(lowCaps, TaskRequirements{Role: "architect"}, PolicyBalanced),
+			evaluateCandidate(highCaps, TaskRequirements{Role: "architect"}, PolicyBalanced),
+		} {
+			if c.Account.ID == "low-caps" {
+				lowRoleFit = c.ScoreBreakdown["role_fit"]
+			}
+			if c.Account.ID == "high-caps" {
+				highRoleFit = c.ScoreBreakdown["role_fit"]
+			}
+		}
+		if highRoleFit <= lowRoleFit {
+			t.Errorf("high-caps architect role_fit (%v) must exceed low-caps (%v)", highRoleFit, lowRoleFit)
+		}
+	})
+}
+
+// TestAccountSupportsHeadlessReview verifies the capability-based reviewer
+// check replaces the old provider name whitelist.
+func TestAccountSupportsHeadlessReview(t *testing.T) {
+	cases := []struct {
+		name     string
+		caps     map[string]string
+		expected bool
+	}{
+		{
+			name:     "both supported",
+			caps:     map[string]string{"headless": "SUPPORTED", "submit_prompt": "SUPPORTED"},
+			expected: true,
+		},
+		{
+			name:     "missing headless",
+			caps:     map[string]string{"submit_prompt": "SUPPORTED"},
+			expected: false,
+		},
+		{
+			name:     "missing submit_prompt",
+			caps:     map[string]string{"headless": "SUPPORTED"},
+			expected: false,
+		},
+		{
+			name:     "partial headless",
+			caps:     map[string]string{"headless": "PARTIAL", "submit_prompt": "SUPPORTED"},
+			expected: false,
+		},
+		{
+			name:     "empty capabilities",
+			caps:     map[string]string{},
+			expected: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			acc := ProviderAccount{Capabilities: tc.caps}
+			got := accountSupportsHeadlessReview(acc)
+			if got != tc.expected {
+				t.Errorf("accountSupportsHeadlessReview(%v) = %v, want %v", tc.caps, got, tc.expected)
+			}
+		})
+	}
+}

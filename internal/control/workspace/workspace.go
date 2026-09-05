@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -69,7 +68,10 @@ func (s *Store) ensureCwd(cwd string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	clean := filepath.Clean(cwd)
+	clean, err := config.CanonicalWorkspacePath(cwd)
+	if err != nil {
+		clean = filepath.Clean(cwd)
+	}
 	for _, p := range s.projects {
 		if filepath.Clean(p.Path) == clean {
 			return nil
@@ -149,31 +151,18 @@ func (s *Store) List() []Project {
 
 // Add registers a new project path.
 func (s *Store) Add(path, name string) (Project, error) {
-	if strings.TrimSpace(path) == "" {
-		return Project{}, fmt.Errorf("project path cannot be empty")
-	}
-
-	absPath, err := filepath.Abs(path)
+	clean, err := config.CanonicalExistingWorkspaceDir(path)
 	if err != nil {
-		absPath = filepath.Clean(path)
-	}
-
-	fi, err := os.Stat(absPath)
-	if err != nil {
-		return Project{}, fmt.Errorf("path does not exist: %w", err)
-	}
-	if !fi.IsDir() {
-		return Project{}, fmt.Errorf("path is not a directory: %s", absPath)
+		return Project{}, err
 	}
 
 	if name == "" {
-		name = filepath.Base(absPath)
+		name = filepath.Base(clean)
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	clean := filepath.Clean(absPath)
 	p := Project{
 		ID:         makeWorkspaceID(clean),
 		Name:       name,
@@ -228,9 +217,9 @@ func (s *Store) Touch(path string) {
 // basename (e.g. /home/user/company/api and /home/user/personal/api) always
 // get distinct IDs.
 func makeWorkspaceID(path string) string {
-	clean := filepath.Clean(path)
-	if resolved, err := filepath.EvalSymlinks(clean); err == nil {
-		clean = filepath.Clean(resolved)
+	clean, err := config.CanonicalWorkspacePath(path)
+	if err != nil {
+		clean = filepath.Clean(path)
 	}
 	sum := sha256.Sum256([]byte(clean))
 	return "ws-" + hex.EncodeToString(sum[:16])

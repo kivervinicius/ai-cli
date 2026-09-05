@@ -165,3 +165,86 @@ Need backend and frontend changes.`)
 		t.Fatalf("expected applied skill state, got %+v", finalView.Skills)
 	}
 }
+
+func TestComposerRefinementCreatesNextVersion(t *testing.T) {
+	n := openTestNexus(t)
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := st.CreateProject(store.Project{Name: "Refine", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := n.CreateComposerSession(context.Background(), project.ID, "Initial draft for authentication system")
+	if err != nil {
+		t.Fatal(err)
+	}
+	v1, err := n.FinalizeComposerSession(context.Background(), view.Session.ID, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v1.Version != 1 {
+		t.Fatalf("expected version 1, got %d", v1.Version)
+	}
+
+	// Refine to create version 2
+	v2, err := n.RefineComposerArtifact(context.Background(), view.Session.ID, "Add OAuth2 with Google provider")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v2.Version != 2 {
+		t.Fatalf("expected version 2, got %d", v2.Version)
+	}
+	if v2.ID == v1.ID {
+		t.Fatalf("expected distinct artifact ID, got same %s", v2.ID)
+	}
+
+	// Verify both versions exist in history
+	sessionView, err := n.GetComposerSession(context.Background(), view.Session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessionView.Artifacts) != 2 {
+		t.Fatalf("expected 2 artifacts in history, got %d", len(sessionView.Artifacts))
+	}
+}
+
+func TestResolveComposerUnknown(t *testing.T) {
+	n := openTestNexus(t)
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := st.CreateProject(store.Project{Name: "Unknowns", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := n.CreateComposerSession(context.Background(), project.ID, "Fix memory leak in websocket server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Brief.Unknowns) == 0 {
+		t.Fatal("expected at least one unknown in initial brief")
+	}
+	targetID := view.Brief.Unknowns[0].ID
+	updated, err := n.ResolveComposerUnknown(context.Background(), view.Session.ID, targetID, "The leak happens in disconnect handler", "ANSWERED")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, u := range updated.Brief.Unknowns {
+		if u.ID == targetID {
+			found = true
+			if u.Status != PromptUnknownAnswered {
+				t.Fatalf("expected status %s, got %s", PromptUnknownAnswered, u.Status)
+			}
+			if u.Answer != "The leak happens in disconnect handler" {
+				t.Fatalf("unexpected answer: %s", u.Answer)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("unknown %s not found after resolution", targetID)
+	}
+}

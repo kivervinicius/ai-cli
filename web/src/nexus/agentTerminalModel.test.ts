@@ -9,6 +9,7 @@ import {
   isRequiredResourceSelection,
   runtimeIdFromRecoverResult,
   shouldAutoRecoverAgentTerminal,
+  shouldShowTerminalRecoverOverlay,
   shouldFallbackRecoverToStart,
   nextBoundRuntimeId,
   terminalAttachFailureMessage,
@@ -64,6 +65,14 @@ describe('Agent terminal model', () => {
     expect(isFatalTerminalAttachError('Runtime host is not running (dial timeout)')).toBe(true);
     expect(isFatalTerminalAttachError('temporary blip')).toBe(false);
     expect(terminalAttachFailureMessage('runtime not found: rt_x')).toContain('Recover/Start');
+  });
+  it('shows recover overlay while reconnecting after reboot, not only on ERROR', () => {
+    expect(shouldShowTerminalRecoverOverlay({ connection: 'CONNECTED', recovering: false })).toBe(false);
+    expect(shouldShowTerminalRecoverOverlay({ connection: 'CONNECTING', recovering: false, connectingForMs: 0 })).toBe(false);
+    expect(shouldShowTerminalRecoverOverlay({ connection: 'CONNECTING', recovering: false, connectingForMs: 400 })).toBe(false);
+    expect(shouldShowTerminalRecoverOverlay({ connection: 'CONNECTING', recovering: false, connectingForMs: 800 })).toBe(true);
+    expect(shouldShowTerminalRecoverOverlay({ connection: 'CONNECTING', recovering: true })).toBe(true);
+    expect(shouldShowTerminalRecoverOverlay({ connection: 'ERROR', recovering: false })).toBe(true);
   });
   it('falls back recover→start for recoverable host failures', () => {
     expect(shouldFallbackRecoverToStart('agent is STOPPED (use StartAgent to restart)')).toBe(true);

@@ -12,6 +12,7 @@ import {
   nextBoundRuntimeId,
   runtimeIdFromRecoverResult,
   shouldAutoRecoverAgentTerminal,
+  shouldShowTerminalRecoverOverlay,
   terminalAttachFailureMessage,
   terminalReconnectDelay,
   type TerminalRole,
@@ -66,6 +67,7 @@ export const AgentTerminal: React.FC<{
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [needsResourceSelection, setNeedsResourceSelection] = useState(false);
+  const [connectingForMs, setConnectingForMs] = useState(0);
   const autoRecoveredRef = useRef(false);
   const onRecoverRef = useRef(onRecover);
   onRecoverRef.current = onRecover;
@@ -86,6 +88,16 @@ export const AgentTerminal: React.FC<{
       if (key) liveChromeRef.current?.clearLive(key);
     };
   }, [liveTitleKey]);
+
+  useEffect(() => {
+    if (connection !== 'CONNECTING' || recovering) {
+      setConnectingForMs(0);
+      return;
+    }
+    const started = Date.now();
+    const timer = window.setInterval(() => setConnectingForMs(Date.now() - started), 200);
+    return () => window.clearInterval(timer);
+  }, [connection, recovering]);
 
   const rebindTerminal = (nextRuntimeId?: string) => {
     const trimmed = (nextRuntimeId || '').trim();
@@ -112,6 +124,7 @@ export const AgentTerminal: React.FC<{
     const kickoffRef = { current: normalizeInitialPrompt(initialPrompt), sent: false };
     let lastError = '';
     let leased = false;
+    let recoverInFlight = false;
     let termInstance: Terminal | null = null;
 
     (container as any).__triggerReconnect = () => {
@@ -220,6 +233,7 @@ export const AgentTerminal: React.FC<{
         window.clearTimeout(reconnectTimer);
         reconnectTimer = undefined;
       }
+      setRecovering(false);
       setConnection('ERROR');
       setMessage(terminalAttachFailureMessage(detail));
     };
@@ -253,11 +267,14 @@ export const AgentTerminal: React.FC<{
         window.clearTimeout(reconnectTimer);
         reconnectTimer = undefined;
       }
+      if (recoverInFlight) return;
       if (autoRecoveredRef.current) {
         failPermanently(detail);
         return;
       }
+      recoverInFlight = true;
       autoRecoveredRef.current = true;
+      setRecovering(true);
       setConnection('CONNECTING');
       setMessage('Runtime do agente ausente — recuperando…');
       try {
@@ -274,12 +291,15 @@ export const AgentTerminal: React.FC<{
         setConnectNonce((n) => n + 1);
       } catch (error) {
         if (isRequiredResourceError(error)) {
+          setRecovering(false);
           setNeedsResourceSelection(true);
           setMessage('Selecione um provedor/conta para iniciar o runtime deste agente.');
           setConnection('ERROR');
           return;
         }
         failPermanently(error instanceof Error ? error.message : detail);
+      } finally {
+        recoverInFlight = false;
       }
     };
 
@@ -310,6 +330,7 @@ export const AgentTerminal: React.FC<{
 
       ws.onopen = () => {
         openedOnce = true;
+        setRecovering(false);
         setConnection('CONNECTED');
         setModeAction((current) => current === 'Restarting' ? 'Ready' : current);
         setMessage((current) => current === 'Reiniciando runtime…' ? 'Pronto' : '');
@@ -372,8 +393,7 @@ export const AgentTerminal: React.FC<{
       };
 
       ws.onerror = () => {
-        if (!disposed && !stopReconnect) {
-          setConnection('ERROR');
+        if (!disposed && !stopReconnect && !recoverInFlight) {
           setMessage('Terminal transport error — reconnecting…');
         }
       };
@@ -587,7 +607,11 @@ export const AgentTerminal: React.FC<{
   };
 
   const displayName = agentName || agentId;
-  const isStaleOrDisconnected = connection === 'ERROR' || connection === 'DISCONNECTED';
+  const showRecoverOverlay = shouldShowTerminalRecoverOverlay({
+    connection,
+    recovering,
+    connectingForMs,
+  });
   const windowChrome = chrome === 'window';
 
   const takeControl = () => {
@@ -639,7 +663,7 @@ export const AgentTerminal: React.FC<{
           {ptyTitle}
         </span>
       )}
-      {message && !isStaleOrDisconnected && (
+      {message && !showRecoverOverlay && (
         <span className="nx-terminal-message">
           {modeAction === 'Error' ? <ShieldAlert size={12} /> : <Unplug size={12} />}
           {message}
@@ -794,7 +818,7 @@ export const AgentTerminal: React.FC<{
         onPointerDown={() => termRef.current?.focus()}
       />
 
-      {isStaleOrDisconnected && (
+      {showRecoverOverlay && (
         <div
           style={{
             position: 'absolute',
@@ -812,13 +836,19 @@ export const AgentTerminal: React.FC<{
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--nx-warning)' }}>
-            <Unplug size={18} />
-            <strong style={{ fontSize: '14px' }}>Runtime do Agente desconectado</strong>
+            {recovering ? <RefreshCw size={18} className="nx-spin-slow" /> : <Unplug size={18} />}
+            <strong style={{ fontSize: '14px' }}>
+              {recovering || connection === 'CONNECTING'
+                ? 'Recuperando o terminal do agente'
+                : 'Runtime do Agente desconectado'}
+            </strong>
           </div>
           <p style={{ maxWidth: '420px', fontSize: '12px', color: 'var(--nx-muted)', margin: 0, lineHeight: 1.5 }}>
-            O processo do agente não está rodando no momento ou foi finalizado. Inicie o runtime para anexar o terminal e executar comandos.
+            {recovering || connection === 'CONNECTING'
+              ? 'O processo anterior não sobreviveu ao reinício da máquina ou do serviço. O Nexus está relançando o runtime para anexar de novo.'
+              : 'O processo do agente não está rodando no momento ou foi finalizado. Inicie o runtime para anexar o terminal e executar comandos.'}
           </p>
-          {message && (
+          {message && connection === 'ERROR' && (
             <p
               style={{
                 maxWidth: '440px',

@@ -43,9 +43,15 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 	}
 
 	reg := registry.DefaultRegistry()
-	_, exists := reg.Get(runtimeID)
+	sess, exists := reg.Get(runtimeID)
 	if !exists {
-		http.Error(w, "runtime not found", http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "runtime not found")
+		return
+	}
+	if !sess.HostLive() {
+		// Do not upgrade: a "connected" WebSocket into a dead host leaves the
+		// UI on a black xterm with no recover action (especially window chrome).
+		writeError(w, http.StatusNotFound, "runtime host is not running")
 		return
 	}
 

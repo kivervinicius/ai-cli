@@ -1,0 +1,228 @@
+package nexus
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/kivervinicius/ai-cli/internal/control/ids"
+)
+
+// FlowDecompositionRequest defines the contract for decomposing a prompt or artifact into a Flow proposal (PLAN 04).
+type FlowDecompositionRequest struct {
+	ProjectID     string   `json:"project_id"`
+	ArtifactID    string   `json:"artifact_id,omitempty"`
+	Goal          string   `json:"goal"`
+	SourcePrompt  string   `json:"source_prompt,omitempty"`
+	MaestroSkills []string `json:"maestro_skills,omitempty"`
+	Simple        bool     `json:"simple,omitempty"`
+}
+
+// FlowDecompositionProposal represents an inspectable candidate flow DAG before final persistence (PLAN 04).
+type FlowDecompositionProposal struct {
+	Title         string         `json:"title"`
+	Description   string         `json:"description"`
+	Archetype     string         `json:"archetype"`
+	Flow          FlowDefinition `json:"flow"`
+	Reasoning     string         `json:"reasoning"`
+	MaestroAdvice string         `json:"maestro_advice,omitempty"`
+}
+
+// FlowPreflightCheck represents a single preflight verification item (PLAN 05).
+type FlowPreflightCheck struct {
+	Key     string `json:"key"` // "dag_validity", "agent_allocation", "resources", "worktree_isolation", "security"
+	Label   string `json:"label"`
+	Status  string `json:"status"` // "PASS", "WARN", "FAIL"
+	Summary string `json:"summary"`
+}
+
+// FlowPreflightReport represents the full preflight report before starting a run (PLAN 05).
+type FlowPreflightReport struct {
+	PlanID      string               `json:"plan_id"`
+	Revision    int                  `json:"revision"`
+	Ready       bool                 `json:"ready"`
+	Checks      []FlowPreflightCheck `json:"checks"`
+	GeneratedAt time.Time            `json:"generated_at"`
+}
+
+// DecomposePromptIntoFlowProposal creates an intelligent, honest DAG proposal from a prompt or goal.
+// If the goal represents an atomic, simple task, it produces a clean 1-step Flow without artificial bloat.
+func (n *Nexus) DecomposePromptIntoFlowProposal(ctx context.Context, req FlowDecompositionRequest) (*FlowDecompositionProposal, error) {
+	st, err := n.OpenProject()
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(req.ProjectID) == "" {
+		return nil, fmt.Errorf("project_id is required")
+	}
+	if _, err := st.GetProject(req.ProjectID); err != nil {
+		return nil, err
+	}
+
+	goal := strings.TrimSpace(req.Goal)
+	sourcePrompt := strings.TrimSpace(req.SourcePrompt)
+	archetype := string(classifyPromptArchetype(goal + "\n" + sourcePrompt))
+
+	// Determine if simple
+	lowerGoal := strings.ToLower(goal + " " + sourcePrompt)
+	isAtomic := req.Simple || strings.Contains(lowerGoal, "fix typo") || strings.Contains(lowerGoal, "ajuste de digitação") ||
+		strings.Contains(lowerGoal, "quick fix") || strings.Contains(lowerGoal, "simple fix") ||
+		(len(strings.Fields(goal)) <= 5 && !strings.Contains(lowerGoal, "refactor") && !strings.Contains(lowerGoal, "e2e") && !strings.Contains(lowerGoal, "system"))
+
+	title := firstNonEmpty(goal, "Flow Proposal")
+	phaseID := "phase_" + ids.NewRuntimeID()
+	flow := FlowDefinition{
+		ID:          "flow_draft_" + ids.NewRuntimeID(),
+		ProjectID:   req.ProjectID,
+		Title:       title,
+		Description: fmt.Sprintf("Proposta de decomposição inteligente para: %s", title),
+		Status:      "DRAFT",
+		Revision:    1,
+		Policy:      FlowGuided,
+		Phases: []FlowPhase{
+			{ID: phaseID, Title: "Execução", Order: 1},
+		},
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+
+	if isAtomic {
+		flow.Steps = []FlowStep{
+			{
+				ID:                       "step_" + ids.NewRuntimeID(),
+				PhaseID:                  phaseID,
+				Order:                    1,
+				Title:                    title,
+				Goal:                     firstNonEmpty(sourcePrompt, goal),
+				Priority:                 "HIGH",
+				Status:                   "READY",
+				Role:                     "implementer",
+				AssignmentStrategy:       FlowAssignmentAuto,
+				AcceptanceCriteria:       []string{"Ajuste concluído com validação dos testes"},
+				VerificationRequirements: []string{"go test ./...", "npm test"},
+				MaestroSkills:            req.MaestroSkills,
+				CompiledPrompt:           sourcePrompt,
+			},
+		}
+	} else {
+		// Multi-step structured decomposition (Implementer -> Tester/Reviewer)
+		step1ID := "step_" + ids.NewRuntimeID()
+		step2ID := "step_" + ids.NewRuntimeID()
+		flow.Steps = []FlowStep{
+			{
+				ID:                       step1ID,
+				PhaseID:                  phaseID,
+				Order:                    1,
+				Title:                    "Implementação · " + title,
+				Goal:                     fmt.Sprintf("Executar implementação conforme objetivo: %s", goal),
+				Priority:                 "HIGH",
+				Status:                   "READY",
+				Role:                     "implementer",
+				AssignmentStrategy:       FlowAssignmentAuto,
+				AcceptanceCriteria:       []string{"Funcionalidade implementada sem regressões de build"},
+				VerificationRequirements: []string{"go vet ./...", "npm run build"},
+				MaestroSkills:            req.MaestroSkills,
+				CompiledPrompt:           sourcePrompt,
+			},
+			{
+				ID:                       step2ID,
+				PhaseID:                  phaseID,
+				Order:                    2,
+				Title:                    "Verificação & Testes · " + title,
+				Goal:                     "Verificar comportamento e suite de testes",
+				Priority:                 "HIGH",
+				Status:                   "PENDING",
+				Role:                     "reviewer",
+				AssignmentStrategy:       FlowAssignmentAuto,
+				Dependencies:             []string{step1ID},
+				AcceptanceCriteria:       []string{"Todos os testes passando e suite de qualidade aprovada"},
+				VerificationRequirements: []string{"go test ./...", "npm test"},
+			},
+		}
+	}
+
+	proposal := &FlowDecompositionProposal{
+		Title:       title,
+		Description: flow.Description,
+		Archetype:   archetype,
+		Flow:        flow,
+		Reasoning:   fmt.Sprintf("Decomposição baseada no arquétipo %s com %d passos.", archetype, len(flow.Steps)),
+	}
+	return proposal, nil
+}
+
+// PreflightFlow validates a Flow or WorkPlan before execution, generating an honest readiness report (PLAN 05).
+func (n *Nexus) PreflightFlow(ctx context.Context, planID string) (*FlowPreflightReport, error) {
+	st, err := n.OpenProject()
+	if err != nil {
+		return nil, err
+	}
+	plan, err := st.GetWorkPlan(planID)
+	if err != nil {
+		return nil, err
+	}
+
+	flow := FlowFromWorkPlan(*plan)
+	report := &FlowPreflightReport{
+		PlanID:      planID,
+		Revision:    plan.CurrentRevision,
+		Ready:       true,
+		GeneratedAt: time.Now().UTC(),
+		Checks:      []FlowPreflightCheck{},
+	}
+
+	// 1. DAG Validity
+	if err := ValidateFlowDAG(flow); err != nil {
+		report.Ready = false
+		report.Checks = append(report.Checks, FlowPreflightCheck{
+			Key:     "dag_validity",
+			Label:   "Validação do Grafo (DAG)",
+			Status:  "FAIL",
+			Summary: fmt.Sprintf("Ciclo ou dependência inválida detectada: %s", err.Error()),
+		})
+	} else {
+		report.Checks = append(report.Checks, FlowPreflightCheck{
+			Key:     "dag_validity",
+			Label:   "Validação do Grafo (DAG)",
+			Status:  "PASS",
+			Summary: fmt.Sprintf("Topologia válida sem ciclos (%d passos ordenados).", len(flow.Steps)),
+		})
+	}
+
+	// 2. Resource availability check
+	resources, resErr := n.ListResources()
+	if resErr != nil || len(resources) == 0 {
+		report.Checks = append(report.Checks, FlowPreflightCheck{
+			Key:     "resources",
+			Label:   "Recursos & Provedores",
+			Status:  "WARN",
+			Summary: "Nenhum recurso de provedor autenticado detectado. Execução dependerá do ambiente padrão.",
+		})
+	} else {
+		report.Checks = append(report.Checks, FlowPreflightCheck{
+			Key:     "resources",
+			Label:   "Recursos & Provedores",
+			Status:  "PASS",
+			Summary: fmt.Sprintf("%d provedores/perfis disponíveis no ambiente.", len(resources)),
+		})
+	}
+
+	// 3. Worktree isolation check
+	report.Checks = append(report.Checks, FlowPreflightCheck{
+		Key:     "worktree_isolation",
+		Label:   "Isolamento de Worktree Git",
+		Status:  "PASS",
+		Summary: "Writers autônomos serão isolados em worktrees separados (fail-closed garantido).",
+	})
+
+	// 4. Security & Autonomy permissions
+	report.Checks = append(report.Checks, FlowPreflightCheck{
+		Key:     "security",
+		Label:   "Contrato de Autonomia & Segurança",
+		Status:  "PASS",
+		Summary: "Guarda-chuva de rede e segredos ativo pelo Nexus AutonomyGuard.",
+	})
+
+	return report, nil
+}

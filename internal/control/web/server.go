@@ -121,6 +121,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	mux.HandleFunc("/api/v1/clarifications/", s.authMiddleware(nexusHandler.handleClarification))
 	mux.HandleFunc("/api/v1/composer-sessions/", s.authMiddleware(nexusHandler.handleComposerSession))
 	mux.HandleFunc("/api/v1/prompt-artifacts/", s.authMiddleware(nexusHandler.handlePromptArtifact))
+	mux.HandleFunc("/api/v1/flows/decompose", s.authMiddleware(nexusHandler.handleFlowDecompose))
 	mux.HandleFunc("/api/v1/plans/", s.routePlan(nexusHandler))
 
 	// Autonomous Mission Runs (Phase F & H)
@@ -399,6 +400,8 @@ func (s *Server) routePlan(h *NexusHandler) http.HandlerFunc {
 			h.handleFlowLeader(w, r)
 		case strings.HasSuffix(r.URL.Path, "/clone"):
 			h.handleFlowClone(w, r)
+		case strings.HasSuffix(r.URL.Path, "/preflight"):
+			h.handleFlowPreflight(w, r)
 		default:
 			h.handlePlanDetail(w, r)
 		}
@@ -457,7 +460,8 @@ func (s *Server) routeAgent(h *NexusHandler) http.HandlerFunc {
 			agentID := parts[0]
 			runtimeID := strings.TrimSpace(r.URL.Query().Get("runtime_id"))
 			if runtimeID != "" {
-				if _, ok := registry.DefaultRegistry().Get(runtimeID); !ok {
+				rtSess, ok := registry.DefaultRegistry().Get(runtimeID)
+				if !ok || !rtSess.HostLive() {
 					// Fallback: check if the agent has a fresher live runtime generation
 					if freshID, err := h.resolveAgentRuntimeID(agentID); err == nil && freshID != "" {
 						runtimeID = freshID

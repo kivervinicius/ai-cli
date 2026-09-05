@@ -306,3 +306,25 @@ func TestRuntimeSessionModelPersistence(t *testing.T) {
 		t.Errorf("expected reloaded Model 'claude-sonnet-4-20250514', got %q", got2.Model)
 	}
 }
+
+func TestRuntimeSessionHostLive(t *testing.T) {
+	live := RuntimeSession{Transport: "mock", PID: 0, State: StateRunning}
+	if !live.HostLive() {
+		t.Fatal("mock transport must stay attachable in tests")
+	}
+
+	starting := RuntimeSession{State: StateStarting, PID: 0}
+	if !starting.HostLive() {
+		t.Fatal("STARTING without PID is still coming up")
+	}
+
+	dead := RuntimeSession{State: StateRunning, PID: 1 << 30, HostGeneration: time.Now().UnixNano()}
+	if dead.HostLive() {
+		t.Fatal("stale PID after reboot/service restart must not look live")
+	}
+
+	self := RuntimeSession{State: StateRunning, PID: os.Getpid()}
+	if !self.HostLive() {
+		t.Fatal("current process must count as live")
+	}
+}

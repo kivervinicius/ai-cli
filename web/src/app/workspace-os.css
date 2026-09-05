@@ -31,6 +31,14 @@
   --nx-project-nav: 38px;
   --nx-taskbar: 38px;
   --nx-rail: 232px;
+  /* Compatibility aliases for legacy surfaces */
+  --color-background: var(--nx-bg);
+  --color-surface: var(--nx-surface);
+  --color-surface-elevated: var(--nx-bg-elevated);
+  --color-border: var(--nx-border);
+  --color-brand-border: color-mix(in srgb, var(--nx-accent) 35%, var(--nx-border));
+  --color-brand: var(--nx-accent);
+  --color-text: var(--nx-text);
   color-scheme: dark;
 }
 :root[data-theme="light"] { --nx-bg:#f4f6fa; --nx-bg-elevated:#fff; --nx-surface:#fff; --nx-surface-2:#f0f3f8; --nx-surface-3:#e8edf4; --nx-border:#d7dde8; --nx-border-strong:#bcc5d5; --nx-text:#141821; --nx-text-soft:#2d3442; --nx-muted:#5e687b; --nx-subtle:#7a869a; color-scheme:light; }
@@ -93,9 +101,9 @@ button { color:inherit; }
 .nx-lang-btn:hover{border-color:var(--nx-border-strong);background:var(--nx-surface-2)}
 .nx-lang-flag{font-size:13px}
 .nx-lang-short{font-weight:700;font-size:11.5px;color:var(--nx-muted)}
-.nx-lang-dropdown{z-index:20200;min-width:140px;padding:4px;border:1px solid var(--nx-border-strong);border-radius:8px;background:var(--nx-surface);box-shadow:0 12px 30px rgba(0,0,0,.35);display:grid;gap:2px}
-.nx-lang-option{display:flex;align-items:center;gap:8px;padding:6px 10px;border:0;border-radius:6px;background:transparent;color:var(--nx-text-soft);font-size:12.5px;text-align:left;cursor:pointer;transition:all .1s;outline:none}
-.nx-lang-option:hover,.nx-lang-option:focus-visible,.nx-lang-option[data-highlighted]{background:var(--nx-surface-2)}
+.nx-lang-option{display:flex;align-items:center;gap:8px;padding:6px 10px;border:0;border-radius:6px;background:transparent;color:var(--nx-text-soft);font-size:12.5px;text-align:left;cursor:pointer;transition:all .1s}
+.nx-lang-option:hover,.nx-lang-option[data-highlighted]{background:var(--nx-surface-2)}
+.nx-lang-option:focus-visible{background:var(--nx-surface-2);outline:2px solid var(--nx-accent);outline-offset:1px}
 .nx-lang-option--active{background:var(--nx-accent-soft);color:var(--nx-accent-text);font-weight:600}
 .nx-lang-name{flex:1}
 .nx-lang-check{color:var(--nx-accent)}
@@ -972,3 +980,33 @@ button { color:inherit; }
 .nx-desktop-workspace[data-presentation="mosaic"] .nx-desktop-window[data-dragging="true"]{opacity:.45;box-shadow:none}
 .nx-desktop-workspace[data-presentation="mosaic"] .nx-desktop-window__titlebar{cursor:grab}
 .nx-desktop-mosaic-ghost{position:absolute;z-index:10000;border:1px solid var(--nx-accent);border-radius:9px;background:color-mix(in srgb,var(--nx-bg-elevated) 72%,transparent);box-shadow:0 22px 50px rgba(0,0,0,.4);pointer-events:none}
+
+/* PLAN 07: Container Queries for responsive surfaces (@container) */
+.nx-composer-flow-body,
+.nx-surface-scroll,
+.nx-desktop-window__content {
+  container-type: inline-size;
+}
+
+@container (max-width: 760px) {
+  .nx-composer-flow-body {
+    flex-direction: column !important;
+  }
+  .nx-composer-flow-inspector-pane {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .nx-flow-inspector__grid {
+    grid-template-columns: 1fr !important;
+  }
+  .nx-composer-goal-bar__row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+}
+
+@container (min-width: 1100px) {
+  .nx-composer-deliberative__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}

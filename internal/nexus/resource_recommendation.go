@@ -258,22 +258,40 @@ func evaluateCandidate(acc ProviderAccount, req TaskRequirements, policy Schedul
 	score += affinityScore
 
 	// 4. Role & Capability Fit (0 to 20 pts)
+	// Instead of hard-coding provider names, we reward accounts that advertise
+	// the structural capabilities most valuable for the requested role.
+	// Any driver (current or future) that declares those capabilities receives
+	// the same bonus automatically.
 	roleScore := 10.0
 	switch req.Role {
 	case "reviewer", "tester":
-		if acc.Provider == "codex" || acc.Provider == "claude" {
+		// Reviewers benefit from structured event streams (richer feedback) and
+		// headless approvals mode (safe read-only review). Both are already
+		// hard-gated as required, so we give a bonus for extra quality signals.
+		if capSupported(acc, "structured_events") || capSupported(acc, "approvals") {
 			roleScore = 20.0
-			c.Pros = append(c.Pros, "Especialista para revisão e verificação técnica")
+			c.Pros = append(c.Pros, "Capacidade avançada de revisão e feedback estruturado")
 		}
 	case "implementer":
-		if acc.Provider == "codex" || acc.Provider == "claude" || acc.Provider == "agy" {
+		// Implementers benefit from headless execution and, optionally, Fork
+		// (true parallelism within a session). Both headless and submit_prompt are
+		// already required; Fork bumps the score for parallel-capable accounts.
+		if capSupported(acc, "fork") || capSupported(acc, "sessions") {
 			roleScore = 20.0
-			c.Pros = append(c.Pros, "Alta performance para implementação de código")
+			c.Pros = append(c.Pros, "Alta performance para implementação paralela de código")
+		} else if capSupported(acc, "headless") && capSupported(acc, "submit_prompt") {
+			roleScore = 18.0
+			c.Pros = append(c.Pros, "Suporte completo a execução autônoma")
 		}
 	case "architect", "planner":
-		if acc.Provider == "claude" || acc.Provider == "codex" {
+		// Architects and planners benefit from long sessions with resume support
+		// (continuous reasoning across multiple turns).
+		if capSupported(acc, "sessions") && capSupported(acc, "resume") {
 			roleScore = 20.0
-			c.Pros = append(c.Pros, "Capacidade avançada de raciocínio e decomposição")
+			c.Pros = append(c.Pros, "Capacidade avançada de raciocínio e decomposição em sessão longa")
+		} else if capSupported(acc, "sessions") || capSupported(acc, "resume") {
+			roleScore = 16.0
+			c.Pros = append(c.Pros, "Suporte a sessões estendidas de planejamento")
 		}
 	}
 	c.ScoreBreakdown["role_fit"] = roleScore
@@ -340,4 +358,12 @@ func capabilityStatusLabel(status string) string {
 		return "UNKNOWN"
 	}
 	return status
+}
+
+// capSupported returns true when the account's capability map advertises
+// the given capability (snake_case or hyphenated) as "supported".
+func capSupported(acc ProviderAccount, capability string) bool {
+	key := normalizeCapabilityName(capability)
+	val := strings.ToUpper(strings.TrimSpace(acc.Capabilities[key]))
+	return val == "SUPPORTED"
 }

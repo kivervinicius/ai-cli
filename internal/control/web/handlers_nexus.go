@@ -504,7 +504,8 @@ func (h *NexusHandler) resolveAgentRuntimeID(agentID string) (string, error) {
 	if gen.RuntimeID == "" {
 		return "", fmt.Errorf("empty runtime generation")
 	}
-	if _, ok := registry.DefaultRegistry().Get(gen.RuntimeID); !ok {
+	sess, ok := registry.DefaultRegistry().Get(gen.RuntimeID)
+	if !ok || !sess.HostLive() {
 		return "", fmt.Errorf("runtime generation %s is not live", gen.RuntimeID)
 	}
 	return gen.RuntimeID, nil
@@ -1307,13 +1308,21 @@ func (h *NexusHandler) handleProjectComposerSessions(w http.ResponseWriter, r *h
 		writeJSON(w, http.StatusOK, items)
 	case http.MethodPost:
 		var body struct {
-			Goal string `json:"goal"`
+			Goal         string `json:"goal"`
+			InputMode    string `json:"input_mode"`
+			SourcePrompt string `json:"source_prompt"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid body")
 			return
 		}
-		view, err := h.nexus.CreateComposerSession(r.Context(), projectID, body.Goal)
+		var view *nexus.ComposerSessionView
+		var err error
+		if strings.TrimSpace(body.SourcePrompt) != "" || strings.ToUpper(strings.TrimSpace(body.InputMode)) == "EXISTING_PROMPT" {
+			view, err = h.nexus.CreateComposerSessionWithPrompt(r.Context(), projectID, body.Goal, body.SourcePrompt)
+		} else {
+			view, err = h.nexus.CreateComposerSession(r.Context(), projectID, body.Goal)
+		}
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -1329,6 +1338,52 @@ func (h *NexusHandler) handleComposerSession(w http.ResponseWriter, r *http.Requ
 	id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/composer-sessions/"), "/")
 	if id == "" {
 		writeError(w, http.StatusNotFound, "missing composer session id")
+		return
+	}
+	if strings.HasSuffix(id, "/refine") {
+		id = strings.TrimSuffix(id, "/refine")
+		var body struct {
+			Goal string `json:"goal"`
+		}
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "POST required for refine")
+			return
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		artifact, err := h.nexus.RefineComposerArtifact(r.Context(), id, body.Goal)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, artifact)
+		return
+	}
+	if strings.Contains(id, "/unknowns/") && strings.HasSuffix(id, "/resolve") {
+		prefix := strings.TrimSuffix(id, "/resolve")
+		parts := strings.SplitN(prefix, "/unknowns/", 2)
+		if r.Method != http.MethodPost || len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
+			writeError(w, http.StatusBadRequest, "session id, unknown id and POST are required")
+			return
+		}
+		sessionID := parts[0]
+		unknownID := strings.Trim(parts[1], "/")
+		var body struct {
+			Answer string `json:"answer"`
+			Status string `json:"status"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if strings.TrimSpace(body.Status) == "" {
+			body.Status = "ANSWERED"
+		}
+		view, err := h.nexus.ResolveComposerUnknown(r.Context(), sessionID, unknownID, body.Answer, body.Status)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, view)
 		return
 	}
 	if strings.HasSuffix(id, "/turns") {
@@ -1557,6 +1612,42 @@ func (h *NexusHandler) handleFlowClone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, clone)
+}
+
+func (h *NexusHandler) handleFlowPreflight(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	planID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/v1/plans/"), "/preflight")
+	if planID == "" {
+		writeError(w, http.StatusBadRequest, "plan id is required")
+		return
+	}
+	report, err := h.nexus.PreflightFlow(r.Context(), planID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, report)
+}
+
+func (h *NexusHandler) handleFlowDecompose(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req nexus.FlowDecompositionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	proposal, err := h.nexus.DecomposePromptIntoFlowProposal(r.Context(), req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, proposal)
 }
 
 // handlePlanRun POST /api/v1/plans/{id}/run

@@ -299,6 +299,7 @@ func executeProviderWithSmartSelection(provName, explicitProfile string, args []
 		if p.Provider == provName {
 			candidates = append(candidates, p)
 			accounts[p.Name] = profile.GetAccountInfo(provName, p.Name)
+			_ = profile.GetUsageSnapshot(provName, p.Name)
 		}
 	}
 
@@ -448,7 +449,7 @@ func usage() {
   %s login / logout <p> <name>    Run provider official login/logout flow
   %s use <provider> <name>        Set default active profile for provider
   %s status [provider[:profile]]  Display profile health, plan and account status
-  %s usage [provider] [--json]    Searchable quota table; use --json for integrations
+  %s usage [--json] [--refresh]   Searchable quota table; --json for integrations; --refresh for live CLI fetch
   %s inspect <provider> <name>    Inspect profile configuration details
 
   %s sessions [search] [--json]   Universal session index across all providers
@@ -822,13 +823,27 @@ func usageCmd(args []string) error {
 		return nil
 	}
 
-	isJSON := len(args) > 0 && args[len(args)-1] == "--json"
+	isJSON := false
+	refresh := false
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			isJSON = true
+		case "--refresh":
+			refresh = true
+		}
+	}
+	if refresh {
+		fmt.Fprintln(os.Stderr, "Atualizando quotas ao vivo…")
+		for _, p := range ps {
+			fmt.Fprintf(os.Stderr, "  • %s:%s\n", p.Provider, p.Name)
+			_ = profile.RefreshUsageSnapshot(p.Provider, p.Name)
+		}
+	}
 	if isJSON {
 		var list []model.UsageSnapshot
-		qEng := quota.NewEngine(5 * time.Minute)
 		for _, p := range ps {
-			snap, _ := qEng.GetCachedUsage(p.Provider, p.Name)
-			list = append(list, snap)
+			list = append(list, profile.GetUsageSnapshot(p.Provider, p.Name))
 		}
 		b, _ := json.MarshalIndent(list, "", "  ")
 		fmt.Println(string(b))
@@ -1023,6 +1038,7 @@ func explainCmd(args []string) error {
 		if p.Provider == prov {
 			candidates = append(candidates, p)
 			accounts[p.Name] = profile.GetAccountInfo(prov, p.Name)
+			_ = profile.GetUsageSnapshot(prov, p.Name)
 		}
 	}
 

@@ -14,10 +14,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -47,25 +45,18 @@ type sessionResponse struct {
 	CSRF          string `json:"csrf_token"`
 }
 
-type procMetrics struct {
-	Goroutines int     `json:"goroutines"`
-	RSSBytes   uint64  `json:"rss_bytes"`
-	Sockets    int     `json:"sockets"`
-	CPUSeconds float64 `json:"cpu_seconds"`
-}
-
 type report struct {
-	Status              string      `json:"status"`
-	Projects            int         `json:"projects"`
-	Terminals           int         `json:"terminals"`
-	Reconnects          int         `json:"reconnects"`
-	OutputMarkers       int         `json:"output_markers"`
-	FanoutDroppedChunks uint64      `json:"fanout_dropped_chunks"`
-	Before              procMetrics `json:"before"`
-	AtPeak              procMetrics `json:"at_peak"`
-	After               procMetrics `json:"after"`
-	Elapsed             string      `json:"elapsed"`
-	Failure             string      `json:"failure,omitempty"`
+	Status              string          `json:"status"`
+	Projects            int             `json:"projects"`
+	Terminals           int             `json:"terminals"`
+	Reconnects          int             `json:"reconnects"`
+	OutputMarkers       int             `json:"output_markers"`
+	FanoutDroppedChunks uint64          `json:"fanout_dropped_chunks"`
+	Before              platformMetrics `json:"before"`
+	AtPeak              platformMetrics `json:"at_peak"`
+	After               platformMetrics `json:"after"`
+	Elapsed             string          `json:"elapsed"`
+	Failure             string          `json:"failure,omitempty"`
 }
 
 func main() {
@@ -353,30 +344,4 @@ func stopRuntimes(client *loadClient, runtimeIDs []string) {
 			_ = client.request(http.MethodPost, "/api/v1/runtimes/"+url.PathEscape(runtimeID)+"/stop", map[string]string{}, nil)
 		}
 	}
-}
-
-func readMetrics() procMetrics {
-	metrics := procMetrics{Goroutines: runtime.NumGoroutine()}
-	if data, err := os.ReadFile("/proc/self/status"); err == nil {
-		for _, line := range strings.Split(string(data), "\n") {
-			if strings.HasPrefix(line, "VmRSS:") {
-				var kilobytes uint64
-				_, _ = fmt.Sscanf(strings.TrimSpace(strings.TrimPrefix(line, "VmRSS:")), "%d kB", &kilobytes)
-				metrics.RSSBytes = kilobytes * 1024
-			}
-		}
-	}
-	if entries, err := os.ReadDir("/proc/self/fd"); err == nil {
-		for _, entry := range entries {
-			target, targetErr := os.Readlink(filepath.Join("/proc/self/fd", entry.Name()))
-			if targetErr == nil && strings.HasPrefix(target, "socket:") {
-				metrics.Sockets++
-			}
-		}
-	}
-	var usage syscall.Rusage
-	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &usage); err == nil {
-		metrics.CPUSeconds = float64(usage.Utime.Sec) + float64(usage.Utime.Usec)/1e6 + float64(usage.Stime.Sec) + float64(usage.Stime.Usec)/1e6
-	}
-	return metrics
 }

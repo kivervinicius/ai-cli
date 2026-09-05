@@ -37,6 +37,7 @@ type AvailReasons struct {
 // A provider like AGY exposes two groups (Gemini, Claude/GPT).
 // Simpler providers have a single unnamed group.
 type ModelGroup struct {
+	Key     string   `json:"key,omitempty"` // stable identity: gemini, claude_gpt, …
 	Name    string   `json:"name"`
 	Windows []Window `json:"windows"`
 }
@@ -53,7 +54,8 @@ type Window struct {
 
 // Bottleneck returns the minimum remaining percentage across ALL windows and groups.
 // The second return value identifies the bottleneck window kind.
-// Used by scheduler for scoring and by TUI for the inline summary bar.
+// This is the tightest window for warnings ("Gemini 5h 0%"), not the account score.
+// Prefer BestGroupRemaining for scheduling / quota_remaining.
 func (qv *QuotaView) Bottleneck() (float64, string) {
 	minPct := 100.0
 	var bottleneckKind string
@@ -64,7 +66,7 @@ func (qv *QuotaView) Bottleneck() (float64, string) {
 				continue
 			}
 			found = true
-			if w.Remaining < minPct {
+			if bottleneckKind == "" || w.Remaining < minPct {
 				minPct = w.Remaining
 				bottleneckKind = w.Kind
 			}
@@ -74,6 +76,102 @@ func (qv *QuotaView) Bottleneck() (float64, string) {
 		return 0, ""
 	}
 	return minPct, bottleneckKind
+}
+
+// GroupRemaining returns the capacity of one model group: min of its known
+// windows (5h and weekly stack in the same pool). ok is false when the group
+// has no scorable windows.
+func (g ModelGroup) GroupRemaining() (remaining float64, ok bool) {
+	minPct := 100.0
+	found := false
+	for _, w := range g.Windows {
+		if w.Kind == "unknown" {
+			continue
+		}
+		found = true
+		if w.Remaining < minPct {
+			minPct = w.Remaining
+		}
+	}
+	if !found {
+		return 0, false
+	}
+	return minPct, true
+}
+
+// BestGroupRemaining returns the best usable pool capacity: max of each
+// group's GroupRemaining. Independent families (AGY Gemini vs Claude) do not
+// cancel each other; a single-pool provider (Codex) collapses to min(5h, weekly).
+func (qv *QuotaView) BestGroupRemaining() (remaining float64, ok bool) {
+	best := 0.0
+	found := false
+	for _, g := range qv.ModelGroups {
+		rem, groupOK := g.GroupRemaining()
+		if !groupOK {
+			continue
+		}
+		if !found || rem > best {
+			best = rem
+			found = true
+		}
+	}
+	return best, found
+}
+
+// CompactGroupSummary lists each group's capacity for compact UIs
+// ("Gemini 0% · Claude 100%" or "5h 70% · weekly 95%" for a single pool).
+func (qv *QuotaView) CompactGroupSummary() string {
+	if qv == nil || len(qv.ModelGroups) == 0 {
+		return ""
+	}
+	if qv.HasMultipleGroups() {
+		parts := make([]string, 0, len(qv.ModelGroups))
+		for _, g := range qv.ModelGroups {
+			rem, ok := g.GroupRemaining()
+			if !ok {
+				continue
+			}
+			parts = append(parts, fmt.Sprintf("%s %.0f%%", shortGroupLabel(g), rem))
+		}
+		return strings.Join(parts, " · ")
+	}
+	g := qv.ModelGroups[0]
+	parts := make([]string, 0, len(g.Windows))
+	for _, w := range g.Windows {
+		if w.Kind == "unknown" {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s %.0f%%", shortWindowLabel(w.Kind), w.Remaining))
+	}
+	return strings.Join(parts, " · ")
+}
+
+func shortGroupLabel(g ModelGroup) string {
+	key := g.Key
+	if key == "" {
+		key = strings.ToLower(g.Name)
+	}
+	switch {
+	case key == "gemini" || strings.Contains(key, "gemini"):
+		return "Gemini"
+	case key == "claude_gpt" || strings.Contains(key, "claude") || strings.Contains(key, "gpt"):
+		return "Claude"
+	case strings.TrimSpace(g.Name) != "":
+		return g.Name
+	default:
+		return "Quota"
+	}
+}
+
+func shortWindowLabel(kind string) string {
+	switch kind {
+	case "5h", "daily", "claude_5h", "claude_five_hour":
+		return "5h"
+	case "weekly", "claude_weekly":
+		return "weekly"
+	default:
+		return kind
+	}
 }
 
 // AllWindows returns a flat list of all windows across all groups.
@@ -236,8 +334,8 @@ var sortGroupOrder = map[string]int{
 // SortModelGroups orders model groups for consistent display.
 func SortModelGroups(groups []ModelGroup) {
 	sort.Slice(groups, func(i, j int) bool {
-		oi, okI := sortGroupOrder[groups[i].Name]
-		oj, okJ := sortGroupOrder[groups[j].Name]
+		oi, okI := sortGroupOrder[groupSortKey(groups[i])]
+		oj, okJ := sortGroupOrder[groupSortKey(groups[j])]
 		if okI && okJ {
 			return oi < oj
 		}
@@ -249,6 +347,21 @@ func SortModelGroups(groups []ModelGroup) {
 		}
 		return groups[i].Name < groups[j].Name
 	})
+}
+
+func groupSortKey(g ModelGroup) string {
+	if g.Key != "" {
+		return g.Key
+	}
+	name := strings.ToLower(g.Name)
+	switch {
+	case strings.Contains(name, "gemini"):
+		return "gemini"
+	case strings.Contains(name, "claude") || strings.Contains(name, "gpt"):
+		return "claude_gpt"
+	default:
+		return g.Name
+	}
 }
 
 // GroupKeys returns a sorted slice of unique group keys from windows.

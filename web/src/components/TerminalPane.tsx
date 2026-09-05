@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
-import { Shield, ShieldAlert, XSquare, Pencil, Check } from 'lucide-react';
+import { Shield, ShieldAlert, XSquare, Pencil, Check, Play, RefreshCw, Unplug } from 'lucide-react';
 import { scrubProtocolOutput } from '../nexus/terminalProtocol';
 import { consumePtyOutputForChrome, extractOscTitle } from '../workspace/ptyLiveChrome';
 import { usePtyLiveChromeOptional } from '../workspace/PtyLiveChromeContext';
@@ -17,6 +17,7 @@ interface TerminalPaneProps {
   liveTitleKey?: string;
   onUpdateTitle?: (id: string, newTitle: string) => void;
   onClose?: () => void;
+  onRestart?: () => void | Promise<void>;
 }
 
 export const TerminalPane: React.FC<TerminalPaneProps> = ({
@@ -28,6 +29,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   liveTitleKey,
   onUpdateTitle,
   onClose,
+  onRestart,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -45,6 +47,9 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [customTitle, setCustomTitle] = useState(title || '');
   const [ptyTitle, setPtyTitle] = useState('');
+  const [disconnected, setDisconnected] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+  const [connectNonce, setConnectNonce] = useState(0);
 
   useEffect(() => {
     setCustomTitle(title || '');
@@ -162,6 +167,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     ws.onopen = () => {
       if (disposed) return;
       setErrorMsg('');
+      setDisconnected(false);
       safeFit(true);
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'lease_acquire' }));
@@ -198,6 +204,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           }
         } else if (msg.type === 'error') {
           setErrorMsg(msg.data);
+          setDisconnected(true);
         }
       } catch {
         if (disposed) return;
@@ -210,12 +217,14 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
 
     ws.onclose = () => {
       if (disposed) return;
-      setErrorMsg('Disconnected from runtime');
+      setErrorMsg((current) => current || 'O host do terminal não está em execução.');
+      setDisconnected(true);
     };
 
     ws.onerror = () => {
       if (disposed) return;
-      setErrorMsg('WebSocket connection error');
+      setErrorMsg((current) => current || 'O host do terminal não está em execução.');
+      setDisconnected(true);
     };
 
     // Forward terminal input to WebSocket with focus/CPR sequence filtering
@@ -292,7 +301,23 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         // ignore
       }
     };
-  }, [runtimeId]);
+  }, [runtimeId, connectNonce]);
+
+  const handleRestart = async () => {
+    if (restarting) return;
+    setRestarting(true);
+    try {
+      if (onRestart) {
+        await onRestart();
+        return;
+      }
+      setDisconnected(false);
+      setErrorMsg('');
+      setConnectNonce((n) => n + 1);
+    } finally {
+      setRestarting(false);
+    }
+  };
 
   const requestControl = () => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -307,7 +332,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#090d16] border border-slate-800 rounded-lg overflow-hidden shadow-xl" data-chrome={hideHeader ? 'window' : 'full'}>
+    <div className="flex flex-col h-full bg-[#090d16] border border-slate-800 rounded-lg overflow-hidden shadow-xl relative" data-chrome={hideHeader ? 'window' : 'full'}>
       {/* Terminal Toolbar */}
       {!hideHeader && (
       <div className="flex items-center justify-between px-3 py-2 bg-slate-900 border-b border-slate-800 text-xs font-mono select-none">
@@ -406,6 +431,60 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         ref={containerRef}
         onPointerDown={() => termRef.current?.focus()}
       />
+      {disconnected && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: hideHeader ? 0 : '40px 0 0 0',
+            background: 'rgba(9, 11, 16, 0.88)',
+            backdropFilter: 'blur(3px)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '12px',
+            padding: '24px',
+            zIndex: 10,
+            textAlign: 'center',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--nx-warning)' }}>
+            <Unplug size={18} />
+            <strong style={{ fontSize: '14px' }}>Terminal desconectado</strong>
+          </div>
+          <p style={{ maxWidth: '420px', fontSize: '12px', color: 'var(--nx-muted)', margin: 0, lineHeight: 1.5 }}>
+            O processo deste terminal não sobreviveu ao reinício da máquina ou do serviço. Inicie um novo runtime para continuar.
+          </p>
+          {errorMsg && (
+            <p
+              style={{
+                maxWidth: '440px',
+                margin: 0,
+                padding: '8px 10px',
+                borderRadius: 6,
+                border: '1px solid color-mix(in srgb, var(--nx-danger) 40%, var(--nx-border))',
+                background: 'var(--nx-danger-soft)',
+                color: 'var(--nx-danger)',
+                fontSize: '12px',
+                lineHeight: 1.45,
+              }}
+            >
+              {errorMsg}
+            </p>
+          )}
+          <button
+            type="button"
+            className="nx-button"
+            data-tone="brand"
+            disabled={restarting}
+            onClick={() => void handleRestart()}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            {restarting ? <RefreshCw size={13} className="nx-spin-slow" /> : <Play size={13} />}
+            <span>{restarting ? 'Iniciando…' : onRestart ? 'Iniciar novo terminal' : 'Reconectar'}</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

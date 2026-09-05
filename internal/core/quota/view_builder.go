@@ -85,6 +85,7 @@ func BuildQuotaView(snap model.UsageSnapshot, account, plan string) QuotaView {
 			displayName = snap.ModelName
 		}
 		qv.ModelGroups = append(qv.ModelGroups, ModelGroup{
+			Key:     gKey,
 			Name:    displayName,
 			Windows: groupedWindows[gKey],
 		})
@@ -119,38 +120,29 @@ func BuildQuotaViewFromDetails(provider, profile, account, plan, status, modelNa
 
 // BottleneckScore computes an effective capacity score for scheduling.
 // Returns (effectiveCapacity, bottleneckKind, avgRemaining).
-// Bottleneck has 70% weight, average has 30% weight.
+// Capacity uses BestGroupRemaining (max of per-group mins) so independent
+// model pools do not cancel each other. Bottleneck kind remains the global
+// tightest window for diagnostics. Average is over group capacities.
 func BottleneckScore(qv *QuotaView) (float64, string, float64) {
-	var validPercentages []float64
-	var minWindowKind string
-	minRemaining := 100.0
-	sumRemaining := 0.0
-
-	for _, g := range qv.ModelGroups {
-		for _, w := range g.Windows {
-			pct := w.Remaining
-			if pct < 0 {
-				pct = 0
-			}
-			if pct > 100 {
-				pct = 100
-			}
-			validPercentages = append(validPercentages, pct)
-			sumRemaining += pct
-			if pct <= minRemaining {
-				minRemaining = pct
-				minWindowKind = w.Kind
-			}
-		}
-	}
-
-	if len(validPercentages) == 0 {
+	_, bottleneckKind := qv.Bottleneck()
+	best, ok := qv.BestGroupRemaining()
+	if !ok {
 		return 50.0, "", 50.0
 	}
 
-	avgRemaining := sumRemaining / float64(len(validPercentages))
-	effectiveCapacity := (minRemaining * 0.7) + (avgRemaining * 0.3)
-	return effectiveCapacity, minWindowKind, avgRemaining
+	var groupCaps []float64
+	sum := 0.0
+	for _, g := range qv.ModelGroups {
+		rem, groupOK := g.GroupRemaining()
+		if !groupOK {
+			continue
+		}
+		groupCaps = append(groupCaps, rem)
+		sum += rem
+	}
+	avgRemaining := sum / float64(len(groupCaps))
+	effectiveCapacity := (best * 0.7) + (avgRemaining * 0.3)
+	return effectiveCapacity, bottleneckKind, avgRemaining
 }
 
 // RenderSummary returns a one-line summary of the quota view for compact displays.
@@ -158,11 +150,14 @@ func RenderSummary(qv *QuotaView) string {
 	if qv == nil || len(qv.ModelGroups) == 0 {
 		return "UNKNOWN"
 	}
-	bottleneck, kind := qv.Bottleneck()
 	status := qv.Status
 	if status == "" {
 		status = "unknown"
 	}
+	if summary := qv.CompactGroupSummary(); summary != "" {
+		return fmt.Sprintf("%s (%s)", summary, status)
+	}
+	bottleneck, kind := qv.Bottleneck()
 	if qv.HasMultipleGroups() {
 		return fmt.Sprintf("%.0f%% [%s] (%d groups, %s)", bottleneck, kind, len(qv.ModelGroups), status)
 	}

@@ -1,5 +1,15 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-04 — Terminal recover após reboot/serviço
+
+- `go test -count=1 ./internal/control/registry ./internal/control/web` — PASS.
+- `make web-verify` — PASS (typecheck, lint, null-arrays, Vitest, i18n,
+  build, embed-sync e ui-markers). Relatório:
+  `DEV/validation/FRONTEND_LATEST.md`.
+- Reprodução manual restante: reiniciar `nexus web` (ou a máquina) com uma
+  janela de terminal de agente aberta e confirmar overlay **Iniciar /
+  Recuperar Agente** em vez de xterm preto.
+
 ## 2026-09-04 — Baseline atual e Composer skills
 
 - `make web-verify` — PASS (typecheck, lint, null-arrays, Vitest, i18n,
@@ -249,7 +259,7 @@ All business logic lives in `internal/nexus/` (service layer). Web and TUI consu
 Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CURRENT_CODE_REVIEW.md).
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-04T19:41:04Z
+## Frontend gate — 2026-09-04T22:58:35Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
 

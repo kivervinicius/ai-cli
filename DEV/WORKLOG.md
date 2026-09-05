@@ -1,5 +1,138 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-04 — WORKBENCH UX, LAYOUT PERSISTENCE, THEMING AND ACCESSIBILITY HARDENING
+
+- **Escopo**: Hardening arquitetural completo do IAPro Nexus Workbench:
+  1. **WorkspaceLayoutService (`web/src/services/WorkspaceLayoutService.ts`)**:
+     - Serviço atômico com versionamento v3 (`WORKSPACE_LAYOUT_VERSION = 3`).
+     - Normalização, validação de schema, migração retrocompatível (v1/v2 -> v3) e fallback seguro.
+     - Suporte a export/import de layouts e ponte de compatibilidade com chaves legadas.
+     - 100% coberto por testes unitários (`WorkspaceLayoutService.test.ts`).
+  2. **Auto-Arrange Presets Engine (`web/src/workspace/arrangePresets.ts`)**:
+     - Presets: `automatic`, `terminal-focus` (68/32), `two-columns` (50/50), `three-columns` (33/33/33), `terminal-chat`, `terminal-flow`, `agents`, `focus-mode`, `restore-default`.
+     - Zero sobreposição involuntária de janelas, respeito rigoroso aos limites mínimos (`MIN_W=280`, `MIN_H=220`) e empacotamento determinístico.
+     - Integrado aos seletores de UI no header dos terminais e na Command Palette (`Ctrl+K` / `Ctrl+Shift+P`).
+     - 100% coberto por testes unitários (`arrangePresets.test.ts`).
+  3. **Keyboard Shortcut Registry com Scope Isolation (`web/src/keyboard/KeyboardShortcutRegistry.ts`)**:
+     - Gerenciador singleton com escopos isolados: `global`, `workspace`, `terminal`, `chat`, `flow`, `dialog`.
+     - Proteção estrita contra interrupção de digitação IME (`event.isComposing` / `keyCode === 229`).
+     - Proteção de terminal: foco em PTY preserva Ctrl+C, Ctrl+V, Ctrl+Shift+C/V, setas de navegação e comandos de shell, delegando apenas triggers do sistema.
+     - Coberto por testes unitários (`KeyboardShortcutRegistry.test.ts`).
+  4. **Suite Completa de 10 Temas com Runtime CSS Custom Properties (`web/src/design-system/theme/`)**:
+     - Presets implementados: `nexus-dark`, `nexus-light`, `midnight`, `nord`, `dracula`, `monokai`, `solarized-dark`, `solarized-light`, `high-contrast-dark` (WCAG AAA), `high-contrast-light` (WCAG AAA).
+     - Aplicados dinamicamente via tokens no `:root` sem FOUC e sem alterar componentes filhos.
+     - Seletor integrado em `SettingsSurface.tsx`.
+     - Coberto por testes unitários (`theme.test.ts`).
+  5. **Terminal Header Hierarchy & Overflow Elimination**:
+     - Headers compactos com `overflow: hidden; white-space: nowrap;`.
+     - Truncamento gracioso de paths/títulos, badges claros de status e lease (`CONTROL` vs `VIEW ONLY`), e tooltips acessíveis.
+  6. **Composer Chat UX & Flow First-Class Surface**:
+     - Auto-growing multiline `<textarea>` com Enter para envio (quando não compondo IME) e Shift+Enter para quebra de linha.
+     - Preservação do texto de rascunho em caso de erro e bloqueio de double-submit durante chamadas assíncronas.
+     - Layout do Flow otimizado: canvas em largura total com Inspector de etapas desacoplado e contextual, sem comprimir diagramas abaixo da legibilidade.
+  7. **ContextDrawer Acessível & Integração de Quota**:
+     - Novo componente `ContextDrawer` construído sobre Radix Dialog com foco restaurado ao elemento de disparo e suporte a Escape.
+     - Status de Inteligência e Quotas exibido de forma concisa no taskbar e navegável sem sidebars fixas intrusivas.
+- **Verificação**:
+  - `make web-verify`: 8/8 gates PASS (typecheck, lint, null-arrays, vitest (244 tests), i18n, build, embed-sync, ui-markers).
+
+
+## 2026-09-04 — Codex usage: phantoms Claude + rollouts partilhados
+
+- **Sintoma**: `nexus usage` do Codex (omega) não batia com `/status` (99% 5h / 59% semana); parecia invertido/zerado.
+- **Causas**: (1) `quota.json` com stubs `claude_*` a 0% entravam no mesmo pool e zeravam `BestGroupRemaining`; (2) cache de agosto curto-circuitava o adapter; (3) rollouts em `~/.codex/sessions` (symlink) eram ignorados por falta de e-mail no JSONL.
+- **Fix**: Claude windows só para `agy`; Codex sempre via adapter; match de sessões partilhadas pelo e-mail do `~/.codex/auth.json`.
+- **Evidência**: `kiver.omegasistemas` → LIVE 5h 99% / weekly 59% (used 1/41).
+
+## 2026-09-04 — Quota: grupos independentes vs janelas 5h/semana
+
+- **Problema**: um único `%` (Bottleneck global) mentia no AGY (Gemini 0% escondia Claude 100%) e cache Codex velho entrava como CACHED.
+- **Contrato em `quota`**: `GroupRemaining` = min dentro do grupo; `BestGroupRemaining` = max entre grupos; `Bottleneck` só para aviso; `CompactGroupSummary` para UI.
+- **Adapters**: AGY rejeita TSV incompleto; legado Claude 0% permanece; Codex `FetchedAt` = mtime do ficheiro.
+- **Consumidores**: `ListResources.quota_remaining` usa melhor grupo; Direct Session / Settings / TUI / slash mostram `Gemini 0% · Claude 100%` (ou `5h · weekly`).
+- **Stale**: `GetQuotaView` marca snapshot `!Trustworthy` como ESTIMATED.
+- **Verify**: `go test` quota/agy/codex/profile/nexus/scheduler + `make web-verify` PASS.
+
+## 2026-09-04 — PLAN 03: Finalização do Composer (Modos, Arquétipos, Readiness e Refinamento Imutável)
+
+- **Escopo**: Execução do PLAN 03 do plano mestre (`master_plan_nexus_maximum_delivery.md`):
+  1. Modos de entrada duplos (`IDEA` e `EXISTING_PROMPT`) com UI toggle e passagem ao backend.
+  2. Arquétipos com badge contextual na sessão (`SOFTWARE_FEATURE`, `BUG_FIX`, etc.).
+  3. Decomposição explicável de Prompt Readiness com lista de dimensões/checks individuais e seus scores/status.
+  4. Resolução explícita de Unknowns / lacunas (ações de Responder e Dispensar inline via API).
+  5. Refinamento imutável de PromptArtifact gerando revisões incrementais (`v1 -> v2`) mantendo histórico na sessão.
+- **Backend**:
+  - `internal/control/web/handlers_nexus.go`:
+    - `handleProjectComposerSessions`: decodifica `input_mode` e `source_prompt`, roteando para `CreateComposerSessionWithPrompt` quando aplicável.
+    - `handleComposerSession`: adicionadas rotas `/refine` (`RefineComposerArtifact`) e `/unknowns/{id}/resolve` (`ResolveComposerUnknown`).
+  - `internal/nexus/composer.go`:
+    - Implementado `RefineComposerArtifact(ctx, sessionID, refinementGoal)`: adiciona turno de refinamento e recompila novo `PromptArtifact` com versão incrementada (`MAX(version)+1`).
+    - Implementado `ResolveComposerUnknown(ctx, sessionID, unknownID, answer, status)`: atualiza a lacuna específica e recalcula o living brief.
+  - `internal/nexus/composer_brief.go`:
+    - `refreshComposerUnknowns`: preserva respostas e status resolvidos pelo usuário (`ANSWERED`, `CONFIRMED`, `DISMISSED`) contra sobrescritas do detector de blueprints.
+- **Frontend**:
+  - `web/src/nexus/api.ts`: adicionados métodos `createComposerSessionWithMode`, `refineComposerArtifact`, `resolveComposerUnknown`.
+  - `web/src/features/work/ComposerSurface.tsx`:
+    - Toggle de modos `Ideia / Explorar` e `Prompt Existente` na tela inicial.
+    - Badge com label em português do arquétipo inferido.
+    - Card de Readiness exibindo dimensões avaliadas com scores individuais via `asArray<PromptReadinessCheck>`.
+    - Unknowns com input de resposta e botões de `Responder` / `Dispensar`.
+    - Card de artifact com botão `Refinar (vN+1)` permitindo instruções incrementais.
+- **Testes**:
+  - `internal/nexus/composer_test.go`: adicionados `TestComposerRefinementCreatesNextVersion` e `TestResolveComposerUnknown`.
+- **Verificação**:
+  - `go test ./...`: 44 pacotes 100% PASS.
+  - `make web-verify`: 8/8 gates PASS (typecheck, lint, null-arrays, test, i18n, build, embed-sync, ui-markers).
+  - `go vet`: PASS.
+  - `make build`: binário `nexus v0.5.0-beta.23` recompilado e instalado.
+
+
+- **Causa**: `runtimes.json` sobrevive ao reboot com PIDs mortos. O WebSocket do terminal fazia upgrade mesmo assim, a UI ia para CONNECTED e, no chrome de janela (Desktop/Mosaico), o overlay de Recover só aparecia em ERROR — tela preta sem ação.
+- **Backend**: `RuntimeSession.HostLive()` recusa attach quando o PID/host-generation está morto; `/terminal` responde 404 `runtime host is not running` em vez de um WS oco.
+- **Frontend**: overlay de Iniciar/Recuperar também durante CONNECTING/recuperação; Project Shell ganha CTA para relançar o runtime.
+- **Verificação**: `go test ./internal/control/registry ./internal/control/web` PASS; `make web-verify` PASS (8/8).
+
+## 2026-09-04 — PLAN 02: Capability-Driven Reviewer Selection e Role Scoring
+
+- **Escopo**: Execução do PLAN 02 do plano mestre (`master_plan_nexus_maximum_delivery.md`): eliminação de whitelists e provider names hardcoded no scheduler e seleção de reviewer.
+- **Mudanças**:
+  - `internal/nexus/mission_executor.go`: substituída a função `supportsSafeHeadlessReview(provider string)` (whitelist por nome: `claude`, `gemini`, `cursor`) por `accountSupportsHeadlessReview(acc ProviderAccount)` que verifica as capabilities declaradas (`headless=SUPPORTED` + `submit_prompt=SUPPORTED`) diretamente no mapa de capabilities da conta. Qualquer driver que declare essas capabilities passa automaticamente, sem editar o arquivo ao adicionar novos providers.
+  - `internal/nexus/resource_recommendation.go`: substituída a seção de `role_fit` scoring (0–20 pts) que usava `acc.Provider == "codex" || acc.Provider == "claude"` por lógica puramente baseada em capabilities:
+    - `reviewer`/`tester`: bônus por `structured_events` ou `approvals` (feedback estruturado e modo de revisão seguro).
+    - `implementer`: bônus por `fork` ou `sessions` (paralelismo real); bônus menor por `headless` + `submit_prompt`.
+    - `architect`/`planner`: bônus por `sessions` + `resume` (raciocínio longo contínuo).
+  - Adicionado helper `capSupported(acc ProviderAccount, capability string) bool` reutilizável em todo o pacote.
+- **Testes adicionados** (`resource_recommendation_test.go`):
+  - `TestCapabilityBasedRoleScoring`: valida que contas com capabilities avançadas recebem maior `role_fit` que contas sem, sem mencionar nome de provider.
+  - `TestAccountSupportsHeadlessReview`: 5 casos cobrindo `both supported`, `missing headless`, `missing submit_prompt`, `partial headless`, `empty capabilities`.
+- **Verificação**:
+  - `go test ./...`: 44 pacotes, 100% PASS.
+  - `go vet ./...`: PASS.
+  - `gofmt -l`: PASS (nenhum arquivo modificado sem formatar).
+  - `make web-verify`: 8/8 gates PASS (typecheck, lint, null-arrays, test, i18n, build, embed-sync, ui-markers).
+  - `make build`: binário `nexus v0.5.0-beta.23` recompilado e instalado.
+
+
+
+- **Escopo**:
+  - Implementação completa do plano `autopilot_ui_ux_implementation_plan.md` em toda a aplicação frontend do Nexus.
+  - Eliminação de dependências de cores estáticas Tailwind (`bg-slate-900`, `bg-slate-950`, `border-slate-800`), migrando para os design tokens semânticos do Nexus (`--nx-bg`, `--nx-surface`, `--nx-border`, `--nx-accent`, `--nx-text`, `--nx-text-soft`, `--nx-muted`, etc.).
+  - Cobertura completa de internacionalização nos 3 idiomas suportados (`pt-BR`, `en`, `es`) através dos namespaces `legacy`, `attention` e `auth` em `resources.ts`.
+  - Normalização de arrays de APIs com `asArray<T>()` em conformidade com o contrato Go.
+- **Componentes e Telas Refatoradas**:
+  - `web/src/app/workspace-os.css`: consolidados tokens, variáveis CSS de compatibilidade (`--color-surface`, `--color-brand`, etc.), anéis de foco acessíveis (`:focus-visible`) e eliminação de `outline: none` desprotegidos.
+  - `web/src/app/NexusWorkspaceApp.tsx`: tela não autenticada refatorada para usar tokens do tema, `nx-brand-mark--hero` e textos internacionalizados (`auth.sessionExpired`, etc.).
+  - `web/src/components/Sidebar.tsx`: refatorado menu lateral, listagem de workspaces, formulário de adição e footer com tokens de superfície, bordas dinâmicas e i18n.
+  - `web/src/components/Dashboard.tsx`: refatoradas métricas superiores, badge de escopo de projetos, cards de Live Runtimes e Session History com design tokens, `asArray<T>` seguro e i18n total.
+  - `web/src/components/ProvidersView.tsx`: tabela de capacidades de provedores migrada para cartões com tokens semânticos e textos traduzidos.
+  - `web/src/components/EventsView.tsx`: log de auditoria de runtime desacoplado de estilos estáticos, com timestamps localizados via `i18n.language`.
+  - `web/src/components/StartModal.tsx`, `HandoffModal.tsx`, `ContinueModal.tsx`: modais de controle de agentes e handoff convertidos para design tokens, `asArray<T>` seguro e internacionalização.
+  - `web/src/components/AttentionNotificationCard.tsx`: internacionalizado o card do radar de atenção (`attention.approvalRequired`, `attention.agentWaiting`, `yesNo`, `dismiss`, etc.).
+  - `web/src/features/work/PlanBuilderSurface.tsx` e `ProjectManagerSurface.tsx`: eliminados usos órfãos de `--color-brand-border` e mensagens de sucesso com tags não semânticas substituídas por `<InlineAlert tone="success">`.
+- **Verificação**:
+  - `make web-verify`: 8/8 gates aprovados com 100% de sucesso (`typecheck`, `lint`, `null-arrays`, `test`, `i18n`, `build`, `embed-sync`, `ui-markers`).
+  - `make build`: binário `nexus` (v0.5.0-beta.23) compilado e instalado com sucesso com os novos bundles estáticos embutidos.
+
 ## 2026-09-04 — Otimização de Layout e Ocupação Integral das Logos do Nexus
 
 - **Problema**:

@@ -1,5 +1,6 @@
 import type { ProviderAccount } from '../../types';
 import { asArray } from '../../lib/safeArray';
+import { bestGroupRemainingFromQuotaView, compactQuotaLabel } from '../work/directSessionModel';
 
 function cap(account: ProviderAccount, key: string): string {
   return String(account.capabilities?.[key] || '').toUpperCase();
@@ -20,9 +21,19 @@ function isTerminalOnly(account: ProviderAccount): boolean {
 
 export function quotaPercent(account: ProviderAccount): number | null {
   if (account.avail_reasons?.unknown_quota || account.quota_view?.status === 'UNKNOWN') return null;
+  const fromWindows = bestGroupRemainingFromQuotaView(account.quota_view);
+  if (fromWindows != null) return fromWindows;
   const remaining = account.quota_remaining;
   if (!Number.isFinite(remaining)) return null;
   return Math.round(remaining <= 1 ? remaining * 100 : remaining);
+}
+
+export function quotaLabel(account: ProviderAccount): string | null {
+  if (account.avail_reasons?.unknown_quota || account.quota_view?.status === 'UNKNOWN') return null;
+  const label = compactQuotaLabel(account.quota_view);
+  if (label) return label;
+  const pct = quotaPercent(account);
+  return pct == null ? null : `${pct}%`;
 }
 
 export function intelligenceModelChoices(account?: ProviderAccount | null): Array<{ id: string; label: string; remaining: number | null }> {

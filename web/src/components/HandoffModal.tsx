@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RuntimeSession, ProfileInfo } from '../types';
+import { asArray } from '../lib/safeArray';
 import { api } from '../api';
 import { Button, Dialog } from '../design-system';
 
@@ -18,9 +20,12 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
   onSuccess,
   open = true,
 }) => {
+  const { t } = useTranslation();
+  const safeProfiles = asArray<ProfileInfo>(profiles);
+
   const runtimeProvider = runtime.provider_id || runtime.provider || '';
   const runtimeProfile = runtime.profile_id || runtime.profile || '';
-  const availableProfiles = profiles.filter(
+  const availableProfiles = safeProfiles.filter(
     (p) => p.provider === runtimeProvider && p.name !== runtimeProfile
   );
   const [selectedProfile, setSelectedProfile] = useState<string>(
@@ -46,29 +51,54 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title="Account Handoff">
+    <Dialog open={open} onClose={onClose} title={t('legacy.handoffTitle', 'Account Handoff')}>
       <div className="space-y-4 font-mono">
-        <div className="text-xs text-slate-300 space-y-2">
-          <div className="bg-slate-950 p-3 rounded border border-slate-800">
-            <div><span className="text-slate-500">Source:</span> <span className="uppercase font-bold text-slate-200">{runtimeProvider}</span> ({runtimeProfile})</div>
-            <div className="mt-1"><span className="text-slate-500">Runtime:</span> {runtime.runtime_id}</div>
+        <div className="text-xs space-y-2" style={{ color: 'var(--nx-text-soft)' }}>
+          <div
+            className="p-3 rounded"
+            style={{
+              background: 'var(--nx-bg)',
+              border: '1px solid var(--nx-border)',
+            }}
+          >
+            <div>
+              <span style={{ color: 'var(--nx-muted)' }}>{t('legacy.handoffSource', 'Source:')}</span>{' '}
+              <span className="uppercase font-bold" style={{ color: 'var(--nx-text)' }}>{runtimeProvider}</span> ({runtimeProfile})
+            </div>
+            <div className="mt-1">
+              <span style={{ color: 'var(--nx-muted)' }}>{t('legacy.handoffRuntime', 'Runtime:')}</span> {runtime.runtime_id}
+            </div>
           </div>
-          <p className="text-[11px] text-slate-400">
-            Switches active execution to another account while resuming the exact same conversation thread.
+          <p className="text-[11px]" style={{ color: 'var(--nx-muted)' }}>
+            {t('legacy.handoffDesc', 'Switches active execution to another account while resuming the exact same conversation thread.')}
           </p>
         </div>
 
         {availableProfiles.length === 0 ? (
-          <div className="p-4 bg-amber-950/40 border border-amber-800/60 rounded text-amber-300 text-xs">
-            No alternative profiles found for provider {runtimeProvider}. Add more accounts via <code>nexus add {runtimeProvider}</code>.
+          <div
+            className="p-4 rounded text-xs"
+            style={{
+              background: 'var(--nx-surface-2)',
+              border: '1px solid var(--nx-warning)',
+              color: 'var(--nx-warning)',
+            }}
+          >
+            {t('legacy.noOtherProfiles', { provider: runtimeProvider, defaultValue: `No alternative profiles found for provider ${runtimeProvider}. Add more accounts via nexus add ${runtimeProvider}.` })}
           </div>
         ) : (
           <div className="space-y-2 text-xs">
-            <label className="text-xs text-slate-400">Target Profile:</label>
+            <label className="text-xs" style={{ color: 'var(--nx-text-soft)' }}>
+              {t('legacy.targetProfile', 'Target Profile:')}
+            </label>
             <select
               value={selectedProfile}
               onChange={(e) => setSelectedProfile(e.target.value)}
-              className="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-sky-500"
+              className="mt-1 w-full rounded px-3 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[var(--nx-accent)]"
+              style={{
+                background: 'var(--nx-bg)',
+                border: '1px solid var(--nx-border)',
+                color: 'var(--nx-text)',
+              }}
             >
               {availableProfiles.map((p) => (
                 <option key={p.name} value={p.name}>
@@ -80,19 +110,26 @@ export const HandoffModal: React.FC<HandoffModalProps> = ({
         )}
 
         {error && (
-          <div className="p-3 bg-rose-950/50 border border-rose-800 rounded text-rose-300 text-xs">
+          <div
+            className="p-3 rounded text-xs"
+            style={{
+              background: 'var(--nx-surface-2)',
+              border: '1px solid var(--nx-danger)',
+              color: 'var(--nx-danger)',
+            }}
+          >
             {error}
           </div>
         )}
 
         <div className="nx-dialog-actions">
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t('directSession.cancel', 'Cancel')}</Button>
           <Button
             tone="brand"
             disabled={loading || availableProfiles.length === 0}
             onClick={handleHandoff}
           >
-            {loading ? 'Performing Handoff...' : 'Execute Handoff'}
+            {loading ? t('legacy.executingHandoff', 'Performing Handoff...') : t('legacy.executeHandoff', 'Execute Handoff')}
           </Button>
         </div>
       </div>

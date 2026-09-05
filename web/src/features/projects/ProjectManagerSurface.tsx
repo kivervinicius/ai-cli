@@ -649,9 +649,9 @@ export const ProjectManagerSurface: React.FC<{
             </label>
 
             {cfgSuccess && (
-              <p style={{ color: 'var(--nx-success, #10b981)', fontSize: '12px', margin: 0 }}>
-                ✓ {t('projectManager.saved')}
-              </p>
+              <InlineAlert tone="success">
+                {t('projectManager.saved')}
+              </InlineAlert>
             )}
 
             <div className="nx-dialog-actions">

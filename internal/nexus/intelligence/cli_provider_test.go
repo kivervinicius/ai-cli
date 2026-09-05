@@ -60,7 +60,6 @@ func TestExtractJSONObjectRejectsNonObject(t *testing.T) {
 	}
 }
 
-
 func TestHeadlessPromptArgsMatchSupportedProviderCLIs(t *testing.T) {
 	cases := []struct {
 		provider string

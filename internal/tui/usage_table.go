@@ -2,12 +2,14 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/term"
 )
 
 // UsageTableRow is the presentation-only representation of a quota model group.
@@ -21,8 +23,20 @@ type usageTableModel struct {
 
 // RunUsageTable opens a searchable, keyboard-navigable quota table.
 func RunUsageTable(rows []UsageTableRow) error {
+	if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())) {
+		printUsageTable(rows)
+		return nil
+	}
 	_, err := tea.NewProgram(newUsageTableModel(rows), tea.WithAltScreen()).Run()
 	return err
+}
+
+func printUsageTable(rows []UsageTableRow) {
+	fmt.Println("Nexus · Uso por grupo de modelo")
+	fmt.Printf("%-10s %-22s %-22s %-22s %-22s %-12s\n", "PROVEDOR", "PERFIL", "GRUPO", "5H", "SEMANA", "STATUS")
+	for _, row := range rows {
+		fmt.Printf("%-10s %-22s %-22s %-22s %-22s %-12s\n", row.Provider, row.Profile, row.Group, row.FiveHour, row.Weekly, row.Status)
+	}
 }
 
 func newUsageTableModel(rows []UsageTableRow) usageTableModel {

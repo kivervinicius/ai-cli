@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	stdruntime "runtime"
 	"strings"
 	"syscall"
 
@@ -39,29 +38,12 @@ func alreadyIsolatedSecretServiceArgv(args []string) bool {
 	return false
 }
 
-// WrapWithIsolatedSecretService runs a provider inside a private D-Bus session
-// and starts only the Secret Service component of gnome-keyring there. This is
-// used by AGY so profiles cannot silently reuse the desktop user's keyring.
+// WrapWithIsolatedSecretService runs a provider inside an isolated credential context
+// (e.g. private D-Bus session with Secret Service component on Linux).
 // The original command arguments are passed as positional parameters, avoiding
 // shell interpolation of provider arguments.
 func WrapWithIsolatedSecretService(bin string, args []string) (string, []string) {
-	if stdruntime.GOOS == "windows" {
-		return bin, args
-	}
-	dbus, err := LookPath("dbus-run-session")
-	if err != nil {
-		return bin, args
-	}
-	if alreadyIsolatedSecretServiceArgv(args) {
-		return dbus, args
-	}
-	keyring, err := LookPath("gnome-keyring-daemon")
-	if err != nil {
-		return dbus, append([]string{"--", bin}, args...)
-	}
-	wrapped := []string{"--", "/bin/sh", "-c", isolatedSecretServiceScript, "nexus-agy-keyring", keyring, bin}
-	wrapped = append(wrapped, args...)
-	return dbus, wrapped
+	return DefaultCredentialIsolator().WrapCommand(bin, args)
 }
 
 // LookPath searches for an executable in the system PATH and standard developer directories

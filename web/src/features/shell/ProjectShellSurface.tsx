@@ -8,7 +8,8 @@ export const ProjectShellSurface: React.FC<{
   title?: string;
   liveTitleKey?: string;
   onRuntimeChanged?: () => void | Promise<void>;
-}> = ({ runtimeId, title = 'Project Shell', liveTitleKey, onRuntimeChanged }) => {
+  onRestart?: () => void | Promise<void>;
+}> = ({ runtimeId, title = 'Project Shell', liveTitleKey, onRuntimeChanged, onRestart }) => {
   const presentation = useWorkspacePresentation();
   const hideHeader = presentation.state.mode === 'DESKTOP' || presentation.state.mode === 'MOSAIC';
   return (
@@ -28,6 +29,7 @@ export const ProjectShellSurface: React.FC<{
           await api.updateRuntimeTitle(id, nextTitle);
           await onRuntimeChanged?.();
         }}
+        onRestart={onRestart}
       />
     </div>
   );

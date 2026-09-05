@@ -206,6 +206,74 @@ func (n *Nexus) FinalizeComposerSession(_ context.Context, sessionID string, sel
 	return artifact, nil
 }
 
+// RefineComposerArtifact adds an optional refinement turn to an existing
+// composer session and generates a new immutable PromptArtifact revision.
+// If refinementGoal is empty the session is re-compiled as-is (useful to
+// refresh after resolving unknowns). The session state is reset to allow
+// the new finalization pass to proceed even when it was previously finalized.
+func (n *Nexus) RefineComposerArtifact(ctx context.Context, sessionID, refinementGoal string) (*store.PromptArtifact, error) {
+	st, err := n.OpenProject()
+	if err != nil {
+		return nil, err
+	}
+	session, err := st.GetComposerSession(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	// Reset finalized state so turns and FinalizeComposerSession do not block.
+	if session.State == store.ComposerFinalized {
+		session.State = store.ComposerReady
+		if err := st.UpdateComposerSession(*session); err != nil {
+			return nil, err
+		}
+	}
+	if refinementGoal = strings.TrimSpace(refinementGoal); refinementGoal != "" {
+		if _, err := n.AddComposerTurn(ctx, sessionID, store.ComposerUser, "Refinamento: "+refinementGoal); err != nil {
+			return nil, err
+		}
+	}
+	// Collect accepted/applied skills to carry forward.
+	skills, err := st.ListComposerSkillProposals(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	selectedSkillIDs := []string{}
+	for _, s := range skills {
+		if s.State == store.ComposerSkillAccepted || s.State == store.ComposerSkillApplied {
+			selectedSkillIDs = append(selectedSkillIDs, s.SkillID)
+		}
+	}
+	return n.FinalizeComposerSession(ctx, sessionID, selectedSkillIDs, true)
+}
+
+// ResolveComposerUnknown updates the status and answer of a single unknown
+// item in the living brief and re-evaluates readiness.
+func (n *Nexus) ResolveComposerUnknown(_ context.Context, sessionID, unknownID, answer, status string) (*ComposerSessionView, error) {
+	st, err := n.OpenProject()
+	if err != nil {
+		return nil, err
+	}
+	session, err := st.GetComposerSession(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	brief := decodeComposerBrief(session.BriefJSON)
+	found := false
+	for i := range brief.Unknowns {
+		if brief.Unknowns[i].ID == unknownID {
+			brief.Unknowns[i].Answer = strings.TrimSpace(answer)
+			brief.Unknowns[i].Status = PromptUnknownStatus(status)
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("unknown %q not found in session %q", unknownID, sessionID)
+	}
+	refreshComposerBrief(&brief)
+	return n.persistComposerSession(st, session, brief)
+}
+
 func (n *Nexus) composeSessionView(st *store.Store, session store.ComposerSession, brief LivingBrief) (*ComposerSessionView, error) {
 	refreshComposerBrief(&brief)
 	if session.State != store.ComposerFinalized {

@@ -6,7 +6,7 @@ import {
   accountKey,
   intelligenceModelChoices,
   isIntelligenceCLICapable,
-  quotaPercent,
+  quotaLabel,
 } from './intelligenceProfiles';
 
 export const IntelligenceProviderCombo: React.FC<{
@@ -24,7 +24,7 @@ export const IntelligenceProviderCombo: React.FC<{
   const summary = selected
     ? `${selected.display_name || selected.provider} · ${selected.profile}`
     : 'Selecionar provedor e perfil…';
-  const remaining = selected ? quotaPercent(selected) : null;
+  const remaining = selected ? quotaLabel(selected) : null;
 
   return (
     <div className="nx-intel-combo">
@@ -40,7 +40,7 @@ export const IntelligenceProviderCombo: React.FC<{
               <strong>{summary}</strong>
               {selected && (
                 <small>
-                  {remaining == null ? 'quota desconhecida' : `${remaining}% restante`}
+                  {remaining == null ? 'quota desconhecida' : `${remaining} restante`}
                   {selected.quota_view?.plan ? ` · ${selected.quota_view.plan}` : ''}
                 </small>
               )}
@@ -62,7 +62,7 @@ export const IntelligenceProviderCombo: React.FC<{
             {accounts.map((account) => {
               const key = accountKey(account);
               const active = key === selectedKey;
-              const pct = quotaPercent(account);
+              const pct = quotaLabel(account);
               const capable = isIntelligenceCLICapable(account);
               return (
                 <DropdownMenu.Item
@@ -92,7 +92,7 @@ export const IntelligenceProviderCombo: React.FC<{
                       <Badge tone={capable ? 'success' : 'warning'}>{capable ? 'headless' : 'sem headless'}</Badge>
                     </span>
                     <small>
-                      {pct == null ? 'Quota desconhecida' : `${pct}% restante`}
+                      {pct == null ? 'Quota desconhecida' : `${pct} restante`}
                       {account.authenticated ? '' : ' · precisa autenticar'}
                       {account.quota_view?.account ? ` · ${account.quota_view.account}` : ''}
                     </small>

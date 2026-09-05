@@ -4,12 +4,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/control/ids"
+	"github.com/kivervinicius/ai-cli/internal/core/config"
 )
 
 var (
@@ -25,25 +25,7 @@ const projectColumns = `id,name,slug,canonical_path,repo_remote,repo_url,default
 // CanonicalPath resolves and validates a project path: absolute, cleaned,
 // symlinks resolved, must exist and be a directory.
 func CanonicalPath(p string) (string, error) {
-	if strings.TrimSpace(p) == "" {
-		return "", errors.New("project path cannot be empty")
-	}
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return "", fmt.Errorf("resolve project path: %w", err)
-	}
-	clean := filepath.Clean(abs)
-	if resolved, err := filepath.EvalSymlinks(clean); err == nil {
-		clean = filepath.Clean(resolved)
-	}
-	fi, err := os.Stat(clean)
-	if err != nil {
-		return "", fmt.Errorf("project path does not exist: %w", err)
-	}
-	if !fi.IsDir() {
-		return "", fmt.Errorf("project path is not a directory: %s", clean)
-	}
-	return clean, nil
+	return config.CanonicalExistingWorkspaceDir(p)
 }
 
 // Slugify derives a URL/path-safe slug from a name.

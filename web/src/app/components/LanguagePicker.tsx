@@ -18,6 +18,7 @@ export const LanguagePicker: React.FC = () => {
 
   const handleSelect = (code: string) => {
     i18n.changeLanguage(code);
+    window.localStorage.setItem('iapro:nexus:language:v1', code);
     window.localStorage.setItem('iapro:nexus:lang:v1', code);
   };
 

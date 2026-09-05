@@ -67,6 +67,17 @@ export function terminalAttachFailureMessage(detail?: string): string {
   return 'Não foi possível anexar ao runtime do Agente. Use Recover/Start em Agentes e reabra o terminal.';
 }
 
+export function shouldShowTerminalRecoverOverlay(input: {
+  connection: 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR';
+  recovering: boolean;
+  connectingForMs?: number;
+}): boolean {
+  if (input.recovering) return true;
+  if (input.connection === 'ERROR' || input.connection === 'DISCONNECTED') return true;
+  if (input.connection === 'CONNECTING' && (input.connectingForMs ?? 0) >= 800) return true;
+  return false;
+}
+
 /** Recover refused because the runtime is healthy — reconnect, do not stop+start. */
 export function isRecoverAlreadyAlive(message: string): boolean {
   return (message || '').toLowerCase().includes('already alive');

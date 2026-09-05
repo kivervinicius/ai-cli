@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Badge, Button, Dialog, EmptyState, Input, InlineAlert, Spinner } from '../../design-system';
 import { nexus } from '../../nexus/api';
 import type { Agent, Project } from '../../types';
-import { buildDirectAgentName, directAccountTitle, directQuotaPercent, eligibleDirectResources } from './directSessionModel';
+import { buildDirectAgentName, directAccountTitle, directQuotaDisplay, eligibleDirectResources } from './directSessionModel';
 
 interface DirectResource {
   id: string;
@@ -17,7 +17,11 @@ interface DirectResource {
   rate_limited?: boolean;
   quota_remaining?: number;
   avail_reasons?: { unknown_quota?: boolean; exhausted_windows?: string[]; rate_limited?: boolean };
-  quota_view?: { status?: string; model_groups?: Array<{ windows?: Array<{ remaining?: number }> }> };
+  quota_view?: {
+    status?: string;
+    fetched_at?: string;
+    model_groups?: Array<{ key?: string; name?: string; windows?: Array<{ kind?: string; remaining?: number }> }>;
+  };
 }
 
 export interface DirectSessionRequest {
@@ -116,7 +120,7 @@ export const DirectSessionLauncher: React.FC<{
           <div className="nx-direct-resource-list" role="radiogroup" aria-label={t('directSession.chooseAccount')}>
             {resources.map((resource) => {
               const checked = resource.id === selectedID;
-              const quota = directQuotaPercent(resource);
+              const quota = directQuotaDisplay(resource);
               return (
                 <button
                   type="button"
@@ -133,7 +137,7 @@ export const DirectSessionLauncher: React.FC<{
                       <strong>{directAccountTitle(resource)}</strong>
                       {healthBadge(resource.health)}
                     </span>
-                    <small>{quota === null ? t('directSession.quotaUnknown') : t('directSession.remaining', { value: quota })}</small>
+                    <small>{quota === null ? t('directSession.quotaUnknown') : t('directSession.remainingLabel', { value: quota })}</small>
                   </span>
                 </button>
               );

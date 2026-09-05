@@ -608,8 +608,13 @@ func (m Model) View() string {
 			planStr := lipgloss.NewStyle().Foreground(lipgloss.Color("213")).Render(fmt.Sprintf("%-12s", acc.Plan))
 
 			qv := profile.GetQuotaView(p.Provider, p.Name, acc.Plan, acc.Email)
-			bottleneck, _ := qv.Bottleneck()
-			bar := quota.RenderBarWithPercent(bottleneck, qv.Status, 10)
+			bar := ""
+			if summary := qv.CompactGroupSummary(); summary != "" {
+				bar = summary
+			} else {
+				bottleneck, _ := qv.Bottleneck()
+				bar = quota.RenderBarWithPercent(bottleneck, qv.Status, 10)
+			}
 			if bar == "" {
 				bar = "[ UNKNOWN  ] UNK"
 			}

@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { Badge, Button, Card, InlineAlert, Input } from '../../design-system';
 import { nexusApi } from '../../nexus/api';
-import type { Agent, ClarificationCheckpoint, FlowLeaderPolicy, MissionRun, MissionSchedule, PlanPhase, PlanRevision, PlanRevisionDiff, Project, WorkPackage, WorkPlan } from '../../types';
+import type { Agent, ClarificationCheckpoint, FlowLeaderPolicy, FlowPreflightReport, MissionRun, MissionSchedule, PlanPhase, PlanRevision, PlanRevisionDiff, Project, WorkPackage, WorkPlan } from '../../types';
 import { clarificationFromError, unresolvedBlocking } from './clarificationModel';
 import { composerGateForReadiness } from './composerModel';
 import { FlowCanvas } from './FlowCanvas';
@@ -68,6 +68,8 @@ export const PlanBuilderSurface: React.FC<{
   const [stepComparison, setStepComparison] = useState('');
   const [goalChips, setGoalChips] = useState<string[]>([]);
   const [leader, setLeader] = useState<FlowLeaderPolicy>({ role: 'orchestrator', strategy: 'AUTO' });
+  const [preflightReport, setPreflightReport] = useState<FlowPreflightReport | null>(null);
+  const [preflightBusy, setPreflightBusy] = useState(false);
 
   const composerDraftKey = `nexus:composer:draft:${project.id}`;
   const composerHistoryKey = `nexus:composer:history:${project.id}`;
@@ -566,6 +568,20 @@ export const PlanBuilderSurface: React.FC<{
     }
   };
 
+  const handlePreflight = async () => {
+    if (!selectedPlan) return;
+    try {
+      setPreflightBusy(true);
+      const report = await nexusApi.preflightFlow(selectedPlan.id);
+      setPreflightReport(report);
+      setFlowNotice(report.ready ? 'Preflight aprovado: Flow pronto para execução.' : 'Preflight com pendências: resolva os bloqueios antes de iniciar.');
+    } catch (err) {
+      setPlanError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPreflightBusy(false);
+    }
+  };
+
   const saveLeader = async () => {
     if (!selectedPlan) return;
     try {
@@ -732,12 +748,42 @@ export const PlanBuilderSurface: React.FC<{
                   {flowDirty ? 'Alterações não salvas' : `Revisão ${selectedPlan.current_revision}`}
                 </Badge>
                 <Button
+                  disabled={!selectedPlan || preflightBusy}
+                  onClick={() => void handlePreflight()}
+                >
+                  <Route size={14} /> {preflightBusy ? 'Verificando…' : 'Preflight'}
+                </Button>
+                <Button
                   tone="brand"
                   disabled={!selectedPlan || !flowDraft || runBusy || flowErrors.length > 0}
                   onClick={() => void handleLaunchRun()}
                 >
                   <Play size={14} /> {runBusy ? 'Iniciando…' : 'Approve & Run'}
                 </Button>
+              </div>
+            </div>
+          )}
+
+          {preflightReport && (
+            <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: 'var(--nx-surface)', border: '1px solid var(--nx-border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <strong>Checklist de Preflight</strong>
+                <Badge tone={preflightReport.ready ? 'success' : 'danger'}>
+                  {preflightReport.ready ? 'Pronto para Execução' : 'Bloqueado'}
+                </Badge>
+              </div>
+              <div style={{ display: 'grid', gap: 6 }}>
+                {preflightReport.checks.map((ch) => (
+                  <div key={ch.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
+                    <div>
+                      <span style={{ fontWeight: 500 }}>{ch.label}</span>
+                      <small style={{ display: 'block', color: 'var(--nx-muted)' }}>{ch.summary}</small>
+                    </div>
+                    <Badge tone={ch.status === 'PASS' ? 'success' : ch.status === 'WARN' ? 'warning' : 'danger'}>
+                      {ch.status}
+                    </Badge>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -864,9 +910,9 @@ export const PlanBuilderSurface: React.FC<{
       </div>
 
       {/* AI Intent Decomposer Bar */}
-      <Card style={{ marginBottom: '24px', padding: '16px', border: '1px solid var(--color-brand-border, #3b82f640)', background: 'var(--color-surface-elevated, #18181b)' }}>
+      <Card style={{ marginBottom: '24px', padding: '16px', border: '1px solid color-mix(in srgb, var(--nx-accent) 35%, var(--nx-border))', background: 'var(--nx-bg-elevated)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontWeight: 600 }}>
-          <Sparkles size={16} style={{ color: 'var(--color-brand)' }} />
+          <Sparkles size={16} style={{ color: 'var(--nx-accent)' }} />
           <span>Create Flow Draft</span>
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
@@ -1154,10 +1200,10 @@ export const PlanBuilderSurface: React.FC<{
           {activeRun && (
             <details className="nx-flow-compat-details nx-flow-run-compat">
               <summary>Advanced Mission Runner compatibility view · {activeRun.state}</summary>
-              <Card style={{ padding: '16px', border: '1px solid var(--color-brand)' }}>
+              <Card style={{ padding: '16px', border: '1px solid var(--nx-accent)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Play size={14} style={{ color: 'var(--color-brand)' }} /> Autonomous Runner
+                  <Play size={14} style={{ color: 'var(--nx-accent)' }} /> Autonomous Runner
                 </span>
                 <Badge tone={activeRun.state === 'COMPLETED_VERIFIED' ? 'success' : activeRun.state.startsWith('FAILED') || activeRun.state === 'BLOCKED_NEEDS_USER' ? 'danger' : activeRun.state === 'PAUSED' ? 'warning' : 'brand'}>
                   {activeRun.state}
@@ -1166,8 +1212,8 @@ export const PlanBuilderSurface: React.FC<{
 
               <div style={{ fontSize: '13px', marginBottom: '12px' }}>
                 <div>Progresso: {(activeRun.package_runs || []).filter((pkg) => pkg.state === 'VERIFIED').length} de {(activeRun.package_runs || []).length} pacotes verificados</div>
-                <div style={{ color: 'var(--color-text-muted)', fontSize: '12px' }}>Snapshot: {activeRun.execution_snapshot_id || '—'} · Rev {activeRun.plan_revision} · Iteração {activeRun.total_iterations}/{activeRun.contract.max_total_iterations}</div>
-                <div style={{ color: 'var(--color-text-muted)', fontSize: '12px' }}>
+                <div style={{ color: 'var(--nx-muted)', fontSize: '12px' }}>Snapshot: {activeRun.execution_snapshot_id || '—'} · Rev {activeRun.plan_revision} · Iteração {activeRun.total_iterations}/{activeRun.contract.max_total_iterations}</div>
+                <div style={{ color: 'var(--nx-muted)', fontSize: '12px' }}>
                   Tentativas permitidas: {activeRun.contract.max_retries} | Verificação: {activeRun.contract.require_verification ? 'Ativa' : 'Desativada'}
                 </div>
               </div>
@@ -1179,8 +1225,8 @@ export const PlanBuilderSurface: React.FC<{
                     style={{
                       padding: '8px 12px',
                       borderRadius: '6px',
-                      background: idx === activeRun.current_pkg_index ? 'var(--color-surface-elevated)' : 'transparent',
-                      border: idx === activeRun.current_pkg_index ? '1px solid var(--color-brand-border)' : '1px solid var(--color-border)',
+                      background: idx === activeRun.current_pkg_index ? 'var(--nx-surface-2)' : 'transparent',
+                      border: idx === activeRun.current_pkg_index ? '1px solid color-mix(in srgb, var(--nx-accent) 35%, var(--nx-border))' : '1px solid var(--nx-border)',
                       fontSize: '12px',
                       display: 'flex',
                       justifyContent: 'space-between',

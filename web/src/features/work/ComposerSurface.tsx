@@ -1,20 +1,36 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ClipboardCopy, Layers, MessageCircle, Plus, Send, Sparkles } from 'lucide-react';
+import { CheckCircle2, ClipboardCopy, FileText, Layers, Lightbulb, MessageCircle, Plus, RefreshCw, Send, Sparkles } from 'lucide-react';
 import { Badge, Button, Card, Input } from '../../design-system';
 import { nexus } from '../../nexus/api';
-import type { ComposerSession, ComposerSessionView, PromptArtifact, Project } from '../../types';
+import type { ComposerSession, ComposerSessionView, PromptArtifact, PromptReadinessCheck, Project } from '../../types';
 import { selectResumableComposerSession } from './composerSessionModel';
-import { asStringArray } from '../../lib/safeArray';
+import { asArray, asStringArray } from '../../lib/safeArray';
+
+const ARCHETYPE_LABELS: Record<string, string> = {
+  SOFTWARE_FEATURE: 'Feature',
+  BUG_FIX: 'Correção',
+  ARCHITECTURE: 'Arquitetura',
+  DEVOPS: 'DevOps',
+  RESEARCH: 'Pesquisa',
+  SECURITY: 'Segurança',
+  GENERIC: 'Genérico',
+};
 
 export const ComposerSurface: React.FC<{ project: Project; onTransformFlow: (artifact: PromptArtifact) => void }> = ({ project, onTransformFlow }) => {
   const [sessions, setSessions] = useState<ComposerSession[]>([]);
   const [view, setView] = useState<ComposerSessionView | null>(null);
+  const [inputMode, setInputMode] = useState<'IDEA' | 'EXISTING_PROMPT'>('IDEA');
   const [draft, setDraft] = useState('');
+  const [sourcePrompt, setSourcePrompt] = useState('');
   const [message, setMessage] = useState('');
   const [artifact, setArtifact] = useState<PromptArtifact | null>(null);
   const [error, setError] = useState('');
   const [confirmGaps, setConfirmGaps] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [refineText, setRefineText] = useState('');
+  const [showRefineInput, setShowRefineInput] = useState(false);
+  const [unknownAnswers, setUnknownAnswers] = useState<Record<string, string>>({});
+
   const selectedSkillIds = useMemo(() => (view?.skills || []).filter((skill) => skill.state === 'ACCEPTED' || skill.state === 'APPLIED').map((skill) => skill.skill_id), [view?.skills]);
 
   const refreshSessions = async () => {
@@ -37,33 +53,189 @@ export const ComposerSurface: React.FC<{ project: Project; onTransformFlow: (art
     ['Dúvidas abertas', asStringArray(view.brief.open_questions).join(' · ')],
   ].filter(([, value]) => value) : [], [view]);
 
-  const create = async () => { if (!draft.trim()) return; setBusy(true); setError(''); try { const next = await nexus.createComposerSession(project.id, draft.trim()); setView(next); setDraft(''); setArtifact(null); await refreshSessions(); } catch (err) { setError(err instanceof Error ? err.message : String(err)); } finally { setBusy(false); } };
-  const send = async () => { if (!view || !message.trim()) return; setBusy(true); setError(''); try { setView(await nexus.addComposerTurn(view.session.id, message.trim())); setMessage(''); await refreshSessions(); } catch (err) { setError(err instanceof Error ? err.message : String(err)); } finally { setBusy(false); } };
-  const finalize = async (confirmed = false) => { if (!view) return; setBusy(true); setError(''); try { setArtifact(await nexus.finalizeComposerSession(view.session.id, selectedSkillIds, confirmed)); setView(await nexus.getComposerSession(view.session.id)); await refreshSessions(); } catch (err) { const detail = err instanceof Error ? err.message : String(err); setError(detail); setConfirmGaps(detail.includes('open questions')); } finally { setBusy(false); } };
-  const updateSkill = async (skillId: string, state: 'ACCEPTED' | 'REJECTED') => { if (!view) return; setBusy(true); setError(''); try { setView(await nexus.updateComposerSkillState(view.session.id, skillId, state)); } catch (err) { setError(err instanceof Error ? err.message : String(err)); } finally { setBusy(false); } };
-  const copy = async () => { if (!artifact) return; try { await navigator.clipboard.writeText(artifact.content); } catch { setError('Não foi possível copiar o prompt neste navegador.'); } };
+  const create = async () => {
+    if (!draft.trim()) return;
+    setBusy(true);
+    setError('');
+    try {
+      const next = await nexus.createComposerSessionWithMode(
+        project.id,
+        draft.trim(),
+        inputMode,
+        inputMode === 'EXISTING_PROMPT' ? sourcePrompt.trim() : undefined
+      );
+      setView(next);
+      setDraft('');
+      setSourcePrompt('');
+      setArtifact(null);
+      await refreshSessions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const send = async () => {
+    if (!view || !message.trim()) return;
+    setBusy(true);
+    setError('');
+    try {
+      setView(await nexus.addComposerTurn(view.session.id, message.trim()));
+      setMessage('');
+      await refreshSessions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const finalize = async (confirmed = false) => {
+    if (!view) return;
+    setBusy(true);
+    setError('');
+    try {
+      const res = await nexus.finalizeComposerSession(view.session.id, selectedSkillIds, confirmed);
+      setArtifact(res);
+      setView(await nexus.getComposerSession(view.session.id));
+      await refreshSessions();
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      setError(detail);
+      setConfirmGaps(detail.includes('open questions') || detail.includes('gaps'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const refine = async () => {
+    if (!view) return;
+    setBusy(true);
+    setError('');
+    try {
+      const newArtifact = await nexus.refineComposerArtifact(view.session.id, refineText.trim());
+      setArtifact(newArtifact);
+      setShowRefineInput(false);
+      setRefineText('');
+      setView(await nexus.getComposerSession(view.session.id));
+      await refreshSessions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resolveUnknown = async (unknownId: string, status: string) => {
+    if (!view) return;
+    setBusy(true);
+    setError('');
+    try {
+      const answer = unknownAnswers[unknownId] || '';
+      const updated = await nexus.resolveComposerUnknown(view.session.id, unknownId, answer, status);
+      setView(updated);
+      setUnknownAnswers((prev) => {
+        const next = { ...prev };
+        delete next[unknownId];
+        return next;
+      });
+      await refreshSessions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const updateSkill = async (skillId: string, state: 'ACCEPTED' | 'REJECTED') => {
+    if (!view) return;
+    setBusy(true);
+    setError('');
+    try {
+      setView(await nexus.updateComposerSkillState(view.session.id, skillId, state));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async () => {
+    if (!artifact) return;
+    try {
+      await navigator.clipboard.writeText(artifact.content);
+    } catch {
+      setError('Não foi possível copiar o prompt neste navegador.');
+    }
+  };
 
   if (!view) {
     return (
       <Card className="nx-composer-goal-bar">
-        <div className="nx-composer-goal-bar__label">
-          <Sparkles size={16} />
-          <span>Comece uma elaboração</span>
+        <div className="nx-composer-goal-bar__label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Sparkles size={16} />
+            <span>Comece uma elaboração</span>
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <Button
+              size="sm"
+              tone={inputMode === 'IDEA' ? 'brand' : 'default'}
+              onClick={() => setInputMode('IDEA')}
+              disabled={busy}
+            >
+              <Lightbulb size={13} /> Ideia / Explorar
+            </Button>
+            <Button
+              size="sm"
+              tone={inputMode === 'EXISTING_PROMPT' ? 'brand' : 'default'}
+              onClick={() => setInputMode('EXISTING_PROMPT')}
+              disabled={busy}
+            >
+              <FileText size={13} /> Prompt Existente
+            </Button>
+          </div>
         </div>
-        <div className="nx-composer-goal-bar__row">
+
+        <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
           <Input
             value={draft}
             onChange={setDraft}
-            placeholder="Qual ideia você quer transformar em um ótimo prompt?"
+            placeholder={inputMode === 'IDEA' ? 'Qual ideia ou objetivo você quer transformar em um ótimo prompt?' : 'Qual o objetivo principal deste prompt existente?'}
             style={{ flex: 1 }}
             disabled={busy}
           />
-          <Button tone="brand" disabled={!draft.trim() || busy} onClick={() => void create()}>
-            <MessageCircle size={14} /> {busy ? 'Iniciando…' : 'Conversar'}
-          </Button>
+          {inputMode === 'EXISTING_PROMPT' && (
+            <textarea
+              className="nx-textarea"
+              value={sourcePrompt}
+              onChange={(e) => setSourcePrompt(e.target.value)}
+              placeholder="Cole aqui o prompt original para análise de gaps, completude e estruturação…"
+              rows={4}
+              style={{
+                width: '100%',
+                padding: 10,
+                borderRadius: 8,
+                background: 'var(--nx-surface)',
+                color: 'var(--nx-text)',
+                border: '1px solid var(--nx-border)',
+                resize: 'vertical',
+                fontFamily: 'inherit',
+                fontSize: 13,
+              }}
+              disabled={busy}
+            />
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button tone="brand" disabled={!draft.trim() || (inputMode === 'EXISTING_PROMPT' && !sourcePrompt.trim()) || busy} onClick={() => void create()}>
+              <MessageCircle size={14} /> {busy ? 'Iniciando…' : inputMode === 'EXISTING_PROMPT' ? 'Analisar Prompt' : 'Conversar'}
+            </Button>
+          </div>
         </div>
+
         {sessions.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--nx-border)' }}>
             <small style={{ color: 'var(--nx-muted)' }}>Elaborações anteriores:</small>
             <select
               className="nx-select"
@@ -97,6 +269,9 @@ export const ComposerSurface: React.FC<{ project: Project; onTransformFlow: (art
     );
   }
 
+  const archetype = view.brief.intent?.archetype;
+  const archetypeLabel = archetype ? (ARCHETYPE_LABELS[archetype] || archetype) : null;
+
   return (
     <div className="nx-composer-deliberative">
       <div className="nx-composer-deliberative__header">
@@ -105,6 +280,11 @@ export const ComposerSurface: React.FC<{ project: Project; onTransformFlow: (art
           <h2>{view.session.title || 'Elaboração'}</h2>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {archetypeLabel && (
+            <Badge tone="default">
+              Arquétipo: {archetypeLabel}
+            </Badge>
+          )}
           {sessions.length > 1 && (
             <select
               className="nx-select"
@@ -159,7 +339,7 @@ export const ComposerSurface: React.FC<{ project: Project; onTransformFlow: (art
               <Input
                 value={message}
                 onChange={setMessage}
-                placeholder="Adicione requisito, decisão ou pergunta…"
+                placeholder="Adicione requisito, decisão ou resposta a uma lacuna…"
                 style={{ flex: 1 }}
                 disabled={busy}
               />
@@ -199,13 +379,42 @@ export const ComposerSurface: React.FC<{ project: Project; onTransformFlow: (art
           <Badge tone={view.brief.readiness?.state === 'READY' ? 'success' : 'warning'}>
             {view.brief.readiness?.state || 'UNKNOWN'} · {view.brief.readiness?.score ?? 0}%
           </Badge>
+
+          {asArray<PromptReadinessCheck>(view.brief.readiness?.checks).length > 0 && (
+            <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
+              <small style={{ color: 'var(--nx-muted)', fontWeight: 600 }}>Dimensões avaliadas</small>
+              {asArray<PromptReadinessCheck>(view.brief.readiness?.checks).map((check) => (
+                <div
+                  key={check.key}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '4px 8px',
+                    borderRadius: 6,
+                    background: 'var(--nx-surface)',
+                    fontSize: 12,
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontWeight: 500 }}>{check.label || check.key}</span>
+                    {check.summary && <small style={{ display: 'block', color: 'var(--nx-muted)' }}>{check.summary}</small>}
+                  </div>
+                  <span style={{ fontWeight: 600, color: check.score >= 80 ? 'var(--nx-accent)' : 'var(--nx-muted)' }}>
+                    {check.score}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
           {(view.brief.assumptions || []).length > 0 && (
             <div style={{ marginTop: 12 }}>
-              <small>Assumptions</small>
+              <small style={{ color: 'var(--nx-muted)', fontWeight: 600 }}>Premissas ativas</small>
               {view.brief.assumptions?.map((item, index) => (
-                <p key={index} className="nx-muted-copy">
-                  {typeof item === 'string' ? item : item.value}{' '}
-                  {typeof item !== 'string' && item.status ? `· ${item.status}` : ''}
+                <p key={index} className="nx-muted-copy" style={{ margin: '3px 0' }}>
+                  • {typeof item === 'string' ? item : item.value}{' '}
+                  {typeof item !== 'string' && item.status ? `(${item.status})` : ''}
                 </p>
               ))}
             </div>
@@ -213,16 +422,66 @@ export const ComposerSurface: React.FC<{ project: Project; onTransformFlow: (art
         </Card>
 
         <Card>
-          <strong>Unknowns</strong>
+          <strong>Lacunas & Perguntas (Unknowns)</strong>
           {(view.brief.unknowns || []).length === 0 ? (
             <p className="nx-muted-copy">Nenhuma lacuna aberta.</p>
           ) : (
-            view.brief.unknowns?.map((unknown) => (
-              <div key={unknown.id} style={{ marginTop: 10 }}>
-                <p style={{ margin: 0 }}>{unknown.question}</p>
-                <small>{unknown.severity} · {unknown.status}</small>
-              </div>
-            ))
+            view.brief.unknowns?.map((unknown) => {
+              const isResolved = unknown.status === 'ANSWERED' || unknown.status === 'CONFIRMED' || unknown.status === 'DISMISSED';
+              return (
+                <div
+                  key={unknown.id}
+                  style={{
+                    marginTop: 10,
+                    padding: 8,
+                    borderRadius: 8,
+                    background: 'var(--nx-surface)',
+                    border: '1px solid var(--nx-border)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <p style={{ margin: 0, fontWeight: 500, fontSize: 13 }}>{unknown.question}</p>
+                    <Badge tone={unknown.status === 'ANSWERED' ? 'success' : unknown.severity === 'BLOCKING' ? 'danger' : 'warning'}>
+                      {unknown.severity} · {unknown.status}
+                    </Badge>
+                  </div>
+                  {unknown.answer && (
+                    <small style={{ display: 'block', marginTop: 4, color: 'var(--nx-accent)' }}>
+                      Resposta: {unknown.answer}
+                    </small>
+                  )}
+                  {!isResolved && (
+                    <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+                      <input
+                        className="nx-input"
+                        placeholder="Sua resposta para esta lacuna…"
+                        value={unknownAnswers[unknown.id] || ''}
+                        onChange={(e) => setUnknownAnswers({ ...unknownAnswers, [unknown.id]: e.target.value })}
+                        style={{ fontSize: 12, padding: '4px 8px' }}
+                        disabled={busy}
+                      />
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <Button
+                          size="sm"
+                          tone="brand"
+                          disabled={!unknownAnswers[unknown.id]?.trim() || busy}
+                          onClick={() => void resolveUnknown(unknown.id, 'ANSWERED')}
+                        >
+                          <CheckCircle2 size={12} /> Responder
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => void resolveUnknown(unknown.id, 'DISMISSED')}
+                        >
+                          Dispensar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
           )}
         </Card>
       </div>
@@ -269,18 +528,44 @@ export const ComposerSurface: React.FC<{ project: Project; onTransformFlow: (art
 
       {artifact && (
         <Card style={{ marginTop: 12 }}>
-          <strong>Prompt canônico · v{artifact.version}</strong>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong>Prompt canônico · v{artifact.version}</strong>
+            <Badge tone="success">Versão imutável #{artifact.version}</Badge>
+          </div>
           <pre className="nx-flow-step-compare" style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>
             {artifact.content}
           </pre>
-          <div className="nx-composer-header-actions">
+          <div className="nx-composer-header-actions" style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Button onClick={() => void copy()}>
               <ClipboardCopy size={14} /> Copiar
             </Button>
             <Button tone="brand" onClick={() => onTransformFlow(artifact)}>
               <Layers size={14} /> Transformar em Flow
             </Button>
+            <Button disabled={busy} onClick={() => setShowRefineInput(!showRefineInput)}>
+              <RefreshCw size={14} /> Refinar (v{artifact.version + 1})
+            </Button>
           </div>
+
+          {showRefineInput && (
+            <div style={{ marginTop: 10, display: 'grid', gap: 6, padding: 10, borderRadius: 8, background: 'var(--nx-surface)', border: '1px solid var(--nx-border)' }}>
+              <small style={{ color: 'var(--nx-muted)', fontWeight: 600 }}>Instrução adicional de refinamento (opcional):</small>
+              <Input
+                value={refineText}
+                onChange={setRefineText}
+                placeholder="Ex: 'Adicione suporte a PostgreSQL', 'Foque apenas na API REST'…"
+                disabled={busy}
+              />
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <Button size="sm" disabled={busy} onClick={() => setShowRefineInput(false)}>
+                  Cancelar
+                </Button>
+                <Button size="sm" tone="brand" disabled={busy} onClick={() => void refine()}>
+                  {busy ? 'Gerando v' + (artifact.version + 1) + '…' : 'Gerar nova revisão (v' + (artifact.version + 1) + ')'}
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
     </div>

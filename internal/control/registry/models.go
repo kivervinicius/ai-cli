@@ -77,3 +77,23 @@ func (s RuntimeSession) IsActive() bool {
 		return false
 	}
 }
+
+// HostLive reports whether the SessionHost process behind this registry row is
+// still usable. After a machine or service restart, runtimes.json still lists
+// the previous generation; the PID and host-generation checks reject those
+// zombies so the terminal WS can 404 instead of upgrading into a black screen.
+func (s RuntimeSession) HostLive() bool {
+	if s.Transport == "mock" {
+		return true
+	}
+	if s.State == StateStarting && s.PID <= 0 {
+		return true
+	}
+	if s.PID <= 0 {
+		return false
+	}
+	if s.HostGeneration > 0 {
+		return IsProcessAliveWithGeneration(s.PID, s.HostGeneration)
+	}
+	return IsProcessAlive(s.PID)
+}

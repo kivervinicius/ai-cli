@@ -123,6 +123,119 @@ func TestQuotaViewBottleneckUnknownWithoutWindowsIsZero(t *testing.T) {
 	}
 }
 
+func TestQuotaViewBottleneckFullRemainingKeepsKind(t *testing.T) {
+	qv := QuotaView{
+		Status: "CACHED",
+		ModelGroups: []ModelGroup{
+			{Name: "Claude & GPT Models", Windows: []Window{
+				{Kind: "5h", Remaining: 100},
+				{Kind: "weekly", Remaining: 100},
+			}},
+		},
+	}
+	remaining, kind := qv.Bottleneck()
+	if remaining != 100 || kind == "" {
+		t.Fatalf("100%% remaining on every window must stay 100%% with a bottleneck kind, got %.1f %q", remaining, kind)
+	}
+}
+
+func TestBestGroupRemainingIndependentPools(t *testing.T) {
+	qv := QuotaView{
+		Status: string(model.UsageCached),
+		ModelGroups: []ModelGroup{
+			{Key: "gemini", Name: "Gemini Models", Windows: []Window{{Kind: "5h", Remaining: 0}, {Kind: "weekly", Remaining: 66}}},
+			{Key: "claude_gpt", Name: "Claude & GPT Models", Windows: []Window{{Kind: "claude_5h", Remaining: 100}, {Kind: "claude_weekly", Remaining: 100}}},
+		},
+	}
+	best, ok := qv.BestGroupRemaining()
+	if !ok || best != 100 {
+		t.Fatalf("BestGroupRemaining=%v ok=%v want 100 true", best, ok)
+	}
+	bottleneck, kind := qv.Bottleneck()
+	if bottleneck != 0 || kind != "5h" {
+		t.Fatalf("Bottleneck=%v %q want 0 5h", bottleneck, kind)
+	}
+	summary := qv.CompactGroupSummary()
+	if summary != "Gemini 0% · Claude 100%" {
+		t.Fatalf("CompactGroupSummary=%q", summary)
+	}
+}
+
+func TestCodexSinglePoolMinOfWindows(t *testing.T) {
+	qv := QuotaView{
+		Status: string(model.UsageCached),
+		ModelGroups: []ModelGroup{
+			{Key: "claude_gpt", Name: "Claude & GPT Models", Windows: []Window{{Kind: "5h", Remaining: 0}, {Kind: "weekly", Remaining: 90}}},
+		},
+	}
+	best, ok := qv.BestGroupRemaining()
+	if !ok || best != 0 {
+		t.Fatalf("Codex 5h=0 weekly=90 must score 0, got %v ok=%v", best, ok)
+	}
+	full := QuotaView{
+		Status: string(model.UsageCached),
+		ModelGroups: []ModelGroup{
+			{Key: "claude_gpt", Windows: []Window{{Kind: "5h", Remaining: 100}, {Kind: "weekly", Remaining: 100}}},
+		},
+	}
+	bestFull, ok := full.BestGroupRemaining()
+	if !ok || bestFull != 100 {
+		t.Fatalf("full remaining must be 100, got %v ok=%v", bestFull, ok)
+	}
+}
+
+func TestBottleneckScoreUsesBestGroupNotGlobalMin(t *testing.T) {
+	qv := QuotaView{
+		Status: string(model.UsageCached),
+		ModelGroups: []ModelGroup{
+			{Key: "gemini", Windows: []Window{{Kind: "5h", Remaining: 0}, {Kind: "weekly", Remaining: 66}}},
+			{Key: "claude_gpt", Windows: []Window{{Kind: "claude_5h", Remaining: 100}, {Kind: "claude_weekly", Remaining: 100}}},
+		},
+	}
+	effective, kind, _ := BottleneckScore(&qv)
+	if kind != "5h" {
+		t.Fatalf("bottleneck kind=%q want 5h", kind)
+	}
+	// best=100, avg of groups = (0+100)/2 = 50 → 0.7*100 + 0.3*50 = 85
+	if effective < 84 || effective > 86 {
+		t.Fatalf("effective=%v want ~85 (best group weighted)", effective)
+	}
+}
+
+func TestStaleCachedSnapshotMarkedEstimatedByTrustworthy(t *testing.T) {
+	engine := NewEngine(5 * time.Minute)
+	rem := 70.0
+	snap := model.UsageSnapshot{
+		ProviderID: "codex",
+		ProfileID:  "old",
+		Status:     model.UsageCached,
+		Source:     model.SourceLocalFiles,
+		FetchedAt:  time.Now().Add(-8 * 24 * time.Hour),
+		Windows:    []model.UsageWindow{{Kind: "5h", Group: "claude_gpt", RemainingPercent: &rem}},
+	}
+	if engine.Trustworthy(snap) {
+		t.Fatal("8-day-old cache must not be Trustworthy")
+	}
+}
+
+func TestFormatFreshnessDays(t *testing.T) {
+	got := FormatFreshness(time.Now().Add(-8 * 24 * time.Hour))
+	if got != "8 days ago" {
+		t.Fatalf("FormatFreshness=%q want 8 days ago", got)
+	}
+}
+
+func TestSortModelGroupsUsesKeyNotDisplayName(t *testing.T) {
+	groups := []ModelGroup{
+		{Key: "claude_gpt", Name: "Claude & GPT Models"},
+		{Key: "gemini", Name: "Gemini Models"},
+	}
+	SortModelGroups(groups)
+	if groups[0].Key != "gemini" || groups[1].Key != "claude_gpt" {
+		t.Fatalf("order=%v %v", groups[0].Key, groups[1].Key)
+	}
+}
+
 func TestAGYAvailabilityKeepsProfileUsableWhenOneModelGroupHasQuota(t *testing.T) {
 	qv := QuotaView{
 		Provider: "agy",
@@ -180,15 +293,59 @@ func TestAGYAvailabilityRejectsProfileWhenEveryModelGroupIsExhausted(t *testing.
 	}
 }
 
-func TestLegacyAGYQuotaInvertsConsumedPercent(t *testing.T) {
-	if got := legacyAGYRemaining(100); got != 0 {
-		t.Fatalf("100%% consumed must be 0%% remaining, got %v", got)
+func TestLegacyAGYQuotaPreservesRemainingPercent(t *testing.T) {
+	if got := clampPercent(100); got != 100 {
+		t.Fatalf("100%% remaining must stay 100%%, got %v", got)
 	}
-	if got := legacyAGYRemaining(90.15); got < 9.84 || got > 9.86 {
-		t.Fatalf("90.15%% consumed must be about 9.85%% remaining, got %v", got)
+	if got := clampPercent(90.15); got < 90.14 || got > 90.16 {
+		t.Fatalf("90.15%% remaining must stay 90.15%%, got %v", got)
 	}
-	if got := legacyAGYRemaining(0); got != 100 {
-		t.Fatalf("0%% consumed must be 100%% remaining, got %v", got)
+	if got := clampPercent(0); got != 0 {
+		t.Fatalf("0%% remaining must stay 0%%, got %v", got)
+	}
+}
+
+func TestLegacyAGYQuotaAvailableIsNotExhausted(t *testing.T) {
+	dataDir := t.TempDir()
+	cfgDir := t.TempDir()
+	t.Setenv("AI_CLI_DATA_DIR", dataDir)
+	t.Setenv("AI_CLI_CONFIG_DIR", cfgDir)
+
+	profDir := dataDir + "/profiles/agy/work"
+	if err := os.MkdirAll(profDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	content := `{
+		"provider": "agy",
+		"profile_name": "work",
+		"account": "user@example.com",
+		"five_hour": { "percent_left": 0, "resets_in": "Refreshes in 1h 15m" },
+		"weekly": { "percent_left": 65.47, "resets_in": "Refreshes in 142h 40m" },
+		"claude_five_hour": { "percent_left": 100, "resets_in": "Quota available" },
+		"claude_weekly": { "percent_left": 100, "resets_in": "Quota available" }
+	}`
+	if err := os.WriteFile(profDir+"/quota.json", []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	engine := NewEngine(5 * time.Minute)
+	snap, found := engine.GetCachedUsage("agy", "work")
+	if !found {
+		t.Fatal("expected cached AGY usage")
+	}
+	if len(snap.Windows) != 4 {
+		t.Fatalf("expected 4 windows, got %d", len(snap.Windows))
+	}
+	if snap.Windows[0].RemainingPercent == nil || *snap.Windows[0].RemainingPercent != 0 {
+		t.Fatalf("gemini 5h remaining=%v want 0", snap.Windows[0].RemainingPercent)
+	}
+	if snap.Windows[2].RemainingPercent == nil || *snap.Windows[2].RemainingPercent != 100 {
+		t.Fatalf("claude 5h remaining=%v want 100 (Quota available)", snap.Windows[2].RemainingPercent)
+	}
+
+	qv := BuildQuotaView(snap, "user@example.com", "Google AI Pro")
+	if !qv.IsAvailable() {
+		t.Fatalf("AGY must stay available while Claude/GPT still has quota: %+v", qv.AvailReasons)
 	}
 }
 
@@ -206,12 +363,15 @@ func TestCodexLegacyQuotaPreservesRemainingAndGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Legacy quota JSON with 70% left
+	// Legacy quota JSON with 70% left — and AGY-shaped empty Claude stubs that
+	// must NOT be imported into the Codex single pool (they would zero capacity).
 	content := `{
 		"provider": "codex",
 		"profile_name": "testprof",
 		"five_hour": { "percent_left": 70, "reset_time": "resets 17:34" },
-		"weekly": { "percent_left": 95, "reset_time": "resets 12:34 on 3 Sep" }
+		"weekly": { "percent_left": 95, "reset_time": "resets 12:34 on 3 Sep" },
+		"claude_five_hour": { "percent_left": 0 },
+		"claude_weekly": { "percent_left": 0 }
 	}`
 	if err := os.WriteFile(profDir+"/quota.json", []byte(content), 0600); err != nil {
 		t.Fatal(err)
@@ -222,7 +382,7 @@ func TestCodexLegacyQuotaPreservesRemainingAndGroup(t *testing.T) {
 		t.Fatalf("expected cached usage found")
 	}
 	if len(snap.Windows) != 2 {
-		t.Fatalf("expected 2 windows, got %d", len(snap.Windows))
+		t.Fatalf("expected 2 Codex windows (no AGY Claude phantoms), got %d", len(snap.Windows))
 	}
 	// For Codex, 70% left should remain 70%, NOT 30%
 	if snap.Windows[0].RemainingPercent == nil || *snap.Windows[0].RemainingPercent != 70 {
@@ -233,5 +393,11 @@ func TestCodexLegacyQuotaPreservesRemainingAndGroup(t *testing.T) {
 	}
 	if snap.Windows[1].RemainingPercent == nil || *snap.Windows[1].RemainingPercent != 95 {
 		t.Fatalf("expected remaining 95%%, got %v", snap.Windows[1].RemainingPercent)
+	}
+
+	qv := BuildQuotaView(snap, "user@example.com", "Plus")
+	best, ok := qv.BestGroupRemaining()
+	if !ok || best != 70 {
+		t.Fatalf("BestGroupRemaining=%v ok=%v want 70 (min of 70/95, no phantom 0)", best, ok)
 	}
 }

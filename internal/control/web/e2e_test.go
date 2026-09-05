@@ -163,20 +163,22 @@ func TestWeb_FullE2E(t *testing.T) {
 		t.Errorf("expected 403 Forbidden for missing Origin on WebSocket, got %d", noOriginResp.StatusCode)
 	}
 
-	// 4d. Authenticated dial with valid Origin: MUST succeed in upgrading
+	// 4d. Authenticated dial with valid Origin: auth/origin pass, but a registry
+	// row whose PID is dead must not upgrade (black xterm after reboot).
 	authHeader := http.Header{}
 	authHeader.Set("Origin", parsedURL.Scheme+"://"+parsedURL.Host)
 	for _, c := range cookies {
 		authHeader.Add("Cookie", c.String())
 	}
-	ws, _, err := websocket.DefaultDialer.Dial(wsURL, authHeader)
-	if err != nil {
-		t.Fatalf("authenticated WebSocket dial failed: %v", err)
+	_, deadResp, err := websocket.DefaultDialer.Dial(wsURL, authHeader)
+	if err == nil {
+		t.Fatal("expected WebSocket dial to a dead runtime host to fail")
 	}
-	defer ws.Close()
-	var msg TerminalMessage
-	_ = ws.ReadJSON(&msg)
-	if msg.Type == "error" || msg.Type == "lease" {
-		t.Logf("Received valid initial terminal frame: %+v", msg)
+	if deadResp == nil || deadResp.StatusCode != http.StatusNotFound {
+		got := 0
+		if deadResp != nil {
+			got = deadResp.StatusCode
+		}
+		t.Errorf("expected 404 for dead runtime host, got %d (%v)", got, err)
 	}
 }

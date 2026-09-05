@@ -26,7 +26,7 @@ import { SessionsSurface } from '../features/sessions/SessionsSurface';
 import { SettingsSurface } from '../features/settings/SettingsSurface';
 import { ProjectShellSurface } from '../features/shell/ProjectShellSurface';
 import { useTranslation } from 'react-i18next';
-import { agentConfigSurface, agentTerminalSurface, flowRunSurface, projectSurface } from './surfaces';
+import { agentConfigSurface, agentTerminalSurface, flowRunSurface, projectSurface, projectShellSurface } from './surfaces';
 import { surfaceViewId } from '../workspace/model';
 import { useWorkspacePresentation } from '../workspace/WorkspacePresentationProvider';
 
@@ -149,7 +149,28 @@ export const WorkspaceSurfaceHost: React.FC<{
     return <AgentConfigurationSurface agent={agent} onApplied={refreshAgents} />;
 
   if (surface.type === 'project-shell')
-    return surface.data?.runtimeId ? <ProjectShellSurface runtimeId={surface.data.runtimeId} title={surface.title} liveTitleKey={surfaceViewId(surface)} onRuntimeChanged={refreshGlobal} /> : <EmptyState title="Project shell unavailable" />;
+    return surface.data?.runtimeId ? (
+      <ProjectShellSurface
+        runtimeId={surface.data.runtimeId}
+        title={surface.title}
+        liveTitleKey={surfaceViewId(surface)}
+        onRuntimeChanged={refreshGlobal}
+        onRestart={async () => {
+          const result = await nexus.startProjectShell(project.id);
+          closeSurface(surface.id);
+          openSurface(
+            projectShellSurface(
+              project.id,
+              result.runtime.runtime_id,
+              result.runtime.title || surface.title || 'Terminal'
+            )
+          );
+          await refreshGlobal();
+        }}
+      />
+    ) : (
+      <EmptyState title="Project shell unavailable" />
+    );
 
   if (surface.type === 'terminal') {
     // A recovered Agent receives a new runtime generation. Never keep using

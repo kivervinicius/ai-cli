@@ -37,31 +37,55 @@ type QuotaDetails struct {
 }
 
 // GetUsageSnapshot returns a point-in-time usage snapshot for a provider and profile.
+// Cached windows are returned immediately so interactive commands such as
+// `nexus usage` never block on a live provider CLI.
 func GetUsageSnapshot(providerName, name string) model.UsageSnapshot {
+	return loadUsageSnapshot(providerName, name, false)
+}
+
+// RefreshUsageSnapshot forces a provider fetch and persists the result when live.
+func RefreshUsageSnapshot(providerName, name string) model.UsageSnapshot {
+	return loadUsageSnapshot(providerName, name, true)
+}
+
+func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnapshot {
 	qEng := quota.NewEngine(5 * time.Minute)
 	snap, found := qEng.GetCachedUsage(providerName, name)
-	if !found || !qEng.Trustworthy(snap) || snap.Status == model.UsageUnknown {
-		ctx := context.Background()
-		p := model.Profile{Provider: providerName, Name: name}
-		switch providerName {
-		case "codex":
-			snap = codex.New().GetUsage(ctx, p)
-		case "agy":
+	// Codex rollouts are local filesystem reads (not a blocking CLI). Always
+	// prefer the adapter so stale quota.json with phantom fields cannot hide
+	// the live primary/secondary used_percent from recent sessions.
+	useCache := !refresh && found && len(snap.Windows) > 0 && snap.Status != model.UsageUnknown
+	if useCache && providerName == "codex" {
+		useCache = false
+	}
+	if useCache {
+		return snap
+	}
+
+	ctx := context.Background()
+	p := model.Profile{Provider: providerName, Name: name}
+	switch providerName {
+	case "codex":
+		snap = codex.New().GetUsage(ctx, p)
+	case "agy":
+		if refresh {
+			snap = agy.New().RefreshUsage(ctx, p)
+		} else {
 			snap = agy.New().GetUsage(ctx, p)
-		case "claude":
-			snap = claude.New().GetUsage(ctx, p)
-		case "opencode":
-			snap = opencode.New().GetUsage(ctx, p)
-		case "gemini":
-			snap = gemini.New().GetUsage(ctx, p)
-		default:
-			snap = model.UsageSnapshot{
-				ProviderID: providerName,
-				ProfileID:  name,
-				Status:     model.UsageUnknown,
-				Source:     model.SourceNone,
-				FetchedAt:  time.Now(),
-			}
+		}
+	case "claude":
+		snap = claude.New().GetUsage(ctx, p)
+	case "opencode":
+		snap = opencode.New().GetUsage(ctx, p)
+	case "gemini":
+		snap = gemini.New().GetUsage(ctx, p)
+	default:
+		snap = model.UsageSnapshot{
+			ProviderID: providerName,
+			ProfileID:  name,
+			Status:     model.UsageUnknown,
+			Source:     model.SourceNone,
+			FetchedAt:  time.Now(),
 		}
 	}
 	return snap
@@ -149,6 +173,14 @@ func GetQuotaView(providerName, name, plan, email string) quota.QuotaView {
 		snap.Source = model.SourceNone
 		snap.Windows = nil
 		snap.Error = fmt.Sprintf("quota belongs to %s, profile is authenticated as %s", snapshotAccount, strings.TrimSpace(email))
+	}
+
+	// Stale local files must not score as fresh CACHED (e.g. August quota.json).
+	qEng := quota.NewEngine(quota.DefaultTTL)
+	if len(snap.Windows) > 0 && snap.Status != model.UsageUnknown && !qEng.Trustworthy(snap) {
+		if snap.Status == model.UsageCached || snap.Status == model.UsageLive {
+			snap.Status = model.UsageEstimated
+		}
 	}
 
 	// Apply default model names when the adapter didn't set one.
