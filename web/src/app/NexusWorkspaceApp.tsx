@@ -638,82 +638,6 @@ const WorkspaceCoordinator: React.FC<{
     />
   );
 
-  if (popout) return <div className="nx-popout-shell">{renderer}</div>;
-
-  const rail = (
-    <ProjectRail
-      projects={data.projects}
-      selected={project}
-      open={railOpen}
-      onClose={() => setRailOpen(false)}
-      onSelect={setProject}
-      onCreated={(created) => {
-        data.setProjects((current) => [created, ...current]);
-        setProject(created);
-      }}
-      agents={data.agents}
-      onOpenAgent={(agent) => terminal(agent)}
-      onNewAgent={() => setNewAgentOpen(true)}
-      onNewAISession={openNewAISession}
-      onProjectShell={() => {
-        void shell();
-      }}
-      onOpenGlobal={(kind) => {
-        if (kind === 'overview') openKind('overview');
-        else openKind(kind);
-      }}
-    />
-  );
-
-  const handleFocusAttention = (
-    item: RadarRuntimeItem | { runtimeId: string; projectId?: string; agentId?: string },
-  ) => {
-    const runtimeId = item.runtimeId;
-    const runtime = data.runtimes.find((entry) => entry.runtime_id === runtimeId);
-    const projectId = 'projectId' in item && item.projectId ? item.projectId : runtime?.project_id;
-    const agentId = 'agentId' in item && item.agentId ? item.agentId : runtime?.agent_id;
-    const agentName =
-      (agentId && data.agents.find((agent) => agent.id === agentId)?.name) ||
-      runtime?.dynamic_title ||
-      runtime?.title;
-
-    const actions = planFocusAttention(
-      { projectId, agentId, runtimeId },
-      { currentProjectId: project.id, runtime, agentName },
-    );
-
-    const switchAction = actions.find((action) => action.type === 'switch-project');
-    const openActions = actions.filter((action) => action.type !== 'switch-project');
-
-    const runOpen = () => {
-      for (const action of openActions) {
-        if (action.type === 'open-agent-terminal') {
-          open(agentTerminalSurface(action.agentId, action.title, '', action.runtimeId || ''));
-          open(projectSurface(project.id, 'terminals'));
-        } else if (action.type === 'open-project-shell') {
-          open(projectShellSurface(action.projectId, action.runtimeId, action.title));
-          open(projectSurface(action.projectId, 'terminals'));
-        } else if (action.type === 'refresh-agents') {
-          void data.refreshAgents(action.projectId).catch(() => undefined);
-        }
-      }
-    };
-
-    if (switchAction && switchAction.type === 'switch-project') {
-      const next = data.projects.find((entry) => entry.id === switchAction.projectId);
-      if (next) {
-        setProject(next);
-        window.setTimeout(runOpen, 0);
-        return;
-      }
-    }
-    runOpen();
-  };
-
-  const handleFocusRuntime = (runtimeId: string) => {
-    handleFocusAttention({ runtimeId });
-  };
-
   const notifiedFingerprints = useRef<Set<string>>(new Set());
   const prefsRef = useRef(loadNotificationPrefs());
 
@@ -906,6 +830,82 @@ const WorkspaceCoordinator: React.FC<{
     workspace.model.root,
     presentation.state.activePtyViewId,
   ]);
+
+  if (popout) return <div className="nx-popout-shell">{renderer}</div>;
+
+  const rail = (
+    <ProjectRail
+      projects={data.projects}
+      selected={project}
+      open={railOpen}
+      onClose={() => setRailOpen(false)}
+      onSelect={setProject}
+      onCreated={(created) => {
+        data.setProjects((current) => [created, ...current]);
+        setProject(created);
+      }}
+      agents={data.agents}
+      onOpenAgent={(agent) => terminal(agent)}
+      onNewAgent={() => setNewAgentOpen(true)}
+      onNewAISession={openNewAISession}
+      onProjectShell={() => {
+        void shell();
+      }}
+      onOpenGlobal={(kind) => {
+        if (kind === 'overview') openKind('overview');
+        else openKind(kind);
+      }}
+    />
+  );
+
+  const handleFocusAttention = (
+    item: RadarRuntimeItem | { runtimeId: string; projectId?: string; agentId?: string },
+  ) => {
+    const runtimeId = item.runtimeId;
+    const runtime = data.runtimes.find((entry) => entry.runtime_id === runtimeId);
+    const projectId = 'projectId' in item && item.projectId ? item.projectId : runtime?.project_id;
+    const agentId = 'agentId' in item && item.agentId ? item.agentId : runtime?.agent_id;
+    const agentName =
+      (agentId && data.agents.find((agent) => agent.id === agentId)?.name) ||
+      runtime?.dynamic_title ||
+      runtime?.title;
+
+    const actions = planFocusAttention(
+      { projectId, agentId, runtimeId },
+      { currentProjectId: project.id, runtime, agentName },
+    );
+
+    const switchAction = actions.find((action) => action.type === 'switch-project');
+    const openActions = actions.filter((action) => action.type !== 'switch-project');
+
+    const runOpen = () => {
+      for (const action of openActions) {
+        if (action.type === 'open-agent-terminal') {
+          open(agentTerminalSurface(action.agentId, action.title, '', action.runtimeId || ''));
+          open(projectSurface(project.id, 'terminals'));
+        } else if (action.type === 'open-project-shell') {
+          open(projectShellSurface(action.projectId, action.runtimeId, action.title));
+          open(projectSurface(action.projectId, 'terminals'));
+        } else if (action.type === 'refresh-agents') {
+          void data.refreshAgents(action.projectId).catch(() => undefined);
+        }
+      }
+    };
+
+    if (switchAction && switchAction.type === 'switch-project') {
+      const next = data.projects.find((entry) => entry.id === switchAction.projectId);
+      if (next) {
+        setProject(next);
+        window.setTimeout(runOpen, 0);
+        return;
+      }
+    }
+    runOpen();
+  };
+
+  const handleFocusRuntime = (runtimeId: string) => {
+    handleFocusAttention({ runtimeId });
+  };
 
   return (
     <>
