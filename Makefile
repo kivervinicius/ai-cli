@@ -71,7 +71,7 @@ vet:
 # ─── Security ───────────────────────────────────────────────────────
 
 security:
-	@PATH="$(HOME)/go/bin:$(PATH)" govulncheck ./...
+	@GOTOOLCHAIN=go1.25.13 PATH="$(HOME)/go/bin:$(PATH)" govulncheck ./...
 
 # ─── Quality gates ──────────────────────────────────────────────────
 
