@@ -912,9 +912,9 @@ button {
   color: var(--nx-text);
 }
 .nx-button[data-tone="brand"] {
-  border-color: var(--nx-accent);
-  background: var(--nx-accent);
-  color: white;
+  border-color: var(--nx-accent-text);
+  background: var(--nx-accent-text);
+  color: var(--nx-bg);
 }
 .nx-button[data-tone="brand"]:hover:not(:disabled) {
   background: var(--nx-accent-hover);
@@ -1727,7 +1727,7 @@ button {
   font-size: 11.5px;
 }
 .nx-agent-card__meta span {
-  color: var(--nx-subtle);
+  color: var(--nx-muted);
 }
 .nx-agent-card__meta strong {
   overflow: hidden;

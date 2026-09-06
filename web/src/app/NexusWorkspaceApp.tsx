@@ -439,17 +439,31 @@ const WorkspaceCoordinator: React.FC<{
   const lastSyncedRouteRef = useRef<string>('');
   useEffect(() => {
     const routeKey = `${parsedRoute.kind}:${parsedRoute.kind === 'project' ? parsedRoute.surface : ''}:${location.pathname}`;
-    if (lastSyncedRouteRef.current === routeKey) return;
-    lastSyncedRouteRef.current = routeKey;
+    const activeStack = listStacks(workspace.model.root).find((stack) => stack.activeId);
+    const activeSurface = activeStack
+      ? listSurfaces(workspace.model.root).find((surface) =>
+          isSurfaceMatch(surface, activeStack.activeId),
+        )
+      : undefined;
 
     if (parsedRoute.kind === 'project' && parsedRoute.projectId === project.id) {
       const targetSurface = routeToWorkspaceSurface(parsedRoute, { agents: data.agents });
-      if (targetSurface) {
+      if (
+        targetSurface &&
+        (lastSyncedRouteRef.current !== routeKey || activeSurface?.type !== targetSurface.type)
+      ) {
+        lastSyncedRouteRef.current = routeKey;
         workspace.open(targetSurface);
       }
     } else if (parsedRoute.kind === 'global') {
       const projectSurfaceKind = globalSurfaceToProjectSurface(parsedRoute.surface);
-      if (projectSurfaceKind) workspace.open(projectSurface(project.id, projectSurfaceKind));
+      if (
+        projectSurfaceKind &&
+        (lastSyncedRouteRef.current !== routeKey || activeSurface?.type !== projectSurfaceKind)
+      ) {
+        lastSyncedRouteRef.current = routeKey;
+        workspace.open(projectSurface(project.id, projectSurfaceKind));
+      }
       if (parsedRoute.surface === 'welcome') setWelcomeOpen(true);
     }
   }, [parsedRoute, project.id, data.agents, location.pathname, workspace]);

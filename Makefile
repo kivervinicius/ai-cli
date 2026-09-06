@@ -1,9 +1,12 @@
 BINARY=nexus
 MODULE=github.com/kivervinicius/ai-cli
-HOST_LOCAL_BIN = /home/desenvolvedor/.local/bin
-LOCAL_BIN ?= $(HOST_LOCAL_BIN)
+LOCAL_BIN ?= $(HOME)/.local/bin
+DESKTOP_TAGS = production
+ifeq ($(shell go env GOOS),linux)
+DESKTOP_TAGS = production,webkit2_41
+endif
 
-.PHONY: all build web web-verify test race vet install install-local release-local bump clean format format-check lint-frontend lint-styles lint-styles-fix lint-fix lint-go typecheck test-frontend test-go test-e2e security quality quality-full golangci-lint
+.PHONY: all build build-desktop web web-verify test race vet install install-local release-local bump clean format format-check lint-frontend lint-styles lint-styles-fix lint-fix lint-go typecheck test-frontend test-go test-e2e security quality quality-full golangci-lint
 
 all: build
 
@@ -71,7 +74,7 @@ vet:
 # ─── Security ───────────────────────────────────────────────────────
 
 security:
-	@GOTOOLCHAIN=go1.25.13 PATH="$(HOME)/go/bin:$(PATH)" govulncheck ./...
+	@GOTOOLCHAIN=go1.25.14 PATH="$(HOME)/go/bin:$(PATH)" govulncheck ./...
 
 # ─── Quality gates ──────────────────────────────────────────────────
 
@@ -88,13 +91,17 @@ build: web
 	LDFLAGS="-s -w -X $(MODULE)/internal/buildinfo.Version=$$VERSION -X $(MODULE)/internal/buildinfo.Commit=$$COMMIT -X $(MODULE)/internal/buildinfo.BuildDate=$$BUILDDATE"; \
 	echo "Building $(BINARY) v$$VERSION (commit: $$COMMIT)..."; \
 	go build -ldflags="$$LDFLAGS" -o $(BINARY) ./cmd/nexus; \
+	echo "Built $(BINARY) v$$VERSION at ./$(BINARY)"
+
+install-local: build
+	@set -e; \
 	mkdir -p $(LOCAL_BIN); \
 	rm -f $(LOCAL_BIN)/$(BINARY).tmp; \
 	cp -f $(BINARY) $(LOCAL_BIN)/$(BINARY).tmp; \
 	chmod +x $(LOCAL_BIN)/$(BINARY).tmp; \
 	mv -f $(LOCAL_BIN)/$(BINARY).tmp $(LOCAL_BIN)/$(BINARY); \
 	ln -sf $(LOCAL_BIN)/$(BINARY) $(LOCAL_BIN)/ai; \
-	echo "Built and installed $(BINARY) v$$VERSION to $(LOCAL_BIN)/$(BINARY) (alias: ai)"
+	echo "Installed $(BINARY) to $(LOCAL_BIN)/$(BINARY) (alias: ai)"
 
 build-desktop: web
 	@set -e; VERSION=$$(cat VERSION 2>/dev/null || echo "dev"); \
@@ -102,7 +109,7 @@ build-desktop: web
 	BUILDDATE=$$(date -u +%Y-%m-%dT%H:%M:%SZ); \
 	LDFLAGS="-s -w -X $(MODULE)/internal/buildinfo.Version=$$VERSION -X $(MODULE)/internal/buildinfo.Commit=$$COMMIT -X $(MODULE)/internal/buildinfo.BuildDate=$$BUILDDATE"; \
 	echo "Building nexus-desktop v$$VERSION (commit: $$COMMIT)..."; \
-	go build -tags "production,webkit2_41" -ldflags="$$LDFLAGS" -o nexus-desktop ./cmd/nexus-desktop
+	go build -tags "$(DESKTOP_TAGS)" -ldflags="$$LDFLAGS" -o nexus-desktop ./cmd/nexus-desktop
 
 release-local:
 	go run ./cmd/nexus release

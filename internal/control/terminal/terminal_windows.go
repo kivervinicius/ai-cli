@@ -150,7 +150,8 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 	r, _, e = procCreatePseudoConsole.Call(
 		uintptr(sizeVal), uintptr(hInRead), uintptr(hOutWrite), 0, uintptr(unsafe.Pointer(&hPC)))
 	if r != 0 {
-		// ConPTY unavailable: fall back to standard pipes, reported truthfully.
+		// CreatePseudoConsole returns HRESULT S_OK (0) on success. A non-zero
+		// HRESULT means ConPTY is unavailable, so report the fallback honestly.
 		childIn := os.NewFile(hInRead, "conpty-fallback-child-in")
 		inFile := os.NewFile(hInWrite, "conpty-fallback-in")
 		outFile := os.NewFile(hOutRead, "conpty-fallback-out")

@@ -1,5 +1,5 @@
-const { chromium } = require('/home/desenvolvedor/.nvm/versions/node/v22.17.0/lib/node_modules/@opengsd/gsd-pi/node_modules/playwright');
-const fs = require('fs');
+import { chromium } from '../web/node_modules/playwright/index.mjs';
+import fs from 'node:fs';
 
 (async () => {
   const log = fs.readFileSync('/tmp/nexus-web.log', 'utf8');

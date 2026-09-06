@@ -73,7 +73,7 @@ func (s *Store) ensureCwd(cwd string) error {
 		clean = filepath.Clean(cwd)
 	}
 	for _, p := range s.projects {
-		if filepath.Clean(p.Path) == clean {
+		if workspacePathsEquivalent(p.Path, clean) {
 			return nil
 		}
 	}
@@ -185,7 +185,7 @@ func (s *Store) Remove(idOrPath string) error {
 
 	targetKey := ""
 	for key, p := range s.projects {
-		if p.ID == idOrPath || p.Path == idOrPath || filepath.Clean(p.Path) == filepath.Clean(idOrPath) {
+		if p.ID == idOrPath || workspacePathsEquivalent(p.Path, idOrPath) {
 			targetKey = key
 			break
 		}
@@ -204,12 +204,33 @@ func (s *Store) Touch(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	clean := filepath.Clean(path)
-	if p, ok := s.projects[clean]; ok {
-		p.LastUsedAt = time.Now()
-		s.projects[clean] = p
-		_ = s.saveLocked()
+	for key, p := range s.projects {
+		if workspacePathsEquivalent(p.Path, path) {
+			p.LastUsedAt = time.Now()
+			s.projects[key] = p
+			_ = s.saveLocked()
+			return
+		}
 	}
+}
+
+// workspacePathsEquivalent compares filesystem identity when both paths exist
+// and falls back to canonical path text for creation or legacy records.
+func workspacePathsEquivalent(left, right string) bool {
+	if left == right {
+		return true
+	}
+	leftRef, leftErr := config.ResolvePathRef(left)
+	rightRef, rightErr := config.ResolvePathRef(right)
+	if leftErr == nil && rightErr == nil {
+		leftIdentity := leftRef.Identity
+		rightIdentity := rightRef.Identity
+		if leftIdentity.Available && rightIdentity.Available {
+			return leftIdentity.Kind == rightIdentity.Kind && leftIdentity.StableKey == rightIdentity.StableKey
+		}
+		return leftRef.CanonicalPath == rightRef.CanonicalPath
+	}
+	return filepath.Clean(left) == filepath.Clean(right)
 }
 
 // makeWorkspaceID derives a stable, collision-resistant identifier from the
