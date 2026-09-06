@@ -128,7 +128,8 @@ async function main() {
     await page.waitForTimeout(1000);
 
     console.log('4. Testing semantic global deep-links...');
-    const updatesUrl = new URL('/updates', bootstrapUrl);
+    const routeUrl = (pathname) => new URL(pathname, bootstrapUrl);
+    const updatesUrl = routeUrl('/updates');
     await page.goto(updatesUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.locator('.nx-settings-tabs').waitFor({ state: 'visible', timeout: 10000 });
     assert.equal(
@@ -136,7 +137,7 @@ async function main() {
       '/updates',
       'updates deep-link must remain canonical',
     );
-    const welcomeUrl = new URL('/welcome', bootstrapUrl);
+    const welcomeUrl = routeUrl('/welcome');
     await page.goto(welcomeUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page
       .locator('.nx-tour-layer, .nx-welcome-modal')

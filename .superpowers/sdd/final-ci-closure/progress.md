@@ -73,3 +73,10 @@ Updates are appended below after each reproduce/root-cause/fix/verification cycl
 
 - Change: `webkit2_41` is selected only for Linux; CI now has native Wails build lanes for Linux, Windows and macOS, and snapshot depends on all three.
 - Local evidence: Linux `go build -o /tmp/nexus-desktop ./cmd/nexus-desktop` passed.
+
+### FC-05 + browser regressions — authenticated deep links and layout hydration
+
+- RED: `npm run test:e2e` reached the browser after the portable build, then failed Axe on serious contrast violations. After that fix, `/updates` timed out because the deep-link surface was not active.
+- Root causes: brand/meta styles used insufficient semantic contrast; the E2E route/auth path and server bootstrap redirect did not preserve deep-link state; durable layout hydration overwrote the route-opened surface once and the route guard did not retry.
+- Changes: brand controls use contrast-safe semantic tokens; metadata uses `--nx-muted`; bootstrap redirects preserve `r.URL.Path`; route synchronization reopens the requested surface only if hydration made another surface active; E2E retains the authenticated browser cookie for SPA deep-link navigation.
+- GREEN: `npm run test:e2e` passed Axe, deep-link back/forward, all six viewport checks, Settings Accordion and density assertions.

@@ -163,7 +163,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 					SameSite: http.SameSiteStrictMode,
 				})
 				// Redirect to clean URL without the token
-				http.Redirect(w, r, "/", http.StatusFound)
+				http.Redirect(w, r, r.URL.Path, http.StatusFound)
 				return
 			}
 		}
