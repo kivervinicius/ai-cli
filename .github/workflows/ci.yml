@@ -78,7 +78,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.25.14'
           cache: true
 
       - name: Set up Bun
@@ -108,7 +108,7 @@ jobs:
     name: Linux E2E (Go ${{ matrix.go }})
     strategy:
       matrix:
-        go: ['1.25']
+        go: ['1.25.14']
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -127,7 +127,7 @@ jobs:
         run: go vet ./...
 
       - name: GolangCI-Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.12.2
           args: --timeout=5m
@@ -148,7 +148,7 @@ jobs:
     name: Windows E2E (ConPTY, Named Pipe, PowerShell)
     strategy:
       matrix:
-        go: ['1.25']
+        go: ['1.25.14']
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -187,7 +187,7 @@ jobs:
     name: macOS E2E (PTY, Socket, Resize, Install)
     strategy:
       matrix:
-        go: ['1.25']
+        go: ['1.25.14']
     runs-on: macos-latest
     steps:
       - name: Checkout code
@@ -231,7 +231,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.25.14'
           cache: true
 
       - name: Set up GoReleaser
