@@ -1,6 +1,10 @@
 BINARY=nexus
 MODULE=github.com/kivervinicius/ai-cli
 LOCAL_BIN ?= $(HOME)/.local/bin
+DESKTOP_TAGS = production
+ifeq ($(shell go env GOOS),linux)
+DESKTOP_TAGS = production,webkit2_41
+endif
 
 .PHONY: all build build-desktop web web-verify test race vet install install-local release-local bump clean format format-check lint-frontend lint-styles lint-styles-fix lint-fix lint-go typecheck test-frontend test-go test-e2e security quality quality-full golangci-lint
 
@@ -105,7 +109,7 @@ build-desktop: web
 	BUILDDATE=$$(date -u +%Y-%m-%dT%H:%M:%SZ); \
 	LDFLAGS="-s -w -X $(MODULE)/internal/buildinfo.Version=$$VERSION -X $(MODULE)/internal/buildinfo.Commit=$$COMMIT -X $(MODULE)/internal/buildinfo.BuildDate=$$BUILDDATE"; \
 	echo "Building nexus-desktop v$$VERSION (commit: $$COMMIT)..."; \
-	go build -tags "production,webkit2_41" -ldflags="$$LDFLAGS" -o nexus-desktop ./cmd/nexus-desktop
+	go build -tags "$(DESKTOP_TAGS)" -ldflags="$$LDFLAGS" -o nexus-desktop ./cmd/nexus-desktop
 
 release-local:
 	go run ./cmd/nexus release
