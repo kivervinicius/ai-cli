@@ -36,6 +36,19 @@ func NewEngine(ttl time.Duration) *Engine {
 	return &Engine{ttl: ttl}
 }
 
+// Trustworthy reports whether a cached snapshot has an attributable,
+// sufficiently recent observation. A cache file alone is not evidence.
+func (e *Engine) Trustworthy(snap model.UsageSnapshot) bool {
+	if snap.Source == "" || snap.Source == model.SourceNone || snap.FetchedAt.IsZero() || len(snap.Windows) == 0 {
+		return false
+	}
+	if snap.Status != model.UsageLive && snap.Status != model.UsageCached && snap.Status != model.UsageEstimated {
+		return false
+	}
+	age := time.Since(snap.FetchedAt)
+	return age >= -time.Minute && age <= e.ttl
+}
+
 // GetCachedUsage returns the cached snapshot for a profile without triggering external requests.
 func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapshot, bool) {
 	cacheMu.RLock()
@@ -53,10 +66,12 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 
 	quotaFile := filepath.Join(root, "usage.json")
 	data, err := os.ReadFile(quotaFile)
+	sourceFile := quotaFile
 	if err != nil {
 		// Fallback to legacy quota.json if available
 		legacyFile := filepath.Join(root, "quota.json")
 		data, err = os.ReadFile(legacyFile)
+		sourceFile = legacyFile
 		if err != nil {
 			return model.UsageSnapshot{
 				ProviderID: provider,
@@ -70,8 +85,25 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 	var snap model.UsageSnapshot
 	_ = json.Unmarshal(data, &snap)
 
+	// Codex quota from local files is unreliable: the live rate limits come
+	// from session rollouts, not from quota.json / usage.json. Treat any
+	// codex cached snapshot as UNKNOWN so the scheduler scores it honestly
+	// instead of trusting potentially stale file data.
+	if provider == "codex" && (snap.Status == model.UsageCached || snap.Status == model.UsageLive) {
+		// Only invalidate if the file is older than our trust window.
+		// Freshly-written files (from loadUsageSnapshot) are still valid.
+		if !e.Trustworthy(snap) {
+			snap.Status = model.UsageUnknown
+			snap.Source = model.SourceNone
+			snap.Windows = nil
+			return snap, false
+		}
+	}
+
 	if snap.Status == "" || len(snap.Windows) == 0 {
 		var leg struct {
+			Account   string `json:"account"`
+			Email     string `json:"email"`
 			ModelName string `json:"model_name"`
 			Plan      string `json:"plan"`
 			FiveHour  struct {
@@ -85,21 +117,27 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 				ResetsIn    string  `json:"resets_in"`
 			} `json:"weekly"`
 			ClaudeFiveHour struct {
-				PercentLeft float64 `json:"percent_left"`
-				ResetTime   string  `json:"reset_time"`
-				ResetsIn    string  `json:"resets_in"`
+				PercentLeft *float64 `json:"percent_left"`
+				ResetTime   string   `json:"reset_time"`
+				ResetsIn    string   `json:"resets_in"`
 			} `json:"claude_five_hour"`
 			ClaudeWeekly struct {
-				PercentLeft float64 `json:"percent_left"`
-				ResetTime   string  `json:"reset_time"`
-				ResetsIn    string  `json:"resets_in"`
+				PercentLeft *float64 `json:"percent_left"`
+				ResetTime   string   `json:"reset_time"`
+				ResetsIn    string   `json:"resets_in"`
 			} `json:"claude_weekly"`
 		}
-		if json.Unmarshal(data, &leg) == nil && (leg.FiveHour.PercentLeft > 0 || leg.Weekly.PercentLeft > 0 || leg.FiveHour.ResetTime != "" || leg.Weekly.ResetTime != "" || leg.FiveHour.ResetsIn != "" || leg.Weekly.ResetsIn != "" || leg.ClaudeFiveHour.PercentLeft > 0 || leg.ClaudeWeekly.PercentLeft > 0) {
-			p5h := leg.FiveHour.PercentLeft
+		if json.Unmarshal(data, &leg) == nil && (leg.FiveHour.PercentLeft > 0 || leg.Weekly.PercentLeft > 0 || leg.FiveHour.ResetTime != "" || leg.Weekly.ResetTime != "" || leg.FiveHour.ResetsIn != "" || leg.Weekly.ResetsIn != "" || leg.ClaudeFiveHour.PercentLeft != nil || leg.ClaudeWeekly.PercentLeft != nil || leg.ClaudeFiveHour.ResetsIn != "" || leg.ClaudeWeekly.ResetsIn != "" || leg.ClaudeFiveHour.ResetTime != "" || leg.ClaudeWeekly.ResetTime != "") {
+			// AGY and Codex legacy files both store remaining capacity in percent_left
+			// (AGY UI label is "Limit Remaining"; a full bar is 100% remaining).
+			p5h := clampPercent(leg.FiveHour.PercentLeft)
 			u5h := 100.0 - p5h
-			pWk := leg.Weekly.PercentLeft
+			pWk := clampPercent(leg.Weekly.PercentLeft)
 			uWk := 100.0 - pWk
+			primaryGroup := "gemini"
+			if provider == "codex" {
+				primaryGroup = "claude_gpt"
+			}
 			r5h := leg.FiveHour.ResetTime
 			if r5h == "" {
 				r5h = leg.FiveHour.ResetsIn
@@ -112,20 +150,26 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 			windows := []model.UsageWindow{
 				{
 					Kind:             "5h",
+					Group:            primaryGroup,
 					RemainingPercent: &p5h,
 					UsedPercent:      &u5h,
 					ResetDescription: r5h,
 				},
 				{
 					Kind:             "weekly",
+					Group:            primaryGroup,
 					RemainingPercent: &pWk,
 					UsedPercent:      &uWk,
 					ResetDescription: rWk,
 				},
 			}
 
-			if leg.ClaudeFiveHour.PercentLeft > 0 || leg.ClaudeFiveHour.ResetsIn != "" || leg.ClaudeFiveHour.ResetTime != "" {
-				pC5h := leg.ClaudeFiveHour.PercentLeft
+			if provider == "agy" && (leg.ClaudeFiveHour.PercentLeft != nil || leg.ClaudeFiveHour.ResetsIn != "" || leg.ClaudeFiveHour.ResetTime != "" || leg.ClaudeWeekly.PercentLeft != nil || leg.ClaudeWeekly.ResetsIn != "" || leg.ClaudeWeekly.ResetTime != "") {
+				c5hVal := 0.0
+				if leg.ClaudeFiveHour.PercentLeft != nil {
+					c5hVal = *leg.ClaudeFiveHour.PercentLeft
+				}
+				pC5h := clampPercent(c5hVal)
 				uC5h := 100.0 - pC5h
 				rC5h := leg.ClaudeFiveHour.ResetTime
 				if rC5h == "" {
@@ -133,14 +177,17 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 				}
 				windows = append(windows, model.UsageWindow{
 					Kind:             "claude_5h",
+					Group:            "claude_gpt",
 					RemainingPercent: &pC5h,
 					UsedPercent:      &uC5h,
 					ResetDescription: rC5h,
 				})
-			}
 
-			if leg.ClaudeWeekly.PercentLeft > 0 || leg.ClaudeWeekly.ResetsIn != "" || leg.ClaudeWeekly.ResetTime != "" {
-				pCWk := leg.ClaudeWeekly.PercentLeft
+				cWkVal := 0.0
+				if leg.ClaudeWeekly.PercentLeft != nil {
+					cWkVal = *leg.ClaudeWeekly.PercentLeft
+				}
+				pCWk := clampPercent(cWkVal)
 				uCWk := 100.0 - pCWk
 				rCWk := leg.ClaudeWeekly.ResetTime
 				if rCWk == "" {
@@ -148,6 +195,7 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 				}
 				windows = append(windows, model.UsageWindow{
 					Kind:             "claude_weekly",
+					Group:            "claude_gpt",
 					RemainingPercent: &pCWk,
 					UsedPercent:      &uCWk,
 					ResetDescription: rCWk,
@@ -157,10 +205,11 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 			snap = model.UsageSnapshot{
 				ProviderID: provider,
 				ProfileID:  profileName,
+				Account:    firstNonEmpty(leg.Account, leg.Email),
 				Status:     model.UsageCached,
 				Source:     model.SourceLocalFiles,
 				ModelName:  leg.ModelName,
-				FetchedAt:  time.Now(),
+				FetchedAt:  fileFetchedAt(sourceFile),
 				Windows:    windows,
 			}
 			return snap, true
@@ -181,10 +230,44 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 	return snap, true
 }
 
+func clampPercent(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 100 {
+		return 100
+	}
+	return v
+}
+
+func fileFetchedAt(path string) time.Time {
+	if st, err := os.Stat(path); err == nil {
+		return st.ModTime()
+	}
+	return time.Time{}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
 // SaveUsage persists a usage snapshot to the profile directory.
 func (e *Engine) SaveUsage(snap model.UsageSnapshot) error {
 	cacheMu.Lock()
 	defer cacheMu.Unlock()
+	if snap.FetchedAt.IsZero() {
+		snap.FetchedAt = time.Now().UTC()
+	}
+	if snap.Source == "" || snap.Source == model.SourceNone {
+		// Preserve compatibility with older callers while recording an explicit
+		// observation origin for future trust decisions.
+		snap.Source = model.SourceObservation
+	}
 
 	root, err := config.ProfileRoot(snap.ProviderID, snap.ProfileID)
 	if err != nil {
@@ -223,7 +306,14 @@ func FormatFreshness(fetchedAt time.Time) string {
 	if d < time.Hour {
 		return fmt.Sprintf("%dm ago", int(d.Minutes()))
 	}
-	return fmt.Sprintf("%dh ago", int(d.Hours()))
+	if d < 24*time.Hour {
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	}
+	days := int(d.Hours() / 24)
+	if days == 1 {
+		return "1 day ago"
+	}
+	return fmt.Sprintf("%d days ago", days)
 }
 
 // RenderProgressBar builds an honest visual progress bar.

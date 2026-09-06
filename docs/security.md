@@ -1,5 +1,7 @@
 # Security & Isolation Model
 
+**🇬🇧 English** | [🇧🇷 Português](security.pt-BR.md) | [🇪🇸 Español](security.es.md)
+
 `ai-cli` is a local control plane designed to coordinate multiple identities and accounts across AI coding CLIs while preserving strong credential isolation.
 
 ---

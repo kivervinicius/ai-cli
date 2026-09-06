@@ -3,6 +3,7 @@ package opencode
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,8 +28,9 @@ func (a *Adapter) Name() string         { return "OpenCode" }
 
 func (a *Adapter) Capabilities() model.Capabilities {
 	return model.Capabilities{
-		Login:              true,
-		Logout:             true,
+		// OpenCode delegates authentication to its configured model provider.
+		Login:              false,
+		Logout:             false,
 		Usage:              true,
 		Conversations:      true,
 		Resume:             true,
@@ -92,11 +94,12 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 	cwd, _ := os.Getwd()
 
 	envMap := map[string]string{
-		"HOME":                 home,
-		"XDG_CONFIG_HOME":      filepath.Join(home, ".config"),
-		"XDG_DATA_HOME":        filepath.Join(home, ".local", "share"),
-		"XDG_CACHE_HOME":       filepath.Join(home, ".cache"),
-		"OPENCODE_CONFIG_DIR":  filepath.Join(home, ".config", "opencode"),
+		"HOME":                home,
+		"XDG_CONFIG_HOME":     filepath.Join(home, ".config"),
+		"XDG_DATA_HOME":       filepath.Join(home, ".local", "share"),
+		"XDG_CACHE_HOME":      filepath.Join(home, ".cache"),
+		"OPENCODE_CONFIG_DIR": filepath.Join(home, ".config", "opencode"),
+		"PATH":                runtime.EnhancedPATH(filepath.Dir(bin)),
 	}
 	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
 		envMap["SSH_AUTH_SOCK"] = sock
@@ -107,8 +110,7 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 }
 
 func (a *Adapter) Login(ctx context.Context, p model.Profile) error {
-	_, err := a.Run(ctx, p, []string{"auth"})
-	return err
+	return fmt.Errorf("OpenCode authentication is provider-specific; run `opencode auth login <provider>` in the runtime where OpenCode will execute")
 }
 
 func (a *Adapter) Logout(ctx context.Context, p model.Profile) error {

@@ -1,0 +1,15 @@
+@use '../../styles/tokens';
+@use '../../styles/typography';
+@use '../../styles/mixins';
+
+.readinessActions {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.readinessHint {
+  color: var(--nx-muted);
+  max-width: 560px;
+  font-size: var(--nx-font-size-xs);
+}

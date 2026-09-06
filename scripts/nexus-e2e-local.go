@@ -1,0 +1,689 @@
+// Command nexus-e2e-local performs a real local Direct Work smoke test against
+// a running Nexus instance and an already-authenticated provider/profile.
+//
+// Usage:
+//
+//	NEXUS_BOOTSTRAP_URL='http://127.0.0.1:PORT/?token=...' \
+//	NEXUS_E2E_PROJECT_PATH=/path/to/git/project \
+//	NEXUS_E2E_PROVIDER=claude \
+//	NEXUS_E2E_PROFILE=default \
+//	go run ./scripts/nexus-e2e-local.go
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/cookiejar"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/gorilla/websocket"
+)
+
+type apiClient struct {
+	base string
+	csrf string
+	http *http.Client
+}
+
+func main() {
+	start := flag.Bool("start", false, "start a local Nexus process on --port and clean it up")
+	port := flag.Int("port", 3000, "Nexus HTTP port when --start is used")
+	keep := flag.Bool("keep", false, "keep generated project/data artifacts (diagnostics only)")
+	browser := flag.Bool("browser", false, "run the token-safe Chromium smoke after startup")
+	safeApply := flag.Bool("safe-apply", false, "verify a real restart-style Safe Apply and terminal reconnect")
+	flag.Parse()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	cleanup := func() {}
+	if *start {
+		var err error
+		cleanup, err = startLocalNexus(ctx, *port, *keep, *browser)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "NEXUS_E2E_FAIL:", err)
+			os.Exit(1)
+		}
+	}
+	if err := run(ctx, *safeApply); err != nil {
+		cleanup()
+		if errors.Is(err, errNotAuthenticated) {
+			fmt.Fprintln(os.Stderr, "NEXUS_E2E_NOT_AUTHENTICATED:", err)
+			os.Exit(2)
+		}
+		fmt.Fprintln(os.Stderr, "NEXUS_E2E_FAIL:", err)
+		os.Exit(1)
+	}
+	cleanup()
+	fmt.Println("NEXUS_E2E_PASS: Direct Work reached a real provider runtime and produced terminal output")
+}
+
+var errNotAuthenticated = errors.New("provider authentication is unavailable")
+
+const providerAnswerMarker = "NEXUS_E2E_OK"
+
+var ansiEscape = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]`)
+var secretAssignment = regexp.MustCompile(`(?i)(OPENAI_API_KEY|ANTHROPIC_API_KEY|GOOGLE_API_KEY|TOKEN|PASSWORD)=\S+`)
+var profileCopyExcludedDirs = map[string]bool{
+	".cache": true, ".local": true, ".omega": true, "go": true, "node_modules": true,
+	"log": true, "logs": true, "shell_snapshots": true, "thread-writer-locks": true,
+}
+
+func providerMarkerSeen(transcript string) bool {
+	for _, line := range strings.Split(sanitizeTranscript(transcript), "\n") {
+		if strings.TrimSpace(line) == providerAnswerMarker {
+			return true
+		}
+	}
+	return false
+}
+
+func sanitizeTranscript(transcript string) string {
+	clean := ansiEscape.ReplaceAllString(transcript, "")
+	return secretAssignment.ReplaceAllString(clean, "$1=[REDACTED]")
+}
+
+func run(ctx context.Context, safeApply bool) error {
+	bootstrap := strings.TrimSpace(os.Getenv("NEXUS_BOOTSTRAP_URL"))
+	if bootstrap == "" {
+		return fmt.Errorf("NEXUS_BOOTSTRAP_URL is required; use the one-time URL printed by the running Nexus")
+	}
+	u, err := url.Parse(bootstrap)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return fmt.Errorf("invalid NEXUS_BOOTSTRAP_URL")
+	}
+	base := u.Scheme + "://" + u.Host
+	projectPath := strings.TrimSpace(os.Getenv("NEXUS_E2E_PROJECT_PATH"))
+	if projectPath == "" {
+		projectPath, err = os.Getwd()
+		if err != nil {
+			return err
+		}
+	}
+	projectPath, err = filepath.Abs(projectPath)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(projectPath); err != nil {
+		return fmt.Errorf("project path: %w", err)
+	}
+
+	jar, _ := cookiejar.New(nil)
+	hc := &http.Client{Jar: jar, Timeout: 30 * time.Second}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, bootstrap, nil)
+	resp, err := hc.Do(req)
+	if err != nil {
+		return fmt.Errorf("bootstrap: %w", err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return fmt.Errorf("bootstrap returned HTTP %d", resp.StatusCode)
+	}
+
+	api := &apiClient{base: base, http: hc}
+	var session struct {
+		Authenticated bool   `json:"authenticated"`
+		CSRF          string `json:"csrf_token"`
+	}
+	if err := api.do(ctx, http.MethodGet, "/api/v1/session", nil, &session); err != nil {
+		return err
+	}
+	if !session.Authenticated || session.CSRF == "" {
+		return fmt.Errorf("bootstrap did not establish an authenticated session")
+	}
+	api.csrf = session.CSRF
+
+	stamp := time.Now().UTC().Format("20060102-150405")
+	var project struct {
+		ID string `json:"id"`
+	}
+	if err := api.do(ctx, http.MethodPost, "/api/v1/projects", map[string]any{
+		"name": "Nexus E2E " + stamp,
+		"path": projectPath,
+	}, &project); err != nil {
+		return fmt.Errorf("create project: %w", err)
+	}
+	if project.ID == "" {
+		return fmt.Errorf("create project returned empty id")
+	}
+
+	var resources struct {
+		Accounts []struct {
+			ID            string `json:"id"`
+			Provider      string `json:"provider"`
+			Profile       string `json:"profile"`
+			Authenticated bool   `json:"authenticated"`
+			Available     bool   `json:"available"`
+			RateLimited   bool   `json:"rate_limited"`
+		} `json:"accounts"`
+	}
+	if err := api.do(ctx, http.MethodGet, "/api/v1/resources", nil, &resources); err != nil {
+		return err
+	}
+	wantProvider := strings.TrimSpace(os.Getenv("NEXUS_E2E_PROVIDER"))
+	wantProfile := strings.TrimSpace(os.Getenv("NEXUS_E2E_PROFILE"))
+	var provider, profile string
+	for _, account := range resources.Accounts {
+		if !account.Authenticated || !account.Available || account.RateLimited {
+			continue
+		}
+		if wantProvider != "" && account.Provider != wantProvider {
+			continue
+		}
+		if wantProfile != "" && account.Profile != wantProfile {
+			continue
+		}
+		provider, profile = account.Provider, account.Profile
+		break
+	}
+	if provider == "" {
+		return fmt.Errorf("%w: no eligible authenticated provider/profile matches provider=%q profile=%q", errNotAuthenticated, wantProvider, wantProfile)
+	}
+
+	var agent struct {
+		ID string `json:"id"`
+	}
+	if err := api.do(ctx, http.MethodPost, "/api/v1/projects/"+url.PathEscape(project.ID)+"/agents", map[string]any{
+		"name": "E2E Direct " + provider,
+		"role": "developer",
+	}, &agent); err != nil {
+		return fmt.Errorf("create agent: %w", err)
+	}
+	if agent.ID == "" {
+		return fmt.Errorf("create agent returned empty id")
+	}
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		_ = api.do(cleanupCtx, http.MethodPost, "/api/v1/agents/"+url.PathEscape(agent.ID)+"/stop", map[string]any{}, nil)
+		if os.Getenv("NEXUS_E2E_KEEP") != "1" {
+			_ = api.do(cleanupCtx, http.MethodDelete, "/api/v1/agents/"+url.PathEscape(agent.ID), nil, nil)
+			_ = api.do(cleanupCtx, http.MethodDelete, "/api/v1/projects/"+url.PathEscape(project.ID), nil, nil)
+		}
+	}()
+
+	if err := api.do(ctx, http.MethodPost, "/api/v1/resources/select", map[string]any{
+		"provider": provider,
+		"profile":  profile,
+		"policy":   "MANUAL",
+		"agent_id": agent.ID,
+	}, nil); err != nil {
+		return fmt.Errorf("persist resource: %w", err)
+	}
+
+	var started struct {
+		Runtime struct {
+			RuntimeID string `json:"runtime_id"`
+			AgentID   string `json:"agent_id"`
+			State     string `json:"state"`
+		} `json:"runtime"`
+	}
+	if err := api.do(ctx, http.MethodPost, "/api/v1/agents/"+url.PathEscape(agent.ID)+"/start", map[string]any{}, &started); err != nil {
+		return fmt.Errorf("start agent: %w", err)
+	}
+	if started.Runtime.RuntimeID == "" || started.Runtime.AgentID != agent.ID {
+		return fmt.Errorf("runtime identity mismatch runtime=%q runtime.agent_id=%q agent=%q", started.Runtime.RuntimeID, started.Runtime.AgentID, agent.ID)
+	}
+
+	wsScheme := "ws"
+	if u.Scheme == "https" {
+		wsScheme = "wss"
+	}
+	wsURL := wsScheme + "://" + u.Host + "/api/v1/agents/" + url.PathEscape(agent.ID) + "/terminal"
+	header := http.Header{}
+	header.Set("Origin", base)
+	baseURL, _ := url.Parse(base)
+	if cookies := jar.Cookies(baseURL); len(cookies) > 0 {
+		parts := make([]string, 0, len(cookies))
+		for _, c := range cookies {
+			parts = append(parts, c.Name+"="+c.Value)
+		}
+		header.Set("Cookie", strings.Join(parts, "; "))
+	}
+	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second}
+	ws, _, err := dialer.DialContext(ctx, wsURL, header)
+	if err != nil {
+		return fmt.Errorf("agent terminal websocket: %w", err)
+	}
+	defer ws.Close()
+	_ = ws.SetReadDeadline(time.Now().Add(45 * time.Second))
+	control := false
+	for !control {
+		var msg map[string]any
+		if err := ws.ReadJSON(&msg); err != nil {
+			return fmt.Errorf("wait for terminal CONTROL lease: %w", err)
+		}
+		if msg["type"] == "lease" && msg["role"] == "CONTROL" {
+			control = true
+		}
+	}
+
+	prompt := strings.TrimSpace(os.Getenv("NEXUS_E2E_PROMPT"))
+	if prompt == "" {
+		prompt = "Reply with exactly NEXUS_E2E_OK and nothing else."
+	}
+	if err := ws.WriteJSON(map[string]any{"type": "input", "data": prompt + "\n"}); err != nil {
+		return fmt.Errorf("send prompt: %w", err)
+	}
+
+	var providerOutput strings.Builder
+	deadline := time.Now().Add(45 * time.Second)
+	for time.Now().Before(deadline) {
+		_ = ws.SetReadDeadline(deadline)
+		var msg map[string]any
+		if err := ws.ReadJSON(&msg); err != nil {
+			return fmt.Errorf("wait for provider output after prompt: %w", err)
+		}
+		if msg["type"] == "output" {
+			if s, ok := msg["data"].(string); ok && s != "" {
+				providerOutput.WriteString(s)
+				if providerMarkerSeen(providerOutput.String()) {
+					break
+				}
+			}
+		}
+	}
+	transcript := sanitizeTranscript(providerOutput.String())
+	if !providerMarkerSeen(transcript) {
+		return fmt.Errorf("provider answer marker %q was not received; sanitized transcript: %q", providerAnswerMarker, transcriptExcerpt(transcript))
+	}
+
+	var detail struct {
+		Generations []struct {
+			RuntimeID string `json:"runtime_id"`
+			AgentID   string `json:"agent_id"`
+		} `json:"generations"`
+	}
+	if err := api.do(ctx, http.MethodGet, "/api/v1/agents/"+url.PathEscape(agent.ID), nil, &detail); err != nil {
+		return err
+	}
+	found := false
+	for _, generation := range detail.Generations {
+		if generation.RuntimeID == started.Runtime.RuntimeID && generation.AgentID == agent.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("runtime generation was not durably linked back to the Agent")
+	}
+
+	// A reconnect must be agent-scoped. Verify that the same agent still points
+	// at the same generation after the terminal exchange; this is the HTTP-side
+	// invariant consumed by the browser's reconnect logic.
+	var afterReconnect struct {
+		Agent struct {
+			ID string `json:"id"`
+		} `json:"agent"`
+		Generations []struct {
+			RuntimeID string `json:"runtime_id"`
+			AgentID   string `json:"agent_id"`
+		} `json:"generations"`
+	}
+	if err := api.do(ctx, http.MethodGet, "/api/v1/agents/"+url.PathEscape(agent.ID), nil, &afterReconnect); err != nil {
+		return fmt.Errorf("agent refresh after websocket exchange: %w", err)
+	}
+	if afterReconnect.Agent.ID != agent.ID || len(afterReconnect.Generations) == 0 {
+		return fmt.Errorf("agent identity was not preserved after reconnect")
+	}
+	if safeApply {
+		if err := verifySafeApply(ctx, api, u, jar, base, agent.ID, started.Runtime.RuntimeID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// verifySafeApply changes only a harmless runtime environment marker. That is
+// deliberately a restart-required config change: it proves a fresh runtime
+// generation and reconnect without changing provider/profile or credentials.
+func verifySafeApply(ctx context.Context, api *apiClient, bootstrap *url.URL, jar http.CookieJar, base, agentID, previousRuntimeID string) error {
+	var current struct {
+		Config map[string]any `json:"config"`
+	}
+	if err := api.do(ctx, http.MethodGet, "/api/v1/agents/"+url.PathEscape(agentID)+"/config", nil, &current); err != nil {
+		return fmt.Errorf("read config for Safe Apply: %w", err)
+	}
+	if current.Config == nil {
+		return fmt.Errorf("safe apply current config is empty")
+	}
+	environment, _ := current.Config["environment"].(map[string]any)
+	if environment == nil {
+		environment = map[string]any{}
+	}
+	environment["NEXUS_E2E_SAFE_APPLY"] = "1"
+	current.Config["environment"] = environment
+
+	var preview struct {
+		Impact struct {
+			Mode            string `json:"mode"`
+			RequiresRestart bool   `json:"requires_restart"`
+		} `json:"impact"`
+	}
+	if err := api.do(ctx, http.MethodPost, "/api/v1/agents/"+url.PathEscape(agentID)+"/config/impact", current.Config, &preview); err != nil {
+		return fmt.Errorf("preview Safe Apply: %w", err)
+	}
+	if preview.Impact.Mode != "RESTART_RUNTIME" || !preview.Impact.RequiresRestart {
+		return fmt.Errorf("safe apply preview did not require restart: mode=%q restart=%t", preview.Impact.Mode, preview.Impact.RequiresRestart)
+	}
+	if err := api.do(ctx, http.MethodPost, "/api/v1/agents/"+url.PathEscape(agentID)+"/config/apply", current.Config, nil); err != nil {
+		return fmt.Errorf("apply Safe Apply: %w", err)
+	}
+
+	var detail struct {
+		Agent struct {
+			ID string `json:"id"`
+		} `json:"agent"`
+		Generations []struct {
+			RuntimeID string `json:"runtime_id"`
+			AgentID   string `json:"agent_id"`
+		} `json:"generations"`
+	}
+	if err := api.do(ctx, http.MethodGet, "/api/v1/agents/"+url.PathEscape(agentID), nil, &detail); err != nil {
+		return fmt.Errorf("read Safe Apply generation: %w", err)
+	}
+	if detail.Agent.ID != agentID || len(detail.Generations) < 2 || detail.Generations[0].RuntimeID == "" || detail.Generations[0].RuntimeID == previousRuntimeID || detail.Generations[0].AgentID != agentID {
+		return fmt.Errorf("safe apply did not create a new runtime generation for the same agent")
+	}
+
+	wsScheme := "ws"
+	if bootstrap.Scheme == "https" {
+		wsScheme = "wss"
+	}
+	wsURL := wsScheme + "://" + bootstrap.Host + "/api/v1/agents/" + url.PathEscape(agentID) + "/terminal"
+	header := http.Header{}
+	header.Set("Origin", base)
+	baseURL, _ := url.Parse(base)
+	if cookies := jar.Cookies(baseURL); len(cookies) > 0 {
+		parts := make([]string, 0, len(cookies))
+		for _, c := range cookies {
+			parts = append(parts, c.Name+"="+c.Value)
+		}
+		header.Set("Cookie", strings.Join(parts, "; "))
+	}
+	ws, _, err := (&websocket.Dialer{HandshakeTimeout: 10 * time.Second}).DialContext(ctx, wsURL, header)
+	if err != nil {
+		return fmt.Errorf("safe apply terminal reconnect: %w", err)
+	}
+	defer ws.Close()
+	deadline := time.Now().Add(45 * time.Second)
+	for {
+		_ = ws.SetReadDeadline(deadline)
+		var msg map[string]any
+		if err := ws.ReadJSON(&msg); err != nil {
+			return fmt.Errorf("wait for Safe Apply CONTROL: %w", err)
+		}
+		if msg["type"] == "lease" && msg["role"] == "CONTROL" {
+			break
+		}
+	}
+	if err := ws.WriteJSON(map[string]any{"type": "input", "data": "Reply with exactly NEXUS_E2E_OK and nothing else.\n"}); err != nil {
+		return fmt.Errorf("send Safe Apply marker prompt: %w", err)
+	}
+	var transcript strings.Builder
+	for time.Now().Before(deadline) {
+		_ = ws.SetReadDeadline(deadline)
+		var msg map[string]any
+		if err := ws.ReadJSON(&msg); err != nil {
+			return fmt.Errorf("wait for Safe Apply provider output: %w", err)
+		}
+		if msg["type"] == "output" {
+			if text, ok := msg["data"].(string); ok {
+				transcript.WriteString(text)
+				if providerMarkerSeen(transcript.String()) {
+					return nil
+				}
+			}
+		}
+	}
+	return fmt.Errorf("safe apply provider marker %q was not received; sanitized transcript: %q", providerAnswerMarker, transcriptExcerpt(sanitizeTranscript(transcript.String())))
+}
+
+func transcriptExcerpt(transcript string) string {
+	const max = 1000
+	if len(transcript) > max {
+		return transcript[:max] + "…"
+	}
+	return transcript
+}
+
+func startLocalNexus(ctx context.Context, port int, keep bool, browser bool) (func(), error) {
+	if port < 1 || port > 65535 {
+		return nil, fmt.Errorf("invalid port %d", port)
+	}
+	root, err := os.MkdirTemp("", "nexus-e2e-")
+	if err != nil {
+		return nil, err
+	}
+	project := filepath.Join(root, "project")
+	if err := os.MkdirAll(project, 0700); err != nil {
+		return nil, err
+	}
+	for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "e2e@example.invalid"}, {"config", "user.name", "Nexus E2E"}} {
+		cmd := exec.CommandContext(ctx, "git", append([]string{"-C", project}, args...)...)
+		if out, e := cmd.CombinedOutput(); e != nil {
+			return nil, fmt.Errorf("temporary git project: %w (%s)", e, strings.TrimSpace(string(out)))
+		}
+	}
+
+	bin := strings.TrimSpace(os.Getenv("NEXUS_E2E_NEXUS_BIN"))
+	if bin == "" {
+		bin = "./nexus"
+	}
+	cmd := exec.CommandContext(ctx, bin, "web", "--listen", "127.0.0.1", "--port", fmt.Sprint(port), "--no-open")
+	dataDir := filepath.Join(root, "data")
+	if os.Getenv("NEXUS_E2E_IMPORT_PROFILES") == "1" {
+		source := strings.TrimSpace(os.Getenv("NEXUS_E2E_PROFILE_SOURCE"))
+		if source == "" {
+			source = filepath.Join(os.Getenv("HOME"), ".local", "share", "ai-manager")
+		}
+		if err := copyProfileTree(filepath.Join(source, "profiles"), filepath.Join(dataDir, "profiles")); err != nil {
+			if !keep {
+				_ = os.RemoveAll(root)
+			}
+			return nil, fmt.Errorf("copy authenticated profiles to isolated data: %w", err)
+		}
+	}
+	cmd.Env = append(os.Environ(), "NEXUS_DATA_DIR="+dataDir, "AI_MANAGER_DATA_DIR="+dataDir, "NEXUS_E2E_PROJECT_PATH="+project)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	cmd.Stderr = redactWriter{dst: os.Stderr}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start Nexus: %w (build ./nexus first or set NEXUS_E2E_NEXUS_BIN)", err)
+	}
+
+	ready := make(chan string, 1)
+	go func() {
+		buf := make([]byte, 4096)
+		var all strings.Builder
+		for {
+			n, e := stdout.Read(buf)
+			if n > 0 {
+				chunk := string(buf[:n])
+				all.WriteString(chunk)
+				if u := findBootstrap(all.String()); u != "" {
+					ready <- u
+					return
+				}
+			}
+			if e != nil {
+				return
+			}
+		}
+	}()
+	select {
+	case bootstrap := <-ready:
+		os.Setenv("NEXUS_BOOTSTRAP_URL", bootstrap)
+		if browser {
+			artifactDir := filepath.Join(root, "artifacts")
+			smoke := exec.CommandContext(ctx, "./scripts/nexus-browser-smoke.sh")
+			smoke.Env = append(os.Environ(), "NEXUS_BOOTSTRAP_URL="+bootstrap, "NEXUS_E2E_ARTIFACT_DIR="+artifactDir)
+			smoke.Stdout = os.Stdout
+			smoke.Stderr = redactWriter{dst: os.Stderr}
+			if err := smoke.Run(); err != nil {
+				if strings.Contains(err.Error(), "exit status 2") {
+					fmt.Fprintln(os.Stderr, "NEXUS_BROWSER_SMOKE_NOT_RUN: browser executable unavailable")
+				} else {
+					_ = cmd.Process.Kill()
+					_ = cmd.Wait()
+					if !keep {
+						_ = os.RemoveAll(root)
+					}
+					return nil, fmt.Errorf("browser smoke: %w", err)
+				}
+			}
+		}
+		return func() {
+			_ = cmd.Process.Signal(os.Interrupt)
+			_ = cmd.Wait()
+			if !keep {
+				_ = os.RemoveAll(root)
+			}
+		}, nil
+	case <-time.After(15 * time.Second):
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		if !keep {
+			_ = os.RemoveAll(root)
+		}
+		return nil, fmt.Errorf("timed out waiting for Nexus bootstrap URL")
+	case <-ctx.Done():
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		if !keep {
+			_ = os.RemoveAll(root)
+		}
+		return nil, ctx.Err()
+	}
+}
+
+func copyProfileTree(source, destination string) error {
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		from := filepath.Join(source, entry.Name())
+		to := filepath.Join(destination, entry.Name())
+		entryInfo, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		// Do not follow links into the live host home or provider caches.
+		if entryInfo.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+		info, err := os.Stat(from)
+		if err != nil {
+			if os.IsNotExist(err) {
+				// Ignore dangling provider-cache symlinks.
+				continue
+			}
+			return err
+		}
+		if info.IsDir() {
+			if profileCopyExcludedDirs[entry.Name()] {
+				continue
+			}
+			if err := os.MkdirAll(to, 0700); err != nil {
+				return err
+			}
+			if err := copyProfileTree(from, to); err != nil {
+				return err
+			}
+			continue
+		}
+		// Provider homes may contain live IPC sockets and other transient
+		// non-regular entries. Never copy those into the isolated E2E data.
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		data, err := os.ReadFile(from)
+		if err != nil {
+			return err
+		}
+		mode := info.Mode().Perm()
+		if err := os.MkdirAll(filepath.Dir(to), 0700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(to, data, mode); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func findBootstrap(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "Bootstrap:") {
+			continue
+		}
+		u := strings.TrimSpace(strings.TrimPrefix(line, "Bootstrap:"))
+		if parsed, err := url.Parse(u); err == nil && parsed.Scheme == "http" && parsed.Host != "" && parsed.Query().Get("token") != "" {
+			return u
+		}
+	}
+	return ""
+}
+
+type redactWriter struct{ dst io.Writer }
+
+func (w redactWriter) Write(p []byte) (int, error) {
+	s := string(p)
+	if i := strings.Index(s, "token="); i >= 0 {
+		s = s[:i] + "token=[REDACTED]"
+	}
+	return w.dst.Write([]byte(s))
+}
+
+func (a *apiClient) do(ctx context.Context, method, path string, body any, out any) error {
+	var reader io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		reader = bytes.NewReader(data)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, a.base+path, reader)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if method != http.MethodGet && method != http.MethodHead && a.csrf != "" {
+		req.Header.Set("X-CSRF-Token", a.csrf)
+	}
+	resp, err := a.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("%s %s: HTTP %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(data)))
+	}
+	if out != nil && len(data) > 0 {
+		if err := json.Unmarshal(data, out); err != nil {
+			return fmt.Errorf("decode %s %s: %w", method, path, err)
+		}
+	}
+	return nil
+}

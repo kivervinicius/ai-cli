@@ -8,9 +8,8 @@ import (
 	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
-	"github.com/kivervinicius/ai-cli/internal/core/config"
+	"github.com/kivervinicius/ai-cli/internal/control/terminal"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
-	"github.com/kivervinicius/ai-cli/internal/core/security"
 	"github.com/kivervinicius/ai-cli/internal/runtime"
 )
 
@@ -55,13 +54,13 @@ func (d *OpenCodeDriver) EffectiveCaps(ctx context.Context, p model.Profile) Eff
 		Terminal: CapabilityEvidence{
 			Status:          CapabilitySupported,
 			ProviderVersion: version,
-			Mechanism:       "PTY / ConPTY TerminalBackend",
+			Mechanism:       terminal.BackendMechanism(),
 			Tested:          true,
 		},
 		Attach: CapabilityEvidence{
 			Status:          CapabilitySupported,
 			ProviderVersion: version,
-			Mechanism:       "AI Control IPC Socket/Pipe",
+			Mechanism:       "Nexus Control IPC Socket/Pipe",
 			Tested:          true,
 		},
 		StructuredEvents: CapabilityEvidence{
@@ -81,7 +80,8 @@ func (d *OpenCodeDriver) EffectiveCaps(ctx context.Context, p model.Profile) Eff
 			Status:          CapabilitySupported,
 			ProviderVersion: version,
 			Mechanism:       "opencode -s <session-id>",
-			Tested:          true,
+			Reason:          "resume command supported by signature; not runtime-verified against a live opencode session",
+			Tested:          false,
 		},
 		Fork: CapabilityEvidence{
 			Status:          CapabilitySupported,
@@ -101,9 +101,9 @@ func (d *OpenCodeDriver) EffectiveCaps(ctx context.Context, p model.Profile) Eff
 			Tested:    true,
 		},
 		Approvals: CapabilityEvidence{
-			Status:    CapabilityUnsupported,
-			Reason:    "Structured approvals require server adapter; interact via terminal",
-			Tested:    false,
+			Status: CapabilityUnsupported,
+			Reason: "Structured approvals require server adapter; interact via terminal",
+			Tested: false,
 		},
 		NativeUIAttach: CapabilityEvidence{
 			Status:          CapabilitySupported,
@@ -136,21 +136,17 @@ func (d *OpenCodeDriver) BuildCommand(ctx context.Context, p model.Profile, extr
 		return "", nil, nil, err
 	}
 
-	home, err := config.ProfileHome("opencode", p.Name)
+	home, err := bootstrapProfile("opencode", p)
 	if err != nil {
 		return "", nil, nil, err
 	}
-	_ = os.MkdirAll(home, 0700)
-
-	cfgObj, _ := config.LoadConfig()
-	_ = security.ApplyIsolation(home, security.GetPolicy(cfgObj.IsolationPreset))
-
 	env := runtime.EnvSet(os.Environ(), map[string]string{
 		"HOME":          home,
 		"XDG_DATA_HOME": filepath.Join(home, ".local", "share"),
 		"OPENCODE_HOME": home,
 		"AI_PROFILE":    p.Name,
 		"AI_PROVIDER":   "opencode",
+		"PATH":          runtime.EnhancedPATH(filepath.Dir(bin)),
 	})
 
 	return bin, extraArgs, env, nil
@@ -171,5 +167,5 @@ func (d *OpenCodeDriver) BuildResumeArgs(ctx context.Context, p model.Profile, p
 }
 
 func (d *OpenCodeDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error) {
-	return []string{kickoffPrompt}, nil
+	return []string{"run", kickoffPrompt}, nil
 }

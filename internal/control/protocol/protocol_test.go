@@ -102,3 +102,20 @@ func TestClientServerCommunication(t *testing.T) {
 		t.Errorf("unexpected status data: %+v", st)
 	}
 }
+
+func TestSubmitPromptRequestUsesDedicatedCommandAndPayload(t *testing.T) {
+	req, err := NewRequest(CmdSubmitPrompt, SubmitPromptPayload{Prompt: "/ai literal prompt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Command != CmdSubmitPrompt {
+		t.Fatalf("command=%s", req.Command)
+	}
+	var payload SubmitPromptPayload
+	if err := json.Unmarshal(req.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Prompt != "/ai literal prompt" {
+		t.Fatalf("prompt=%q", payload.Prompt)
+	}
+}

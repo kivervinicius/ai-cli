@@ -1,262 +1,56 @@
-import React, { useState, useEffect } from 'react';
-import { api, initSession } from './api';
-import { Workspace, RuntimeSession, ProviderInfo, ProfileInfo, EventRecord } from './types';
-import { Sidebar } from './components/Sidebar';
-import { Dashboard } from './components/Dashboard';
-import { TerminalView } from './components/TerminalView';
-import { ProvidersView } from './components/ProvidersView';
-import { EventsView } from './components/EventsView';
-import { StartModal } from './components/StartModal';
-import { HandoffModal } from './components/HandoffModal';
-import { ContinueModal } from './components/ContinueModal';
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { NexusWorkspaceApp } from './app/NexusWorkspaceApp';
+import { NexusDemoApp } from './app/NexusDemoApp';
+import type { WorkspaceSurface } from './workspace/model';
 
-export const App: React.FC = () => {
-  const [currentTab, setCurrentTab] = useState<string>('dashboard');
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [activeWorkspace, setActiveWorkspace] = useState<string>('');
-  const [runtimes, setRuntimes] = useState<RuntimeSession[]>([]);
-  const [providers, setProviders] = useState<ProviderInfo[]>([]);
-  const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
-  const [events, setEvents] = useState<EventRecord[]>([]);
-
-  const [activeTerminalId, setActiveTerminalId] = useState<string>('');
-  const [showStartModal, setShowStartModal] = useState<boolean>(false);
-  const [handoffRuntime, setHandoffRuntime] = useState<RuntimeSession | null>(null);
-  const [continueRuntime, setContinueRuntime] = useState<RuntimeSession | null>(null);
-
-  // Initial load & authentication
-  useEffect(() => {
-    initSession().then(() => {
-      fetchStaticData();
-      fetchDynamicData();
-    });
-
-    // 3-second background polling
-    const interval = setInterval(fetchDynamicData, 3000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchStaticData = async () => {
+function parseLegacyPopoutSurface(): WorkspaceSurface | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const raw = new URLSearchParams(window.location.search).get('popout');
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as WorkspaceSurface;
+  } catch {
     try {
-      const [ws, provs, profs] = await Promise.all([
-        api.getWorkspaces(),
-        api.getProviders(),
-        api.getProfiles(),
-      ]);
-      setWorkspaces(ws);
-      if (ws.length > 0) setActiveWorkspace(ws[0].path);
-      setProviders(provs);
-      setProfiles(profs);
-    } catch (e) {
-      console.error('Failed to load static data', e);
+      return JSON.parse(decodeURIComponent(raw)) as WorkspaceSurface;
+    } catch {
+      return undefined;
     }
-  };
+  }
+}
 
-  const fetchDynamicData = async () => {
-    try {
-      const [rts, evs] = await Promise.all([api.getRuntimes(), api.getEvents()]);
-      setRuntimes(rts);
-      setEvents(evs);
-    } catch (e) {
-      console.error('Failed to load dynamic data', e);
-    }
-  };
-
-  const handleOpenTerminal = (runtimeId: string) => {
-    setActiveTerminalId(runtimeId);
-    setCurrentTab('terminals');
-  };
-
-  const handleStopRuntime = async (id: string) => {
-    try {
-      await api.stopRuntime(id);
-      fetchDynamicData();
-    } catch (e) {
-      console.error('Failed to stop runtime', e);
-    }
-  };
-
-  const handleDeleteRuntime = async (id: string) => {
-    try {
-      await api.deleteRuntime(id);
-      fetchDynamicData();
-    } catch (e) {
-      console.error('Failed to delete runtime', e);
-    }
-  };
-
-  const handleCleanInactive = async () => {
-    try {
-      await api.cleanRuntimes();
-      fetchDynamicData();
-    } catch (e) {
-      console.error('Failed to clean inactive runtimes', e);
-    }
-  };
-
-  const handleUpdateTitle = async (id: string, title: string) => {
-    try {
-      await api.updateRuntimeTitle(id, title);
-      fetchDynamicData();
-    } catch (e) {
-      console.error('Failed to update runtime title', e);
-    }
-  };
-
-  const handleAddWorkspace = async (path: string, name?: string) => {
-    try {
-      await api.addWorkspace(path, name);
-      const ws = await api.getWorkspaces();
-      setWorkspaces(ws);
-      setActiveWorkspace(path);
-    } catch (e) {
-      console.error('Failed to add workspace', e);
-    }
-  };
-
-  const handleRemoveWorkspace = async (path: string) => {
-    try {
-      await api.removeWorkspace(path);
-      const ws = await api.getWorkspaces();
-      setWorkspaces(ws);
-      if (activeWorkspace === path && ws.length > 0) {
-        setActiveWorkspace(ws[0].path);
-      }
-    } catch (e) {
-      console.error('Failed to remove workspace', e);
-    }
-  };
+export const AppRoutes: React.FC = () => {
+  const legacyPopout = parseLegacyPopoutSurface();
+  if (legacyPopout) {
+    return <NexusWorkspaceApp popoutSurface={legacyPopout} />;
+  }
 
   return (
-    <div className="flex h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
-      {/* Left Sidebar */}
-      <Sidebar
-        currentTab={currentTab}
-        onSelectTab={setCurrentTab}
-        workspaces={workspaces}
-        activeWorkspace={activeWorkspace}
-        onSelectWorkspace={setActiveWorkspace}
-        runtimeCount={runtimes.filter((r) => r.state === 'RUNNING' || r.state === 'STARTING').length}
-        onAddWorkspace={handleAddWorkspace}
-        onRemoveWorkspace={handleRemoveWorkspace}
-      />
+    <Routes>
+      <Route path="/demo" element={<NexusDemoApp />} />
+      <Route path="/p/:projectId/popout/:surface" element={<NexusWorkspaceApp />} />
+      <Route path="/p/:projectId/*" element={<NexusWorkspaceApp />} />
+      <Route path="/projects" element={<NexusWorkspaceApp initialGlobalSurface="projects" />} />
+      <Route path="/settings" element={<NexusWorkspaceApp initialGlobalSurface="settings" />} />
+      <Route path="/updates" element={<NexusWorkspaceApp initialGlobalSurface="updates" />} />
+      <Route path="/welcome" element={<NexusWorkspaceApp initialGlobalSurface="welcome" />} />
+      <Route path="/" element={<NexusWorkspaceApp />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+};
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-950">
-        {/* Top Navbar */}
-        <header className="h-12 border-b border-slate-800/80 px-6 flex items-center justify-between text-xs font-mono select-none bg-slate-950/40">
-          <div className="flex items-center space-x-2">
-            <span className="text-slate-500">Workspace:</span>
-            <span className="text-slate-200 font-semibold">{activeWorkspace || 'Default'}</span>
-          </div>
+export const App: React.FC = () => {
+  if (
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('demo') === '1'
+  ) {
+    return <NexusDemoApp />;
+  }
 
-          <div className="flex items-center space-x-4">
-            <a
-              href="https://github.com/IAPro-Community"
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-indigo-950/40 border border-indigo-800/50 text-indigo-300 hover:text-indigo-200 hover:border-indigo-600 transition shadow-sm"
-              title="Visit IAPro Community on GitHub"
-            >
-              <span className="w-2 h-2 rounded-full bg-violet-400 animate-ping"></span>
-              <span className="font-semibold text-[11px]">IAPro Community</span>
-            </a>
-
-            <span className="flex items-center space-x-1.5 text-emerald-400 font-medium">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>Control Core Healthy</span>
-            </span>
-          </div>
-        </header>
-
-        {/* View Switcher */}
-        <div className="flex-1 p-4 overflow-y-auto">
-          {currentTab === 'dashboard' && (
-            <Dashboard
-              runtimes={runtimes}
-              providers={providers}
-              workspaces={workspaces}
-              activeWorkspace={activeWorkspace}
-              onOpenTerminal={handleOpenTerminal}
-              onOpenStartModal={() => setShowStartModal(true)}
-              onOpenHandoffModal={(r) => setHandoffRuntime(r)}
-              onOpenContinueModal={(r) => setContinueRuntime(r)}
-              onStopRuntime={handleStopRuntime}
-              onDeleteRuntime={handleDeleteRuntime}
-              onCleanInactive={handleCleanInactive}
-            />
-          )}
-
-          {/* Terminal view is kept mounted to preserve WebSocket connections and terminal state across tab switches */}
-          <div className={currentTab === 'terminals' ? 'h-full flex flex-col' : 'hidden'}>
-            <TerminalView
-              runtimes={runtimes.filter((r) => r.state === 'RUNNING' || r.state === 'STARTING')}
-              activeRuntimeId={activeTerminalId}
-              onSelectRuntime={setActiveTerminalId}
-              onUpdateTitle={handleUpdateTitle}
-            />
-          </div>
-
-          {currentTab === 'runtimes' && (
-            <Dashboard
-              runtimes={runtimes}
-              providers={providers}
-              workspaces={workspaces}
-              activeWorkspace={activeWorkspace}
-              onOpenTerminal={handleOpenTerminal}
-              onOpenStartModal={() => setShowStartModal(true)}
-              onOpenHandoffModal={(r) => setHandoffRuntime(r)}
-              onOpenContinueModal={(r) => setContinueRuntime(r)}
-              onStopRuntime={handleStopRuntime}
-              onDeleteRuntime={handleDeleteRuntime}
-              onCleanInactive={handleCleanInactive}
-            />
-          )}
-
-          {currentTab === 'providers' && <ProvidersView providers={providers} />}
-
-          {currentTab === 'events' && <EventsView events={events} />}
-        </div>
-      </main>
-
-      {/* Modals */}
-      {showStartModal && (
-        <StartModal
-          providers={providers}
-          profiles={profiles}
-          workspace={activeWorkspace}
-          workspaces={workspaces}
-          onClose={() => setShowStartModal(false)}
-          onSuccess={(newSession) => {
-            fetchDynamicData();
-            handleOpenTerminal(newSession.runtime_id);
-          }}
-        />
-      )}
-
-      {handoffRuntime && (
-        <HandoffModal
-          runtime={handoffRuntime}
-          profiles={profiles}
-          onClose={() => setHandoffRuntime(null)}
-          onSuccess={() => {
-            fetchDynamicData();
-          }}
-        />
-      )}
-
-      {continueRuntime && (
-        <ContinueModal
-          runtime={continueRuntime}
-          providers={providers}
-          profiles={profiles}
-          onClose={() => setContinueRuntime(null)}
-          onSuccess={(newSession) => {
-            fetchDynamicData();
-            handleOpenTerminal(newSession.runtime_id);
-          }}
-        />
-      )}
-    </div>
+  return (
+    <BrowserRouter>
+      <AppRoutes />
+    </BrowserRouter>
   );
 };

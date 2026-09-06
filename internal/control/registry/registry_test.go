@@ -4,10 +4,46 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
+
+func TestDefaultRegistryResetConcurrentAccess(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("AI_MANAGER_DATA_DIR", tmpDir)
+	t.Setenv("AI_CLI_DATA_DIR", tmpDir)
+
+	ResetDefaultRegistryForTest()
+	t.Cleanup(ResetDefaultRegistryForTest)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			_ = DefaultRegistry()
+			runtime.Gosched()
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			ResetDefaultRegistryForTest()
+			runtime.Gosched()
+		}
+	}()
+
+	wg.Wait()
+
+	if DefaultRegistry() == nil {
+		t.Fatal("expected DefaultRegistry to return a singleton instance")
+	}
+}
 
 func TestRegistryPersistenceAndLifecycle(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -227,5 +263,68 @@ func TestRuntimeSession_NoEnvOrSecretPersistence(t *testing.T) {
 	}
 	if strings.Contains(diskStr, `"env"`) || strings.Contains(diskStr, `"binary"`) || strings.Contains(diskStr, `"args"`) {
 		t.Fatalf("runtimes.json contains serialized env/binary/args: %s", diskStr)
+	}
+}
+
+func TestRuntimeSessionModelPersistence(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "runtimes.json")
+	reg := NewRegistry(dbPath)
+
+	sess := RuntimeSession{
+		RuntimeID:         "rt-model-test",
+		ProviderID:        "agy",
+		ProfileID:         "kiver",
+		ProviderSessionID: "sess-abc",
+		Model:             "claude-sonnet-4-20250514",
+		Workspace:         "/projects/alpha",
+		PID:               os.Getpid(),
+		State:             StateRunning,
+		ControlLevel:      ControlLevelTerminal,
+		StartedAt:         time.Now(),
+	}
+
+	if err := reg.Register(sess); err != nil {
+		t.Fatalf("failed to register session with model: %v", err)
+	}
+
+	got, ok := reg.Get("rt-model-test")
+	if !ok {
+		t.Fatal("session not found in memory")
+	}
+	if got.Model != "claude-sonnet-4-20250514" {
+		t.Errorf("expected Model 'claude-sonnet-4-20250514', got %q", got.Model)
+	}
+
+	// Reload from disk to verify JSON serialization
+	reg2 := NewRegistry(dbPath)
+	got2, ok2 := reg2.Get("rt-model-test")
+	if !ok2 {
+		t.Fatal("session not found after reloading from disk")
+	}
+	if got2.Model != "claude-sonnet-4-20250514" {
+		t.Errorf("expected reloaded Model 'claude-sonnet-4-20250514', got %q", got2.Model)
+	}
+}
+
+func TestRuntimeSessionHostLive(t *testing.T) {
+	live := RuntimeSession{Transport: "mock", PID: 0, State: StateRunning}
+	if !live.HostLive() {
+		t.Fatal("mock transport must stay attachable in tests")
+	}
+
+	starting := RuntimeSession{State: StateStarting, PID: 0}
+	if !starting.HostLive() {
+		t.Fatal("STARTING without PID is still coming up")
+	}
+
+	dead := RuntimeSession{State: StateRunning, PID: 1 << 30, HostGeneration: time.Now().UnixNano()}
+	if dead.HostLive() {
+		t.Fatal("stale PID after reboot/service restart must not look live")
+	}
+
+	self := RuntimeSession{State: StateRunning, PID: os.Getpid()}
+	if !self.HostLive() {
+		t.Fatal("current process must count as live")
 	}
 }

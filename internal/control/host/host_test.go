@@ -1,6 +1,8 @@
 package host
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -374,5 +376,201 @@ func TestSessionHost_ExplicitLeaseAcquireRelease(t *testing.T) {
 	}
 }
 
+func TestSessionHost_RejectsIncompatibleProtocolVersion(t *testing.T) {
+	runtimeID := "rt-version-test"
+	sess := registry.RuntimeSession{
+		RuntimeID:    runtimeID,
+		ProviderID:   "test",
+		ProfileID:    "default",
+		Workspace:    os.TempDir(),
+		State:        registry.StateStarting,
+		ControlLevel: registry.ControlLevelTerminal,
+	}
 
+	sh, err := NewSessionHost(Config{
+		Session: sess,
+		Binary:  "cat",
+		Args:    []string{},
+		Env:     os.Environ(),
+		Cwd:     os.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("failed to create SessionHost: %v", err)
+	}
+	if err := sh.Start(); err != nil {
+		t.Fatalf("failed to start SessionHost: %v", err)
+	}
+	defer sh.Stop()
 
+	time.Sleep(100 * time.Millisecond)
+
+	client, err := protocol.NewClient(runtimeID)
+	if err != nil {
+		t.Fatalf("failed to connect: %v", err)
+	}
+	defer client.Close()
+
+	// Craft a request with an incompatible protocol version.
+	badReq := protocol.Request{
+		Version:   99999,
+		ID:        "req-bad-version",
+		Command:   protocol.CmdPing,
+		Timestamp: time.Now(),
+	}
+	raw, _ := json.Marshal(badReq)
+	if _, err := client.RawConn().Write(append(raw, '\n')); err != nil {
+		t.Fatalf("failed to write incompatible request: %v", err)
+	}
+
+	line, err := client.Reader().ReadBytes('\n')
+	if err != nil {
+		t.Fatalf("failed to read rejection response: %v", err)
+	}
+	var resp protocol.Response
+	if err := json.Unmarshal(line, &resp); err != nil {
+		t.Fatalf("failed to parse rejection response: %v", err)
+	}
+	if resp.Error != "ERROR_PROTOCOL_VERSION" {
+		t.Fatalf("expected ERROR_PROTOCOL_VERSION, got %q", resp.Error)
+	}
+}
+
+func TestSessionHost_SubmitPromptBypassesSlashRouterWithoutStealingWriterLease(t *testing.T) {
+	runtimeID := "rt-submit-prompt-test"
+	sess := registry.RuntimeSession{RuntimeID: runtimeID, ProviderID: "test", ProfileID: "default", Workspace: os.TempDir(), State: registry.StateStarting, ControlLevel: registry.ControlLevelTerminal}
+	sh, err := NewSessionHost(Config{Session: sess, Binary: "cat", Env: os.Environ(), Cwd: os.TempDir()})
+	if err != nil {
+		t.Fatalf("failed to create SessionHost: %v", err)
+	}
+	if err := sh.Start(); err != nil {
+		t.Fatalf("failed to start SessionHost: %v", err)
+	}
+	defer sh.Stop()
+	time.Sleep(100 * time.Millisecond)
+
+	writer, err := protocol.NewClient(runtimeID)
+	if err != nil {
+		t.Fatalf("writer connect: %v", err)
+	}
+	defer writer.Close()
+	if _, err := writer.Send(protocol.CmdAttach, nil); err != nil {
+		t.Fatalf("attach writer: %v", err)
+	}
+	_ = writer.ClearDeadline()
+
+	submitter, err := protocol.NewClient(runtimeID)
+	if err != nil {
+		t.Fatalf("submitter connect: %v", err)
+	}
+	defer submitter.Close()
+	if err := submitter.SubmitPrompt("/ai status should reach provider literally"); err != nil {
+		t.Fatalf("SubmitPrompt: %v", err)
+	}
+
+	_ = writer.RawConn().SetReadDeadline(time.Now().Add(2 * time.Second))
+	buf := make([]byte, 2048)
+	n, err := writer.RawConn().Read(buf)
+	if err != nil {
+		t.Fatalf("read submitted prompt echo: %v", err)
+	}
+	if !strings.Contains(string(buf[:n]), "/ai status should reach provider literally") {
+		t.Fatalf("prompt was intercepted or lost, got %q", string(buf[:n]))
+	}
+}
+
+func TestSessionHost_AttachedLeaseAcquireDoesNotLeakToPTY(t *testing.T) {
+	runtimeID := "rt-lease-no-pty-leak"
+	sess := registry.RuntimeSession{
+		RuntimeID:    runtimeID,
+		ProviderID:   "test",
+		ProfileID:    "default",
+		Workspace:    os.TempDir(),
+		State:        registry.StateStarting,
+		ControlLevel: registry.ControlLevelTerminal,
+	}
+	sh, err := NewSessionHost(Config{Session: sess, Binary: "cat", Env: os.Environ(), Cwd: os.TempDir()})
+	if err != nil {
+		t.Fatalf("create SessionHost: %v", err)
+	}
+	if err := sh.Start(); err != nil {
+		t.Fatalf("start SessionHost: %v", err)
+	}
+	defer sh.Stop()
+	time.Sleep(80 * time.Millisecond)
+
+	client, err := protocol.NewClient(runtimeID)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer client.Close()
+	if _, err := client.Send(protocol.CmdAttach, nil); err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+	_ = client.ClearDeadline()
+
+	req, err := protocol.NewRequest(protocol.CmdLeaseAcquire, nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	payload, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if _, err := client.RawConn().Write(append(payload, '\n')); err != nil {
+		t.Fatalf("write lease_acquire on attached conn: %v", err)
+	}
+
+	// Read the RPC response; it must be a protocol frame, not PTY echo.
+	_ = client.RawConn().SetReadDeadline(time.Now().Add(2 * time.Second))
+	buf := make([]byte, 4096)
+	n, err := client.RawConn().Read(buf)
+	if err != nil {
+		t.Fatalf("read after lease_acquire: %v", err)
+	}
+	got := string(buf[:n])
+	if strings.Contains(got, "lease_acquire") && !strings.Contains(got, `"ok"`) {
+		t.Fatalf("lease_acquire request leaked toward PTY/fanout: %q", got)
+	}
+	var resp protocol.Response
+	if err := json.Unmarshal(bytes.TrimSpace(buf[:n]), &resp); err != nil {
+		// May have multiple lines; find the JSON response.
+		for _, line := range strings.Split(got, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			if json.Unmarshal([]byte(line), &resp) == nil && (resp.OK || resp.Error != "") {
+				break
+			}
+		}
+		if !resp.OK && resp.Error == "" {
+			t.Fatalf("expected lease response, got %q", got)
+		}
+	}
+	if !resp.OK {
+		t.Fatalf("lease_acquire not OK: %s (raw=%q)", resp.Error, got)
+	}
+
+	// A subsequent single keystroke (no newline) must still reach the PTY.
+	// Interactive terminals send raw bytes without trailing \n.
+	marker := "k"
+	if _, err := client.RawConn().Write([]byte(marker)); err != nil {
+		t.Fatalf("write single keystroke: %v", err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	var echoed strings.Builder
+	for time.Now().Before(deadline) {
+		_ = client.RawConn().SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+		n, err := client.RawConn().Read(buf)
+		if n > 0 {
+			echoed.Write(buf[:n])
+			if strings.Contains(echoed.String(), marker) {
+				return
+			}
+		}
+		if err != nil && !strings.Contains(err.Error(), "timeout") && !strings.Contains(err.Error(), "deadline") {
+			t.Fatalf("read marker echo: %v (so far %q)", err, echoed.String())
+		}
+	}
+	t.Fatalf("PTY did not echo single keystroke after lease_acquire; got %q", echoed.String())
+}

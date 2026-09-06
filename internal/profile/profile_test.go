@@ -51,3 +51,24 @@ func TestEnsureRandomSecretPermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCursorProfilesAreSupported(t *testing.T) {
+	t.Setenv("AI_CLI_DATA_DIR", t.TempDir())
+	t.Setenv("AI_CLI_CONFIG_DIR", t.TempDir())
+	if _, err := Create("cursor", "work"); err != nil {
+		t.Fatalf("cursor profile should be supported: %v", err)
+	}
+	profiles, err := List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, p := range profiles {
+		if p.Provider == "cursor" && p.Name == "work" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("cursor profile missing from List: %#v", profiles)
+	}
+}

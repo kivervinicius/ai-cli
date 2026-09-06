@@ -67,11 +67,11 @@ func GetPolicy(preset model.IsolationPreset) Policy {
 
 // SecurityAudit represents the audited permissions for a profile.
 type SecurityAudit struct {
-	Profile       string                `json:"profile"`
-	Preset        model.IsolationPreset `json:"preset"`
-	Shared        []string              `json:"shared"`
-	Protected     []string              `json:"protected"`
-	Warnings      []string              `json:"warnings,omitempty"`
+	Profile   string                `json:"profile"`
+	Preset    model.IsolationPreset `json:"preset"`
+	Shared    []string              `json:"shared"`
+	Protected []string              `json:"protected"`
+	Warnings  []string              `json:"warnings,omitempty"`
 }
 
 // AuditProfile checks what host directories are shared vs protected for a profile home.

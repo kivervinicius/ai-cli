@@ -1,0 +1,1 @@
+ALTER TABLE project_layouts ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;

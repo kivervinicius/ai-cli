@@ -1,407 +1,544 @@
 <p align="center">
   <a href="https://github.com/IAPro-Community">
-    <img src="logo.png" alt="IAPro Community Logo" width="200">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="nexus-logo-dark.png">
+      <img src="nexus-logo.png" alt="IAPro Nexus Logo" width="380">
+    </picture>
   </a>
 </p>
 
 <p align="center">
-  <img src="assets/banner.svg" alt="IAPro AI Control Banner" width="100%">
-</p>
-
-<p align="center">
   <a href="https://github.com/IAPro-Community"><img src="https://img.shields.io/badge/Organization-IAPro--Community-blueviolet?style=for-the-badge&logo=github" alt="IAPro Community"></a>
-  <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.23%2B-00ADD8?style=for-the-badge&logo=go" alt="Go Version"></a>
+  <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?style=for-the-badge&logo=go" alt="Go Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-green.svg?style=for-the-badge" alt="License"></a>
   <a href="https://kernel.org"><img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Platform"></a>
   <img src="https://img.shields.io/badge/Providers-Codex%20%7C%20AGY%20%7C%20Claude%20%7C%20OpenCode%20%7C%20Gemini%20%7C%20Cursor-7C3AED?style=for-the-badge" alt="Supported Providers">
 </p>
 
 <p align="center">
-  <a href="README.md">🇧🇷 Português (Brasil)</a> &nbsp;|&nbsp; <strong>🇬🇧 English</strong>
+  <a href="README.md">🇧🇷 Português</a> &nbsp;|&nbsp; <strong>🇬🇧 English</strong> &nbsp;|&nbsp; <a href="README.es.md">🇪🇸 Español</a>
 </p>
 
 <h3 align="center">
-  ⚡ IAPro AI Control — Open-Source Local Control Plane &amp; Web Cockpit for Coding Agents
+  ⚡ IAPro Nexus — Web-first Workspace for Coding Agents · Powered by Orquestrador Maestro
 </h3>
 
 <p align="center">
-  <i>An official project of the <strong><a href="https://github.com/IAPro-Community">IAPro Community</a></strong> for Agentic Software Engineering</i>
+  <i>A project from the <strong><a href="https://github.com/IAPro-Community">IAPro Community</a></strong> ecosystem for Agentic Software Engineering</i>
 </p>
 
 ---
 
-**IAPro AI Control (`ai`)** is the **official local and visual Control Plane of the <a href="https://github.com/IAPro-Community">IAPro Community</a>**, engineered to manage, supervise, and orchestrate multiple coding agents across the terminal and browser (including **Google AGY / Antigravity**, **Anthropic Claude Code**, **Cursor Agent**, **OpenAI Codex**, **OpenCode**, and **Google Gemini CLI**).
+# IAPro Nexus Manual
 
-It securely manages multiple projects and account identities, isolates authentication credentials in dedicated per-profile sandboxes, provides real-time supervised terminal multiplexing with lease-lock governance, and enables transactional handoffs across AI models without loss of reasoning context.
-
----
-
-## 📸 Interactive Terminal User Interface (TUI)
-
-Launch the interactive control plane at any time by running `ai`:
-
-```text
- ┌────────────────────────────────────────────────────────────────────────────────────────┐
- │  AI CLI Control Plane v0.4.0                             Workspace: ~/tools/ai-manager │
- ├─────────────────────────┬──────────────────────────────────────────────────────────────┤
- │ Providers               │ Accounts (Codex)                                             │
- │                         │                                                              │
- │ ▸ ● Codex             2 │ ▸ ● [1] openai-work          ChatGPT Plus  [███████░░░] 70% ★│
- │   ● AGY               2 │   ● [2] openai-personal      ChatGPT Plus  [██████████] 100% │
- │   ○ Claude            0 │                                                              │
- │   ○ OpenCode          0 │                                                              │
- │   ○ Gemini            0 │                                                              │
- ├─────────────────────────┴──────────────────────────────────────────────────────────────┤
- │ Recent Sessions (Universal Index)                                                      │
- │                                                                                        │
- │ ▸ [1] 12m ago    # REFACTOR CONTROL PLANE                 [AGY   ]  ~/tools/ai-manager │
- │   [2] yesterday  Verify types and linting                [CODEX ]  ~/tools/ai-manager   │
- │   [3] 2 days ago Fix concurrency edge cases              [CODEX ]  ~/tools/ai-manager   │
- │   [4] 3 days ago Security audit                          [AGY   ]  ~/projects          │
- ├────────────────────────────────────────────────────────────────────────────────────────┤
- │ Selected: Codex / openai-work  [Authenticated]                                         │
- │ Actions:  [Enter/1-9] Run  [c] Continue Latest  [r] Resume Modal  [s] Quotas  [l] Login│
- │ AUTO: openai-personal (100% capacity) is optimal for new sessions                     │
- ├────────────────────────────────────────────────────────────────────────────────────────┤
- │ [↑/↓] Navigate  [←/→/Tab] Switch Box  [1-9] Quick Launch  [/] Search  [q/Esc] Quit     │
- └────────────────────────────────────────────────────────────────────────────────────────┘
-```
+This manual covers **beginner to advanced**, in plain language for newcomers and
+with real technical depth for terminal veterans.
 
 ---
 
-## 🌟 Key Features
+## 1. What is IAPro Nexus?
 
-### 1. 🛡️ Multi-Account Sandboxing & Credential Isolation
-- **Strictly Isolated State:** Each profile maintains its own isolated `HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, private D-Bus session, and dedicated `gnome-keyring-daemon` vault.
-- **Zero Token Collisions:** Google OAuth tokens, OpenAI, Anthropic, and custom API keys are restricted to secure per-profile directories with strict `0600` permissions.
-- **Configurable Isolation Presets:** Choose between `developer` (preserves git context and dotfiles), `strict` (hermetic sandbox), and `compat`.
-- **Preserves Workspace Context:** Your working directory (`CWD`), user UID/GID, shell configurations, and git repositories remain fully preserved.
+**IAPro Nexus** (canonical binary `nexus`, with `ai` alias for full backward compatibility) is a **local
+control workspace for coding agents** — the AI assistants that work inside your
+terminal (Codex, Claude Code, Gemini CLI, OpenCode, AGY, Cursor Agent).
 
-### 2. 🧠 Smart Account Selector
-The scheduler evaluates multiple live factors to pick the optimal profile for each run:
-- **Multi-Factor Scoring:** Considers remaining quota capacity, workspace bindings, default preferences, user priorities, and Pro tiers.
-- **Full Transparency (`ai explain <provider>`):** Inspect the exact score breakdown:
-  ```bash
-  $ ai explain agy
-  === Smart Account Selection Explanation: AGY ===
-  Evaluation of all candidate profiles:
+In short, Nexus does three things:
 
-  Optimal Choice: google-work (Reason: authenticated, 92% capacity (+73.9), default profile (+25.0), pro tier (+15.0))
+1. **Organizes by Projects** — every code project becomes the root of your work,
+   with its own agents, sessions, terminals and settings.
+2. **Keeps persistent Agents** — an "Agent" (e.g. *Backend Developer*) survives
+   restarts, account changes and even provider switches. What changes is the
+   "runtime generation" (the concrete execution), not the agent's identity.
+3. **Web-first** — the official interface is a local web dashboard
+   (`nexus web`) with real terminals (xterm.js) inside the browser. No giant
+   mandatory terminal, nothing to install beyond a single binary.
 
-  PROFILE            ELIGIBLE   SCORE    BREAKDOWN / REJECTION
-  google-work        YES        213.9    authenticated, 92% capacity (+73.9), default profile (+25.0), pro tier (+15.0)
-  google-personal    YES        195.0    authenticated, 100% capacity (+80.0), pro tier (+15.0)
-  ```
+Nexus is **Powered by Orquestrador Maestro**: the [Orquestrador Maestro](https://github.com/IAPro-Community/Orquestrador-Maestro)
+is the authority on method, skills, risk and quality gates. Nexus executes the
+real work (processes, terminals, accounts, quotas) without duplicating Maestro's
+knowledge.
 
-### 3. ⚡ Automatic Fallback & Cooldown Tracker
-- **Cycle-Safe Recovery:** When a profile hits HTTP 429 or runs out of credits during execution, AI CLI detects the failure, records cooldown, and seamlessly retries with the next best account.
-- **Loop Prevention:** Each profile is tested at most once per execution cycle.
-
-### 4. 📊 Honest & Real Quota Engine (`ai usage`)
-- **No Fabricated Quotas:** Eliminates fake 100% assumptions. Accurately reports `LIVE` (API/CLI probed), `CACHED` (valid local state), `RATE_LIMITED`, or `UNKNOWN`.
-- **5-Hour and Weekly Windows:** Real-time visibility into quota reset timelines.
-
-```bash
-$ ai usage
-```
-```text
-PROVIDER   PROFILE          ACCOUNT                  PLAN             CAPACITY / 5H                STATUS
-agy        google-work      work@company.com         Google AI Pro    [█████████░] 92%             CACHED
-agy        google-personal  dev@gmail.com            Google AI Pro    [██████████] 100%            CACHED
-codex      openai-work      work@company.com         ChatGPT Plus     [███████░░░] 70%             CACHED
-codex      openai-personal  dev@gmail.com            ChatGPT Plus     [██████████] 100%            CACHED
-```
-
-### 5. 🔄 Universal Session Handoff & Resume
-- **Cross-Provider Index:** Instantly discover and filter conversations across all providers (`ai sessions` or `/` in TUI).
-- **Cross-Account Resumption:** Continue any past conversation using a different account that has available quota:
-  ```bash
-  ai resume <session-id> [provider:profile]
-  ```
-- **Interactive Resume Modal:** Press `[r]` or `[Enter]` on any recent session in the TUI to choose a profile with auto-recommendations.
-
-### 6. 📁 Workspace & Project Bindings
-Pin repository directories to dedicated profiles (e.g. work vs. personal):
-```bash
-# Bind current workspace to work profile
-ai bind codex:openai-work
-
-# List all discovered workspaces
-ai workspaces
-```
-
-### 7. 🔌 5 Natively Supported Providers
-
-AI CLI Control Plane natively coordinates leading terminal AI coding assistants:
-
-#### 🟢 OpenAI Codex (`codex`)
-- **Execution:** `ai codex` (smart selection) or `ai codex:openai-work --model gpt-5.6-sol`
-- **Isolation:** Dedicated per-profile `CODEX_HOME` environment with `auth.json` and `config.toml` in restricted mode (`0600`).
-- **Quotas:** 5-Hour and Weekly limits matching official Codex status metrics (`/status`, `/usage`).
-- **Resumption:** Provider-native session continuation (`codex resume <session-id>`).
-
-#### 🔵 Google AGY / Antigravity (`agy`)
-- **Execution:** `ai agy` (smart selection) or `ai agy:google-work -c`
-- **Isolation:** Private sandboxed D-Bus session (`dbus-run-session`) with dedicated `gnome-keyring-daemon` and isolated `antigravity-oauth-token`.
-- **Quotas:** Google AI Pro 5-Hour and Weekly limits (Gemini 2.5 Pro / Claude 3.7 Sonnet).
-- **Resumption:** Native conversation dispatch (`agy --conversation=<session-id>`).
-
-#### 🟣 Anthropic Claude Code (`claude`)
-- **Execution:** `ai claude` (smart selection) or `ai claude:claude-work -p "refactor auth"`
-- **Isolation:** Dedicated per-profile `CLAUDE_CONFIG_DIR` with isolated OAuth credentials and API keys.
-- **Resumption:** Native session continuation (`claude --resume <session-id>`).
-
-#### 🟠 OpenCode (`opencode`)
-- **Execution:** `ai opencode` or `ai opencode:local --model ollama/deepseek-r1`
-- **Isolation:** Independent per-profile `OPENCODE_HOME` and `XDG_DATA_HOME`.
-- **Capabilities:** Multi-model support for local LLMs (Ollama, vLLM) and cloud providers.
-- **Resumption:** Native session resumption (`opencode session <id>`).
-
-#### 💎 Google Gemini CLI (`gemini`)
-- **Execution:** `ai gemini` (smart selection) or `ai gemini:personal`
-- **Isolation:** Dedicated `GEMINI_CLI_HOME` with isolated `google_accounts.json` per profile.
-- **Capabilities:** Google OAuth authentication without multi-account collisions.
+> **Honesty model:** Nexus never renders "intent as fact". If you asked for
+> *stop*, the state shows `STOPPING` until confirmed. Session continuity is only
+> marked `VERIFIED` when actually verified.
 
 ---
 
-### 8. ⚡ AI Control — Supervised Runtimes & Universal Slash Channel (`/ai`)
+## 2. Installation
 
-AI CLI provides two complementary operational modes:
-- **Classic Mode (`ai <provider>`)**: Fast, direct CLI execution with multi-factor account selection and anti-rate-limit fallback.
-- **Supervised Mode (`ai control start <provider>`)**: Execution under `SessionHost` with interactive reattach (Attach/Detach), real-time event bus, and in-session universal slash commands.
+### Requirements
 
-#### 🎮 Universal Slash Commands (Inside the Supervised Terminal)
-When running inside a supervised session, type special commands starting with `/ai` directly into the CLI prompt. AI Control intercepts them locally without sending them to the model:
+- **OS:** Linux, macOS or Windows (runtime, not just compilation).
+- **Go 1.25+** only if building from source.
+- **Providers:** official CLIs (`codex`, `claude`, `gemini`, `opencode`, `agy`,
+  `cursor`) are auto-detected on `PATH`.
 
-| Command | Description |
-| :--- | :--- |
-| `/ai status` | Displays active runtime status, PID, session ID, and quota capacity. |
-| `/ai accounts` | Lists all configured accounts for the provider and remaining limits. |
-| `/ai usage` | Displays live usage metrics and reset windows. |
-| `/ai handoff <profile>` | **Account Handoff:** Transitions active work to another profile of the same provider. |
-| `/ai continue <provider>` | **Context Handoff:** Starts a new session on another provider with workspace tasks and diffs. |
-| `/ai detach` | Detaches from interactive terminal while keeping the agent process alive. |
-| `/ai stop` | Sends graceful termination signal to the assistant. |
-| `//ai <text>` | **Escape Prefix:** Sends literal `/ai` text directly to the assistant. |
+### Option A — Pre-built binary (recommended)
 
-#### 🖥️ Control Center CLI Commands (`ai control` / `ai ui`)
 ```bash
-ai control                                      # Opens interactive Bubble Tea Control Center
-ai control start codex [--profile work]         # Starts a supervised runtime session
-ai control running [--json]                     # Lists active supervised runtimes
-ai control status <runtime-id> [--json]         # Inspects details of a runtime
-ai control attach <runtime-id>                  # Reconnects terminal to an active session
-ai control stop <runtime-id>                    # Stops a supervised runtime
-ai control handoff <id> codex:personal          # Performs account handoff preserving session
-ai control continue <id> --with claude:work     # Transfers work context to another provider
-ai control cleanup                              # Removes orphaned records and dead sockets
-ai control doctor [--json]                      # Audits drivers, sockets, and compatibility
-```
-
----
-
-## 🚀 Installation & Quick Start
-
-### 1-Line Quick Install (Zero-Clone / Recommended)
-
-**Linux & macOS (via `curl | bash`):**
-```bash
+# Linux / macOS (amd64 or arm64)
 curl -fsSL https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.sh | bash
 ```
 
-**Windows & PowerShell Core (via `irm | iex`):**
 ```powershell
+# Windows (PowerShell)
 irm https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.ps1 | iex
 ```
 
-**Via `go install` (any system with Go):**
-```bash
-go install github.com/kivervinicius/ai-cli/cmd/ai@latest
-```
+The installer downloads the latest release binary and falls back to building from
+source if needed.
 
----
+### Option B — Build from source
 
-### Install from Source (Optional)
-
-**Linux / macOS:**
 ```bash
 git clone https://github.com/kivervinicius/ai-cli.git
 cd ai-cli
-make install
+make build          # produces ./bin/nexus
+sudo make install   # optional: install to /usr/local/bin
 ```
 
-**Windows / PowerShell:**
-```powershell
-git clone https://github.com/kivervinicius/ai-cli.git
-cd ai-cli
-.\install.ps1
-```
+### Verify
 
----
-
-## 🐚 Shell Completion (Bash, Zsh, Fish, and PowerShell)
-
-Enable full tab completion for providers, profiles, sessions, and flags:
-
-### Bash
 ```bash
-source <(ai completion bash)
-# Persist in ~/.bashrc:
-echo 'source <(ai completion bash)' >> ~/.bashrc
-```
-
-### Zsh
-```zsh
-source <(ai completion zsh)
-# Persist in ~/.zshrc:
-echo 'source <(ai completion zsh)' >> ~/.zshrc
-```
-
-### Fish
-```fish
-ai completion fish | source
-```
-
-### PowerShell (Windows & pwsh)
-```powershell
-ai completion powershell | Out-String | Invoke-Expression
-
-# Persist in your $PROFILE:
-Add-Content $PROFILE "`nai completion powershell | Out-String | Invoke-Expression"
+nexus version
+# IAPro Nexus 0.4.1 (linux/amd64, go1.25.0) commit <sha> built <date>
+nexus doctor
 ```
 
 ---
 
-## 💻 CLI Command Reference
+## 3. Getting started (beginner guide)
 
-### Interactive TUI & Execution
-| Command | Description |
-| :--- | :--- |
-| `ai` | Launches the interactive Bubble Tea control plane TUI (Classic Mode). |
-| `ai control` / `ai ui` | Opens the interactive AI Control Center TUI for supervised runtimes. |
-| `ai control start <provider>` | Launches a persistent background runtime with universal `/ai` slash command control. |
-| `ai control running` | Lists active managed runtimes across all providers. |
-| `ai control attach <id>` | Connects the interactive terminal to a running background session. |
-| `ai control stop <id>` | Gracefully stops a supervised runtime. |
-| `ai control handoff <id> <profile>` | Performs transactional same-provider account handoff with session continuity. |
-| `ai control continue <id> --with <prov>` | Executes cross-provider context handoff with automated secret redaction. |
-| `ai control doctor` | Audits control runtime environment, IPC transport, and truthful provider capabilities. |
-| `ai <provider> [args...]` | Runs the provider with automatic smart account selection (e.g. `ai codex -m gpt-5`). |
-| `ai <provider>:<profile> [args...]` | Directly runs with the specified profile (e.g. `ai agy:work -c`). |
-| `ai explain <provider>` | Explains why the Smart Account Selector chose a specific account. |
+### 3.1 Open the Web dashboard
 
-### Supervised In-Session Slash Commands (`/ai`)
-| Slash Command | Description |
-| :--- | :--- |
-| `/ai status` | Displays live runtime identifiers, state, and honest quota metrics. |
-| `/ai accounts` | Lists configured accounts, auth status, and remaining capacity for active provider. |
-| `/ai usage` | Shows point-in-time quota metrics and reset windows. |
-| `/ai handoff <profile>` | Initiates transactional account transition on the same provider. |
-| `/ai continue <provider>` | Creates a safe, bounded work checkpoint and transfers context to another provider. |
-| `/ai detach` | Detaches the terminal while keeping the background agent process running. |
-| `/ai stop` | Gracefully terminates the supervised session. |
-| `//ai <text>` | Escape prefix to send literal `/ai` commands directly to the model. |
-
-### Profile & Authentication Management
-| Command | Description |
-| :--- | :--- |
-| `ai profiles` / `ai list` | Lists all configured profiles, accounts, plans, and statuses. |
-| `ai add <provider> <name>` | Creates a new isolated profile and initializes its sandbox. |
-| `ai login <provider> <name>` | Triggers official CLI authentication for the profile. |
-| `ai logout <provider> <name>` | Removes credentials from the profile. |
-| `ai use <provider> <name>` | Sets the default profile for a provider. |
-| `ai rename <provider> <old> <new>` | Renames a profile while preserving session history. |
-| `ai remove <provider> <name>` | Safely deletes a profile and its isolated credentials. |
-
-### Quotas & Sessions
-| Command | Description |
-| :--- | :--- |
-| `ai usage` | Unified quota monitor across all accounts and providers. |
-| `ai usage <provider> <name>` | Displays detailed limits for a specific profile. |
-| `ai sessions` | Lists unified recent session history from all providers. |
-| `ai sessions search <query>` | Searches sessions by title, ID, or workspace. |
-| `ai resume <id> [profile]` | Resumes a conversation with a specific or optimal profile. |
-
-### Workspaces & Configuration
-| Command | Description |
-| :--- | :--- |
-| `ai bind <provider>:<profile>` | Binds current directory to a specific profile. |
-| `ai unbind <provider>` | Removes workspace binding for a provider. |
-| `ai workspaces` | Lists all discovered workspaces and their active bindings. |
-| `ai current` | Shows active profile and bindings for current workspace. |
-| `ai config validate` | Validates configuration file integrity. |
-
-### Diagnostics, Security & Observability
-| Command | Description |
-| :--- | :--- |
-| `ai doctor` | Performs diagnostic health checks (D-Bus, keyrings, CLIs, permissions). |
-| `ai security` | Audits file permissions and validates credential isolation. |
-| `ai stats` | Displays aggregated usage metrics, success rates, and rate limits. |
-| `ai history` | Shows recent execution telemetry and event logs. |
-| `ai paths` | Displays XDG data, config, and state directories. |
-
----
-
-## 🏗️ Architecture & Security Model
-
-```mermaid
-graph TD
-    User["Developer / Terminal"] --> Entrypoint["ai (CLI / Bubble Tea TUI)"]
-    
-    subgraph Control_Plane["AI CLI Control Plane"]
-        Entrypoint --> Scheduler["Smart Account Selector (Multi-Factor Scoring)"]
-        Entrypoint --> QuotaEngine["Honest Quota Engine (LIVE · CACHED · UNKNOWN)"]
-        Entrypoint --> FallbackExec["Automatic Fallback & Cooldown Tracker"]
-        Entrypoint --> SessionIndex["Universal Session Store (Handoff & Resume)"]
-        Entrypoint --> SecurityLayer["Security & Isolation Presets (strict/dev/compat)"]
-    end
-    
-    subgraph Provider_Adapters["Provider Adapters"]
-        Scheduler --> CodexAd["Codex Adapter"]
-        Scheduler --> AgyAd["AGY Adapter"]
-        Scheduler --> ClaudeAd["Claude Adapter"]
-        Scheduler --> OpenCodeAd["OpenCode Adapter"]
-        Scheduler --> GeminiAd["Gemini Adapter"]
-    end
-    
-    subgraph Sandboxes["Isolated Runtime Sandboxes"]
-        CodexAd --> CodexHome["CODEX_HOME (~/.local/share/ai-cli/profiles/codex/*)"]
-        AgyAd --> AgyHome["D-Bus + Keyring (~/.local/share/ai-cli/profiles/agy/*)"]
-        ClaudeAd --> ClaudeHome["Isolated Runtime (~/.local/share/ai-cli/profiles/claude/*)"]
-    end
+```bash
+nexus web
+# or the classic alias:
+nexus control web
 ```
 
-### Security Guarantees:
-- 🔒 **Strict `0600` Permissions:** Credentials, OAuth tokens, and private keys are never accessible by other system users.
-- 🔒 **Automatic Redaction:** Telemetry logs and diagnostic dumps mask JWT tokens, API keys, and sensitive tokens.
-- 🔒 **Process Isolation:** Keyring daemons run in isolated D-Bus sessions per profile.
+It prints a URL like:
+
+```
+Bootstrap: http://127.0.0.1:PORT/?token=...one-time-secret...
+```
+
+Open that URL in your browser. It exchanges the token for a secure session cookie
+and redirects to the dashboard. The dashboard **only listens on `127.0.0.1`**
+(loopback) — no public exposure by default.
+
+> 💡 No auto-open? Use `ai control web --no-open` and copy the URL yourself.
+
+### 3.2 Create a Project
+
+In the **Projects** section (or Overview):
+
+1. Enter the path of an existing code folder (e.g. `~/my-project`).
+2. Click **Add**.
+3. The project appears with name, slug and Maestro mode (`ASSIST` by default).
+
+> The project gets a **stable ID** (e.g. `prj_01J...`). Two projects with the same
+> base folder (`/home/a/api` and `/home/b/api`) are **different** projects.
+
+### 3.3 Create an Agent
+
+Inside the project:
+
+1. Enter a name (e.g. `Backend Developer`) in **Create Agent**.
+2. The agent appears with state `STOPPED`.
+
+### 3.4 Start the Agent and open a Terminal
+
+1. Click **Start**. Nexus launches a supervised *runtime generation* (persistent
+   process) and the state goes to `WORKING`.
+2. Click **Terminal** to open a real terminal (xterm.js) attached to the agent.
+3. Type normally — it is the provider's terminal, inside the browser.
+
+### 3.5 Stop and Recover
+
+- **Stop** ends the current runtime generation.
+- If the machine reboots or the process dies, the agent **keeps existing** (it is
+  persistent), but the runtime does not. The state becomes `RECOVERABLE`.
+  Click **Recover** to attempt resuming the session (or start a new one, clearly
+  and honestly).
+
+### 3.6 Navigation & shortcuts
+
+- **`Ctrl/Cmd + K`**: command palette (open project, start agent, etc.).
+- Side menu: **Overview · Projects · Agents · Resources · Maestro · Sessions ·
+  Settings** (some sections arrive in later Gates) and the **Legacy** area
+  (Runtimes · Providers · Events).
 
 ---
 
-## 🌐 IAPro Community Ecosystem
+## 4. Concepts (the mental model)
 
-**IAPro AI Control** is part of the official suite of tools for agentic software engineering maintained by the [IAPro Community](https://github.com/IAPro-Community):
+| Concept | What it is | Why it matters |
+|---|---|---|
+| **Project** | The root of the domain. Everything belongs to a project. | Sessions, agents and layouts stay organized per project. |
+| **Persistent Agent** | A stable identity (`agt_01J...`). | Survives restart, account/provider/model changes and terminal reconnects. |
+| **Runtime generation** | One concrete execution of the agent (a process). | The agent is "permanent"; the generation is temporary. |
+| **Config revision** | Immutable version of the agent's config. | Enables safe config rollback. |
+| **Continuity** | How the session was resumed (honest). | `LIVE_SAME_RUNTIME`, `NATIVE_RESUME_VERIFIED/UNVERIFIED`, `CONTEXT_RECOVERED_NEW_SESSION`, etc. |
+| **Maestro** | Method/process layer (community). | Recommends skills, process, risk and verification — Nexus does not duplicate it. |
+| **Honest state** | What is *observed*, not what is *wanted*. | No "STOPPED" before it's true, no "VERIFIED" without verification. |
 
-- **[Orquestrador Maestro](https://github.com/IAPro-Community)**: Disciplined mission orchestration framework with strict DEV Gates and formal verification guarantees.
-- **IAPro Skill Library**: Standardized repository of executable skills and domain knowledge for AI agents.
-- **IAPro AI Control**: High-performance local control plane, supervised terminal multiplexer, and Web Cockpit for all agents running on your workstation.
+### Continuity — reading the states
 
-### Contribute to the Community
-Join our development efforts, report feedback, or propose new coding agent drivers:
-👉 **[https://github.com/IAPro-Community](https://github.com/IAPro-Community)**
+| State | Meaning |
+|---|---|
+| `LIVE_SAME_RUNTIME` | Same process, connected now. |
+| `REATTACHED_SAME_RUNTIME` | Reconnected to the same process (browser closed and came back). |
+| `NATIVE_RESUME_VERIFIED` | Resumed and the provider **confirmed** the session. |
+| `NATIVE_RESUME_UNVERIFIED` | Resumed with the provider session, but confirmation is **not** possible (honesty). |
+| `CONTEXT_RECOVERED_NEW_SESSION` | Context recovered in a **new session** (e.g. provider switch). |
+| `CONTINUITY_FAILED` | The resume failed. |
+
+> The AI is never presented as verification: Nexus does not copy a session ID to
+> "prove" continuity. When the provider cannot verify, the state is `UNVERIFIED`
+> — on purpose.
 
 ---
 
-## 🤝 Contributing
+## 5. CLI reference
 
-Contributions, new provider drivers, and improvements are welcome!
-1. Fork the repository at [IAPro-Community/ai-control](https://github.com/IAPro-Community).
-2. Create your feature branch (`git checkout -b feat/new-feature`).
-3. Commit your changes (`git commit -m 'feat: add new driver'`).
-4. Open a Pull Request.
+The canonical command is `nexus`, with the `ai` alias preserved for full backward compatibility.
+
+### Main commands
+
+```bash
+nexus                  # Web Workspace OS (default)
+nexus web              # Explicitly launch the Web Workspace OS
+nexus start codex      # Start a supervised runtime & attach terminal
+nexus stop <id>        # Gracefully stop a supervised runtime
+nexus ps               # List active supervised runtimes
+nexus attach <id>      # Reconnect terminal to an existing runtime
+nexus handoff <id> ... # Account handoff (same provider)
+nexus continue <id> ...# Context handoff (new provider, NEW session)
+nexus version          # Version, commit, build, go, platform
+nexus doctor           # Full diagnostics of runtimes, keyrings & Maestro
+nexus providers        # Detected providers + honest capabilities
+nexus usage            # Real-time quota/usage (honest status)
+nexus profiles         # Configured profiles/accounts
+```
+
+### Classic mode (direct provider launch)
+
+```bash
+nexus codex:work       # Codex on the "work" profile
+nexus codex:auto       # Codex with automatic account selection
+nexus claude           # Claude Code
+nexus gemini           # Gemini CLI
+nexus opencode         # OpenCode
+nexus agy              # AGY / Antigravity
+```
+
+### Universal Canonical Aliases & Flag Interoperability
+
+Nexus normalizes the most popular community CLI flags and translates them transparently to each provider's native options, both under supervised mode (`nexus start <provider>`) and direct invocation (`nexus <provider>`). **Native CLI flags remain 100% supported without any conflict.**
+
+| Canonical Alias | Description | AGY Translation | Codex Translation | Claude Translation |
+|---|---|---|---|---|
+| `--yolo` or `-y` | Auto-approve permissions & bypass prompts | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` |
+| `--continue` or `-c` | Continue most recent conversation | `--continue` | `resume --last` | `--continue` |
+| `--resume <id>` or `-r <id>` | Resume a specific session by ID | `--conversation=<id>` | `resume <id>` | `--resume <id>` |
+| `--print` or `-p` | Non-interactive mode (print output) | `--print` | `exec` | `--print` |
+| `--effort <level>` | Reasoning effort (low, medium, high) | `--effort <level>` | `-c model_reasoning_effort="<level>"` | — |
+| `--plan` | Start session in planning mode | `--mode plan` | — | — |
+| `--accept-edits` | Start session in accept edits mode | `--mode accept-edits` | — | — |
+
+Examples:
+```bash
+nexus agy --yolo                   # Dispatches agy with --dangerously-skip-permissions
+nexus start codex --yolo           # Starts supervised runtime with sandbox bypass
+nexus codex -c                     # Continues most recent Codex conversation immediately
+nexus agy --resume 0192a...        # Connects directly to the specified conversation
+```
+
+#### Integrated Merged Help (`nexus <provider> --help`)
+
+To inspect options for any provider with visibility of all supported Nexus aliases, run:
+```bash
+nexus agy --help       # or: nexus help agy
+nexus codex --help     # or: nexus help codex
+nexus claude --help    # or: nexus help claude
+```
+Nexus prints a prominent comparison table displaying the **canonical aliases applicable to that tool** followed immediately by the **complete official CLI help**.
+
+#### Custom User Aliases
+
+You can define additional custom aliases in `~/.config/nexus/config.json`:
+```json
+{
+  "flag_aliases": {
+    "--fast": {
+      "agy": ["--effort", "low"],
+      "codex": ["-c", "model_reasoning_effort=\"low\""]
+    }
+  }
+}
+```
+
+### `/nexus` slash commands inside a supervised runtime
+
+```text
+/nexus status    /nexus usage    /nexus accounts    /nexus handoff codex:work
+/nexus continue  /nexus detach   /nexus stop        /nexus help
+```
+
+- `/nexus ...` (and the `/ai ...` alias) is **intercepted by Nexus** (never leaks to the provider — zero bytes).
+- `/help`, `/model`, `/resume` pass **normally to the provider**.
+- To send a literal `/nexus` to the provider, type `//nexus ...`.
 
 ---
 
-## 📄 License
+## 6. Providers and capabilities (full transparency)
 
-Distributed under the **Apache-2.0 License**. See [`LICENSE`](LICENSE) for details.
+| Provider | Control mode | Resume | Honest note |
+|---|---|---|---|
+| Codex | `TERMINAL` | Yes (not live-verified) | Structured events/approvals are **not** advertised as `SUPPORTED` — they would require an `app-server` adapter that does not exist in this version. |
+| Claude Code | `TERMINAL` | Yes | — |
+| Gemini CLI | `TERMINAL` | Yes | — |
+| OpenCode | `TERMINAL` | Yes (not live-verified) | Same honest note as Codex about structured events. |
+| AGY / Antigravity | `TERMINAL` | Yes | Dedicated credential isolation. |
+| Cursor Agent | `TERMINAL` | — | Multi-path detection. |
+| `fake` | `TERMINAL` | Yes | **Test** provider (hidden from UI), used for E2E and to experiment without spending quota. |
+
+Golden rule: **effective capability = provider supports ∧ Nexus implements ∧
+platform supports ∧ version compatible ∧ runtime probe passes.** No fake buttons,
+no inflated claims. An "Allow?" prompt in the terminal is **not** "programmatic
+approval".
+
+---
+
+## 7. Quota & usage — no lies
+
+Nexus shows quota with an **honest status**:
+
+```text
+LIVE · CACHED · ESTIMATED · UNKNOWN · RATE_LIMITED · UNAVAILABLE
+```
+
+`UNKNOWN` **never** becomes 100%. Each reading shows its source and freshness:
+
+```bash
+nexus usage
+nexus usage codex --json
+```
+
+Inside a runtime: `/nexus usage`.
+
+---
+
+## 8. Accounts, profiles & credential isolation
+
+Each profile has its own `HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME` and — for AGY —
+a private D-Bus session and dedicated keyring. OAuth tokens, API keys and
+credentials stay isolated in the profile folder with restricted permissions.
+
+> ⚠️ **Correct terminology:** this is **credential isolation / isolated profile**,
+> **not** a "hermetic sandbox". The process runs with the same user permissions;
+> what is isolated is the config/credential state.
+
+Presets: `developer` (shares dotfiles/git), `strict` (full isolation), `compat`.
+
+---
+
+## 9. Handoff — switch account or provider safely
+
+### Account Handoff (same provider, another account/profile)
+
+```bash
+nexus handoff <runtime-id> codex:work
+```
+
+It is **transactional**: preflight → checkpoint (barrier) → source quiesce →
+**stop barrier** (target does not start while the source could still write the
+same session) → target start → **continuity verification** (the resume command
+must actually reference the session) → lineage update. Failures land in
+`FAILED_SAFE` / `ROLLBACK`.
+
+### Context Handoff (different provider → NEW session)
+
+```bash
+nexus continue <runtime-id> --with claude
+```
+
+Never called "resume": it is a **new session** fed by a safe checkpoint
+(workspace, git branch, status, diff summary) plus a kickoff prompt. Secrets are
+removed by a central redaction pipeline.
+
+---
+
+## 10. Remote access (private and secure)
+
+The dashboard listens on loopback by default. To access from another machine:
+
+### Via SSH tunnel (recommended)
+
+```bash
+# On machine A (where agents run):
+nexus web --no-open
+
+# On machine B:
+ssh -N -L 8080:127.0.0.1:<PORT> user@machine-a
+# open http://127.0.0.1:8080 and use the bootstrap token
+```
+
+### Via private VPN (Tailscale/WireGuard/corporate)
+
+```bash
+nexus web --listen <private-ip> --remote
+```
+
+`--remote` is an **explicit opt-in**. Public addresses (`8.8.8.8`, etc.) are
+**refused** (error, not a warning). The CGNAT range `100.64.0.0/10` (Tailscale
+etc.) is treated as a private network.
+
+---
+
+## 11. Security
+
+| Control | State |
+|---|---|
+| Loopback default (`127.0.0.1` / `::1`) | ✅ |
+| Public bind | ❌ refused (not just a warning) |
+| Private bind | ✅ only with explicit `--remote` |
+| One-time cryptographic bootstrap token | ✅ |
+| `HttpOnly` + `SameSite=Strict` session cookie | ✅ |
+| CSRF on state-changing REST | ✅ |
+| `Origin` validation on REST and WebSocket | ✅ |
+| Authenticated WebSocket | ✅ |
+| No wildcard CORS | ✅ |
+| CSP + `nosniff` + `Referrer-Policy` + `frame-ancestors 'none'` | ✅ |
+| Terminal/provider never rendered as raw HTML | ✅ |
+| Project path canonicalization (Abs → EvalSymlinks) | ✅ |
+| Per-project IDOR isolation (agent of A inaccessible via B) | ✅ |
+| Secret redaction (keys, tokens, JWT, cookies, `.env`, PEM) | ✅ |
+| Bounded IPC framing (no unbounded allocation) | ✅ |
+| Protocol version enforcement | ✅ |
+
+---
+
+## 12. Data & state
+
+Nexus uses **local SQLite** (100% Go driver, no CGO, single portable binary) for
+durable product state:
+
+```text
+projects · agents · agent_revisions · runtime_generations · lineage ·
+events_metadata · maestro_advice · verification_evidence · project_layouts
+```
+
+The file lives at `<data-dir>/nexus.db`. Live runtime state (PIDs, sockets) stays
+in the in-memory/on-disk registry (`runtimes.json`).
+
+**What SQLite NEVER stores:** API keys, OAuth tokens, `auth.json`, cookies,
+provider secrets, private keys, full terminal transcripts.
+
+### Paths
+
+| Purpose | Default location |
+|---|---|
+| Data (SQLite, registry, logs) | Linux/macOS: `~/.local/share/ai-manager` · Windows: `%LOCALAPPDATA%` |
+| Config | `~/.config/ai-manager` (respects `XDG_CONFIG_HOME`) |
+| Override | env `AI_CLI_DATA_DIR`, `AI_CLI_CONFIG_DIR`, `AI_CLI_STATE_DIR` |
+
+---
+
+## 13. Platform targets and release evidence
+
+The code and pipeline target Linux, Windows and macOS on amd64/arm64. The
+mandatory CI matrix runs Go 1.25, tests, native runtime E2E and builds on
+`ubuntu-latest`, `windows-latest` and `macos-latest`; the GoReleaser snapshot only
+runs after all three jobs succeed.
+
+| Target platform | Runtime covered by CI | Release artifact | Evidence in this local copy |
+|---|---|---|---|
+| Linux amd64/arm64 | PTY, socket, SessionHost and Web | `tar.gz` | Frontend + available offline Go units; full Go 1.25 suite requires CI |
+| Windows amd64/arm64 | ConPTY, Named Pipe, SessionHost and Web | `.zip` | requires `windows-latest` job |
+| macOS amd64/arm64 | PTY, socket, SessionHost and Web | `tar.gz` | requires `macos-latest` job |
+
+**Release rule:** only advertise a platform as validated for a version after its
+native job is green. Cross-compilation alone is not runtime evidence.
+
+---
+
+## 14. Troubleshooting (FAQ)
+
+**The dashboard won't open.**
+```bash
+ai doctor
+```
+Make sure the port is free and the bootstrap token URL was used.
+
+**`could not open a new TTY`**
+The optional compatibility TUI (`nexus --tui` or `nexus control`) needs a real terminal. Use `nexus`/`nexus web` in TTY-less sessions.
+
+**The agent is `RECOVERABLE`.**
+The process died (reboot/crash). The agent is intact — click **Recover**.
+
+**`refusing to bind to public address`**
+You tried `--listen <public-ip>`. Use an SSH tunnel or `--remote` with a private IP.
+
+**Quota shows `UNKNOWN`.**
+The provider does not expose the source. That is honesty, not a bug.
+
+**The agent terminal disconnected.**
+Browser closed? The runtime keeps running. Reopen and the terminal reconnects
+(bounded replay). If the runtime died, the state becomes `RECOVERABLE`.
+
+**Need help with Maestro.**
+Maestro is the sibling repo [Orquestrador-Maestro](https://github.com/IAPro-Community/Orquestrador-Maestro).
+In Nexus, Maestro is optional. If the integration is unavailable, the state is `MAESTRO_DEGRADED`; Nexus does not fabricate skills, gates or recommendations.
+
+---
+
+## 15. Current candidate capability set
+
+The current candidate integrates: Web-first Workspace OS, Direct work without a
+Mission, persistent Agents, supervised/reconnecting terminals, Safe Apply,
+resource/quota selection, explicit Intelligence, degradable Maestro integration,
+versioned WorkPlans, blocking clarifications, durable Mission Runner, DAG/parallel
+execution, per-package worktrees, independent review, governed remediation,
+scheduling and Take Control/Return to Mission.
+
+This **does not replace release gates**. Before publishing a version, run the full
+matrix in `.github/workflows/ci.yml` and the procedure in
+`DEV/NEXUS_FINAL_LOCAL_VALIDATION_PROMPT.md`.
+
+---
+
+## 16. Development
+
+```bash
+# Backend
+go vet ./...
+go test -race ./...
+
+# Frontend (Bun is the canonical package manager; lockfile at web/bun.lock)
+cd web
+bun install --frozen-lockfile
+bun run typecheck
+bun run lint
+bun run test
+bun run build      # produces the embedded frontend (internal/control/web/embedded)
+
+# Release snapshot
+goreleaser release --snapshot --clean
+```
+
+> The final binary is **single** — the frontend is embedded in the Go binary.
+> Node/Bun are not required on the end-user machine.
+
+---
+
+## 17. License
+
+Apache-2.0. A project of the **IAPro Community**.
+
+---
+
+*IAPro Nexus · Powered by Orquestrador Maestro · Community-first. If a feature says "arrives
+in Gate N", it has not been built yet — Nexus does not promise what does not
+exist.*

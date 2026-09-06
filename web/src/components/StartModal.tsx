@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ProviderInfo, ProfileInfo, RuntimeSession, Workspace } from '../types';
+import { asArray } from '../lib/safeArray';
 import { api } from '../api';
-import { X, Play, FolderGit2 } from 'lucide-react';
+import { Play, FolderGit2 } from 'lucide-react';
+import { Button, Dialog, Input, Select } from '../design-system';
 
 interface StartModalProps {
   providers: ProviderInfo[];
@@ -10,6 +13,7 @@ interface StartModalProps {
   workspaces: Workspace[];
   onClose: () => void;
   onSuccess: (newSession: RuntimeSession) => void;
+  open?: boolean;
 }
 
 export const StartModal: React.FC<StartModalProps> = ({
@@ -19,18 +23,26 @@ export const StartModal: React.FC<StartModalProps> = ({
   workspaces,
   onClose,
   onSuccess,
+  open = true,
 }) => {
-  const installedProviders = providers.filter((p) => p.installed);
+  const { t } = useTranslation();
+  const safeProviders = asArray<ProviderInfo>(providers);
+  const safeProfiles = asArray<ProfileInfo>(profiles);
+  const safeWorkspaces = asArray<Workspace>(workspaces);
+
+  const installedProviders = safeProviders.filter((p) => p.installed);
   const [selectedProvider, setSelectedProvider] = useState<string>(
-    installedProviders.length > 0 ? installedProviders[0].id : 'agy'
+    installedProviders.length > 0 ? installedProviders[0].id : 'agy',
   );
 
-  const availableProfiles = profiles.filter((p) => p.provider === selectedProvider);
+  const availableProfiles = safeProfiles.filter((p) => p.provider === selectedProvider);
   const [selectedProfile, setSelectedProfile] = useState<string>(
-    availableProfiles.length > 0 ? availableProfiles[0].name : 'default'
+    availableProfiles.length > 0 ? availableProfiles[0].name : 'default',
   );
 
-  const [selectedWorkspace, setSelectedWorkspace] = useState<string>(workspace || (workspaces.length > 0 ? workspaces[0].path : ''));
+  const [selectedWorkspace, setSelectedWorkspace] = useState<string>(
+    workspace || (safeWorkspaces.length > 0 ? safeWorkspaces[0].path : ''),
+  );
   const [isCustomWorkspace, setIsCustomWorkspace] = useState(false);
   const [customWorkspace, setCustomWorkspace] = useState('');
   const [sessionTitle, setSessionTitle] = useState('');
@@ -40,7 +52,7 @@ export const StartModal: React.FC<StartModalProps> = ({
 
   const handleProviderChange = (prov: string) => {
     setSelectedProvider(prov);
-    const profs = profiles.filter((p) => p.provider === prov);
+    const profs = safeProfiles.filter((p) => p.provider === prov);
     setSelectedProfile(profs.length > 0 ? profs[0].name : 'default');
   };
 
@@ -69,7 +81,7 @@ export const StartModal: React.FC<StartModalProps> = ({
         selectedProfile,
         targetWs,
         [],
-        sessionTitle.trim() || undefined
+        sessionTitle.trim() || undefined,
       );
       onSuccess(res);
       onClose();
@@ -81,123 +93,124 @@ export const StartModal: React.FC<StartModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4 font-mono">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div className="flex items-center space-x-2">
-            <Play className="w-4 h-4 text-sky-400 fill-current" />
-            <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
-              Launch Agent Runtime
-            </h3>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={t('legacy.startRuntimeBtn', 'Start Agent Runtime')}
+    >
+      <div className="space-y-4 font-mono">
         <div className="space-y-3 text-xs">
           {/* Target Project / Workspace */}
           <div>
-            <label className="text-slate-400 flex items-center space-x-1.5">
-              <FolderGit2 className="w-3.5 h-3.5 text-sky-400" />
-              <span>Target Project / Workspace:</span>
-            </label>
-            <select
-              value={isCustomWorkspace ? '__custom__' : selectedWorkspace}
-              onChange={(e) => handleWorkspaceSelect(e.target.value)}
-              className="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-100 focus:outline-none focus:border-sky-500"
+            <label
+              className="flex items-center space-x-1.5"
+              style={{ color: 'var(--nx-text-soft)' }}
             >
-              {workspaces.map((ws) => (
-                <option key={ws.path} value={ws.path}>
-                  {ws.name} ({ws.path})
-                </option>
-              ))}
-              <option value="__custom__">+ Enter Custom Path...</option>
-            </select>
+              <FolderGit2 className="w-3.5 h-3.5" style={{ color: 'var(--nx-accent-text)' }} />
+              <span>{t('legacy.targetWorkspace', 'Target Project / Workspace:')}</span>
+            </label>
+            <Select
+              value={isCustomWorkspace ? '__custom__' : selectedWorkspace}
+              onChange={(value) => handleWorkspaceSelect(value)}
+              options={[
+                ...safeWorkspaces.map((ws) => ({
+                  value: ws.path,
+                  label: `${ws.name} (${ws.path})`,
+                })),
+                {
+                  value: '__custom__',
+                  label: t('legacy.enterCustomPath', '+ Enter Custom Path...'),
+                },
+              ]}
+            />
             {isCustomWorkspace && (
-              <input
-                type="text"
-                placeholder="/absolute/path/to/project"
-                value={customWorkspace}
-                onChange={(e) => setCustomWorkspace(e.target.value)}
-                className="mt-2 w-full bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-slate-100 focus:outline-none focus:border-sky-500"
-                autoFocus
-              />
+              <div style={{ marginTop: 8 }}>
+                <Input
+                  placeholder={t('legacy.customPathPlaceholder', '/absolute/path/to/project')}
+                  value={customWorkspace}
+                  onChange={(val) => setCustomWorkspace(val)}
+                  autoFocus
+                />
+              </div>
             )}
           </div>
 
           {/* Session Title / Goal */}
           <div>
-            <label className="text-slate-400">Session Title / Objective (Optional):</label>
-            <input
-              type="text"
-              placeholder="e.g. Refactor Auth, Debug Database..."
+            <label style={{ color: 'var(--nx-text-soft)', display: 'block', marginBottom: 4 }}>
+              {t('legacy.sessionObjective', 'Session Title / Objective (Optional):')}
+            </label>
+            <Input
+              placeholder={t('legacy.sessionPlaceholder', 'e.g. Refactor Auth, Debug Database...')}
               value={sessionTitle}
-              onChange={(e) => setSessionTitle(e.target.value)}
-              className="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
+              onChange={(val) => setSessionTitle(val)}
             />
           </div>
 
           {/* Coding Provider */}
           <div>
-            <label className="text-slate-400">Coding Provider:</label>
-            <select
+            <label style={{ color: 'var(--nx-text-soft)', display: 'block', marginBottom: 4 }}>
+              {t('legacy.codingProvider', 'Coding Provider:')}
+            </label>
+            <Select
               value={selectedProvider}
-              onChange={(e) => handleProviderChange(e.target.value)}
-              className="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-100 uppercase focus:outline-none focus:border-sky-500"
-            >
-              {installedProviders.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.id} {p.version ? `(${p.version})` : ''}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => handleProviderChange(val)}
+              options={installedProviders.map((p) => ({
+                value: p.id,
+                label: `${p.id.toUpperCase()} ${p.version ? `(${p.version})` : ''}`.trim(),
+              }))}
+            />
           </div>
 
           {/* Profile / Account */}
           <div>
-            <label className="text-slate-400">Profile / Account:</label>
-            <select
+            <label style={{ color: 'var(--nx-text-soft)', display: 'block', marginBottom: 4 }}>
+              {t('legacy.profileAccount', 'Profile / Account:')}
+            </label>
+            <Select
               value={selectedProfile}
-              onChange={(e) => setSelectedProfile(e.target.value)}
-              className="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-100 focus:outline-none focus:border-sky-500"
-            >
-              {availableProfiles.length > 0 ? (
-                availableProfiles.map((p) => (
-                  <option key={p.name} value={p.name}>
-                    {p.name} {p.account_email ? `(${p.account_email})` : ''}
-                  </option>
-                ))
-              ) : (
-                <option value="default">default</option>
-              )}
-            </select>
+              onChange={(val) => setSelectedProfile(val)}
+              options={
+                availableProfiles.length > 0
+                  ? availableProfiles.map((p) => ({
+                      value: p.name,
+                      label: `${p.name} ${p.account_email ? `(${p.account_email})` : ''}`.trim(),
+                    }))
+                  : [{ value: 'default', label: 'default' }]
+              }
+            />
           </div>
         </div>
 
         {error && (
-          <div className="p-3 bg-rose-950/50 border border-rose-800 rounded text-rose-300 text-xs">
+          <div
+            className="p-3 rounded text-xs"
+            style={{
+              background: 'var(--nx-surface-2)',
+              border: '1px solid var(--nx-danger)',
+              color: 'var(--nx-danger)',
+            }}
+          >
             {error}
           </div>
         )}
 
-        <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-800">
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 rounded text-xs font-medium text-slate-400 hover:text-white"
-          >
-            Cancel
-          </button>
-          <button
+        <div className="nx-dialog-actions">
+          <Button onClick={onClose}>{t('directSession.cancel', 'Cancel')}</Button>
+          <Button
+            tone="brand"
             disabled={loading || installedProviders.length === 0}
             onClick={handleStart}
-            className="px-4 py-1.5 iapro-gradient-bg hover:opacity-95 disabled:opacity-50 text-white rounded text-xs font-semibold shadow-md shadow-purple-950/40 iapro-glow-sm transition flex items-center space-x-1.5"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
-            <span>{loading ? 'Starting...' : 'Start Runtime'}</span>
-          </button>
+            <span>
+              {loading
+                ? t('legacy.startingRuntime', 'Starting Runtime...')
+                : t('legacy.startRuntimeBtn', 'Start Agent Runtime')}
+            </span>
+          </Button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 };

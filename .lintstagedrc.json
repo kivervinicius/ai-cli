@@ -1,0 +1,6 @@
+{
+  "web/src/**/*.{ts,tsx}": ["sh -c 'cd web && npx eslint --fix \"$@\"' --", "sh -c 'cd web && npx prettier --write \"$@\"' --"],
+  "web/src/**/*.css": ["sh -c 'cd web && npx stylelint --fix \"$@\"' --", "sh -c 'cd web && npx prettier --write \"$@\"' --"],
+  "web/src/**/*.{json,md,yml,yaml}": ["sh -c 'cd web && npx prettier --write \"$@\"' --"],
+  "**/*.go": ["gofmt -w -s"]
+}

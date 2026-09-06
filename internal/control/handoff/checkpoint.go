@@ -21,6 +21,7 @@ type WorkCheckpoint struct {
 	SourceProvider  string    `json:"source_provider"`
 	SourceProfile   string    `json:"source_profile"`
 	SourceSessionID string    `json:"source_session_id,omitempty"`
+	SourceModel     string    `json:"source_model,omitempty"`
 	Workspace       string    `json:"workspace"`
 	Goal            string    `json:"goal,omitempty"`
 	GitBranch       string    `json:"git_branch,omitempty"`
@@ -48,15 +49,16 @@ type LineageRecord struct {
 }
 
 // CaptureWorkCheckpoint captures bounded workspace metadata with universal redaction.
-func CaptureWorkCheckpoint(workspace, sourceRuntimeID, sourceProvider, sourceProfile, sourceSessionID, goal string) WorkCheckpoint {
+func CaptureWorkCheckpoint(workspace, sourceRuntimeID, sourceProvider, sourceProfile, sourceSessionID, sourceModel, goal string) WorkCheckpoint {
 	id := fmt.Sprintf("cp-%s-%d", sourceProvider, time.Now().UnixNano())
 	cp := WorkCheckpoint{
-		SchemaVersion:   2,
+		SchemaVersion:   3,
 		CheckpointID:    id,
 		SourceRuntimeID: sourceRuntimeID,
 		SourceProvider:  sourceProvider,
 		SourceProfile:   sourceProfile,
 		SourceSessionID: sourceSessionID,
+		SourceModel:     sourceModel,
 		Workspace:       security.Redact(workspace),
 		Goal:            security.Redact(goal),
 		CreatedAt:       time.Now(),

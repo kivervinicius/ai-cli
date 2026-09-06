@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-// ProviderID identifies a supported AI CLI provider (e.g. "codex", "agy", "claude", "opencode", "gemini").
+// ProviderID identifies a supported AI CLI provider (e.g. "codex", "agy", "claude", "opencode", "gemini", "cursor").
 type ProviderID string
 
 const (
@@ -11,21 +11,22 @@ const (
 	ProviderClaude   ProviderID = "claude"
 	ProviderOpenCode ProviderID = "opencode"
 	ProviderGemini   ProviderID = "gemini"
+	ProviderCursor   ProviderID = "cursor"
 )
 
 // FailureKind categorizes the cause of a CLI execution failure.
 type FailureKind string
 
 const (
-	FailureNone        FailureKind = "NONE"
-	FailureAuth        FailureKind = "AUTH_FAILURE"
-	FailureQuota       FailureKind = "QUOTA_FAILURE"
-	FailureRateLimit   FailureKind = "RATE_LIMIT_FAILURE"
-	FailureNetwork     FailureKind = "NETWORK_FAILURE"
-	FailureProvider    FailureKind = "PROVIDER_FAILURE"
-	FailureCommand     FailureKind = "COMMAND_FAILURE"
-	FailureUser        FailureKind = "USER_FAILURE"
-	FailureUnknown     FailureKind = "UNKNOWN_FAILURE"
+	FailureNone      FailureKind = "NONE"
+	FailureAuth      FailureKind = "AUTH_FAILURE"
+	FailureQuota     FailureKind = "QUOTA_FAILURE"
+	FailureRateLimit FailureKind = "RATE_LIMIT_FAILURE"
+	FailureNetwork   FailureKind = "NETWORK_FAILURE"
+	FailureProvider  FailureKind = "PROVIDER_FAILURE"
+	FailureCommand   FailureKind = "COMMAND_FAILURE"
+	FailureUser      FailureKind = "USER_FAILURE"
+	FailureUnknown   FailureKind = "UNKNOWN_FAILURE"
 )
 
 // UsageStatus represents the state and confidence of quota/usage data.
@@ -66,8 +67,11 @@ const (
 )
 
 // UsageWindow represents usage metrics for a specific time window (e.g. 5h, weekly).
+// Group clusters windows by model family when a provider exposes separate quotas
+// (e.g. AGY: "gemini" for Gemini models, "claude_gpt" for Claude/GPT models).
 type UsageWindow struct {
 	Kind             string     `json:"kind"`
+	Group            string     `json:"group,omitempty"`
 	UsedPercent      *float64   `json:"used_percent,omitempty"`
 	RemainingPercent *float64   `json:"remaining_percent,omitempty"`
 	ResetTime        *time.Time `json:"reset_time,omitempty"`
@@ -139,26 +143,26 @@ type Session struct {
 
 // WorkspaceInfo groups active sessions and bound profiles for a workspace directory.
 type WorkspaceInfo struct {
-	Path      string             `json:"path"`
-	Bindings  map[string]string  `json:"bindings"` // provider -> profile
-	Sessions  []Session          `json:"sessions"`
-	LastTouch time.Time          `json:"last_touch"`
+	Path      string            `json:"path"`
+	Bindings  map[string]string `json:"bindings"` // provider -> profile
+	Sessions  []Session         `json:"sessions"`
+	LastTouch time.Time         `json:"last_touch"`
 }
 
 // DetectionResult indicates whether a CLI provider binary is available locally.
 type DetectionResult struct {
-	Installed   bool   `json:"installed"`
-	Version     string `json:"version,omitempty"`
-	BinaryPath  string `json:"binary_path,omitempty"`
-	Error       string `json:"error,omitempty"`
+	Installed  bool   `json:"installed"`
+	Version    string `json:"version,omitempty"`
+	BinaryPath string `json:"binary_path,omitempty"`
+	Error      string `json:"error,omitempty"`
 }
 
 // Failure classifies an execution failure.
 type Failure struct {
-	Kind       FailureKind `json:"kind"`
-	Message    string      `json:"message"`
+	Kind       FailureKind    `json:"kind"`
+	Message    string         `json:"message"`
 	RetryAfter *time.Duration `json:"retry_after,omitempty"`
-	ResetAt    *time.Time  `json:"reset_at,omitempty"`
+	ResetAt    *time.Time     `json:"reset_at,omitempty"`
 }
 
 // IsolationPreset defines security isolation level.

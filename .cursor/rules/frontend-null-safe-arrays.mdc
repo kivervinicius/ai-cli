@@ -1,0 +1,39 @@
+---
+description: Evitar crashes null.length/map em dados da API no frontend Nexus
+globs: web/src/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Arrays da API são nullable (obrigatório)
+
+Em Go, slice vazio frequentemente vira JSON `null`. TypeScript tipa como `T[]`,
+mas em runtime pode ser `null`. Isso causa:
+
+`Cannot read properties of null (reading 'length'|'map'|'filter'|'forEach')`
+
+## Regras
+
+1. **Na borda da API** (`api.ts`, `nexus/api.ts`, `useNexusData`, loaders):
+   normalize com `asArray` / `asStringArray` de `web/src/lib/safeArray.ts`.
+2. **Antes de `.map` / `.length` / `.filter` / `.forEach`** em campos vindos do
+   backend (`phases`, `packages`, `dependencies`, `generations`, `changed_files`,
+   `commands`, `runtimes`, `agents`, `skills`, etc.): use
+   `asArray(value)` ou `(value || [])` / `Array.isArray`.
+3. **Todo modelo que parseia WorkPlan / Mission / Receipt / AgentDetail** deve
+   ter teste com fixture `null` nos arrays (regressão obrigatória).
+4. Não confie só no `strict: true` — ele não protege contra JSON `null` se o
+   tipo declarado for `T[]` sem `| null`.
+
+## Checklist rápido
+
+- [ ] Campo veio de `fetch` / `res.json()`?
+- [ ] Pode ser `null` mesmo tipado como array?
+- [ ] Há `.length`/`.map` sem normalizar?
+- [ ] Existe teste com payload `null`?
+- [ ] `make web-verify` inclui o gate `null-arrays`?
+
+## Após o fix
+
+Rode `make web-verify` e cite `DEV/validation/FRONTEND_LATEST.md`.
+O gate `Null-safe API array access` falha se houver `.dependencies.length`
+(ou campos similares) sem `asArray` / `|| []` / `?.`.

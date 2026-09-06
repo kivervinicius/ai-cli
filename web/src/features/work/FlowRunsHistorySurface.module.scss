@@ -1,0 +1,47 @@
+@use '../../styles/tokens';
+@use '../../styles/typography';
+@use '../../styles/mixins';
+
+.loadingContainer {
+  display: grid;
+  place-items: center;
+  padding: 40px;
+}
+
+.runsList {
+  display: grid;
+  gap: 10px;
+}
+
+.runButton {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 4px;
+  @include mixins.focus-visible-ring;
+}
+
+.runInfo {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.runTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--nx-font-size-sm);
+}
+
+.runMeta {
+  color: var(--nx-muted);
+  font-size: var(--nx-font-size-xs);
+}

@@ -20,7 +20,7 @@ var (
 
 // Metadata stores user local annotations like pinned status and custom aliases.
 type Metadata struct {
-	Pinned  bool   `json:"pinned,omitempty"`
+	Pinned      bool   `json:"pinned,omitempty"`
 	CustomTitle string `json:"custom_title,omitempty"`
 }
 

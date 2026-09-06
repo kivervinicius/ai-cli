@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/signal"
 	"runtime"
@@ -79,22 +78,23 @@ func controlCmd(args []string) error {
 	case "doctor":
 		return controlDoctorCmd(args[1:])
 	default:
-		return fmt.Errorf("unknown control command %q. Run 'ai control --help' for usage", args[0])
+		return fmt.Errorf("unknown control command %q. Run '%s control --help' for usage", args[0], progName())
 	}
 }
 
 func controlHelp() {
-	fmt.Println(`AI Control Center — Supervised Agent Runtimes
+	p := progName()
+	fmt.Printf(`Nexus Control Center — Supervised Agent Runtimes
 
 USAGE:
-  ai control [subcommand] [flags]
-  ai ui
+  %s control [subcommand] [flags]
+  %s ui
 
 SUBCOMMANDS:
   (no args)                     Open interactive Bubble Tea Control Center
   start <provider> [--profile <name>] [args...]
                                 Start a supervised runtime session
-  running [--json]              List active managed runtimes
+  running [--json]              List active managed runtimes (alias: %s ps)
   status <runtime-id> [--json]  Display runtime details
   attach <runtime-id>           Connect terminal to running session
   stop <runtime-id>             Gracefully stop a runtime
@@ -103,24 +103,46 @@ SUBCOMMANDS:
   continue <runtime-id> --with <provider[:profile]>
                                 Cross-provider context handoff
   cleanup                       Clean up stale runtime records and dead sockets
-  doctor [--json]               Audit control runtime environment and drivers
-  web [--port <port>] [--no-open]
-                                Open browser-based Web Control Center
+  doctor [--json] [--repair]     Audit control runtime environment and drivers
+  web [--port <port>] [--no-open] [--listen <ip>] [--remote]
+                                Open browser-based Web Workspace OS
+                                Default port: 3000 (override with NEXUS_WEB_PORT env var)
+  web open                      Reopen the running Web UI from any terminal
+  web url                       Print the current Web UI URL (with auth token if needed)
 
 FLAGS:
   --json                        Output in machine-readable JSON format
-  -h, --help                    Show this help message`)
+  -h, --help                    Show this help message
+`, p, p, p)
 }
 
 func controlWebCmd(args []string) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "open":
+			return controlWebReopenCmd(false)
+		case "url":
+			return controlWebReopenCmd(true)
+		}
+	}
+
 	var port int
-	var host string = "127.0.0.1"
+	var host = "127.0.0.1"
 	var noOpen bool
+	var remote bool
+
+	// Resolve port: CLI flag > env var > default (3000)
+	port = web.DefaultPort
+	if envPort := os.Getenv("NEXUS_WEB_PORT"); envPort != "" {
+		if p, err := strconv.Atoi(envPort); err == nil && p > 0 && p <= 65535 {
+			port = p
+		}
+	}
 
 	for i := 0; i < len(args); i++ {
 		if (args[i] == "--port" || args[i] == "-p") && i+1 < len(args) {
 			p, err := strconv.Atoi(args[i+1])
-			if err == nil {
+			if err == nil && p >= 0 && p <= 65535 {
 				port = p
 			}
 			i++
@@ -129,54 +151,69 @@ func controlWebCmd(args []string) error {
 			i++
 		} else if args[i] == "--no-open" {
 			noOpen = true
+		} else if args[i] == "--remote" {
+			remote = true
 		}
 	}
 
-	if host != "127.0.0.1" && host != "localhost" && host != "::1" {
-		parsedIP := net.ParseIP(host)
-		if parsedIP != nil && (parsedIP.IsPrivate() || parsedIP.IsLoopback()) {
-			fmt.Printf("[SECURITY NOTICE] Web server bound to private network interface (%s).\n\n", host)
-		} else {
-			fmt.Printf("[SECURITY WARNING] Binding to %q exposes the web control center to non-loopback networks.\n"+
-				"                  Use SSH port forwarding (ssh -N -L local:127.0.0.1:port user@host) or a private VPN instead.\n\n", host)
-		}
-	}
-
-	srv, err := web.NewServer(web.ServerOptions{
+	core, err := NewCore(CoreConfig{
 		Host:   host,
 		Port:   port,
 		NoOpen: noOpen,
+		Remote: remote,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to start web control server: %w", err)
+		return err
 	}
 
-	bootstrapURL := srv.BootstrapURL()
-	fmt.Println("=== AI Control Center (Web UI) ===")
-	fmt.Printf("URL:       %s\n", srv.URL())
-	fmt.Printf("Bootstrap: %s\n\n", bootstrapURL)
-	fmt.Println("Press Ctrl+C to stop the Web Control Center.")
-
-	if !noOpen {
-		go func() {
-			time.Sleep(200 * time.Millisecond)
-			_ = web.OpenBrowser(bootstrapURL)
-		}()
-	}
-
-	// Trap SIGINT / SIGTERM for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigChan
-		fmt.Println("\nShutting down AI Control Center...")
+		fmt.Println("\nShutting down Nexus Control Center...")
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		_ = srv.Shutdown(ctx)
+		_ = core.Stop(ctx)
 		os.Exit(0)
 	}()
 
-	return srv.Start()
+	go func() {
+		<-core.Ready()
+		bootstrapURL := core.BootstrapURL()
+		fmt.Println("=== Nexus Control Center (Web UI) ===")
+		fmt.Printf("URL:       %s\n", core.URL())
+		fmt.Printf("Bootstrap: %s\n\n", bootstrapURL)
+		fmt.Println("Press Ctrl+C to stop the Web Control Center.")
+		fmt.Printf("Reopen from any terminal: %s web open\n", progName())
+
+		if !noOpen {
+			time.Sleep(200 * time.Millisecond)
+			_ = web.OpenBrowser(bootstrapURL)
+		}
+	}()
+
+	return core.Start(context.Background())
+}
+
+func controlWebReopenCmd(printOnly bool) error {
+	state, err := web.ReadListenState()
+	if err != nil {
+		return fmt.Errorf("nexus web não está em execução neste usuário. Inicie com `%s web` e, se o browser não abrir, rode `%s web open`", progName(), progName())
+	}
+	target := state.BootstrapURL
+	if target == "" {
+		target = state.URL
+	}
+	if printOnly {
+		fmt.Println(target)
+		return nil
+	}
+	if err := web.OpenBrowser(target); err != nil {
+		fmt.Println(target)
+		return fmt.Errorf("não foi possível abrir o browser: %w", err)
+	}
+	fmt.Printf("Opened %s\n", state.URL)
+	return nil
 }
 
 // controlHostCmd is the internal background daemon worker running as: ai __control-host --runtime <runtime-id>
@@ -204,9 +241,20 @@ func controlHostCmd(args []string) error {
 	}
 
 	p := model.Profile{Name: sess.ProfileID, Provider: sess.ProviderID}
-	bin, cmdArgs, env, err := d.BuildCommand(context.Background(), p, sess.Args)
-	if err != nil {
-		return fmt.Errorf("failed to build runtime command: %w", err)
+	launchArgs, customCommand, envelopeErr := launcher.ConsumeLaunchEnvelope(runtimeID)
+	if envelopeErr != nil {
+		// Compatibility for runtimes created before private launch envelopes.
+		launchArgs = sess.Args
+		if len(launchArgs) == 0 {
+			return fmt.Errorf("failed to consume private launch envelope: %w", envelopeErr)
+		}
+	}
+	bin, cmdArgs, env := sess.Binary, launchArgs, sess.Env
+	if !customCommand {
+		bin, cmdArgs, env, err = d.BuildCommand(context.Background(), p, launchArgs)
+		if err != nil {
+			return fmt.Errorf("failed to build runtime command: %w", err)
+		}
 	}
 
 	sh, err := host.NewSessionHost(host.Config{
@@ -237,7 +285,7 @@ func controlHostCmd(args []string) error {
 
 func controlStartCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: ai control start <provider> [--profile <name>] [args...]")
+		return fmt.Errorf("usage: %s start <provider> [--profile <name>] [args...]", progName())
 	}
 
 	providerID := args[0]
@@ -274,7 +322,7 @@ func controlStartCmd(args []string) error {
 		}
 
 		res, _ := sel.SelectBestProfile(ctx, providerID, cwd, candidates, accounts, nil)
-		if res.SelectedProfile != nil && res.SelectedProfile.Name != "" {
+		if res != nil && res.SelectedProfile != nil && res.SelectedProfile.Name != "" {
 			profileName = res.SelectedProfile.Name
 		} else {
 			def, _ := config.GetDefaultProfile(providerID)
@@ -318,7 +366,7 @@ func controlRunningCmd(args []string) error {
 	}
 
 	if len(active) == 0 {
-		fmt.Println("No active supervised runtimes. Start one with: ai control start <provider>")
+		fmt.Printf("No active supervised runtimes. Start one with: %s start <provider>\n", progName())
 		return nil
 	}
 
@@ -334,7 +382,7 @@ func controlRunningCmd(args []string) error {
 
 func controlStatusCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: ai control status <runtime-id> [--json]")
+		return fmt.Errorf("usage: %s control status <runtime-id> [--json]", progName())
 	}
 	runtimeID := args[0]
 	jsonMode := hasFlag(args, "--json")
@@ -379,12 +427,15 @@ func controlStatusCmd(args []string) error {
 	fmt.Printf("Control Level:      %s\n", st.ControlLevel)
 	fmt.Printf("Workspace:          %s\n", st.Workspace)
 	fmt.Printf("Started At:         %s\n", st.StartedAt.Format(time.RFC3339))
+	if st.DroppedOutputChunks > 0 {
+		fmt.Printf("Dropped Output:     %d chunks (slow consumer)\n", st.DroppedOutputChunks)
+	}
 	return nil
 }
 
 func controlAttachCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: ai control attach <runtime-id>")
+		return fmt.Errorf("usage: %s attach <runtime-id>", progName())
 	}
 	return attachRuntime(args[0])
 }
@@ -485,7 +536,7 @@ func attachRuntime(runtimeID string) error {
 
 func controlStopCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: ai control stop <runtime-id>")
+		return fmt.Errorf("usage: %s stop <runtime-id>", progName())
 	}
 	runtimeID := args[0]
 	reg := registry.DefaultRegistry()
@@ -523,7 +574,7 @@ func controlStopCmd(args []string) error {
 
 func controlHandoffCmd(args []string) error {
 	if len(args) < 2 {
-		return errors.New("usage: ai control handoff <runtime-id> <provider:profile>")
+		return fmt.Errorf("usage: %s handoff <runtime-id> <provider:profile>", progName())
 	}
 	runtimeID := args[0]
 	target := args[1]
@@ -539,7 +590,7 @@ func controlHandoffCmd(args []string) error {
 
 func controlContinueCmd(args []string) error {
 	if len(args) < 2 {
-		return errors.New("usage: ai control continue <runtime-id> --with <provider[:profile]>")
+		return fmt.Errorf("usage: %s continue <runtime-id> --with <provider[:profile]>", progName())
 	}
 	runtimeID := args[0]
 	var targetProvider, targetProfile string
@@ -570,7 +621,7 @@ func controlContinueCmd(args []string) error {
 	return attachRuntime(newSess.RuntimeID)
 }
 
-func controlCleanupCmd(args []string) error {
+func controlCleanupCmd(_ []string) error {
 	reg := registry.DefaultRegistry()
 	cleaned, _ := reg.CleanupStale()
 	purged, _ := reg.PurgeInactive()
@@ -583,7 +634,15 @@ func controlDoctorCmd(args []string) error {
 	ctx := context.Background()
 
 	reg := registry.DefaultRegistry()
-	staleCount, _ := reg.CleanupStale()
+	staleCount := 0
+	for _, session := range reg.List() {
+		if session.State == registry.StateStale {
+			staleCount++
+		}
+	}
+	if hasFlag(args, "--repair") {
+		staleCount, _ = reg.CleanupStale()
+	}
 
 	var filterProvider string
 	for _, a := range args {
@@ -658,7 +717,7 @@ func controlDoctorCmd(args []string) error {
 		return enc.Encode(report)
 	}
 
-	fmt.Println("=== AI Control Runtime Doctor ===")
+	fmt.Println("=== Nexus Control Runtime Doctor ===")
 	fmt.Printf("Platform:         %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	fmt.Printf("IPC Transport:    %s\n", ipcMechanism)
 	fmt.Printf("Terminal Engine:  %s\n", termMechanism)

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kivervinicius/ai-cli/internal/core/model"
+	"github.com/kivervinicius/ai-cli/internal/core/quota"
 	"github.com/kivervinicius/ai-cli/internal/profile"
 )
 
@@ -109,7 +111,7 @@ func TestControlPlaneCLICommands(t *testing.T) {
 	out, err := captureStdout(func() error {
 		return Run([]string{"version"})
 	})
-	if err != nil || !strings.Contains(out, "ai-cli") {
+	if err != nil || !strings.Contains(out, "Nexus") {
 		t.Fatalf("version failed: %s, %v", out, err)
 	}
 
@@ -224,7 +226,7 @@ func TestControlPlaneCLICommands(t *testing.T) {
 	out, err = captureStdout(func() error {
 		return Run([]string{"doctor"})
 	})
-	if err != nil || !strings.Contains(out, "AI CLI Diagnostics") {
+	if err != nil || !strings.Contains(out, "Nexus Diagnostics") {
 		t.Fatalf("doctor failed: %s, %v", out, err)
 	}
 
@@ -258,5 +260,57 @@ func TestControlPlaneCLICommands(t *testing.T) {
 	})
 	if err != nil || !strings.Contains(out, "drivers") {
 		t.Fatalf("control doctor failed: %s, %v", out, err)
+	}
+}
+
+func TestQuotaGroupStatusKeepsUsableModelGroupAvailable(t *testing.T) {
+	qv := quota.QuotaView{Status: "CACHED", ModelGroups: []quota.ModelGroup{
+		{Name: "Gemini Models", Windows: []quota.Window{{Kind: "5h", Remaining: 8}, {Kind: "weekly", Remaining: 17}}},
+		{Name: "Claude & GPT Models", Windows: []quota.Window{{Kind: "claude_5h", Remaining: 0}, {Kind: "claude_weekly", Remaining: 0}}},
+	}}
+	qv.ComputeAvailability()
+	if !qv.IsAvailable() || quotaGroupStatus(qv.ModelGroups[0], qv.Status) != "DISPONIVEL" || quotaGroupStatus(qv.ModelGroups[1], qv.Status) != "INDISPONIVEL" {
+		t.Fatalf("expected mixed group availability, got profile=%v reasons=%+v", qv.IsAvailable(), qv.AvailReasons)
+	}
+}
+
+func TestPerformSystemUpdateDoesNotClaimNexusBinaryUpdated(t *testing.T) {
+	binDir := t.TempDir()
+	writeExecutable := func(name, body string) {
+		t.Helper()
+		path := filepath.Join(binDir, name)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body+"\n"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeExecutable("npm", "exit 0")
+	writeExecutable("orquestrador-maestro", "if [ \"$1\" = \"version\" ]; then echo 0.1.0; fi")
+	t.Setenv("PATH", binDir)
+	t.Setenv("HOME", t.TempDir())
+
+	result := PerformSystemUpdate()
+	if result.NexusUpdated {
+		t.Fatal("update must not claim that the Nexus binary was updated when no binary update ran")
+	}
+	if !strings.Contains(result.Error, "Nexus binary update") {
+		t.Fatalf("missing honest Nexus update status: %+v", result)
+	}
+}
+
+func TestQuotaUnknownLabelReturnsStatusAwarePlaceholder(t *testing.T) {
+	tests := []struct {
+		status string
+		want   string
+	}{
+		{string(model.UsageUnknown), "— desconhecido"},
+		{string(model.UsageError), "— erro"},
+		{string(model.UsageRateLimited), "— rate limited"},
+		{"CACHED", "—"},
+		{"", "—"},
+	}
+	for _, tt := range tests {
+		if got := quotaUnknownLabel(tt.status); got != tt.want {
+			t.Errorf("quotaUnknownLabel(%q) = %q, want %q", tt.status, got, tt.want)
+		}
 	}
 }

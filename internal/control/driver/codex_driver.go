@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
-	"github.com/kivervinicius/ai-cli/internal/core/config"
+	"github.com/kivervinicius/ai-cli/internal/control/terminal"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
-	"github.com/kivervinicius/ai-cli/internal/core/security"
 	"github.com/kivervinicius/ai-cli/internal/runtime"
 )
 
@@ -54,20 +54,20 @@ func (d *CodexDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effect
 		Terminal: CapabilityEvidence{
 			Status:          CapabilitySupported,
 			ProviderVersion: version,
-			Mechanism:       "PTY / ConPTY TerminalBackend",
+			Mechanism:       terminal.BackendMechanism(),
 			Tested:          true,
 		},
 		Attach: CapabilityEvidence{
 			Status:          CapabilitySupported,
 			ProviderVersion: version,
-			Mechanism:       "AI Control IPC Socket/Pipe",
+			Mechanism:       "Nexus Control IPC Socket/Pipe",
 			Tested:          true,
 		},
 		StructuredEvents: CapabilityEvidence{
 			Status:          CapabilityUnsupported,
 			ProviderVersion: version,
 			Mechanism:       "codex app-server adapter",
-			Reason:          "Structured app-server adapter disabled; running in truthful TERMINAL mode",
+			Reason:          "Structured app-server adapter deferred; see DEV/AI_CONTROL_DEFERRED.md. Running in truthful TERMINAL mode with PTY heuristic fallback only",
 			Tested:          false,
 		},
 		Sessions: CapabilityEvidence{
@@ -80,17 +80,20 @@ func (d *CodexDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effect
 			Status:          CapabilitySupported,
 			ProviderVersion: version,
 			Mechanism:       "codex resume <session-id>",
-			Tested:          true,
+			Reason:          "resume command supported by signature; not runtime-verified against a live codex session",
+			Tested:          false,
 		},
 		Fork: CapabilityEvidence{
-			Status:    CapabilityUnsupported,
-			Reason:    "Codex CLI does not support session branching/forking",
-			Tested:    false,
+			Status: CapabilityUnsupported,
+			Reason: "Codex CLI does not support session branching/forking",
+			Tested: false,
 		},
 		SubmitPrompt: CapabilityEvidence{
-			Status:    CapabilityUnsupported,
-			Reason:    "Structured prompt submission requires app-server adapter; use terminal input",
-			Tested:    false,
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "codex exec <prompt>",
+			Reason:          "Codex exec provides a verified non-interactive prompt contract",
+			Tested:          true,
 		},
 		CancelTurn: CapabilityEvidence{
 			Status:    CapabilitySupported,
@@ -98,19 +101,21 @@ func (d *CodexDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effect
 			Tested:    true,
 		},
 		Approvals: CapabilityEvidence{
-			Status:    CapabilityUnsupported,
-			Reason:    "Structured approvals require app-server adapter; interact via terminal prompt",
-			Tested:    false,
+			Status: CapabilityUnsupported,
+			Reason: "Structured approvals require Codex app-server adapter (deferred; DEV/AI_CONTROL_DEFERRED.md); interact via terminal prompt",
+			Tested: false,
 		},
 		NativeUIAttach: CapabilityEvidence{
-			Status:    CapabilityUnsupported,
-			Reason:    "Native GUI attach not implemented for Codex",
-			Tested:    false,
+			Status: CapabilityUnsupported,
+			Reason: "Native GUI attach not implemented for Codex",
+			Tested: false,
 		},
 		Headless: CapabilityEvidence{
-			Status:    CapabilityPartial,
-			Reason:    "Supports -p non-interactive prompts in classic mode",
-			Tested:    true,
+			Status:          CapabilitySupported,
+			ProviderVersion: version,
+			Mechanism:       "codex exec <prompt>",
+			Reason:          "Codex exec is available for non-interactive prompts",
+			Tested:          true,
 		},
 		SlashControl: CapabilityEvidence{
 			Status:    CapabilitySupported,
@@ -131,20 +136,17 @@ func (d *CodexDriver) BuildCommand(ctx context.Context, p model.Profile, extraAr
 		return "", nil, nil, err
 	}
 
-	home, err := config.ProfileHome("codex", p.Name)
+	home, err := bootstrapProfile("codex", p)
 	if err != nil {
 		return "", nil, nil, err
 	}
-	_ = os.MkdirAll(home, 0700)
-
-	cfgObj, _ := config.LoadConfig()
-	_ = security.ApplyIsolation(home, security.GetPolicy(cfgObj.IsolationPreset))
-
 	env := runtime.EnvSet(os.Environ(), map[string]string{
-		"HOME":        home,
-		"CODEX_HOME":  home,
-		"AI_PROFILE":  p.Name,
-		"AI_PROVIDER": "codex",
+		"HOME":             home,
+		"CODEX_HOME":       home,
+		"CODEX_CONFIG_DIR": home,
+		"AI_PROFILE":       p.Name,
+		"AI_PROVIDER":      "codex",
+		"PATH":             runtime.EnhancedPATH(filepath.Dir(bin)),
 	})
 
 	return bin, extraArgs, env, nil

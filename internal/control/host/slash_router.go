@@ -7,6 +7,7 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
+	"github.com/kivervinicius/ai-cli/internal/core/quota"
 	"github.com/kivervinicius/ai-cli/internal/profile"
 )
 
@@ -42,14 +43,23 @@ func StripANSI(str string) string {
 	return b.String()
 }
 
-// RouteSlashCommand inspects terminal input lines and intercepts /ai commands with live usage data.
+// RouteSlashCommand inspects terminal input lines and intercepts /nexus or /ai commands with live usage data.
 func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResult {
 	clean := StripANSI(input)
 	trimmed := strings.TrimSpace(clean)
 
-	// 1. Check for escape prefix "//ai"
+	// 1. Check for escape prefix "//nexus" or "//ai"
+	if strings.HasPrefix(trimmed, "//nexus") {
+		escaped := "/nexus" + trimmed[7:]
+		if strings.HasSuffix(input, "\n") {
+			escaped += "\n"
+		}
+		return SlashResult{
+			Intercepted:      false,
+			ForwardToProcess: escaped,
+		}
+	}
 	if strings.HasPrefix(trimmed, "//ai") {
-		// Strip one slash: forward "/ai..." to the child process
 		escaped := "/ai" + trimmed[4:]
 		if strings.HasSuffix(input, "\n") {
 			escaped += "\n"
@@ -60,8 +70,10 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 		}
 	}
 
-	// 2. Check for reserved "/ai" command
-	if !strings.HasPrefix(trimmed, "/ai") {
+	// 2. Check for reserved "/nexus" or "/ai" command
+	isNexus := strings.HasPrefix(trimmed, "/nexus")
+	isAI := strings.HasPrefix(trimmed, "/ai")
+	if !isNexus && !isAI {
 		// Normal input: forward untouched
 		return SlashResult{
 			Intercepted:      false,
@@ -69,7 +81,12 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 		}
 	}
 
-	// It is an /ai command: intercept completely
+	prefix := "/nexus"
+	if isAI && !isNexus {
+		prefix = "/ai"
+	}
+
+	// It is a slash command: intercept completely
 	parts := strings.Fields(trimmed)
 	subcmd := ""
 	if len(parts) > 1 {
@@ -78,29 +95,33 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 
 	switch subcmd {
 	case "help", "?", "":
-		resp := `
+		resp := fmt.Sprintf(`
 ╔══════════════════════════════════════════════════════════════════╗
-║               AI CONTROL — UNIVERSAL SLASH COMMANDS             ║
+║             NEXUS CONTROL — UNIVERSAL SLASH COMMANDS            ║
 ╠══════════════════════════════════════════════════════════════════╣
-║  /ai status               Show current runtime status & quota   ║
-║  /ai accounts             List available accounts & quotas      ║
-║  /ai usage                Display honest usage metrics snapshot ║
-║  /ai handoff <profile>    Same-provider account handoff         ║
-║  /ai continue <provider>  Cross-provider context handoff        ║
-║  /ai control              Open Control Center TUI instructions  ║
-║  /ai detach               Detach from session (keeps alive)     ║
-║  /ai stop                 Gracefully terminate runtime session  ║
-║  //ai <text>              Escape prefix to send literal /ai     ║
+║  %s status               Show current runtime status & quota   ║
+║  %s accounts             List available accounts & quotas      ║
+║  %s usage                Display honest usage metrics snapshot ║
+║  %s handoff <profile>    Same-provider account handoff         ║
+║  %s continue <provider>  Cross-provider context handoff        ║
+║  %s control              Open Control Center TUI instructions  ║
+║  %s detach               Detach from session (keeps alive)     ║
+║  %s stop                 Gracefully terminate runtime session  ║
+║  /%s <text>              Escape prefix to send literal command ║
 ╚══════════════════════════════════════════════════════════════════╝
-`
+`, prefix, prefix, prefix, prefix, prefix, prefix, prefix, prefix, prefix)
 		return SlashResult{Intercepted: true, Response: resp}
 
 	case "status":
-		snap := profile.GetUsageSnapshot(session.ProviderID, session.ProfileID)
-		usageStr := formatUsageSummary(snap)
+		qv := profile.GetQuotaView(session.ProviderID, session.ProfileID, "", "")
+		usageStr := formatQuotaViewSummary(qv)
+		availLabel := qv.AvailabilityLabel()
+		if !qv.IsAvailable() {
+			availLabel = "⚠ " + availLabel
+		}
 
 		resp := fmt.Sprintf(`
-┌─ AI CONTROL STATUS ──────────────────────────────────────────┐
+┌─ NEXUS CONTROL STATUS ───────────────────────────────────────┐
 │  Runtime ID:       %-41s │
 │  Provider:         %-41s │
 │  Profile:          %-41s │
@@ -109,20 +130,22 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 │  Control Level:    %-41s │
 │  Workspace:        %-41s │
 │  Usage / Quota:    %-41s │
+│  Disponibilidade:  %-41s │
 └──────────────────────────────────────────────────────────────┘
 `, session.RuntimeID, strings.ToUpper(session.ProviderID), session.ProfileID,
 			fallbackUnknown(session.ProviderSessionID), session.State, session.ControlLevel,
-			truncateStr(session.Workspace, 41), usageStr)
+			truncateStr(session.Workspace, 41), usageStr, availLabel)
 		return SlashResult{Intercepted: true, Response: resp}
 
 	case "accounts":
 		profs, _ := profile.List()
 		var lines []string
 		lines = append(lines, fmt.Sprintf("=== Accounts & Quotas for Provider: %s ===", strings.ToUpper(session.ProviderID)))
-		lines = append(lines, fmt.Sprintf("%-16s %-12s %-14s %-14s %s", "PROFILE", "STATUS", "CAPACITY", "FRESHNESS", "RESET"))
-		lines = append(lines, strings.Repeat("─", 70))
+		lines = append(lines, fmt.Sprintf("%-16s %-12s %-14s %-14s %-14s %s", "PROFILE", "STATUS", "CAPACITY", "AVAIL", "FRESHNESS", "RESET"))
+		lines = append(lines, strings.Repeat("─", 80))
 
 		found := 0
+		allUnavailable := true
 		for _, p := range profs {
 			if p.Provider == session.ProviderID {
 				found++
@@ -131,7 +154,7 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 					activeMarker = "> "
 				}
 				info := profile.GetAccountInfo(p.Provider, p.Name)
-				snap := profile.GetUsageSnapshot(p.Provider, p.Name)
+				qv := profile.GetQuotaView(p.Provider, p.Name, "", "")
 
 				authStatus := "AUTH_OK"
 				if !info.Authenticated {
@@ -139,54 +162,74 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 				}
 
 				capStr := "UNKNOWN"
-				for _, w := range snap.Windows {
-					if w.RemainingPercent != nil {
-						capStr = fmt.Sprintf("%.0f%% left", *w.RemainingPercent)
-						break
+				if summary := qv.CompactGroupSummary(); summary != "" && (qv.Status == string(model.UsageLive) || qv.Status == string(model.UsageCached) || qv.Status == string(model.UsageEstimated)) {
+					capStr = summary
+				} else if qv.Status == string(model.UsageLive) || qv.Status == string(model.UsageCached) || qv.Status == string(model.UsageEstimated) {
+					if rem, ok := qv.BestGroupRemaining(); ok {
+						capStr = fmt.Sprintf("%.0f%% left", rem)
 					}
 				}
-				if snap.Status == model.UsageRateLimited {
+				if qv.Status == string(model.UsageRateLimited) {
 					capStr = "429 LIMITED"
 				}
 
-				freshStr := string(snap.Status)
+				availLabel := qv.AvailabilityLabel()
+				if qv.IsAvailable() {
+					allUnavailable = false
+				}
+
+				freshStr := qv.Status
+				if !qv.FetchedAt.IsZero() {
+					freshStr = quota.FormatFreshness(qv.FetchedAt)
+				}
 				resetStr := "-"
-				for _, w := range snap.Windows {
-					if w.ResetDescription != "" {
-						resetStr = w.ResetDescription
+				for _, g := range qv.ModelGroups {
+					for _, w := range g.Windows {
+						if w.ResetDesc != "" {
+							resetStr = w.ResetDesc
+							break
+						}
+					}
+					if resetStr != "-" {
 						break
 					}
 				}
 
-				lines = append(lines, fmt.Sprintf("%s%-14s %-12s %-14s %-14s %s",
-					activeMarker, p.Name, authStatus, capStr, freshStr, resetStr,
+				lines = append(lines, fmt.Sprintf("%s%-14s %-12s %-14s %-14s %-14s %s",
+					activeMarker, p.Name, authStatus, capStr, availLabel, freshStr, resetStr,
 				))
 			}
 		}
 		if found == 0 {
 			lines = append(lines, "  (No profiles configured for this provider)")
 		}
+		if allUnavailable && found > 0 {
+			lines = append(lines, "")
+			lines = append(lines, fmt.Sprintf("⚠  ALERTA: Nenhuma conta disponível para %s!", strings.ToUpper(session.ProviderID)))
+			lines = append(lines, "   Aguarde o reset da quota ou use outro provider.")
+		}
 		return SlashResult{Intercepted: true, Response: strings.Join(lines, "\n") + "\n"}
 
 	case "usage":
-		snap := profile.GetUsageSnapshot(session.ProviderID, session.ProfileID)
+		qv := profile.GetQuotaView(session.ProviderID, session.ProfileID, "", "")
 		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("\n=== Quota Snapshot: %s:%s ===\n", strings.ToUpper(session.ProviderID), session.ProfileID))
-		sb.WriteString(fmt.Sprintf("Status:       %s\n", snap.Status))
-		sb.WriteString(fmt.Sprintf("Source:       %s\n", snap.Source))
-		if len(snap.Windows) > 0 {
-			for _, w := range snap.Windows {
-				remStr := "UNKNOWN"
-				if w.RemainingPercent != nil {
-					remStr = fmt.Sprintf("%.1f%%", *w.RemainingPercent)
+		fmt.Fprintf(&sb, "\n=== Quota Snapshot: %s:%s ===\n", strings.ToUpper(session.ProviderID), session.ProfileID)
+		fmt.Fprintf(&sb, "Status:       %s\n", qv.Status)
+		fmt.Fprintf(&sb, "Source:       %s\n", qv.Source)
+		if len(qv.ModelGroups) > 0 {
+			for _, group := range qv.ModelGroups {
+				if qv.HasMultipleGroups() && group.Name != "" {
+					fmt.Fprintf(&sb, "\n  %s:\n", group.Name)
 				}
-				sb.WriteString(fmt.Sprintf("Window [%s]:  Remaining: %s | Reset: %s\n", w.Kind, remStr, w.ResetDescription))
+				for _, w := range group.Windows {
+					fmt.Fprintf(&sb, "  Window [%s]:  Remaining: %.1f%% | Reset: %s\n", w.Kind, w.Remaining, w.ResetDesc)
+				}
 			}
 		} else {
 			sb.WriteString("Remaining:    UNKNOWN (No authentic quota metric exposed)\n")
 		}
-		if !snap.FetchedAt.IsZero() {
-			sb.WriteString(fmt.Sprintf("Last Check:   %s (%s ago)\n", snap.FetchedAt.Format(time.RFC3339), time.Since(snap.FetchedAt).Round(time.Second)))
+		if !qv.FetchedAt.IsZero() {
+			fmt.Fprintf(&sb, "Last Check:   %s (%s ago)\n", qv.FetchedAt.Format(time.RFC3339), time.Since(qv.FetchedAt).Round(time.Second))
 		}
 		return SlashResult{Intercepted: true, Response: sb.String() + "\n"}
 
@@ -194,21 +237,21 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 		return SlashResult{
 			Intercepted: true,
 			Action:      "detach",
-			Response:    "\n[AI Control] Detached from runtime session. Host process remains running in background.\n",
+			Response:    "\n[Nexus Control] Detached from runtime session. Host process remains running in background.\n",
 		}
 
 	case "stop":
 		return SlashResult{
 			Intercepted: true,
 			Action:      "stop",
-			Response:    "\n[AI Control] Stopping runtime session...\n",
+			Response:    "\n[Nexus Control] Stopping runtime session...\n",
 		}
 
 	case "handoff":
 		if len(parts) < 3 {
 			return SlashResult{
 				Intercepted: true,
-				Response:    "Usage: /ai handoff <target-profile> (e.g. /ai handoff codex:work or /ai handoff work)\n",
+				Response:    fmt.Sprintf("Usage: %s handoff <target-profile> (e.g. %s handoff codex:work or %s handoff work)\n", prefix, prefix, prefix),
 			}
 		}
 		target := parts[2]
@@ -216,14 +259,14 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 			Intercepted: true,
 			Action:      "handoff",
 			ActionArg:   target,
-			Response:    fmt.Sprintf("\n[AI Control] Initiating same-provider account handoff to %s...\n", target),
+			Response:    fmt.Sprintf("\n[Nexus Control] Initiating same-provider account handoff to %s...\n", target),
 		}
 
 	case "continue":
 		if len(parts) < 3 {
 			return SlashResult{
 				Intercepted: true,
-				Response:    "Usage: /ai continue <target-provider[:profile]> (e.g. /ai continue claude or /ai continue claude:work)\n",
+				Response:    fmt.Sprintf("Usage: %s continue <target-provider[:profile]> (e.g. %s continue claude or %s continue claude:work)\n", prefix, prefix, prefix),
 			}
 		}
 		target := parts[2]
@@ -231,19 +274,19 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 			Intercepted: true,
 			Action:      "continue",
 			ActionArg:   target,
-			Response:    fmt.Sprintf("\n[AI Control] Creating cross-provider context envelope for %s...\n", target),
+			Response:    fmt.Sprintf("\n[Nexus Control] Creating cross-provider context envelope for %s...\n", target),
 		}
 
 	case "control", "ui":
 		return SlashResult{
 			Intercepted: true,
-			Response:    "\n[AI Control] To open the full Control Center, detach (/ai detach) and run: ai control\n",
+			Response:    fmt.Sprintf("\n[Nexus Control] To open the full Workspace OS, detach (%s detach) and run: nexus\n", prefix),
 		}
 
 	default:
 		return SlashResult{
 			Intercepted: true,
-			Response:    fmt.Sprintf("Unknown command %q. Type /ai help for available commands.\n", subcmd),
+			Response:    fmt.Sprintf("Unknown command %q. Type %s help for available commands.\n", subcmd, prefix),
 		}
 	}
 }
@@ -262,22 +305,19 @@ func truncateStr(s string, max int) string {
 	return s
 }
 
-func formatUsageSummary(snap model.UsageSnapshot) string {
-	switch snap.Status {
-	case model.UsageLive, model.UsageCached:
-		for _, w := range snap.Windows {
-			if w.RemainingPercent != nil {
-				return fmt.Sprintf("%.0f%% remaining (%s)", *w.RemainingPercent, snap.Status)
-			}
-		}
-		return string(snap.Status)
-	case model.UsageRateLimited:
-		return "RATE_LIMITED (429)"
-	case model.UsageUnsupported:
-		return "UNSUPPORTED"
-	default:
-		return "UNKNOWN"
+// formatQuotaViewSummary returns a compact one-line summary from a QuotaView.
+func formatQuotaViewSummary(qv quota.QuotaView) string {
+	status := qv.Status
+	if status == "" {
+		status = "UNKNOWN"
 	}
+	if summary := qv.CompactGroupSummary(); summary != "" {
+		fresh := ""
+		if !qv.FetchedAt.IsZero() {
+			fresh = " · " + quota.FormatFreshness(qv.FetchedAt)
+		}
+		return fmt.Sprintf("%s (%s)%s", summary, status, fresh)
+	}
+	bottleneck, _ := qv.Bottleneck()
+	return fmt.Sprintf("%.0f%% remaining (%s)", bottleneck, status)
 }
-
-

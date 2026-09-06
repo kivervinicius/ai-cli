@@ -3,7 +3,16 @@ package host
 import (
 	"net"
 	"sync"
+	"sync/atomic"
 )
+
+// FanoutStats describes output that could not be delivered to a slow client.
+// Dropped chunks are intentional backpressure protection; callers can use the
+// counters to detect when a reconnect/history recovery may be necessary.
+type FanoutStats struct {
+	DroppedChunks uint64
+	DroppedBytes  uint64
+}
 
 type clientWorker struct {
 	conn     net.Conn
@@ -14,9 +23,11 @@ type clientWorker struct {
 // BoundedFanout manages isolated per-client delivery queues so slow observers
 // never block the supervised child process terminal stream.
 type BoundedFanout struct {
-	mu      sync.RWMutex
-	clients map[net.Conn]*clientWorker
-	bufCap  int
+	mu            sync.RWMutex
+	clients       map[net.Conn]*clientWorker
+	bufCap        int
+	droppedChunks atomic.Uint64
+	droppedBytes  atomic.Uint64
 }
 
 func NewBoundedFanout(bufCap int) *BoundedFanout {
@@ -80,8 +91,18 @@ func (f *BoundedFanout) Broadcast(data []byte) {
 		select {
 		case w.queue <- chunk:
 		default:
-			// Slow consumer queue is full: drop chunk rather than blocking child process
+			// Slow consumer queue is full: drop chunk rather than blocking child process.
+			f.droppedChunks.Add(1)
+			f.droppedBytes.Add(uint64(len(chunk)))
 		}
+	}
+}
+
+// Stats returns cumulative delivery loss for all clients since creation.
+func (f *BoundedFanout) Stats() FanoutStats {
+	return FanoutStats{
+		DroppedChunks: f.droppedChunks.Load(),
+		DroppedBytes:  f.droppedBytes.Load(),
 	}
 }
 

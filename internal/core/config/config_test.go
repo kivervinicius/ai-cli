@@ -64,3 +64,55 @@ func TestConfigValidation(t *testing.T) {
 		t.Fatalf("expected 3 validation issues, got %d: %+v", len(issues), issues)
 	}
 }
+
+func TestConfigLanguageBackwardCompatibility(t *testing.T) {
+	t.Setenv("AI_CLI_CONFIG_DIR", t.TempDir())
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Language != "auto" {
+		t.Fatalf("language=%q", cfg.Language)
+	}
+	cfg.Language = "es"
+	if err := SaveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadConfig()
+	if err != nil || loaded.Language != "es" {
+		t.Fatalf("language=%q err=%v", loaded.Language, err)
+	}
+}
+
+func TestIntelligenceConfigDefaultsOffAndPersistsWithoutSecret(t *testing.T) {
+	t.Setenv("AI_CLI_CONFIG_DIR", t.TempDir())
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Intelligence.Mode != IntelligenceOff {
+		t.Fatalf("expected intelligence OFF by default, got %q", cfg.Intelligence.Mode)
+	}
+	cfg.Intelligence = IntelligenceConfig{
+		Mode: IntelligenceCLI, Provider: "claude", Profile: "work", Model: "claude-sonnet",
+	}
+	if err := SaveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Intelligence.Mode != IntelligenceCLI || loaded.Intelligence.Provider != "claude" || loaded.Intelligence.Profile != "work" {
+		t.Fatalf("unexpected intelligence config: %+v", loaded.Intelligence)
+	}
+}
+
+func TestConfigValidationRejectsInvalidIntelligenceMode(t *testing.T) {
+	cfg := NewDefaultConfig()
+	cfg.Intelligence.Mode = IntelligenceMode("MAGIC")
+	issues := cfg.Validate()
+	if len(issues) != 1 {
+		t.Fatalf("expected one intelligence validation issue, got %v", issues)
+	}
+}

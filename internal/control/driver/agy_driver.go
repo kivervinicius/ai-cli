@@ -4,12 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
-	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
-	"github.com/kivervinicius/ai-cli/internal/core/security"
 	"github.com/kivervinicius/ai-cli/internal/runtime"
 )
 
@@ -60,7 +59,7 @@ func (d *AGYDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effectiv
 		Attach: CapabilityEvidence{
 			Status:          CapabilitySupported,
 			ProviderVersion: version,
-			Mechanism:       "AI Control IPC Socket/Pipe",
+			Mechanism:       "Nexus Control IPC Socket/Pipe",
 			Tested:          true,
 		},
 		StructuredEvents: CapabilityEvidence{
@@ -97,9 +96,9 @@ func (d *AGYDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effectiv
 			Tested:    true,
 		},
 		Approvals: CapabilityEvidence{
-			Status:    CapabilityUnsupported,
-			Reason:    "AGY tool approvals handled interactively in terminal",
-			Tested:    false,
+			Status: CapabilityUnsupported,
+			Reason: "AGY tool approvals handled interactively in terminal",
+			Tested: false,
 		},
 		NativeUIAttach: CapabilityEvidence{
 			Status: CapabilityUnsupported,
@@ -130,22 +129,21 @@ func (d *AGYDriver) BuildCommand(ctx context.Context, p model.Profile, extraArgs
 		return "", nil, nil, err
 	}
 
-	home, err := config.ProfileHome("agy", p.Name)
+	home, err := bootstrapProfile("agy", p)
 	if err != nil {
 		return "", nil, nil, err
 	}
-	_ = os.MkdirAll(home, 0700)
-
-	cfgObj, _ := config.LoadConfig()
-	_ = security.ApplyIsolation(home, security.GetPolicy(cfgObj.IsolationPreset))
-
 	env := runtime.EnvSet(os.Environ(), map[string]string{
-		"HOME":        home,
-		"AI_PROFILE":  p.Name,
-		"AI_PROVIDER": "agy",
-	})
+		"HOME":                             home,
+		"AI_PROFILE":                       p.Name,
+		"AI_PROVIDER":                      "agy",
+		"PYTHON_KEYRING_BACKEND":           "keyring.backends.null.Keyring",
+		"AI_HOST_DBUS_SESSION_BUS_ADDRESS": os.Getenv("DBUS_SESSION_BUS_ADDRESS"),
+		"PATH":                             runtime.EnhancedPATH(filepath.Dir(bin)),
+	}, "DBUS_SESSION_BUS_ADDRESS", "GNOME_KEYRING_CONTROL", "GNOME_KEYRING_PID")
 
-	return bin, extraArgs, env, nil
+	wrappedBin, wrappedArgs := runtime.WrapWithIsolatedSecretService(bin, extraArgs)
+	return wrappedBin, wrappedArgs, env, nil
 }
 
 func (d *AGYDriver) CanResume(ctx context.Context, p model.Profile, providerSessionID string) (bool, string) {
@@ -163,5 +161,5 @@ func (d *AGYDriver) BuildResumeArgs(ctx context.Context, p model.Profile, provid
 }
 
 func (d *AGYDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error) {
-	return []string{kickoffPrompt}, nil
+	return []string{"-p", kickoffPrompt}, nil
 }

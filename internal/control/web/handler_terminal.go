@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/kivervinicius/ai-cli/internal/control/events"
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 )
@@ -26,28 +27,31 @@ type TerminalMessage struct {
 }
 
 type TerminalHub struct {
-	auth   *AuthManager
-	mu     sync.Mutex
-	leases map[string]*websocket.Conn // runtimeID -> active writer conn
+	auth *AuthManager
 }
 
 func NewTerminalHub(auth *AuthManager) *TerminalHub {
 	return &TerminalHub{
-		auth:   auth,
-		leases: make(map[string]*websocket.Conn),
+		auth: auth,
 	}
 }
 
-func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, runtimeID string) {
+func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, agentID string, runtimeID string) {
 	if h.auth != nil && h.auth.AuthenticateRequest(r) == nil {
 		http.Error(w, "authentication required", http.StatusUnauthorized)
 		return
 	}
 
 	reg := registry.DefaultRegistry()
-	_, exists := reg.Get(runtimeID)
+	sess, exists := reg.Get(runtimeID)
 	if !exists {
-		http.Error(w, "runtime not found", http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "runtime not found")
+		return
+	}
+	if !sess.HostLive() {
+		// Do not upgrade: a "connected" WebSocket into a dead host leaves the
+		// UI on a black xterm with no recover action (especially window chrome).
+		writeError(w, http.StatusNotFound, "runtime host is not running")
 		return
 	}
 
@@ -64,10 +68,16 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 		return ws.WriteJSON(v)
 	}
 
+	broker := DefaultBroker()
+	hasRuntime := runtimeID != ""
+	role := broker.Attach(agentID, ws, hasRuntime, &wsMu)
+	defer broker.Detach(agentID, ws)
+
 	// Connect to runtime SessionHost via local IPC
 	client, err := protocol.NewClient(runtimeID)
 	if err != nil {
-		_ = reg.UpdateState(runtimeID, registry.StateStopped)
+		// Do not mark STOPPED: a transient socket miss must not race Recover/Start
+		// into tearing down a still-running project agent.
 		_ = safeWriteJSON(TerminalMessage{
 			Type: "error",
 			Data: "Runtime host is not running (" + err.Error() + "). The process has exited or the socket was closed.",
@@ -76,10 +86,20 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 	}
 	defer client.Close()
 
+	stopChan := make(chan struct{})
+	var stopOnce sync.Once
+	stop := func() {
+		stopOnce.Do(func() {
+			close(stopChan)
+			_ = ws.Close()
+		})
+	}
+	defer stop()
+
 	// Attach to host
 	resp, err := client.Send(protocol.CmdAttach, nil)
 	if err != nil {
-		_ = reg.UpdateState(runtimeID, registry.StateStopped)
+		// Same as NewClient: attach timeout is not proof the child exited.
 		_ = safeWriteJSON(TerminalMessage{
 			Type: "error",
 			Data: "Failed to attach: runtime host is no longer responding (" + err.Error() + ").",
@@ -89,68 +109,128 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 	_ = client.ClearDeadline()
 
 	rawConn := client.RawConn()
-	stopChan := make(chan struct{})
-
-	// Initial ring buffer history
-	var history string
-	if json.Unmarshal(resp.Data, &history) == nil && history != "" {
-		_ = safeWriteJSON(TerminalMessage{
-			Type: "output",
-			Data: history,
-		})
-	}
-
-	// Lease allocation
-	h.mu.Lock()
-	hasLease := false
-	if h.leases[runtimeID] == nil {
-		h.leases[runtimeID] = ws
-		hasLease = true
-	}
-	h.mu.Unlock()
-
-	defer func() {
-		h.mu.Lock()
-		if h.leases[runtimeID] == ws {
-			delete(h.leases, runtimeID)
-			// Out-of-band RPC — separate connection, never pollutes PTY stdin
-			go func() {
-				if c, err := protocol.NewClient(runtimeID); err == nil {
-					_, _ = c.Send(protocol.CmdLeaseRelease, nil)
-					_ = c.Close()
+	resizeRequests := make(chan [2]int, 1)
+	go func() {
+		for {
+			select {
+			case <-stopChan:
+				return
+			case size := <-resizeRequests:
+				rpcClient, err := protocol.NewClient(runtimeID)
+				if err == nil {
+					_ = rpcClient.Resize(size[0], size[1])
+					_ = rpcClient.Close()
 				}
-			}()
+			}
 		}
-		h.mu.Unlock()
 	}()
 
-	role := "VIEW_ONLY"
-	if hasLease {
-		role = "CONTROL"
-		// Out-of-band RPC acquire
-		go func() {
-			if c, err := protocol.NewClient(runtimeID); err == nil {
-				_, _ = c.Send(protocol.CmdLeaseAcquire, nil)
-				_ = c.Close()
-			}
-		}()
-	} else {
-		// Out-of-band RPC release (view-only attach)
-		go func() {
-			if c, err := protocol.NewClient(runtimeID); err == nil {
-				_, _ = c.Send(protocol.CmdLeaseRelease, nil)
-				_ = c.Close()
-			}
-		}()
+	// Keep the SessionHost writer authority aligned with the Agent-level
+	// broker. The command is deliberately sent over this connection *after*
+	// Attach so SessionHost can bind the lease to the exact streaming client,
+	// not to an unrelated RPC connection.
+	//
+	// Never demote CONTROL when the host write fails: the broker already
+	// granted the seat; the client can retry lease_acquire. Demoting here
+	// left the UI read-only even though no other writer held the lease.
+	effectiveRole := role
+	if role == "CONTROL" {
+		_ = sendAttachedCommandWithRetry(rawConn, 3)
 	}
 	_ = safeWriteJSON(TerminalMessage{
 		Type: "lease",
-		Role: role,
+		Role: effectiveRole,
 	})
 
-	// 1. Pump stdout from child process to browser
+	if ch := DefaultBroker().WatchRuntimeChanged(agentID); ch != nil {
+		go func() {
+			select {
+			case <-ch:
+				stop()
+			case <-stopChan:
+			}
+		}()
+	}
+
+	// Initial ring buffer history. Older hosts may have echoed lease_acquire
+	// into the PTY (and thus the ring); scrub so attach never floods xterm.
+	var history string
+	if json.Unmarshal(resp.Data, &history) == nil && history != "" {
+		if cleaned := scrubProtocolFramesFromOutput(history); cleaned != "" {
+			_ = safeWriteJSON(TerminalMessage{
+				Type: "output",
+				Data: cleaned,
+			})
+		}
+	}
+
+	// Send initial dynamic title and attention if available
+	if sess, ok := reg.Get(runtimeID); ok {
+		if sess.DynamicTitle != "" {
+			_ = safeWriteJSON(TerminalMessage{
+				Type: "title",
+				Data: sess.DynamicTitle,
+			})
+		}
+		if sess.AttentionReason != "" && sess.AttentionContext != "" && sess.PromptKind != "" && sess.PromptKind != "none" {
+			_ = safeWriteJSON(map[string]any{
+				"type":             "attention",
+				"runtime_id":       runtimeID,
+				"attention_reason": sess.AttentionReason,
+				"attention_kind":   sess.AttentionKind,
+				"prompt_kind":      sess.PromptKind,
+				"fingerprint":      sess.AttentionFingerprint,
+				"context":          sess.AttentionContext,
+				"project_id":       sess.ProjectID,
+				"project_name":     sess.ProjectName,
+				"dynamic_title":    sess.DynamicTitle,
+			})
+		}
+	}
+
+	// Subscribe to event bus for real-time attention and title frames
+	eventCh, unsub := events.DefaultBus().Subscribe(runtimeID)
+	defer unsub()
+	go func() {
+		for {
+			select {
+			case <-stopChan:
+				return
+			case ev, ok := <-eventCh:
+				if !ok {
+					return
+				}
+				if ev.Type == events.EventApprovalRequired || ev.Type == events.EventToolFinished {
+					_ = safeWriteJSON(map[string]any{
+						"type":             "attention",
+						"runtime_id":       ev.RuntimeID,
+						"attention_reason": ev.Data["attention_reason"],
+						"attention_kind":   ev.Data["attention_kind"],
+						"prompt_kind":      ev.Data["prompt_kind"],
+						"fingerprint":      ev.Data["fingerprint"],
+						"context":          ev.Data["context"],
+						"project_id":       ev.Data["project_id"],
+						"project_name":     ev.Data["project_name"],
+						"dynamic_title":    ev.Data["dynamic_title"],
+						"summary":          ev.Summary,
+					})
+				}
+				if dt, ok := ev.Data["dynamic_title"].(string); ok && dt != "" {
+					_ = safeWriteJSON(TerminalMessage{
+						Type: "title",
+						Data: dt,
+					})
+				}
+			}
+		}
+	}()
+
+	// 1. Pump stdout from child process to browser.
+	// Buffer across reads so protocol frames (request or response) that
+	// span chunk boundaries never leak into the visible terminal.
 	go func() {
 		buf := make([]byte, 2048)
+		var pending []byte
 		for {
 			select {
 			case <-stopChan:
@@ -159,18 +239,47 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 				_ = rawConn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 				n, err := rawConn.Read(buf)
 				if n > 0 {
-					chunk := buf[:n]
-					trimmed := bytes.TrimSpace(chunk)
-					if (bytes.HasPrefix(trimmed, []byte("{\"version\":")) && bytes.Contains(trimmed, []byte("\"ok\":"))) || bytes.HasPrefix(trimmed, []byte("{\"ok\":")) {
-						// Skip RPC response frame from being displayed in terminal
-						continue
+					pending = append(pending, buf[:n]...)
+					for {
+						idx := bytes.IndexByte(pending, '\n')
+						if idx < 0 {
+							// Flush non-protocol partial data that cannot be a
+							// control frame (does not start with '{').
+							if len(pending) > 0 && pending[0] != '{' {
+								_ = safeWriteJSON(TerminalMessage{
+									Type: "output",
+									Data: string(pending),
+								})
+								pending = nil
+							} else if len(pending) > MaxProtocolPending {
+								// Oversized incomplete JSON: show as output rather than stall.
+								_ = safeWriteJSON(TerminalMessage{
+									Type: "output",
+									Data: string(pending),
+								})
+								pending = nil
+							}
+							break
+						}
+						line := pending[:idx+1]
+						pending = pending[idx+1:]
+						if isProtocolControlFrame(line) {
+							continue
+						}
+						_ = safeWriteJSON(TerminalMessage{
+							Type: "output",
+							Data: string(line),
+						})
 					}
-					_ = safeWriteJSON(TerminalMessage{
-						Type: "output",
-						Data: string(chunk),
-					})
 				}
 				if err != nil && !strings.Contains(err.Error(), "timeout") {
+					if len(pending) > 0 && !isProtocolControlFrame(pending) {
+						_ = safeWriteJSON(TerminalMessage{
+							Type: "output",
+							Data: string(pending),
+						})
+					}
+					stop()
 					return
 				}
 			}
@@ -181,64 +290,134 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ru
 	for {
 		var msg TerminalMessage
 		if err := ws.ReadJSON(&msg); err != nil {
-			close(stopChan)
+			stop()
 			return
 		}
 
 		switch msg.Type {
 		case "input":
-			h.mu.Lock()
-			currentWriter := h.leases[runtimeID]
-			h.mu.Unlock()
-
-			if currentWriter == ws && msg.Data != "" {
-				_, _ = rawConn.Write([]byte(msg.Data))
+			// Authoritative writer check on Agent level (§45, A6).
+			// SessionHost streamAttachedInput is line-oriented for RPC framing;
+			// raw keystrokes have no trailing \n, so they must be sent as CmdInput
+			// JSON frames (newline-terminated) or they buffer forever and typing
+			// appears dead.
+			if broker.IsWriter(agentID, ws) && msg.Data != "" {
+				_ = sendAttachedCommand(rawConn, protocol.CmdInput, protocol.InputPayload{Data: msg.Data})
 			}
 
 		case "resize":
 			if msg.Rows > 0 && msg.Cols > 0 {
-				go func(r, c int) {
-					rpcClient, err := protocol.NewClient(runtimeID)
-					if err == nil {
-						_ = rpcClient.Resize(r, c)
-						_ = rpcClient.Close()
+				size := [2]int{msg.Rows, msg.Cols}
+				select {
+				case resizeRequests <- size:
+				default:
+					// Keep only the newest dimensions while the RPC worker is busy.
+					select {
+					case <-resizeRequests:
+					default:
 					}
-				}(msg.Rows, msg.Cols)
+					select {
+					case resizeRequests <- size:
+					default:
+					}
+				}
 			}
 
 		case "lease_acquire":
-			h.mu.Lock()
-			h.leases[runtimeID] = ws
-			h.mu.Unlock()
-			// Out-of-band RPC acquire
-			go func() {
-				if c, err := protocol.NewClient(runtimeID); err == nil {
-					_, _ = c.Send(protocol.CmdLeaseAcquire, nil)
-					_ = c.Close()
-				}
-			}()
-			_ = safeWriteJSON(TerminalMessage{
-				Type: "lease",
-				Role: "CONTROL",
-			})
+			if broker.TakeControl(agentID, ws) {
+				_ = safeWriteJSON(TerminalMessage{
+					Type: "lease",
+					Role: "CONTROL",
+				})
+				_ = sendAttachedCommandWithRetry(rawConn, 3)
+			}
 
 		case "lease_release":
-			h.mu.Lock()
-			if h.leases[runtimeID] == ws {
-				delete(h.leases, runtimeID)
-			}
-			h.mu.Unlock()
-			// Out-of-band RPC release
-			go func() {
-				if c, err := protocol.NewClient(runtimeID); err == nil {
-					_, _ = c.Send(protocol.CmdLeaseRelease, nil)
-					_ = c.Close()
-				}
-			}()
+			broker.ReleaseControl(agentID, ws)
 			_ = safeWriteJSON(TerminalMessage{
 				Type: "lease",
 				Role: "VIEW_ONLY",
 			})
+			_ = sendAttachedCommand(rawConn, protocol.CmdLeaseRelease, nil)
 		}
 	}
+}
+
+func sendAttachedCommand(conn interface{ Write([]byte) (int, error) }, command protocol.CommandType, payload any) error {
+	req, err := protocol.NewRequest(command, payload)
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	_, err = conn.Write(append(data, '\n'))
+	return err
+}
+
+func sendAttachedCommandWithRetry(conn interface{ Write([]byte) (int, error) }, _ int) error {
+	const attempts = 3
+	var err error
+	for i := 0; i < attempts; i++ {
+		err = sendAttachedCommand(conn, protocol.CmdLeaseAcquire, nil)
+		if err == nil {
+			return nil
+		}
+		if i+1 < attempts {
+			time.Sleep(40 * time.Millisecond)
+		}
+	}
+	return err
+}
+
+// MaxProtocolPending bounds incomplete JSON held while waiting for a newline
+// before treating the bytes as terminal output.
+const MaxProtocolPending = 64 * 1024
+
+// isProtocolControlFrame reports whether data is a Nexus Control RPC request
+// or response that must not be shown in the agent terminal.
+func isProtocolControlFrame(data []byte) bool {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return false
+	}
+	var probe map[string]json.RawMessage
+	if json.Unmarshal(trimmed, &probe) != nil {
+		return false
+	}
+	if _, hasCommand := probe["command"]; hasCommand {
+		return true
+	}
+	if _, hasOK := probe["ok"]; hasOK {
+		return true
+	}
+	return false
+}
+
+// scrubProtocolFramesFromOutput removes complete Nexus Control RPC lines from
+// a PTY output blob (ring-buffer replay or mixed chunks). Non-protocol text is
+// preserved byte-for-byte, including newlines.
+func scrubProtocolFramesFromOutput(data string) string {
+	if data == "" {
+		return ""
+	}
+	raw := []byte(data)
+	var out bytes.Buffer
+	for len(raw) > 0 {
+		idx := bytes.IndexByte(raw, '\n')
+		if idx < 0 {
+			if !isProtocolControlFrame(raw) {
+				out.Write(raw)
+			}
+			break
+		}
+		line := raw[:idx+1]
+		raw = raw[idx+1:]
+		if isProtocolControlFrame(line) {
+			continue
+		}
+		out.Write(line)
+	}
+	return out.String()
 }

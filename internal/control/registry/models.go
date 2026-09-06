@@ -6,6 +6,34 @@ import (
 
 type RuntimeState string
 
+type StartupStage string
+
+const (
+	StartupCreated          StartupStage = "CREATED"
+	StartupHostStarting     StartupStage = "HOST_STARTING"
+	StartupIPCBinding       StartupStage = "IPC_BINDING"
+	StartupIPCBound         StartupStage = "IPC_BOUND"
+	StartupProtocolReady    StartupStage = "PROTOCOL_READY"
+	StartupTerminalStarting StartupStage = "TERMINAL_STARTING"
+	StartupTerminalReady    StartupStage = "TERMINAL_READY"
+	StartupProviderStarting StartupStage = "PROVIDER_STARTING"
+	StartupRunning          StartupStage = "RUNNING"
+)
+
+type StartupFault string
+
+const (
+	StartupFaultIPCBindFailed       StartupFault = "IPC_BIND_FAILED"
+	StartupFaultIPCTimeout          StartupFault = "IPC_TIMEOUT"
+	StartupFaultProtocolError       StartupFault = "PROTOCOL_ERROR"
+	StartupFaultConPTYStartFailed   StartupFault = "CONPTY_START_FAILED"
+	StartupFaultProviderNotFound    StartupFault = "PROVIDER_NOT_FOUND"
+	StartupFaultProviderExitedEarly StartupFault = "PROVIDER_EXITED_EARLY"
+	StartupFaultWorkspaceInvalid    StartupFault = "WORKSPACE_INVALID"
+	StartupFaultPermissionDenied    StartupFault = "PERMISSION_DENIED"
+	StartupFaultProcessSupervision  StartupFault = "PROCESS_SUPERVISION_FAILED"
+)
+
 const (
 	StateStarting RuntimeState = "STARTING"
 	StateRunning  RuntimeState = "RUNNING"
@@ -31,30 +59,44 @@ const (
 // RuntimeSession represents a managed execution session under AI Control.
 // Note: Secrets, OAuth tokens, and API keys are NEVER stored in this struct or persisted.
 type RuntimeSession struct {
-	RuntimeID         string            `json:"runtime_id"`
-	Title             string            `json:"title,omitempty"`
-	ProviderID        string            `json:"provider_id"`
-	ProfileID         string            `json:"profile_id"`
-	ProviderSessionID string            `json:"provider_session_id,omitempty"`
-	Workspace         string            `json:"workspace"`
-	PID               int               `json:"pid"`
-	HostPID           int               `json:"host_pid,omitempty"`
-	HostGeneration    int64             `json:"host_generation,omitempty"`
-	Binary            string            `json:"-"`
-	Args              []string          `json:"-"`
-	Env               []string          `json:"-"`
-	State             RuntimeState      `json:"state"`
-	ControlLevel      ControlLevel      `json:"control_level"`
-	StartedAt         time.Time         `json:"started_at"`
-	UpdatedAt         time.Time         `json:"updated_at"`
-	ControlEndpoint   string            `json:"control_endpoint"`
-	ParentRuntimeID   string            `json:"parent_runtime_id,omitempty"`
-	HandoffType       string            `json:"handoff_type,omitempty"`
-	LineageID         string            `json:"lineage_id,omitempty"`
-	Labels            map[string]string `json:"labels,omitempty"`
-	MachineID         string            `json:"machine_id,omitempty"`
-	Location          string            `json:"location,omitempty"`
-	Transport         string            `json:"transport,omitempty"`
+	RuntimeID            string            `json:"runtime_id"`
+	AgentID              string            `json:"agent_id,omitempty"`
+	Title                string            `json:"title,omitempty"`
+	ProviderID           string            `json:"provider_id"`
+	ProfileID            string            `json:"profile_id"`
+	ProviderSessionID    string            `json:"provider_session_id,omitempty"`
+	Model                string            `json:"model,omitempty"`
+	Workspace            string            `json:"workspace"`
+	PID                  int               `json:"pid"`
+	HostPID              int               `json:"host_pid,omitempty"`
+	HostGeneration       int64             `json:"host_generation,omitempty"`
+	Binary               string            `json:"-"`
+	Args                 []string          `json:"-"`
+	Env                  []string          `json:"-"`
+	State                RuntimeState      `json:"state"`
+	StartupStage         StartupStage      `json:"startup_stage,omitempty"`
+	StageChangedAt       time.Time         `json:"stage_changed_at,omitempty"`
+	LastFault            StartupFault      `json:"last_fault,omitempty"`
+	ControlLevel         ControlLevel      `json:"control_level"`
+	StartedAt            time.Time         `json:"started_at"`
+	UpdatedAt            time.Time         `json:"updated_at"`
+	ControlEndpoint      string            `json:"control_endpoint"`
+	ParentRuntimeID      string            `json:"parent_runtime_id,omitempty"`
+	HandoffType          string            `json:"handoff_type,omitempty"`
+	LineageID            string            `json:"lineage_id,omitempty"`
+	Labels               map[string]string `json:"labels,omitempty"`
+	MachineID            string            `json:"machine_id,omitempty"`
+	Location             string            `json:"location,omitempty"`
+	Transport            string            `json:"transport,omitempty"`
+	AttentionReason      string            `json:"attention_reason,omitempty"`
+	AttentionContext     string            `json:"attention_context,omitempty"`
+	PromptKind           string            `json:"prompt_kind,omitempty"`    // yn | choice | free_text | none
+	AttentionKind        string            `json:"attention_kind,omitempty"` // needs_user | working | completed | error | idle
+	AttentionFingerprint string            `json:"attention_fingerprint,omitempty"`
+	ProjectID            string            `json:"project_id,omitempty"`
+	ProjectName          string            `json:"project_name,omitempty"`
+	LastTaskSummary      string            `json:"last_task_summary,omitempty"`
+	DynamicTitle         string            `json:"dynamic_title,omitempty"`
 }
 
 // IsActive returns true if the runtime is in an operational lifecycle state.
@@ -65,4 +107,24 @@ func (s RuntimeSession) IsActive() bool {
 	default:
 		return false
 	}
+}
+
+// HostLive reports whether the SessionHost process behind this registry row is
+// still usable. After a machine or service restart, runtimes.json still lists
+// the previous generation; the PID and host-generation checks reject those
+// zombies so the terminal WS can 404 instead of upgrading into a black screen.
+func (s RuntimeSession) HostLive() bool {
+	if s.Transport == "mock" {
+		return true
+	}
+	if s.State == StateStarting && s.PID <= 0 {
+		return true
+	}
+	if s.PID <= 0 {
+		return false
+	}
+	if s.HostGeneration > 0 {
+		return IsProcessAliveWithGeneration(s.PID, s.HostGeneration)
+	}
+	return IsProcessAlive(s.PID)
 }

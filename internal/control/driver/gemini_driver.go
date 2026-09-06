@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
@@ -60,7 +61,7 @@ func (d *GeminiDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effec
 		Attach: CapabilityEvidence{
 			Status:          CapabilitySupported,
 			ProviderVersion: version,
-			Mechanism:       "AI Control IPC Socket/Pipe",
+			Mechanism:       "Nexus Control IPC Socket/Pipe",
 			Tested:          true,
 		},
 		StructuredEvents: CapabilityEvidence{
@@ -145,6 +146,7 @@ func (d *GeminiDriver) BuildCommand(ctx context.Context, p model.Profile, extraA
 		"GEMINI_CLI_HOME": home,
 		"AI_PROFILE":      p.Name,
 		"AI_PROVIDER":     "gemini",
+		"PATH":            runtime.EnhancedPATH(filepath.Dir(bin)),
 	})
 
 	return bin, extraArgs, env, nil
@@ -165,5 +167,5 @@ func (d *GeminiDriver) BuildResumeArgs(ctx context.Context, p model.Profile, pro
 }
 
 func (d *GeminiDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error) {
-	return []string{kickoffPrompt}, nil
+	return []string{"-p", kickoffPrompt}, nil
 }

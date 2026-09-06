@@ -144,6 +144,13 @@ func (c *Client) Resize(rows, cols int) error {
 	return err
 }
 
+// SubmitPrompt atomically sends a high-level prompt to an existing runtime.
+// It intentionally does not acquire or steal an interactive terminal writer lease.
+func (c *Client) SubmitPrompt(prompt string) error {
+	_, err := c.Send(CmdSubmitPrompt, SubmitPromptPayload{Prompt: prompt})
+	return err
+}
+
 // RawConn returns the underlying network connection for interactive streaming (attach).
 func (c *Client) RawConn() net.Conn {
 	return c.conn

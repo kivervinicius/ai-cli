@@ -1,11 +1,11 @@
 version: 2
 
-project_name: ai-cli
+project_name: nexus
 
 builds:
-  - id: ai
-    main: ./cmd/ai
-    binary: ai
+  - id: nexus
+    main: ./cmd/nexus
+    binary: nexus
     env:
       - CGO_ENABLED=0
     goos:
@@ -16,7 +16,11 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w -X github.com/kivervinicius/ai-cli/internal/app.version={{.Version}}
+      - >-
+        -s -w
+        -X github.com/kivervinicius/ai-cli/internal/buildinfo.Version={{.Version}}
+        -X github.com/kivervinicius/ai-cli/internal/buildinfo.Commit={{.Commit}}
+        -X github.com/kivervinicius/ai-cli/internal/buildinfo.BuildDate={{.Date}}
 
 archives:
   - format: tar.gz
@@ -32,6 +36,31 @@ archives:
 
 checksum:
   name_template: 'checksums.txt'
+
+nfpms:
+  - id: packages
+    package_name: nexus
+    file_name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}amd64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else }}{{ .Arch }}{{ end }}
+    vendor: IAPro
+    homepage: https://github.com/kivervinicius/ai-cli
+    maintainer: Vinicius Kiver <kivervinicius@gmail.com>
+    description: IAPro Nexus Autonomous Multi-Agent Workspace OS
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/local/bin
+    contents:
+      - src: ./LICENSE
+        dst: /usr/share/doc/nexus/LICENSE
+      - src: ./README.md
+        dst: /usr/share/doc/nexus/README.md
 
 snapshot:
   name_template: "{{ incpatch .Version }}-next"

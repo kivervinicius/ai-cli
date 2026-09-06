@@ -48,7 +48,7 @@ func TestAccountHandoffValidation(t *testing.T) {
 
 func TestWorkCheckpointAndRedaction(t *testing.T) {
 	secretGoal := "Fix bug with sk-proj-1234567890abcdef1234567890abcdef1234567890 and Bearer eyJhbGciOiJIUzI1NiJ9.test"
-	cp := CaptureWorkCheckpoint(os.TempDir(), "rt-src", "codex", "work", "sess-abc", secretGoal)
+	cp := CaptureWorkCheckpoint(os.TempDir(), "rt-src", "codex", "work", "sess-abc", "gpt-5.6-sol", secretGoal)
 
 	if strings.Contains(cp.Goal, "sk-proj-") {
 		t.Errorf("expected secret OpenAI key in goal to be redacted, got: %s", cp.Goal)
@@ -130,8 +130,8 @@ func TestGitBounding(t *testing.T) {
 	dir := os.TempDir() + "/handoff-git-test"
 	os.MkdirAll(dir, 0700)
 	defer os.RemoveAll(dir)
-	
-	cp := CaptureWorkCheckpoint(dir, "rt-1", "fake", "prof", "sess-1", "Test goal")
+
+	cp := CaptureWorkCheckpoint(dir, "rt-1", "fake", "prof", "sess-1", "fake-model", "Test goal")
 	if cp.Workspace != dir {
 		t.Errorf("expected workspace %s, got %s", dir, cp.Workspace)
 	}
@@ -165,3 +165,136 @@ func TestAccountHandoff_CheckpointFailureAborts(t *testing.T) {
 	}
 }
 
+func TestVerifyResumeContinuity(t *testing.T) {
+	// Live process: this test process itself.
+	live := &registry.RuntimeSession{
+		RuntimeID: "rt-verify-live",
+		PID:       os.Getpid(),
+		State:     registry.StateRunning,
+	}
+
+	// Passing case: resume args reference the session ID.
+	if ok, reason := VerifyResumeContinuity(live, []string{"resume", "sess-abc"}, "sess-abc"); !ok {
+		t.Errorf("expected verification to pass, got: %s", reason)
+	}
+
+	// Failing: resume args reference a different session.
+	if ok, _ := VerifyResumeContinuity(live, []string{"resume", "sess-zzz"}, "sess-abc"); ok {
+		t.Error("verification must fail when resume args do not reference the session ID")
+	}
+
+	// Failing: process not alive.
+	dead := &registry.RuntimeSession{
+		RuntimeID: "rt-verify-dead",
+		PID:       99999999,
+		State:     registry.StateRunning,
+	}
+	if ok, _ := VerifyResumeContinuity(dead, []string{"resume", "sess-abc"}, "sess-abc"); ok {
+		t.Error("verification must fail when the target process is not alive")
+	}
+
+	// Failing: state not running.
+	stopped := &registry.RuntimeSession{
+		RuntimeID: "rt-verify-stopped",
+		PID:       os.Getpid(),
+		State:     registry.StateStopped,
+	}
+	if ok, _ := VerifyResumeContinuity(stopped, []string{"resume", "sess-abc"}, "sess-abc"); ok {
+		t.Error("verification must fail when the target runtime is not RUNNING")
+	}
+
+	// Failing: empty session ID.
+	if ok, _ := VerifyResumeContinuity(live, []string{"resume", ""}, ""); ok {
+		t.Error("verification must fail on empty session ID")
+	}
+
+	// Failing: nil session.
+	if ok, _ := VerifyResumeContinuity(nil, []string{"resume", "sess-abc"}, "sess-abc"); ok {
+		t.Error("verification must fail on nil session")
+	}
+}
+
+func TestResolveTargetModel(t *testing.T) {
+	tests := []struct {
+		name           string
+		sourceModel    string
+		sourceProvider string
+		targetProvider string
+		want           string
+	}{
+		{
+			name:           "empty source model returns empty",
+			sourceModel:    "",
+			sourceProvider: "agy",
+			targetProvider: "codex",
+			want:           "",
+		},
+		{
+			name:           "same provider preserves model unconditionally",
+			sourceModel:    "custom-internal-model",
+			sourceProvider: "agy",
+			targetProvider: "agy",
+			want:           "custom-internal-model",
+		},
+		{
+			name:           "same provider case-insensitive preserves model",
+			sourceModel:    "gpt-5.6-sol",
+			sourceProvider: "Codex",
+			targetProvider: "codex",
+			want:           "gpt-5.6-sol",
+		},
+		{
+			name:           "cross-provider supported target retains model",
+			sourceModel:    "claude-sonnet-4-20250514",
+			sourceProvider: "agy",
+			targetProvider: "claude",
+			want:           "claude-sonnet-4-20250514",
+		},
+		{
+			name:           "cross-provider to agy retains model",
+			sourceModel:    "gemini-2.5-pro",
+			sourceProvider: "codex",
+			targetProvider: "agy",
+			want:           "gemini-2.5-pro",
+		},
+		{
+			name:           "cross-provider to cursor falls back to empty (unsupported model flag)",
+			sourceModel:    "claude-sonnet-4-20250514",
+			sourceProvider: "agy",
+			targetProvider: "cursor",
+			want:           "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ResolveTargetModel(tt.sourceModel, tt.sourceProvider, tt.targetProvider)
+			if got != tt.want {
+				t.Errorf("ResolveTargetModel(%q, %q, %q) = %q, want %q",
+					tt.sourceModel, tt.sourceProvider, tt.targetProvider, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWorkCheckpointModelPersistenceAndPrompt(t *testing.T) {
+	cp := CaptureWorkCheckpoint(os.TempDir(), "rt-src", "agy", "work", "sess-123", "claude-sonnet-4-20250514", "Complete feature")
+	if cp.SchemaVersion != 3 {
+		t.Errorf("expected SchemaVersion 3, got %d", cp.SchemaVersion)
+	}
+	if cp.SourceModel != "claude-sonnet-4-20250514" {
+		t.Errorf("expected SourceModel 'claude-sonnet-4-20250514', got %q", cp.SourceModel)
+	}
+
+	prompt := FormatKickoffPrompt(cp)
+	if !strings.Contains(prompt, "Previous Model: claude-sonnet-4-20250514") {
+		t.Errorf("expected kickoff prompt to contain previous model info, got:\n%s", prompt)
+	}
+
+	// When source model is empty, kickoff prompt does not contain Previous Model line
+	cpNoModel := CaptureWorkCheckpoint(os.TempDir(), "rt-src", "codex", "work", "sess-123", "", "Complete feature")
+	promptNoModel := FormatKickoffPrompt(cpNoModel)
+	if strings.Contains(promptNoModel, "Previous Model:") {
+		t.Errorf("expected kickoff prompt to omit previous model line when empty, got:\n%s", promptNoModel)
+	}
+}

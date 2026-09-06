@@ -76,6 +76,51 @@ func TestRedaction(t *testing.T) {
 			contains: "PASSWORD=[REDACTED]",
 			excludes: []string{"myComplexP@ssw0rd!#456"},
 		},
+		{
+			name: "env block",
+			input: "OPENAI_API_KEY=sk-proj-1234567890abcdef1234567890abcdef1234567890\n" +
+				"ANTHROPIC_API_KEY=sk-ant-api03-abcdef1234567890abcdef1234567890-test\n" +
+				"GOOGLE_API_KEY=AIzaSyD-1234567890abcdefghijklmnopqrstuvwxyz\n" +
+				"GITHUB_TOKEN=ghp_1234567890abcdefghijklmnopqrstuvwxyz",
+			contains: "[REDACTED",
+			excludes: []string{"sk-proj-1234567890", "sk-ant-api03-abcdef", "AIzaSyD-1234567890", "ghp_1234567890"},
+		},
+		{
+			name:     "auth.json",
+			input:    `auth: {"access_token": "ya29.a0AfH6SMBxyz1234567890abcdef1234567890", "refresh_token": "1//0cdefghijklmnopqrstuvwxyzABCDEF"}`,
+			contains: "[REDACTED",
+			excludes: []string{"ya29.a0AfH6SMB", "1//0cdefghijklmnopqrstuvwxyz"},
+		},
+		{
+			name:     "cookies header",
+			input:    "Cookie: sessionid=abc123; csrftoken=xyz789; password=supersecret",
+			contains: "[REDACTED",
+			excludes: []string{"sessionid=abc123", "csrftoken=xyz789", "supersecret"},
+		},
+		{
+			name:     "pem private key",
+			input:    "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ==\n-----END OPENSSH PRIVATE KEY-----",
+			contains: "[REDACTED_PRIVATE_KEY]",
+			excludes: []string{"b3BlbnNzaC1rZXktdjE"},
+		},
+		{
+			name:     "generic credentials",
+			input:    "CREDENTIALS=admin:topsecret123",
+			contains: "[REDACTED",
+			excludes: []string{"topsecret123"},
+		},
+		{
+			name:     "Bearer with base64 padding",
+			input:    "Authorization: Bearer abc1234567===",
+			contains: "[REDACTED",
+			excludes: []string{"abc1234567==="},
+		},
+		{
+			name:     "short secret value",
+			input:    "password=abcde",
+			contains: "password=[REDACTED]",
+			excludes: []string{"abcde"},
+		},
 	}
 
 	for _, tc := range tests {

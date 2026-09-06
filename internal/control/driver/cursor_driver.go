@@ -82,7 +82,7 @@ func (d *CursorDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effec
 		Attach: CapabilityEvidence{
 			Status:          status,
 			ProviderVersion: version,
-			Mechanism:       "AI Control IPC Socket/Pipe",
+			Mechanism:       "Nexus Control IPC Socket/Pipe",
 			Tested:          true,
 		},
 		StructuredEvents: CapabilityEvidence{
@@ -192,7 +192,7 @@ func (d *CursorDriver) BuildResumeArgs(ctx context.Context, p model.Profile, pro
 
 func (d *CursorDriver) BuildKickoffArgs(ctx context.Context, p model.Profile, kickoffPrompt string) ([]string, error) {
 	if kickoffPrompt != "" {
-		return []string{kickoffPrompt}, nil
+		return []string{"-p", kickoffPrompt, "--output-format", "text"}, nil
 	}
 	return []string{}, nil
 }

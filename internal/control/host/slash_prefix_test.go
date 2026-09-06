@@ -14,9 +14,10 @@ func TestSlashPrefixRouter_NeverLeaksToChild(t *testing.T) {
 
 	for _, b := range input {
 		out := router.ProcessByte(b)
-		if out.Action == ActionForwardBytes {
+		switch out.Action {
+		case ActionForwardBytes:
 			forwarded = append(forwarded, out.ForwardBytes...)
-		} else if out.Action == ActionControlCommand {
+		case ActionControlCommand:
 			interceptedCmd = out.ControlCmd
 		}
 	}
@@ -34,9 +35,10 @@ func TestSlashPrefixRouter_NeverLeaksToChild(t *testing.T) {
 	interceptedCmd = ""
 	for _, b := range []byte("hello world\r") {
 		out := router.ProcessByte(b)
-		if out.Action == ActionForwardBytes {
+		switch out.Action {
+		case ActionForwardBytes:
 			forwarded = append(forwarded, out.ForwardBytes...)
-		} else if out.Action == ActionControlCommand {
+		case ActionControlCommand:
 			interceptedCmd = out.ControlCmd
 		}
 	}
@@ -54,9 +56,10 @@ func TestSlashPrefixRouter_NeverLeaksToChild(t *testing.T) {
 	interceptedCmd = ""
 	for _, b := range []byte("/help\r") {
 		out := router.ProcessByte(b)
-		if out.Action == ActionForwardBytes {
+		switch out.Action {
+		case ActionForwardBytes:
 			forwarded = append(forwarded, out.ForwardBytes...)
-		} else if out.Action == ActionControlCommand {
+		case ActionControlCommand:
 			interceptedCmd = out.ControlCmd
 		}
 	}
@@ -74,15 +77,58 @@ func TestSlashPrefixRouter_NeverLeaksToChild(t *testing.T) {
 	interceptedCmd = ""
 	for _, b := range []byte("//ai prompt\r") {
 		out := router.ProcessByte(b)
-		if out.Action == ActionForwardBytes {
+		switch out.Action {
+		case ActionForwardBytes:
 			forwarded = append(forwarded, out.ForwardBytes...)
-		} else if out.Action == ActionControlCommand {
+		case ActionControlCommand:
 			interceptedCmd = out.ControlCmd
 		}
 	}
 
 	if string(forwarded) != "/ai prompt\r" {
 		t.Errorf("expected unescaped '/ai prompt\\r', got %q", string(forwarded))
+	}
+	if interceptedCmd != "" {
+		t.Errorf("unexpected command interception: %q", interceptedCmd)
+	}
+
+	// 5. Send "/nexus status\r"
+	router.Reset()
+	forwarded = nil
+	interceptedCmd = ""
+	for _, b := range []byte("/nexus status\r") {
+		out := router.ProcessByte(b)
+		switch out.Action {
+		case ActionForwardBytes:
+			forwarded = append(forwarded, out.ForwardBytes...)
+		case ActionControlCommand:
+			interceptedCmd = out.ControlCmd
+		}
+	}
+
+	if len(forwarded) != 0 {
+		t.Errorf("CRITICAL LEAK: /nexus status leaked bytes to child: %q", string(forwarded))
+	}
+	if interceptedCmd != "/nexus status" {
+		t.Errorf("expected intercepted command '/nexus status', got %q", interceptedCmd)
+	}
+
+	// 6. Escaped command: "//nexus prompt\r" (should forward "/nexus prompt\r")
+	router.Reset()
+	forwarded = nil
+	interceptedCmd = ""
+	for _, b := range []byte("//nexus prompt\r") {
+		out := router.ProcessByte(b)
+		switch out.Action {
+		case ActionForwardBytes:
+			forwarded = append(forwarded, out.ForwardBytes...)
+		case ActionControlCommand:
+			interceptedCmd = out.ControlCmd
+		}
+	}
+
+	if string(forwarded) != "/nexus prompt\r" {
+		t.Errorf("expected unescaped '/nexus prompt\\r', got %q", string(forwarded))
 	}
 	if interceptedCmd != "" {
 		t.Errorf("unexpected command interception: %q", interceptedCmd)

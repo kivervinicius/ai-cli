@@ -18,18 +18,18 @@ func Run(in io.Reader, out io.Writer) {
 		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)
 
-		switch {
-		case trimmed == "exit" || trimmed == "quit":
+		switch trimmed {
+		case "exit", "quit":
 			fmt.Fprintf(out, "FakeAgent exiting...\n")
 			return
 
-		case trimmed == "rate-limit":
+		case "rate-limit":
 			fmt.Fprintf(out, "ERROR: HTTP 429 Too Many Requests (Quota Exceeded). Resets in 45m\n")
 
-		case trimmed == "crash":
+		case "crash":
 			os.Exit(2)
 
-		case trimmed == "sleep":
+		case "sleep":
 			time.Sleep(500 * time.Millisecond)
 			fmt.Fprintf(out, "FakeAgent awake\n")
 

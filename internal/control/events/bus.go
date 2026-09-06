@@ -10,6 +10,7 @@ type Bus struct {
 	subscribers map[string][]chan Event
 	history     map[string][]Event
 	maxHistory  int
+	recorder    func(Event)
 }
 
 var (
@@ -37,10 +38,17 @@ func NewBus(maxHistory int) *Bus {
 	}
 }
 
+// SetRecorder configures a durable recorder hook called whenever an event is published.
+func (b *Bus) SetRecorder(recorder func(Event)) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.recorder = recorder
+}
+
 // Publish distributes an event to all interested subscribers and appends to history.
 func (b *Bus) Publish(e Event) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
+	recorder := b.recorder
 
 	// Append to history
 	hist := b.history[e.RuntimeID]
@@ -53,6 +61,11 @@ func (b *Bus) Publish(e Event) {
 	// Broadcast to runtime subscribers and wildcard subscribers ("*")
 	targets := append([]chan Event{}, b.subscribers[e.RuntimeID]...)
 	targets = append(targets, b.subscribers["*"]...)
+	b.mu.Unlock()
+
+	if recorder != nil {
+		recorder(e)
+	}
 
 	for _, ch := range targets {
 		select {

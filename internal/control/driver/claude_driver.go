@@ -61,7 +61,7 @@ func (d *ClaudeDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effec
 		Attach: CapabilityEvidence{
 			Status:          CapabilitySupported,
 			ProviderVersion: version,
-			Mechanism:       "AI Control IPC Socket/Pipe",
+			Mechanism:       "Nexus Control IPC Socket/Pipe",
 			Tested:          true,
 		},
 		StructuredEvents: CapabilityEvidence{
@@ -98,9 +98,9 @@ func (d *ClaudeDriver) EffectiveCaps(ctx context.Context, p model.Profile) Effec
 			Tested:    true,
 		},
 		Approvals: CapabilityEvidence{
-			Status:    CapabilityUnsupported,
-			Reason:    "Claude handles approvals in interactive TUI prompt",
-			Tested:    false,
+			Status: CapabilityUnsupported,
+			Reason: "Claude handles approvals in interactive TUI prompt",
+			Tested: false,
 		},
 		NativeUIAttach: CapabilityEvidence{
 			Status: CapabilityUnsupported,
@@ -145,6 +145,7 @@ func (d *ClaudeDriver) BuildCommand(ctx context.Context, p model.Profile, extraA
 		"CLAUDE_CONFIG_DIR": filepath.Join(home, ".claude"),
 		"AI_PROFILE":        p.Name,
 		"AI_PROVIDER":       "claude",
+		"PATH":              runtime.EnhancedPATH(filepath.Dir(bin)),
 	})
 
 	return bin, extraArgs, env, nil

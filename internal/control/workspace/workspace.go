@@ -1,11 +1,13 @@
 package workspace
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
+	"sort"
 	"sync"
 	"time"
 
@@ -66,15 +68,18 @@ func (s *Store) ensureCwd(cwd string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	clean := filepath.Clean(cwd)
+	clean, err := config.CanonicalWorkspacePath(cwd)
+	if err != nil {
+		clean = filepath.Clean(cwd)
+	}
 	for _, p := range s.projects {
-		if filepath.Clean(p.Path) == clean {
+		if workspacePathsEquivalent(p.Path, clean) {
 			return nil
 		}
 	}
 
 	name := filepath.Base(clean)
-	id := makeID(name)
+	id := makeWorkspaceID(clean)
 	s.projects[clean] = Project{
 		ID:         id,
 		Name:       name,
@@ -134,38 +139,32 @@ func (s *Store) List() []Project {
 	for _, p := range s.projects {
 		result = append(result, p)
 	}
+	// Deterministic ordering: most recently used first, then ID for stability.
+	sort.SliceStable(result, func(i, j int) bool {
+		if !result[i].LastUsedAt.Equal(result[j].LastUsedAt) {
+			return result[i].LastUsedAt.After(result[j].LastUsedAt)
+		}
+		return result[i].ID < result[j].ID
+	})
 	return result
 }
 
 // Add registers a new project path.
 func (s *Store) Add(path, name string) (Project, error) {
-	if strings.TrimSpace(path) == "" {
-		return Project{}, fmt.Errorf("project path cannot be empty")
-	}
-
-	absPath, err := filepath.Abs(path)
+	clean, err := config.CanonicalExistingWorkspaceDir(path)
 	if err != nil {
-		absPath = filepath.Clean(path)
-	}
-
-	fi, err := os.Stat(absPath)
-	if err != nil {
-		return Project{}, fmt.Errorf("path does not exist: %w", err)
-	}
-	if !fi.IsDir() {
-		return Project{}, fmt.Errorf("path is not a directory: %s", absPath)
+		return Project{}, err
 	}
 
 	if name == "" {
-		name = filepath.Base(absPath)
+		name = filepath.Base(clean)
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	clean := filepath.Clean(absPath)
 	p := Project{
-		ID:         makeID(name),
+		ID:         makeWorkspaceID(clean),
 		Name:       name,
 		Path:       clean,
 		CreatedAt:  time.Now(),
@@ -186,7 +185,7 @@ func (s *Store) Remove(idOrPath string) error {
 
 	targetKey := ""
 	for key, p := range s.projects {
-		if p.ID == idOrPath || p.Path == idOrPath || filepath.Clean(p.Path) == filepath.Clean(idOrPath) {
+		if p.ID == idOrPath || workspacePathsEquivalent(p.Path, idOrPath) {
 			targetKey = key
 			break
 		}
@@ -205,27 +204,44 @@ func (s *Store) Touch(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	clean := filepath.Clean(path)
-	if p, ok := s.projects[clean]; ok {
-		p.LastUsedAt = time.Now()
-		s.projects[clean] = p
-		_ = s.saveLocked()
+	for key, p := range s.projects {
+		if workspacePathsEquivalent(p.Path, path) {
+			p.LastUsedAt = time.Now()
+			s.projects[key] = p
+			_ = s.saveLocked()
+			return
+		}
 	}
 }
 
-func makeID(name string) string {
-	clean := strings.ToLower(strings.TrimSpace(name))
-	var sb strings.Builder
-	for _, r := range clean {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			sb.WriteRune(r)
-		} else if r == ' ' || r == '_' {
-			sb.WriteRune('-')
+// workspacePathsEquivalent compares filesystem identity when both paths exist
+// and falls back to canonical path text for creation or legacy records.
+func workspacePathsEquivalent(left, right string) bool {
+	if left == right {
+		return true
+	}
+	leftRef, leftErr := config.ResolvePathRef(left)
+	rightRef, rightErr := config.ResolvePathRef(right)
+	if leftErr == nil && rightErr == nil {
+		leftIdentity := leftRef.Identity
+		rightIdentity := rightRef.Identity
+		if leftIdentity.Available && rightIdentity.Available {
+			return leftIdentity.Kind == rightIdentity.Kind && leftIdentity.StableKey == rightIdentity.StableKey
 		}
+		return leftRef.CanonicalPath == rightRef.CanonicalPath
 	}
-	id := sb.String()
-	if id == "" {
-		id = fmt.Sprintf("proj-%d", time.Now().UnixNano()%100000)
+	return filepath.Clean(left) == filepath.Clean(right)
+}
+
+// makeWorkspaceID derives a stable, collision-resistant identifier from the
+// canonical absolute path (symlinks resolved). Two workspaces sharing a
+// basename (e.g. /home/user/company/api and /home/user/personal/api) always
+// get distinct IDs.
+func makeWorkspaceID(path string) string {
+	clean, err := config.CanonicalWorkspacePath(path)
+	if err != nil {
+		clean = filepath.Clean(path)
 	}
-	return id
+	sum := sha256.Sum256([]byte(clean))
+	return "ws-" + hex.EncodeToString(sum[:16])
 }

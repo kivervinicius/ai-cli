@@ -1,0 +1,350 @@
+package nexus
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/kivervinicius/ai-cli/internal/control/driver"
+	"github.com/kivervinicius/ai-cli/internal/control/launcher"
+	"github.com/kivervinicius/ai-cli/internal/control/protocol"
+	"github.com/kivervinicius/ai-cli/internal/control/registry"
+	"github.com/kivervinicius/ai-cli/internal/core/model"
+	"github.com/kivervinicius/ai-cli/internal/nexus/autonomyguard"
+	"github.com/kivervinicius/ai-cli/internal/nexus/runner"
+	"github.com/kivervinicius/ai-cli/internal/nexus/store"
+)
+
+type agentPromptExecution struct {
+	RuntimeID string
+	Output    string
+}
+
+type agentPromptPolicy struct {
+	Contract runner.AutonomyContract
+	Review   bool
+}
+
+// executeAgentPrompt runs one autonomous, headless provider turn under a real
+// persistent Agent identity and real RuntimeGeneration. It deliberately starts
+// a fresh provider process; durable continuity for autonomous work is the code
+// worktree + immutable prompt/evidence, not a fabricated cross-provider resume.
+func (n *Nexus) executeAgentPrompt(ctx context.Context, agentID, workspace, prompt string, policy agentPromptPolicy) (*agentPromptExecution, error) {
+	if strings.TrimSpace(prompt) == "" {
+		return nil, fmt.Errorf("agent prompt is required")
+	}
+	st, err := n.OpenProject()
+	if err != nil {
+		return nil, err
+	}
+	agent, err := st.GetAgent(agentID, "")
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := currentAgentConfig(st, agent)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Provider == "" || cfg.Profile == "" {
+		return nil, fmt.Errorf("agent %s has no persisted provider/profile", agentID)
+	}
+	if strings.TrimSpace(workspace) == "" {
+		project, err := st.GetProject(agent.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		workspace, err = n.resolveExecutionWorkspace(ctx, project, agent, cfg)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	d, err := driver.DefaultRegistry().Get(cfg.Provider)
+	if err != nil {
+		return nil, err
+	}
+	profile := model.Profile{Provider: cfg.Provider, Name: cfg.Profile}
+	caps := d.EffectiveCaps(ctx, profile)
+	if caps.Headless.Status != driver.CapabilitySupported || caps.SubmitPrompt.Status != driver.CapabilitySupported {
+		return nil, fmt.Errorf("provider %s:%s cannot execute autonomous prompt: headless=%s submit_prompt=%s", cfg.Provider, cfg.Profile, caps.Headless.Status, caps.SubmitPrompt.Status)
+	}
+	var kickoffArgs []string
+	if strings.EqualFold(cfg.Provider, "codex") {
+		kickoffArgs = []string{"exec", prompt}
+	} else {
+		kickoffArgs, err = d.BuildKickoffArgs(ctx, profile, prompt)
+		if err != nil {
+			return nil, fmt.Errorf("build provider kickoff args: %w", err)
+		}
+	}
+	kickoffArgs, err = missionProviderArgs(cfg.Provider, kickoffArgs, policy)
+	if err != nil {
+		return nil, err
+	}
+
+	// Do not silently steal an unrelated live terminal session. Mission agents
+	// are expected to be dedicated or stopped between headless turns.
+	if gen, gerr := st.CurrentGeneration(agent.ID); gerr == nil && gen.RuntimeID != "" && n.runtimeAlive(gen.RuntimeID) {
+		return nil, fmt.Errorf("agent %s already has a live runtime %s; take control or stop it before autonomous execution", agent.ID, gen.RuntimeID)
+	}
+
+	var guardDir string
+	pathPrepend := []string(nil)
+	if policy.Contract.DisallowDestructiveGit || !policy.Contract.AllowGitPush || !policy.Contract.AllowDeploy || !policy.Contract.AllowExternalNetwork || !policy.Contract.AllowSecretAccess || !policy.Contract.AllowPaidServices {
+		guardDir, err = os.MkdirTemp("", "nexus-autonomy-guards-*")
+		if err != nil {
+			return nil, fmt.Errorf("create autonomy command guards: %w", err)
+		}
+		defer os.RemoveAll(guardDir)
+		if _, err := autonomyguard.WriteCommandGuards(guardDir, autonomyguard.Policy{
+			DisallowDestructiveGit: policy.Contract.DisallowDestructiveGit,
+			AllowGitPush:           policy.Contract.AllowGitPush,
+			AllowDeploy:            policy.Contract.AllowDeploy,
+			AllowExternalNetwork:   policy.Contract.AllowExternalNetwork,
+			AllowSecretAccess:      policy.Contract.AllowSecretAccess,
+			AllowPaidServices:      policy.Contract.AllowPaidServices,
+		}); err != nil {
+			return nil, fmt.Errorf("prepare autonomy command guards: %w", err)
+		}
+		pathPrepend = []string{guardDir}
+	}
+
+	sess, err := n.launcher.Launch(ctx, launcher.LaunchOptions{
+		AgentID:     agent.ID,
+		ProjectID:   agent.ProjectID,
+		ProviderID:  cfg.Provider,
+		ProfileID:   cfg.Profile,
+		Workspace:   workspace,
+		Args:        kickoffArgs,
+		Model:       cfg.Model,
+		Environment: cfg.Environment,
+		Isolation:   cfg.Isolation,
+		Options:     cfg.Options,
+		PathPrepend: pathPrepend,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("launch autonomous agent runtime: %w", err)
+	}
+
+	revisionID := agent.CurrentRevisionID
+	if revisionID == "" {
+		rev, revErr := st.AddRevision(agent.ID, cfg.ConfigJSON())
+		if revErr != nil {
+			n.stopRuntime(sess.RuntimeID)
+			return nil, revErr
+		}
+		revisionID = rev.ID
+	}
+	generation, err := st.AddGeneration(store.RuntimeGeneration{
+		AgentID:    agent.ID,
+		RevisionID: revisionID,
+		RuntimeID:  sess.RuntimeID,
+		Provider:   cfg.Provider,
+		Profile:    cfg.Profile,
+		Continuity: "NEW_SESSION",
+		StartedAt:  time.Now().UTC(),
+		State:      "RUNNING",
+	})
+	if err != nil {
+		n.stopRuntime(sess.RuntimeID)
+		return nil, fmt.Errorf("persist autonomous runtime generation: %w", err)
+	}
+
+	agent.Status = store.AgentWorking
+	agent.ContinuityStatus = "NEW_SESSION"
+	now := time.Now().UTC()
+	agent.LastStartedAt = &now
+	_ = st.UpdateAgent(agent)
+	n.notifyRuntimeChanged(agent.ID, "", sess.RuntimeID, cfg.Provider, cfg.Profile, "NEW_SESSION")
+	n.notifyContinuity(agent.ID, "NEW_SESSION")
+	n.notifyAgentState(agent.ID, store.AgentWorking)
+
+	output, runErr := captureRuntimeOutput(ctx, sess.RuntimeID)
+	stoppedAt := time.Now().UTC()
+	_ = st.StopGeneration(generation.ID, stoppedAt)
+	agent.Status = store.AgentStopped
+	if runErr != nil {
+		n.stopRuntime(sess.RuntimeID)
+		agent.Status = store.AgentFailed
+	}
+	_ = st.UpdateAgent(agent)
+	n.notifyAgentState(agent.ID, agent.Status)
+
+	if runErr != nil {
+		return nil, fmt.Errorf("autonomous runtime %s failed: %w", sess.RuntimeID, runErr)
+	}
+	return &agentPromptExecution{RuntimeID: sess.RuntimeID, Output: output}, nil
+}
+
+func missionProviderArgs(provider string, args []string, policy agentPromptPolicy) ([]string, error) {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	out := append([]string(nil), args...)
+	if policy.Review {
+		switch provider {
+		case "claude":
+			return append(out, "--permission-mode", "plan", "--output-format", "text"), nil
+		case "gemini":
+			return append(out, "--approval-mode=plan", "--output-format", "text"), nil
+		case "cursor":
+			return append(out, "--mode=ask", "--output-format", "text"), nil
+		default:
+			return nil, fmt.Errorf("provider %s has no verified read-only headless review mode", provider)
+		}
+	}
+
+	// A coding Mission must not hang waiting for an approval prompt. Auto-approval
+	// is an explicit contract decision and is restricted by Nexus to the Agent's
+	// isolated workspace plus prompt-level no-push/no-deploy boundaries.
+	switch provider {
+	case "claude":
+		if !policy.Contract.AllowToolAutoApproval {
+			return nil, fmt.Errorf("claude autonomous coding requires allow_tool_auto_approval")
+		}
+		return append(out, "--dangerously-skip-permissions", "--output-format", "text"), nil
+	case "codex":
+		if !policy.Contract.AllowToolAutoApproval {
+			return nil, fmt.Errorf("codex autonomous coding requires allow_tool_auto_approval")
+		}
+		return append(out, "--ask-for-approval", "never", "--sandbox", "workspace-write"), nil
+	case "gemini":
+		if !policy.Contract.AllowToolAutoApproval {
+			return nil, fmt.Errorf("gemini autonomous coding requires allow_tool_auto_approval")
+		}
+		return append(out, "--approval-mode=yolo", "--output-format", "text"), nil
+	case "agy":
+		if !policy.Contract.AllowToolAutoApproval {
+			return nil, fmt.Errorf("agy autonomous coding requires allow_tool_auto_approval")
+		}
+		return append(out, "--dangerously-skip-permissions", "--sandbox", "--print-timeout", "60m"), nil
+	case "opencode":
+		if !policy.Contract.AllowToolAutoApproval {
+			return nil, fmt.Errorf("opencode autonomous coding requires allow_tool_auto_approval")
+		}
+		if len(out) > 0 && out[0] == "run" {
+			out = append([]string{"run", "--auto"}, out[1:]...)
+		} else {
+			out = append([]string{"--auto"}, out...)
+		}
+		return out, nil
+	case "cursor":
+		if !policy.Contract.AllowToolAutoApproval {
+			return nil, fmt.Errorf("cursor non-interactive coding has write access and requires allow_tool_auto_approval")
+		}
+		return out, nil
+	default:
+		return nil, fmt.Errorf("provider %s is not approved for autonomous coding", provider)
+	}
+}
+
+func captureRuntimeOutput(ctx context.Context, runtimeID string) (string, error) {
+	client, err := protocol.NewClient(runtimeID)
+	if err != nil {
+		return "", fmt.Errorf("attach to runtime output: %w", err)
+	}
+	defer client.Close()
+
+	resp, err := client.Send(protocol.CmdAttach, nil)
+	if err != nil {
+		return "", fmt.Errorf("attach runtime stream: %w", err)
+	}
+	var history string
+	_ = json.Unmarshal(resp.Data, &history)
+	_ = client.ClearDeadline()
+
+	type readResult struct {
+		data []byte
+		err  error
+	}
+	ch := make(chan readResult, 1)
+	go func() {
+		data, readErr := io.ReadAll(client.Reader())
+		ch <- readResult{data: data, err: readErr}
+	}()
+
+	select {
+	case <-ctx.Done():
+		_ = client.Close()
+		return history, ctx.Err()
+	case rr := <-ch:
+		output := history + string(rr.data)
+		if rr.err != nil && !strings.Contains(strings.ToLower(rr.err.Error()), "closed") {
+			return output, rr.err
+		}
+		// The host closes attached clients after process termination. Registry is
+		// persisted cross-process, so reload and reject provider process failures.
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			if sess, ok := registry.DefaultRegistry().Get(runtimeID); ok {
+				switch sess.State {
+				case registry.StateFailed:
+					return output, fmt.Errorf("provider process exited with failure")
+				case registry.StateStopped:
+					return output, nil
+				}
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		return output, nil
+	}
+}
+
+// workspaceFingerprint is used to prove an independent reviewer did not alter
+// the implementation workspace. It hashes tracked diffs and untracked file
+// contents, not merely filenames.
+func workspaceFingerprint(ctx context.Context, workspace string) (string, error) {
+	if strings.TrimSpace(workspace) == "" {
+		return "", fmt.Errorf("workspace is required")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		return "", err
+	}
+	rootOut, err := exec.CommandContext(ctx, "git", "-C", workspace, "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return "", err
+	}
+	root := strings.TrimSpace(string(rootOut))
+	h := sha256.New()
+
+	for _, args := range [][]string{
+		{"-C", root, "status", "--porcelain=v2", "-z"},
+		{"-C", root, "diff", "--binary", "--no-ext-diff"},
+		{"-C", root, "diff", "--binary", "--cached", "--no-ext-diff"},
+	} {
+		out, cmdErr := exec.CommandContext(ctx, "git", args...).Output()
+		if cmdErr != nil {
+			return "", cmdErr
+		}
+		_, _ = h.Write(out)
+	}
+
+	untrackedOut, err := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "--others", "--exclude-standard", "-z").Output()
+	if err != nil {
+		return "", err
+	}
+	paths := strings.Split(string(untrackedOut), "\x00")
+	sort.Strings(paths)
+	for _, rel := range paths {
+		if rel == "" {
+			continue
+		}
+		clean := filepath.Clean(rel)
+		if strings.HasPrefix(clean, ".."+string(os.PathSeparator)) || filepath.IsAbs(clean) {
+			continue
+		}
+		_, _ = h.Write([]byte(clean))
+		data, readErr := os.ReadFile(filepath.Join(root, clean))
+		if readErr == nil {
+			_, _ = h.Write(data)
+		}
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}

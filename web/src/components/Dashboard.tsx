@@ -1,6 +1,18 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RuntimeSession, ProviderInfo, Workspace } from '../types';
-import { Cpu, Play, Square, ArrowRightLeft, FastForward, Trash2, Folder, Layers, History } from 'lucide-react';
+import { asArray } from '../lib/safeArray';
+import {
+  Cpu,
+  Play,
+  Square,
+  ArrowRightLeft,
+  FastForward,
+  Trash2,
+  Folder,
+  Layers,
+  History,
+} from 'lucide-react';
 
 interface DashboardProps {
   runtimes: RuntimeSession[];
@@ -29,12 +41,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onDeleteRuntime,
   onCleanInactive,
 }) => {
+  const { t } = useTranslation();
   const [showAllWorkspaces, setShowAllWorkspaces] = useState<boolean>(false);
 
-  const normalize = (p?: string) => (p || '').trim().replace(/[\\/]+$/, '').toLowerCase();
+  const safeRuntimes = asArray<RuntimeSession>(runtimes);
+  const safeProviders = asArray<ProviderInfo>(providers);
+  const safeWorkspaces = asArray<Workspace>(workspaces);
+
+  const normalize = (p?: string) =>
+    (p || '')
+      .trim()
+      .replace(/[\\/]+$/, '')
+      .toLowerCase();
 
   // Filter runtimes by active workspace unless "All Projects" is toggled
-  const projectRuntimes = runtimes.filter((r) => {
+  const projectRuntimes = safeRuntimes.filter((r) => {
     if (showAllWorkspaces || !activeWorkspace) return true;
     const normActive = normalize(activeWorkspace);
     const normR = normalize(r.workspace);
@@ -43,95 +64,157 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Only truly running or starting agents are "Live"
   const liveRuntimes = projectRuntimes.filter(
-    (r) => r.state === 'RUNNING' || r.state === 'STARTING' || r.state === 'HANDOFF'
+    (r) => r.state === 'RUNNING' || r.state === 'STARTING' || r.state === 'HANDOFF',
   );
 
   // Past/offline sessions go to Session History
   const pastRuntimes = projectRuntimes.filter(
-    (r) => r.state !== 'RUNNING' && r.state !== 'STARTING' && r.state !== 'HANDOFF'
+    (r) => r.state !== 'RUNNING' && r.state !== 'STARTING' && r.state !== 'HANDOFF',
   );
 
-  const activeTotalCount = runtimes.filter((r) => r.state === 'RUNNING' || r.state === 'STARTING').length;
-  const installedCount = providers.filter((p) => p.installed).length;
+  const activeTotalCount = safeRuntimes.filter(
+    (r) => r.state === 'RUNNING' || r.state === 'STARTING',
+  ).length;
+  const installedCount = safeProviders.filter((p) => p.installed).length;
 
   return (
     <div className="space-y-6">
       {/* Top Banner & Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
-          <div className="text-xs font-mono text-slate-400">Supervised Runtimes</div>
-          <div className="mt-2 text-2xl font-bold font-mono text-emerald-400">
+        <div
+          className="rounded-lg p-4"
+          style={{
+            background: 'var(--nx-surface)',
+            border: '1px solid var(--nx-border)',
+          }}
+        >
+          <div className="text-xs font-mono" style={{ color: 'var(--nx-text-soft)' }}>
+            {t('legacy.supervisedRuntimes', 'Supervised Runtimes')}
+          </div>
+          <div className="mt-2 text-2xl font-bold font-mono" style={{ color: 'var(--nx-success)' }}>
             {liveRuntimes.length}
             {activeWorkspace && !showAllWorkspaces && (
-              <span className="text-xs text-slate-500 font-normal ml-2">/ {activeTotalCount} total</span>
+              <span className="text-xs font-normal ml-2" style={{ color: 'var(--nx-muted)' }}>
+                / {activeTotalCount} total
+              </span>
             )}
           </div>
-          <div className="mt-1 text-[11px] text-slate-500">
-            {activeWorkspace && !showAllWorkspaces ? 'Active in current project' : 'Active across all projects'}
+          <div className="mt-1 text-[11px]" style={{ color: 'var(--nx-muted)' }}>
+            {activeWorkspace && !showAllWorkspaces
+              ? t('legacy.activeCurrentProject', 'Active in current project')
+              : t('legacy.activeAllProjects', 'Active across all projects')}
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
-          <div className="text-xs font-mono text-slate-400">Available Providers</div>
-          <div className="mt-2 text-2xl font-bold font-mono text-sky-400">
-            {installedCount} / {providers.length}
+        <div
+          className="rounded-lg p-4"
+          style={{
+            background: 'var(--nx-surface)',
+            border: '1px solid var(--nx-border)',
+          }}
+        >
+          <div className="text-xs font-mono" style={{ color: 'var(--nx-text-soft)' }}>
+            {t('legacy.availableProviders', 'Available Providers')}
           </div>
-          <div className="mt-1 text-[11px] text-slate-500">Installed in local PATH</div>
+          <div
+            className="mt-2 text-2xl font-bold font-mono"
+            style={{ color: 'var(--nx-accent-text)' }}
+          >
+            {installedCount} / {safeProviders.length}
+          </div>
+          <div className="mt-1 text-[11px]" style={{ color: 'var(--nx-muted)' }}>
+            {t('legacy.installedLocalPath', 'Installed in local PATH')}
+          </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
-          <div className="text-xs font-mono text-slate-400">Registered Projects</div>
-          <div className="mt-2 text-2xl font-bold font-mono text-indigo-400">{workspaces.length}</div>
-          <div className="mt-1 text-[11px] text-slate-500">Workspaces in config</div>
+        <div
+          className="rounded-lg p-4"
+          style={{
+            background: 'var(--nx-surface)',
+            border: '1px solid var(--nx-border)',
+          }}
+        >
+          <div className="text-xs font-mono" style={{ color: 'var(--nx-text-soft)' }}>
+            {t('legacy.registeredProjects', 'Registered Projects')}
+          </div>
+          <div className="mt-2 text-2xl font-bold font-mono" style={{ color: 'var(--nx-text)' }}>
+            {safeWorkspaces.length}
+          </div>
+          <div className="mt-1 text-[11px]" style={{ color: 'var(--nx-muted)' }}>
+            {t('legacy.workspacesInConfig', 'Workspaces in config')}
+          </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 flex flex-col justify-between">
-          <div className="text-xs font-mono text-slate-400">Quick Launch</div>
+        <div
+          className="rounded-lg p-4 flex flex-col justify-between"
+          style={{
+            background: 'var(--nx-surface)',
+            border: '1px solid var(--nx-border)',
+          }}
+        >
+          <div className="text-xs font-mono" style={{ color: 'var(--nx-text-soft)' }}>
+            {t('legacy.quickLaunch', 'Quick Launch')}
+          </div>
           <button
             onClick={onOpenStartModal}
-            className="mt-2 w-full flex items-center justify-center space-x-2 py-2 px-3 iapro-gradient-bg hover:opacity-95 text-white rounded text-xs font-semibold shadow-md shadow-purple-950/40 iapro-glow-sm transition"
+            className="mt-2 w-full flex items-center justify-center space-x-2 py-2 px-3 hover:opacity-95 text-white rounded text-xs font-semibold shadow-md transition"
+            style={{ background: 'var(--nx-accent)' }}
           >
             <Play className="w-3.5 h-3.5 fill-current" />
-            <span>Launch Agent</span>
+            <span>{t('legacy.launchAgent', 'Launch Agent')}</span>
           </button>
         </div>
       </div>
 
       {/* Scope Filter Switcher */}
       {activeWorkspace && (
-        <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-800 text-xs font-mono">
-          <div className="flex items-center space-x-2 text-slate-400">
-            <Folder className="w-4 h-4 text-cyan-400" />
-            <span>Scope:</span>
-            <span className="text-slate-200 font-semibold truncate max-w-sm">{activeWorkspace}</span>
+        <div
+          className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-mono"
+          style={{
+            background: 'var(--nx-surface)',
+            border: '1px solid var(--nx-border)',
+          }}
+        >
+          <div className="flex items-center space-x-2" style={{ color: 'var(--nx-text-soft)' }}>
+            <Folder className="w-4 h-4" style={{ color: 'var(--nx-accent-text)' }} />
+            <span>{t('legacy.scope', 'Scope:')}</span>
+            <span className="font-semibold truncate max-w-sm" style={{ color: 'var(--nx-text)' }}>
+              {activeWorkspace}
+            </span>
           </div>
 
-          <div className="flex items-center space-x-1.5 bg-slate-950 p-1 rounded-md border border-slate-800/80">
+          <div
+            className="flex items-center space-x-1.5 p-1 rounded-md"
+            style={{
+              background: 'var(--nx-bg)',
+              border: '1px solid var(--nx-border)',
+            }}
+          >
             <button
               onClick={() => setShowAllWorkspaces(false)}
-              className={`px-2.5 py-1 rounded text-[11px] font-medium transition flex items-center space-x-1 ${
-                !showAllWorkspaces
-                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              className="px-2.5 py-1 rounded text-[11px] font-medium transition flex items-center space-x-1"
+              style={{
+                background: !showAllWorkspaces ? 'var(--nx-accent)' : 'transparent',
+                color: !showAllWorkspaces ? '#fff' : 'var(--nx-text-soft)',
+              }}
             >
-              <span>Project Only</span>
-              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-black/30 text-[10px]">
+              <span>{t('legacy.projectOnly', 'Project Only')}</span>
+              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-black/20 text-[10px]">
                 {liveRuntimes.length}
               </span>
             </button>
             <button
               onClick={() => setShowAllWorkspaces(true)}
-              className={`px-2.5 py-1 rounded text-[11px] font-medium transition flex items-center space-x-1 ${
-                showAllWorkspaces
-                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              className="px-2.5 py-1 rounded text-[11px] font-medium transition flex items-center space-x-1"
+              style={{
+                background: showAllWorkspaces ? 'var(--nx-accent)' : 'transparent',
+                color: showAllWorkspaces ? '#fff' : 'var(--nx-text-soft)',
+              }}
             >
               <Layers className="w-3 h-3" />
-              <span>All Projects</span>
-              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-black/30 text-[10px]">
-                {runtimes.length}
+              <span>{t('legacy.allProjects', 'All Projects')}</span>
+              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-black/20 text-[10px]">
+                {safeRuntimes.length}
               </span>
             </button>
           </div>
@@ -139,30 +222,52 @@ export const Dashboard: React.FC<DashboardProps> = ({
       )}
 
       {/* LIVE RUNTIMES CARD (Active Only) */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden shadow-sm">
-        <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+      <div
+        className="rounded-lg overflow-hidden shadow-sm"
+        style={{
+          background: 'var(--nx-surface)',
+          border: '1px solid var(--nx-border)',
+        }}
+      >
+        <div
+          className="px-4 py-3 flex items-center justify-between"
+          style={{ borderBottom: '1px solid var(--nx-border)' }}
+        >
           <div className="flex items-center space-x-2.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <h2 className="text-xs font-bold font-mono text-slate-200 uppercase tracking-wider">
-              Live Runtimes ({liveRuntimes.length})
+            <span
+              className="w-2.5 h-2.5 rounded-full animate-pulse"
+              style={{ background: 'var(--nx-success)' }}
+            />
+            <h2
+              className="text-xs font-bold font-mono uppercase tracking-wider"
+              style={{ color: 'var(--nx-text)' }}
+            >
+              {t('legacy.liveRuntimesTitle', {
+                count: liveRuntimes.length,
+                defaultValue: `Live Runtimes (${liveRuntimes.length})`,
+              })}
             </h2>
           </div>
-          <span className="text-[11px] font-mono text-slate-500">Active coding processes</span>
+          <span className="text-[11px] font-mono" style={{ color: 'var(--nx-muted)' }}>
+            {t('legacy.activeProcesses', 'Active coding processes')}
+          </span>
         </div>
 
         {liveRuntimes.length === 0 ? (
-          <div className="p-8 text-center text-slate-500 text-xs font-mono space-y-2">
-            <div>No live agent runtimes active in this project.</div>
-            <div className="text-slate-600 text-[11px]">
-              Click <span className="text-sky-400">"Launch Agent"</span> above or run{' '}
-              <code className="text-slate-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">
-                ai control start &lt;provider&gt;
-              </code>{' '}
-              to start one.
+          <div
+            className="p-8 text-center text-xs font-mono space-y-2"
+            style={{ color: 'var(--nx-muted)' }}
+          >
+            <div>{t('legacy.noLiveAgents', 'No live agent runtimes active in this project.')}</div>
+            <div className="text-[11px]">
+              {t(
+                'legacy.launchHint',
+                'Click "Launch Agent" above or run nexus start <provider> to start one.',
+              )}
             </div>
           </div>
         ) : (
-          <div className="divide-y divide-slate-800">
+          <div>
             {liveRuntimes.map((r) => {
               const prov = r.provider_id || r.provider || 'AI';
               const prof = r.profile_id || r.profile || 'default';
@@ -170,27 +275,62 @@ export const Dashboard: React.FC<DashboardProps> = ({
               return (
                 <div
                   key={r.runtime_id}
-                  className="p-4 flex items-center justify-between hover:bg-slate-800/30 transition"
+                  className="p-4 flex items-center justify-between transition hover:bg-[var(--nx-surface-2)]"
+                  style={{ borderBottom: '1px solid var(--nx-border)' }}
                 >
                   <div className="flex items-center space-x-3">
-                    <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
+                    <div
+                      className="w-3 h-3 rounded-full animate-pulse"
+                      style={{ background: 'var(--nx-success)' }}
+                    />
                     <div>
                       <div className="flex items-center space-x-2">
-                        <span className="font-bold text-sm text-slate-100 font-sans">{title}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-800 font-mono uppercase">
+                        <span
+                          className="font-bold text-sm font-sans"
+                          style={{ color: 'var(--nx-text)' }}
+                        >
+                          {title}
+                        </span>
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded font-mono uppercase"
+                          style={{
+                            background: 'var(--nx-surface-2)',
+                            color: 'var(--nx-accent-text)',
+                            border: '1px solid var(--nx-border)',
+                          }}
+                        >
                           {prov}
                         </span>
-                        <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                        <span
+                          className="text-xs px-2 py-0.5 rounded font-mono"
+                          style={{
+                            background: 'var(--nx-bg-elevated)',
+                            color: 'var(--nx-text-soft)',
+                            border: '1px solid var(--nx-border)',
+                          }}
+                        >
                           {prof}
                         </span>
-                        <span className="text-xs font-mono text-slate-500">ID: {r.runtime_id}</span>
+                        <span className="text-xs font-mono" style={{ color: 'var(--nx-muted)' }}>
+                          ID: {r.runtime_id}
+                        </span>
                         {r.handoff_type && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-mono">
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded font-mono"
+                            style={{
+                              background: 'var(--nx-surface-2)',
+                              color: 'var(--nx-accent-text)',
+                              border: '1px solid var(--nx-border)',
+                            }}
+                          >
                             {r.handoff_type}
                           </span>
                         )}
                       </div>
-                      <div className="mt-1 text-xs text-slate-400 font-mono truncate max-w-md">
+                      <div
+                        className="mt-1 text-xs font-mono truncate max-w-md"
+                        style={{ color: 'var(--nx-text-soft)' }}
+                      >
                         {r.workspace}
                       </div>
                     </div>
@@ -199,34 +339,54 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={() => onOpenTerminal(r.runtime_id)}
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-medium transition flex items-center space-x-1.5 shadow-sm"
+                      className="px-3 py-1.5 rounded text-xs font-medium transition flex items-center space-x-1.5 shadow-sm hover:bg-[var(--nx-surface-2)]"
+                      style={{
+                        background: 'var(--nx-bg-elevated)',
+                        border: '1px solid var(--nx-border)',
+                        color: 'var(--nx-text)',
+                      }}
                     >
                       <Cpu className="w-3.5 h-3.5" />
-                      <span>Terminal</span>
+                      <span>{t('legacy.terminal', 'Terminal')}</span>
                     </button>
 
                     <button
                       onClick={() => onOpenHandoffModal(r)}
-                      className="px-2.5 py-1.5 bg-slate-800 hover:bg-indigo-950 text-slate-300 hover:text-indigo-200 rounded text-xs font-medium transition flex items-center space-x-1"
-                      title="Account Handoff"
+                      className="px-2.5 py-1.5 rounded text-xs font-medium transition flex items-center space-x-1 hover:bg-[var(--nx-surface-2)]"
+                      style={{
+                        background: 'var(--nx-bg-elevated)',
+                        border: '1px solid var(--nx-border)',
+                        color: 'var(--nx-text-soft)',
+                      }}
+                      title={t('legacy.handoff', 'Handoff')}
                     >
                       <ArrowRightLeft className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Handoff</span>
+                      <span className="hidden sm:inline">{t('legacy.handoff', 'Handoff')}</span>
                     </button>
 
                     <button
                       onClick={() => onOpenContinueModal(r)}
-                      className="px-2.5 py-1.5 bg-slate-800 hover:bg-emerald-950 text-slate-300 hover:text-emerald-200 rounded text-xs font-medium transition flex items-center space-x-1"
-                      title="Continue With AI"
+                      className="px-2.5 py-1.5 rounded text-xs font-medium transition flex items-center space-x-1 hover:bg-[var(--nx-surface-2)]"
+                      style={{
+                        background: 'var(--nx-bg-elevated)',
+                        border: '1px solid var(--nx-border)',
+                        color: 'var(--nx-text-soft)',
+                      }}
+                      title={t('legacy.continueAI', 'Continue')}
                     >
                       <FastForward className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Continue</span>
+                      <span className="hidden sm:inline">{t('legacy.continueAI', 'Continue')}</span>
                     </button>
 
                     <button
                       onClick={() => onStopRuntime(r.runtime_id)}
-                      className="px-2.5 py-1.5 bg-slate-800 hover:bg-rose-950 text-slate-300 hover:text-rose-300 rounded text-xs font-medium transition"
-                      title="Stop Process"
+                      className="px-2.5 py-1.5 rounded text-xs font-medium transition hover:bg-rose-950/40 text-rose-400"
+                      style={{
+                        background: 'var(--nx-bg-elevated)',
+                        border: '1px solid var(--nx-border)',
+                      }}
+                      title={t('legacy.stopProcess', 'Stop Process')}
+                      aria-label={t('legacy.stopProcess', 'Stop Process')}
                     >
                       <Square className="w-3.5 h-3.5 fill-current" />
                     </button>
@@ -240,26 +400,49 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* SESSION HISTORY CARD (Past / Offline Sessions) */}
       {pastRuntimes.length > 0 && (
-        <div className="bg-slate-900 border border-slate-800/80 rounded-lg overflow-hidden opacity-95">
-          <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
+        <div
+          className="rounded-lg overflow-hidden"
+          style={{
+            background: 'var(--nx-surface)',
+            border: '1px solid var(--nx-border)',
+          }}
+        >
+          <div
+            className="px-4 py-3 flex items-center justify-between"
+            style={{
+              background: 'var(--nx-bg-elevated)',
+              borderBottom: '1px solid var(--nx-border)',
+            }}
+          >
             <div className="flex items-center space-x-2.5">
-              <History className="w-4 h-4 text-slate-400" />
-              <h2 className="text-xs font-bold font-mono text-slate-300 uppercase tracking-wider">
-                Session History ({pastRuntimes.length})
+              <History className="w-4 h-4" style={{ color: 'var(--nx-muted)' }} />
+              <h2
+                className="text-xs font-bold font-mono uppercase tracking-wider"
+                style={{ color: 'var(--nx-text-soft)' }}
+              >
+                {t('legacy.sessionHistoryTitle', {
+                  count: pastRuntimes.length,
+                  defaultValue: `Session History (${pastRuntimes.length})`,
+                })}
               </h2>
             </div>
             {onCleanInactive && (
               <button
                 onClick={onCleanInactive}
-                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-[10px] font-mono transition"
-                title="Clear all inactive/stale sessions"
+                className="px-2.5 py-1 rounded text-[10px] font-mono transition hover:bg-[var(--nx-surface-2)]"
+                style={{
+                  background: 'var(--nx-surface)',
+                  border: '1px solid var(--nx-border)',
+                  color: 'var(--nx-text-soft)',
+                }}
+                title={t('legacy.clearInactiveTitle', 'Clear all inactive/stale sessions')}
               >
-                Clear Inactive
+                {t('legacy.clearInactive', 'Clear Inactive')}
               </button>
             )}
           </div>
 
-          <div className="divide-y divide-slate-800/70">
+          <div>
             {pastRuntimes.map((r) => {
               const prov = r.provider_id || r.provider || 'AI';
               const prof = r.profile_id || r.profile || 'default';
@@ -267,33 +450,65 @@ export const Dashboard: React.FC<DashboardProps> = ({
               return (
                 <div
                   key={r.runtime_id}
-                  className="p-3.5 flex items-center justify-between hover:bg-slate-800/20 transition"
+                  className="p-3.5 flex items-center justify-between transition hover:bg-[var(--nx-surface-2)]"
+                  style={{ borderBottom: '1px solid var(--nx-border)' }}
                 >
                   <div className="flex items-center space-x-3">
-                    <div className="w-2.5 h-2.5 rounded-full bg-slate-600" />
+                    <div
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{ background: 'var(--nx-muted)' }}
+                    />
                     <div>
                       <div className="flex items-center space-x-2">
-                        <span className="font-semibold text-sm text-slate-300 font-sans">{title}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 border border-slate-800 font-mono uppercase">
+                        <span
+                          className="font-semibold text-sm font-sans"
+                          style={{ color: 'var(--nx-text)' }}
+                        >
+                          {title}
+                        </span>
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded font-mono uppercase"
+                          style={{
+                            background: 'var(--nx-surface-2)',
+                            color: 'var(--nx-text-soft)',
+                            border: '1px solid var(--nx-border)',
+                          }}
+                        >
                           {prov}
                         </span>
-                        <span className="text-xs px-2 py-0.5 rounded bg-slate-800/80 text-slate-400 font-mono">
+                        <span
+                          className="text-xs px-2 py-0.5 rounded font-mono"
+                          style={{
+                            background: 'var(--nx-bg)',
+                            color: 'var(--nx-text-soft)',
+                            border: '1px solid var(--nx-border)',
+                          }}
+                        >
                           {prof}
                         </span>
-                        <span className="text-xs font-mono text-slate-500">ID: {r.runtime_id}</span>
+                        <span className="text-xs font-mono" style={{ color: 'var(--nx-muted)' }}>
+                          ID: {r.runtime_id}
+                        </span>
                         <span
-                          className={`text-[10px] px-1.5 py-0.5 rounded font-mono uppercase ${
-                            r.state === 'STOPPED'
-                              ? 'bg-slate-800 text-slate-400'
-                              : r.state === 'FAILED'
-                              ? 'bg-rose-950/60 text-rose-400 border border-rose-900/60'
-                              : 'bg-amber-950/60 text-amber-400 border border-amber-900/60'
-                          }`}
+                          className="text-[10px] px-1.5 py-0.5 rounded font-mono uppercase"
+                          style={{
+                            background: 'var(--nx-surface-2)',
+                            color:
+                              r.state === 'STOPPED'
+                                ? 'var(--nx-text-soft)'
+                                : r.state === 'FAILED'
+                                  ? 'var(--nx-danger)'
+                                  : 'var(--nx-warning)',
+                            border: '1px solid var(--nx-border)',
+                          }}
                         >
                           {r.state}
                         </span>
                       </div>
-                      <div className="mt-0.5 text-xs text-slate-500 font-mono truncate max-w-md">
+                      <div
+                        className="mt-0.5 text-xs font-mono truncate max-w-md"
+                        style={{ color: 'var(--nx-muted)' }}
+                      >
                         {r.workspace}
                       </div>
                     </div>
@@ -302,18 +517,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={() => onOpenContinueModal(r)}
-                      className="px-2.5 py-1 bg-slate-800 hover:bg-emerald-950 text-slate-300 hover:text-emerald-200 rounded text-xs font-medium transition flex items-center space-x-1"
-                      title="Resume conversation with new session"
+                      className="px-2.5 py-1 rounded text-xs font-medium transition flex items-center space-x-1 hover:bg-[var(--nx-surface-2)]"
+                      style={{
+                        background: 'var(--nx-bg-elevated)',
+                        border: '1px solid var(--nx-border)',
+                        color: 'var(--nx-text-soft)',
+                      }}
+                      title={t('legacy.resumeSession', 'Resume conversation with new session')}
                     >
                       <FastForward className="w-3.5 h-3.5" />
-                      <span>Resume</span>
+                      <span>{t('legacy.resume', 'Resume')}</span>
                     </button>
 
                     {onDeleteRuntime && (
                       <button
                         onClick={() => onDeleteRuntime(r.runtime_id)}
-                        className="p-1 text-slate-500 hover:text-rose-400 hover:bg-slate-800 rounded transition"
-                        title="Delete Session Record"
+                        className="p-1 rounded transition hover:bg-[var(--nx-surface-2)] text-rose-400"
+                        title={t('legacy.deleteSessionRecord', 'Delete Session Record')}
+                        aria-label={t('legacy.deleteSessionRecord', 'Delete Session Record')}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -328,4 +549,3 @@ export const Dashboard: React.FC<DashboardProps> = ({
     </div>
   );
 };
-

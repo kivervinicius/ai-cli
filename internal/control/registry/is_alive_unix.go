@@ -67,7 +67,7 @@ func IsProcessAliveWithGeneration(pid int, hostGeneration int64) bool {
 					if bootTimeSec > 0 {
 						procStartSec := bootTimeSec + (startTimeTicks / 100)
 						procStartNano := procStartSec * 1e9
-						
+
 						// If process was created more than 10 seconds after our recorded hostGeneration,
 						// it is very likely a recycled PID.
 						if procStartNano > hostGeneration+(10*1e9) {

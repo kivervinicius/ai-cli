@@ -1,0 +1,16 @@
+@use '../../styles/tokens';
+@use '../../styles/typography';
+@use '../../styles/mixins';
+
+.updateStatus {
+  font-size: var(--nx-font-size-sm);
+}
+
+.updateWarning {
+  color: var(--nx-warning);
+  font-weight: 600;
+}
+
+.updateSuccess {
+  color: var(--nx-success);
+}

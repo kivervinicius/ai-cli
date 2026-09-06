@@ -9,6 +9,7 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/control/driver"
 	"github.com/kivervinicius/ai-cli/internal/control/events"
+	"github.com/kivervinicius/ai-cli/internal/control/ids"
 	"github.com/kivervinicius/ai-cli/internal/control/launcher"
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
@@ -24,22 +25,25 @@ import (
 // FormatKickoffPrompt produces a clean, honest initial prompt for the target provider from a WorkCheckpoint.
 func FormatKickoffPrompt(cp WorkCheckpoint) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("=== AI Control Context Handoff (from %s:%s) ===\n", strings.ToUpper(cp.SourceProvider), cp.SourceProfile))
-	sb.WriteString(fmt.Sprintf("Workspace: %s\n", cp.Workspace))
+	fmt.Fprintf(&sb, "=== IAPro Nexus Context Handoff (from %s:%s) ===\n", strings.ToUpper(cp.SourceProvider), cp.SourceProfile)
+	fmt.Fprintf(&sb, "Workspace: %s\n", cp.Workspace)
+	if cp.SourceModel != "" {
+		fmt.Fprintf(&sb, "Previous Model: %s\n", cp.SourceModel)
+	}
 	if cp.GitBranch != "" {
-		sb.WriteString(fmt.Sprintf("Active Git Branch: %s\n", cp.GitBranch))
+		fmt.Fprintf(&sb, "Active Git Branch: %s\n", cp.GitBranch)
 	}
 	if len(cp.ChangedFiles) > 0 {
-		sb.WriteString(fmt.Sprintf("Modified Files (%d):\n", len(cp.ChangedFiles)))
+		fmt.Fprintf(&sb, "Modified Files (%d):\n", len(cp.ChangedFiles))
 		for _, f := range cp.ChangedFiles {
-			sb.WriteString(fmt.Sprintf(" - %s\n", f))
+			fmt.Fprintf(&sb, " - %s\n", f)
 		}
 	}
 	if cp.GitDiffStat != "" {
 		sb.WriteString("Git Diff Summary:\n" + cp.GitDiffStat + "\n")
 	}
 	if cp.Goal != "" {
-		sb.WriteString(fmt.Sprintf("Current Goal / Task: %s\n", cp.Goal))
+		fmt.Fprintf(&sb, "Current Goal / Task: %s\n", cp.Goal)
 	}
 	sb.WriteString("==================================================\n")
 	sb.WriteString("Please inspect the modified files and continue the ongoing task in this workspace.")
@@ -73,7 +77,7 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 
 		if len(candidates) > 0 {
 			res, _ := sel.SelectBestProfile(ctx, targetProvider, source.Workspace, candidates, accounts, nil)
-			if res.SelectedProfile != nil && res.SelectedProfile.Name != "" {
+			if res != nil && res.SelectedProfile != nil && res.SelectedProfile.Name != "" {
 				targetProfile = res.SelectedProfile.Name
 			} else {
 				targetProfile = candidates[0].Name
@@ -90,7 +94,7 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 	}
 
 	// 3. Capture Safe Work Checkpoint
-	cp := CaptureWorkCheckpoint(source.Workspace, source.RuntimeID, source.ProviderID, source.ProfileID, source.ProviderSessionID, "")
+	cp := CaptureWorkCheckpoint(source.Workspace, source.RuntimeID, source.ProviderID, source.ProfileID, source.ProviderSessionID, source.Model, "")
 	if _, err := SaveCheckpoint(cp); err != nil {
 		return nil, fmt.Errorf("context handoff aborted: failed to persist work checkpoint: %w", err)
 	}
@@ -108,9 +112,12 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 		return nil, fmt.Errorf("failed to construct kickoff arguments: %w", err)
 	}
 
-	// 5. Launch Target Supervised Runtime FIRST via unified launcher
-	newRuntimeID := fmt.Sprintf("%s-continue-%d", targetProvider, len(reg.List())+1)
-	lineageID := fmt.Sprintf("lin-ctx-%s-%d", targetProvider, time.Now().UnixNano())
+	// 4b. Resolve model for target provider
+	targetModel := ResolveTargetModel(source.Model, source.ProviderID, targetProvider)
+
+	// 5. Launch Target Supervised Runtime FIRST via unified launcher (persistent host)
+	newRuntimeID := fmt.Sprintf("%s-continue-%s", targetProvider, ids.NewRuntimeID())
+	lineageID := fmt.Sprintf("lin-ctx-%s", ids.NewRuntimeID())
 
 	newSession, err := launcher.Default().Launch(ctx, launcher.LaunchOptions{
 		RuntimeID:  newRuntimeID,
@@ -118,7 +125,8 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 		ProfileID:  targetProfile,
 		Workspace:  source.Workspace,
 		Args:       extraArgs,
-		Standalone: true,
+		Model:      targetModel,
+		Standalone: false,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to start context handoff target runtime: %w", err)
@@ -160,4 +168,22 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 	))
 
 	return newSession, nil
+}
+
+// ResolveTargetModel determines whether the source model can be safely used on the target provider.
+// If both providers are identical, the model is preserved unconditionally.
+// If providers differ, we test whether the target provider's driver supports model overrides
+// via ApplyLaunchConfiguration dry-run. If unsupported, returns "" to fall back cleanly to target default.
+func ResolveTargetModel(sourceModel, sourceProvider, targetProvider string) string {
+	sourceModel = strings.TrimSpace(sourceModel)
+	if sourceModel == "" {
+		return ""
+	}
+	if strings.EqualFold(sourceProvider, targetProvider) {
+		return sourceModel
+	}
+	if _, err := driver.ApplyLaunchConfiguration(targetProvider, sourceModel, nil, nil); err != nil {
+		return ""
+	}
+	return sourceModel
 }

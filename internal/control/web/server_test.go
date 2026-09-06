@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ func TestMain(m *testing.M) {
 	testDir, err := os.MkdirTemp("", "ai-control-web-test-*")
 	if err == nil {
 		defer os.RemoveAll(testDir)
+		_ = os.Setenv("NEXUS_DATA_DIR", testDir)
 		_ = os.Setenv("AI_MANAGER_DATA_DIR", testDir)
 		_ = os.Setenv("AI_CLI_DATA_DIR", testDir)
 	}
@@ -87,10 +89,14 @@ func TestServer_BootstrapAndAuth(t *testing.T) {
 
 	// 5. Query providers endpoint
 	provResp, err := client.Get(srv.URL() + "/api/v1/providers")
-	if err != nil || provResp.StatusCode != http.StatusOK {
-		t.Errorf("providers endpoint failed: %v, status: %d", err, provResp.StatusCode)
+	if err != nil {
+		t.Errorf("providers endpoint request failed: %v", err)
+	} else {
+		defer provResp.Body.Close()
+		if provResp.StatusCode != http.StatusOK {
+			t.Errorf("providers endpoint failed: status: %d", provResp.StatusCode)
+		}
 	}
-	provResp.Body.Close()
 
 	// 6. Test Origin enforcement
 	badReq, _ := http.NewRequest(http.MethodGet, srv.URL()+"/api/v1/workspaces", nil)
@@ -165,5 +171,33 @@ func TestServer_BootstrapAndAuth(t *testing.T) {
 	pubSessResp.Body.Close()
 	if unauthSessData.Authenticated {
 		t.Errorf("expected unauthenticated session for unauth client, got true")
+	}
+}
+
+func TestServer_BootstrapPreservesDeepLinkPath(t *testing.T) {
+	srv, err := NewServer(ServerOptions{Host: "127.0.0.1", Port: 0})
+	if err != nil {
+		t.Fatalf("failed to create server: %v", err)
+	}
+	go func() { _ = srv.Start() }()
+	defer srv.Shutdown(context.Background())
+	time.Sleep(50 * time.Millisecond)
+
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{
+		Jar: jar,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	bootstrap := srv.BootstrapURL()
+	deepLink := srv.URL() + "/updates?token=" + bootstrap[strings.LastIndex(bootstrap, "=")+1:]
+	resp, err := client.Get(deepLink)
+	if err != nil {
+		t.Fatalf("deep-link bootstrap request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/updates" {
+		t.Fatalf("expected authenticated deep-link redirect, got status=%d location=%q", resp.StatusCode, resp.Header.Get("Location"))
 	}
 }

@@ -21,25 +21,40 @@ type Registry struct {
 }
 
 var (
+	singletonMu     sync.RWMutex
 	defaultRegistry *Registry
 	regOnce         sync.Once
 )
 
 // DefaultRegistry returns the singleton registry instance.
 func DefaultRegistry() *Registry {
-	regOnce.Do(func() {
-		dataDir, err := config.DataDir()
-		if err != nil {
-			dataDir = filepath.Join(os.TempDir(), "ai-control")
-		}
-		path := filepath.Join(dataDir, "runtimes.json")
-		defaultRegistry = NewRegistry(path)
-	})
+	singletonMu.RLock()
+	reg := defaultRegistry
+	singletonMu.RUnlock()
+	if reg != nil {
+		return reg
+	}
+
+	singletonMu.Lock()
+	defer singletonMu.Unlock()
+
+	if defaultRegistry == nil {
+		regOnce.Do(func() {
+			dataDir, err := config.DataDir()
+			if err != nil {
+				dataDir = filepath.Join(os.TempDir(), "ai-control")
+			}
+			path := filepath.Join(dataDir, "runtimes.json")
+			defaultRegistry = NewRegistry(path)
+		})
+	}
 	return defaultRegistry
 }
 
 // ResetDefaultRegistryForTest resets the singleton registry for isolated testing.
 func ResetDefaultRegistryForTest() {
+	singletonMu.Lock()
+	defer singletonMu.Unlock()
 	regOnce = sync.Once{}
 	defaultRegistry = nil
 }
@@ -152,7 +167,14 @@ func (r *Registry) saveLocked(mutators ...func(map[string]RuntimeSession)) error
 	// 3. Write updated state atomically
 	list := make([]RuntimeSession, 0, len(freshMap))
 	for _, s := range freshMap {
-		list = append(list, s)
+		// Launch-only metadata must never be persisted: Env may contain
+		// API keys/tokens from the parent environment and Args may embed
+		// prompts or session IDs. The in-memory map keeps them; disk gets none.
+		p := s
+		p.Env = nil
+		p.Args = nil
+		p.Binary = ""
+		list = append(list, p)
 	}
 
 	data, err := json.MarshalIndent(list, "", "  ")
@@ -231,6 +253,34 @@ func (r *Registry) UpdateState(runtimeID string, state RuntimeState) error {
 	return nil
 }
 
+// UpdateStartupStage records the observable startup stage without changing
+// the backward-compatible operational RuntimeState field.
+func (r *Registry) UpdateStartupStage(runtimeID string, stage StartupStage, fault StartupFault) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var notFound bool
+	err := r.saveLocked(func(fresh map[string]RuntimeSession) {
+		s, ok := fresh[runtimeID]
+		if !ok {
+			notFound = true
+			return
+		}
+		s.StartupStage = stage
+		s.StageChangedAt = time.Now()
+		s.LastFault = fault
+		s.UpdatedAt = time.Now()
+		fresh[runtimeID] = s
+	})
+	if err != nil {
+		return err
+	}
+	if notFound {
+		return fmt.Errorf("runtime %q not found", runtimeID)
+	}
+	return nil
+}
+
 // UpdateProviderSessionID updates the underlying provider session ID.
 func (r *Registry) UpdateProviderSessionID(runtimeID, providerSessionID string) error {
 	r.mu.Lock()
@@ -269,6 +319,78 @@ func (r *Registry) UpdateTitle(runtimeID, title string) error {
 			return
 		}
 		s.Title = title
+		s.DynamicTitle = title
+		s.UpdatedAt = time.Now()
+		fresh[runtimeID] = s
+	})
+	if err != nil {
+		return err
+	}
+	if notFound {
+		return fmt.Errorf("runtime %q not found", runtimeID)
+	}
+	return nil
+}
+
+// AttentionUpdate carries fail-closed attention metadata for a runtime.
+type AttentionUpdate struct {
+	State        RuntimeState
+	Reason       string
+	Context      string
+	PromptKind   string
+	Kind         string
+	Fingerprint  string
+	ProjectID    string
+	ProjectName  string
+	TaskSummary  string
+	DynamicTitle string
+}
+
+// UpdateAttention updates the attention metadata and dynamic title of a runtime session.
+func (r *Registry) UpdateAttention(runtimeID string, state RuntimeState, reason, context, projectName, taskSummary, dynamicTitle string) error {
+	return r.UpdateAttentionMeta(runtimeID, AttentionUpdate{
+		State:        state,
+		Reason:       reason,
+		Context:      context,
+		ProjectName:  projectName,
+		TaskSummary:  taskSummary,
+		DynamicTitle: dynamicTitle,
+	})
+}
+
+// UpdateAttentionMeta updates attention metadata including prompt kind and fingerprint.
+func (r *Registry) UpdateAttentionMeta(runtimeID string, update AttentionUpdate) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var notFound bool
+	err := r.saveLocked(func(fresh map[string]RuntimeSession) {
+		s, ok := fresh[runtimeID]
+		if !ok {
+			notFound = true
+			return
+		}
+		if update.State != "" {
+			s.State = update.State
+		}
+		s.AttentionReason = update.Reason
+		s.AttentionContext = update.Context
+		s.PromptKind = update.PromptKind
+		s.AttentionKind = update.Kind
+		s.AttentionFingerprint = update.Fingerprint
+		if update.ProjectID != "" {
+			s.ProjectID = update.ProjectID
+		}
+		if update.ProjectName != "" {
+			s.ProjectName = update.ProjectName
+		}
+		if update.TaskSummary != "" {
+			s.LastTaskSummary = update.TaskSummary
+		}
+		if update.DynamicTitle != "" {
+			s.DynamicTitle = update.DynamicTitle
+			s.Title = update.DynamicTitle
+		}
 		s.UpdatedAt = time.Now()
 		fresh[runtimeID] = s
 	})

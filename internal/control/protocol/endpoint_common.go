@@ -12,23 +12,23 @@ import (
 // EndpointPath returns the canonical local socket / pipe path for a runtime.
 func EndpointPath(runtimeID string) string {
 	if runtime.GOOS == "windows" {
-		return fmt.Sprintf(`\\.\pipe\ai-control-%s`, runtimeID)
+		return fmt.Sprintf(`\\.\pipe\nexus-control-%s`, runtimeID)
 	}
 
 	// Prefer XDG_RUNTIME_DIR if set and accessible
 	if xdg := os.Getenv("XDG_RUNTIME_DIR"); xdg != "" {
-		dir := filepath.Join(xdg, "ai-cli")
+		dir := filepath.Join(xdg, "nexus")
 		_ = os.MkdirAll(dir, 0700)
 		return filepath.Join(dir, fmt.Sprintf("%s.sock", runtimeID))
 	}
 
-	// Fallback to /tmp/ai-control-<uid>
+	// Fallback to /tmp/nexus-control-<uid>
 	uid := os.Getuid()
-	dir := filepath.Join(os.TempDir(), fmt.Sprintf("ai-control-%d", uid))
+	dir := filepath.Join(os.TempDir(), fmt.Sprintf("nexus-control-%d", uid))
 	_ = os.MkdirAll(dir, 0700)
 
 	if st, err := os.Stat(dir); err == nil && !isOwnedBy(st, uid) {
-		dir = filepath.Join(os.TempDir(), fmt.Sprintf("ai-control-%d-%d", uid, time.Now().UnixNano()))
+		dir = filepath.Join(os.TempDir(), fmt.Sprintf("nexus-control-%d-%d", uid, time.Now().UnixNano()))
 		_ = os.MkdirAll(dir, 0700)
 	}
 

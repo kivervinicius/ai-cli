@@ -1,0 +1,19 @@
+// Shared semantic aliases used by SCSS modules. Theme values remain owned by
+// workspace-os.css; these aliases keep component styles on the token contract.
+:root {
+  --nx-surface-0: var(--nx-bg);
+  --nx-surface-1: var(--nx-surface);
+  --nx-text-primary: var(--nx-text);
+  --nx-text-muted: var(--nx-muted);
+  --nx-border-subtle: var(--nx-border);
+  --nx-accent-subtle: var(--nx-accent-soft);
+  --nx-danger-border: var(--nx-danger);
+  --nx-danger-subtle: var(--nx-danger-soft);
+  --nx-radius-md: var(--nx-radius);
+  --nx-radius-xl: var(--nx-radius-lg);
+  --nx-radius-full: 999px;
+  --nx-space-2: 0.5rem;
+  --nx-space-3: 0.75rem;
+  --nx-space-4: 1rem;
+  --nx-focus-ring: 0 0 0 2px var(--nx-bg), 0 0 0 4px var(--nx-accent);
+}

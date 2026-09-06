@@ -9,13 +9,8 @@ type PrefixState int
 
 const (
 	StateIdle PrefixState = iota
-	StateSlash
-	StateSlashA
-	StateSlashAI
+	StateBuffering
 	StateControlCommand
-	StateEscapeSlash
-	StateEscapeSlashA
-	StateEscapeSlashAI
 	StatePassthrough
 )
 
@@ -33,8 +28,8 @@ type RouterOutput struct {
 	ControlCmd   string
 }
 
-// SlashPrefixRouter handles input bytes character by character, buffering only ambiguous slash prefixes
-// (/ or /a or /ai) and instantly forwarding non-matching bytes to the child process.
+// SlashPrefixRouter handles input bytes character by character, buffering ambiguous slash prefixes
+// (/nexus, /ai, //nexus, //ai) and instantly forwarding non-matching bytes to the child process.
 type SlashPrefixRouter struct {
 	state      PrefixState
 	prefixBuf  bytes.Buffer
@@ -53,6 +48,16 @@ func (r *SlashPrefixRouter) Reset() {
 	r.commandBuf.Reset()
 }
 
+func isPrefixOfKnown(s string) bool {
+	targets := []string{"/nexus", "/ai", "//nexus", "//ai"}
+	for _, t := range targets {
+		if strings.HasPrefix(t, s) {
+			return true
+		}
+	}
+	return false
+}
+
 // ProcessByte processes a single byte through the prefix state machine.
 func (r *SlashPrefixRouter) ProcessByte(b byte) RouterOutput {
 	if b == 0x03 || b == 0x15 { // Ctrl+C or Ctrl+U
@@ -63,7 +68,7 @@ func (r *SlashPrefixRouter) ProcessByte(b byte) RouterOutput {
 	switch r.state {
 	case StateIdle:
 		if b == '/' {
-			r.state = StateSlash
+			r.state = StateBuffering
 			r.prefixBuf.WriteByte(b)
 			return RouterOutput{Action: ActionNone}
 		}
@@ -73,60 +78,66 @@ func (r *SlashPrefixRouter) ProcessByte(b byte) RouterOutput {
 		r.state = StatePassthrough
 		return RouterOutput{Action: ActionForwardBytes, ForwardBytes: []byte{b}}
 
-	case StateSlash:
-		if b == 'a' || b == 'A' {
-			r.state = StateSlashA
-			r.prefixBuf.WriteByte(b)
-			return RouterOutput{Action: ActionNone}
-		}
-		if b == '/' {
-			r.state = StateEscapeSlash
-			r.prefixBuf.WriteByte(b)
-			return RouterOutput{Action: ActionNone}
-		}
-		// Diverged from /ai (e.g. /help, /model, /review)
-		r.state = StatePassthrough
-		out := append(r.prefixBuf.Bytes(), b)
-		r.prefixBuf.Reset()
-		if b == '\r' || b == '\n' {
-			r.state = StateIdle
-		}
-		return RouterOutput{Action: ActionForwardBytes, ForwardBytes: out}
-
-	case StateSlashA:
-		if b == 'i' || b == 'I' {
-			r.state = StateSlashAI
-			r.prefixBuf.WriteByte(b)
-			return RouterOutput{Action: ActionNone}
-		}
-		// Diverged from /ai (e.g. /ask)
-		r.state = StatePassthrough
-		out := append(r.prefixBuf.Bytes(), b)
-		r.prefixBuf.Reset()
-		if b == '\r' || b == '\n' {
-			r.state = StateIdle
-		}
-		return RouterOutput{Action: ActionForwardBytes, ForwardBytes: out}
-
-	case StateSlashAI:
+	case StateBuffering:
+		// Check if delimiter encountered
 		if b == ' ' || b == '\t' || b == '\r' || b == '\n' {
-			// Confirmed AI Control prefix
-			r.state = StateControlCommand
-			r.commandBuf.Reset()
-			r.commandBuf.WriteString("/ai")
-			r.commandBuf.WriteByte(b)
-			r.prefixBuf.Reset()
+			trimmedPrefix := strings.ToLower(strings.TrimSpace(r.prefixBuf.String()))
+			if trimmedPrefix == "/nexus" || trimmedPrefix == "/ai" {
+				// Confirmed command prefix
+				r.state = StateControlCommand
+				r.commandBuf.Reset()
+				r.commandBuf.WriteString(r.prefixBuf.String())
+				r.commandBuf.WriteByte(b)
+				r.prefixBuf.Reset()
 
-			if b == '\r' || b == '\n' {
-				cmd := strings.TrimSpace(r.commandBuf.String())
-				r.Reset()
-				return RouterOutput{Action: ActionControlCommand, ControlCmd: cmd}
+				if b == '\r' || b == '\n' {
+					cmd := strings.TrimSpace(r.commandBuf.String())
+					r.Reset()
+					return RouterOutput{Action: ActionControlCommand, ControlCmd: cmd}
+				}
+				return RouterOutput{Action: ActionNone}
 			}
+
+			if trimmedPrefix == "//nexus" {
+				r.state = StatePassthrough
+				out := append([]byte("/nexus"), b)
+				r.prefixBuf.Reset()
+				if b == '\r' || b == '\n' {
+					r.state = StateIdle
+				}
+				return RouterOutput{Action: ActionForwardBytes, ForwardBytes: out}
+			}
+
+			if trimmedPrefix == "//ai" {
+				r.state = StatePassthrough
+				out := append([]byte("/ai"), b)
+				r.prefixBuf.Reset()
+				if b == '\r' || b == '\n' {
+					r.state = StateIdle
+				}
+				return RouterOutput{Action: ActionForwardBytes, ForwardBytes: out}
+			}
+
+			// Diverged delimiter
+			r.state = StatePassthrough
+			out := append(r.prefixBuf.Bytes(), b)
+			r.prefixBuf.Reset()
+			if b == '\r' || b == '\n' {
+				r.state = StateIdle
+			}
+			return RouterOutput{Action: ActionForwardBytes, ForwardBytes: out}
+		}
+
+		r.prefixBuf.WriteByte(b)
+		candidate := strings.ToLower(r.prefixBuf.String())
+		if isPrefixOfKnown(candidate) {
 			return RouterOutput{Action: ActionNone}
 		}
-		// Diverged from /ai (e.g. /airplane)
+
+		// Diverged from all known slash prefixes
 		r.state = StatePassthrough
-		out := append(r.prefixBuf.Bytes(), b)
+		out := make([]byte, r.prefixBuf.Len())
+		copy(out, r.prefixBuf.Bytes())
 		r.prefixBuf.Reset()
 		return RouterOutput{Action: ActionForwardBytes, ForwardBytes: out}
 
@@ -146,45 +157,6 @@ func (r *SlashPrefixRouter) ProcessByte(b byte) RouterOutput {
 		}
 		r.commandBuf.WriteByte(b)
 		return RouterOutput{Action: ActionNone}
-
-	case StateEscapeSlash:
-		if b == 'a' || b == 'A' {
-			r.state = StateEscapeSlashA
-			r.prefixBuf.WriteByte(b)
-			return RouterOutput{Action: ActionNone}
-		}
-		// Diverged from //ai (e.g. //comment)
-		r.state = StatePassthrough
-		out := append(r.prefixBuf.Bytes(), b)
-		r.prefixBuf.Reset()
-		if b == '\r' || b == '\n' {
-			r.state = StateIdle
-		}
-		return RouterOutput{Action: ActionForwardBytes, ForwardBytes: out}
-
-	case StateEscapeSlashA:
-		if b == 'i' || b == 'I' {
-			r.state = StateEscapeSlashAI
-			r.prefixBuf.WriteByte(b)
-			return RouterOutput{Action: ActionNone}
-		}
-		r.state = StatePassthrough
-		out := append(r.prefixBuf.Bytes(), b)
-		r.prefixBuf.Reset()
-		if b == '\r' || b == '\n' {
-			r.state = StateIdle
-		}
-		return RouterOutput{Action: ActionForwardBytes, ForwardBytes: out}
-
-	case StateEscapeSlashAI:
-		// Unescape "//ai" -> "/ai" + b to child process
-		r.state = StatePassthrough
-		out := append([]byte("/ai"), b)
-		r.prefixBuf.Reset()
-		if b == '\r' || b == '\n' {
-			r.state = StateIdle
-		}
-		return RouterOutput{Action: ActionForwardBytes, ForwardBytes: out}
 
 	case StatePassthrough:
 		if b == '\r' || b == '\n' {

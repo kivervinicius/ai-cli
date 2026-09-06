@@ -3,6 +3,7 @@
 package protocol
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"time"
@@ -23,13 +24,10 @@ func Listen(runtimeID string) (net.Listener, error) {
 	}
 
 	l, err := winio.ListenPipe(path, cfg)
-	if err == nil {
-		return l, nil
+	if err != nil {
+		return nil, fmt.Errorf("secure named pipe bind failed: %w", err)
 	}
-
-	// Fallback to default process security if custom SDDL fails on this Windows environment
-	cfg.SecurityDescriptor = ""
-	return winio.ListenPipe(path, cfg)
+	return l, nil
 }
 
 // Dial connects to a running Windows Named Pipe endpoint.

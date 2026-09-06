@@ -1,5 +1,7 @@
 # Design Document: AI CLI Control Plane
 
+**🇬🇧 English** | [🇧🇷 Português](ai-cli-control-plane.pt-BR.md) | [🇪🇸 Español](ai-cli-control-plane.es.md)
+
 ## 1. Goals & Non-Goals
 
 ### Goals

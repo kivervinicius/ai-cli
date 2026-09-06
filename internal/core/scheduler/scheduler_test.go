@@ -114,9 +114,9 @@ func TestMultiQuotaBottleneckSelection(t *testing.T) {
 	t.Setenv("AI_CLI_STATE_DIR", stateDir)
 
 	cfg := config.NewDefaultConfig()
-	// acc-a is default in config
+	// omega is default — must still lose to the account with both families usable
 	cfg.Defaults = map[string]string{
-		"agy": "acc-a",
+		"agy": "omega",
 	}
 
 	qEng := quota.NewEngine(5 * time.Minute)
@@ -124,47 +124,53 @@ func TestMultiQuotaBottleneckSelection(t *testing.T) {
 	selector := NewSelector(cfg, qEng, cdTracker)
 	ctx := context.Background()
 
-	// Profile A (default): Google 5h is 92%, but Claude 5h is 10% (bottleneck)
-	p5hA := 92.0
-	pClaudeA := 10.0
+	// omega: Gemini 5h exhausted, Claude full (1 usable family)
+	g0, g66, c100 := 0.0, 66.0, 100.0
 	_ = qEng.SaveUsage(model.UsageSnapshot{
 		ProviderID: "agy",
-		ProfileID:  "acc-a",
+		ProfileID:  "omega",
 		Status:     model.UsageLive,
+		Source:     model.SourceCLIOutput,
+		FetchedAt:  time.Now(),
 		Windows: []model.UsageWindow{
-			{Kind: "5h", RemainingPercent: &p5hA},
-			{Kind: "claude_5h", RemainingPercent: &pClaudeA},
+			{Kind: "5h", Group: "gemini", RemainingPercent: &g0},
+			{Kind: "weekly", Group: "gemini", RemainingPercent: &g66},
+			{Kind: "claude_5h", Group: "claude_gpt", RemainingPercent: &c100},
+			{Kind: "claude_weekly", Group: "claude_gpt", RemainingPercent: &c100},
 		},
 	})
 
-	// Profile B: Google 5h is 90%, Claude 5h is 90%
-	p5hB := 90.0
-	pClaudeB := 90.0
+	// gmail: both families available
+	g90, g94, c40, c80 := 90.0, 94.0, 40.0, 80.0
 	_ = qEng.SaveUsage(model.UsageSnapshot{
 		ProviderID: "agy",
-		ProfileID:  "acc-b",
+		ProfileID:  "gmail",
 		Status:     model.UsageLive,
+		Source:     model.SourceCLIOutput,
+		FetchedAt:  time.Now(),
 		Windows: []model.UsageWindow{
-			{Kind: "5h", RemainingPercent: &p5hB},
-			{Kind: "claude_5h", RemainingPercent: &pClaudeB},
+			{Kind: "5h", Group: "gemini", RemainingPercent: &g90},
+			{Kind: "weekly", Group: "gemini", RemainingPercent: &g94},
+			{Kind: "claude_5h", Group: "claude_gpt", RemainingPercent: &c40},
+			{Kind: "claude_weekly", Group: "claude_gpt", RemainingPercent: &c80},
 		},
 	})
 
 	candidates := []model.Profile{
-		{Provider: "agy", Name: "acc-a"},
-		{Provider: "agy", Name: "acc-b"},
+		{Provider: "agy", Name: "omega"},
+		{Provider: "agy", Name: "gmail"},
 	}
 	accounts := map[string]model.AccountInfo{
-		"acc-a": {Authenticated: true, Health: model.HealthHealthy},
-		"acc-b": {Authenticated: true, Health: model.HealthHealthy},
+		"omega": {Authenticated: true, Health: model.HealthHealthy, Email: "omega@example.com"},
+		"gmail": {Authenticated: true, Health: model.HealthHealthy, Email: "gmail@example.com"},
 	}
 
 	res, err := selector.SelectBestProfile(ctx, "agy", "/tmp", candidates, accounts, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.SelectedProfile.Name != "acc-b" {
-		t.Fatalf("expected acc-b to be selected due to higher overall token availability (claude bottleneck on acc-a), got %s", res.SelectedProfile.Name)
+	if res.SelectedProfile.Name != "gmail" {
+		t.Fatalf("expected gmail (2 usable families) over omega (1 usable family), got %s", res.SelectedProfile.Name)
 	}
 }
 
@@ -216,5 +222,28 @@ func TestDefaultProfileTieBreaker(t *testing.T) {
 	}
 	if res.SelectedProfile.Name != "acc-default" {
 		t.Fatalf("expected acc-default to win tie-break on equal 100%% capacity, got %s", res.SelectedProfile.Name)
+	}
+}
+
+// TestSelectBestProfileEmptyCandidatesNeverNilResult is a regression test for a
+// nil-pointer crash: controlStartCmd dereferenced res.SelectedProfile after
+// ignoring the error, and SelectBestProfile returned a nil result for providers
+// with no configured profiles.
+func TestSelectBestProfileEmptyCandidatesNeverNilResult(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	qEng := quota.NewEngine(5 * time.Minute)
+	cdTracker := cooldown.NewTracker()
+	selector := NewSelector(cfg, qEng, cdTracker)
+
+	ctx := context.Background()
+	res, err := selector.SelectBestProfile(ctx, "provider-with-no-profiles", "/tmp", nil, nil, nil)
+	if res == nil {
+		t.Fatal("SelectBestProfile must never return a nil result for empty candidates")
+	}
+	if err == nil {
+		t.Fatal("expected an error describing the missing profiles")
+	}
+	if res.SelectedProfile != nil {
+		t.Error("expected no selected profile for empty candidates")
 	}
 }

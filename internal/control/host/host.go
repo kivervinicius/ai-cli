@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/control/events"
@@ -35,20 +37,22 @@ type Config struct {
 
 // SessionHost manages a single supervised process runtime and its IPC listener.
 type SessionHost struct {
-	mu           sync.RWMutex
-	session      registry.RuntimeSession
-	cfg          Config
-	cmd          *exec.Cmd
-	termBackend  terminal.Backend
-	ringBuffer   *RingBuffer
-	fanout       *BoundedFanout
-	listener     net.Listener
-	clients      map[net.Conn]bool
-	activeWriter net.Conn
-	stopChan     chan struct{}
-	doneChan     chan struct{}
-	prefixRouter *SlashPrefixRouter
-	stopOnce     sync.Once
+	mu                    sync.RWMutex
+	session               registry.RuntimeSession
+	cfg                   Config
+	cmd                   *exec.Cmd
+	termBackend           terminal.Backend
+	ringBuffer            *RingBuffer
+	fanout                *BoundedFanout
+	listener              net.Listener
+	clients               map[net.Conn]bool
+	activeWriter          net.Conn
+	pendingControlCommand string
+	stopChan              chan struct{}
+	doneChan              chan struct{}
+	prefixRouter          *SlashPrefixRouter
+	detector              *AttentionDetector
+	stopOnce              sync.Once
 }
 
 // NewSessionHost creates a new SessionHost for a given runtime.
@@ -63,7 +67,7 @@ func NewSessionHost(cfg Config) (*SessionHost, error) {
 
 	termBackend := terminal.NewBackend()
 
-	return &SessionHost{
+	sh := &SessionHost{
 		session:      cfg.Session,
 		cfg:          cfg,
 		cmd:          cmd,
@@ -74,13 +78,63 @@ func NewSessionHost(cfg Config) (*SessionHost, error) {
 		stopChan:     make(chan struct{}),
 		doneChan:     make(chan struct{}),
 		prefixRouter: NewSlashPrefixRouter(),
-	}, nil
+	}
+
+	sh.detector = NewAttentionDetectorWithProject(
+		cfg.Session.RuntimeID,
+		cfg.Session.ProviderID,
+		cfg.Session.ProfileID,
+		cfg.Cwd,
+		cfg.Session.ProjectID,
+		cfg.Session.ProjectName,
+		func(reason, context, dynamicTitle string, state registry.RuntimeState) {
+			sh.mu.Lock()
+			sh.session.State = state
+			sh.session.AttentionReason = reason
+			sh.session.AttentionContext = context
+			sh.session.DynamicTitle = dynamicTitle
+			sh.session.Title = dynamicTitle
+			if sh.detector != nil {
+				sh.session.PromptKind = sh.detector.lastPrompt
+				sh.session.AttentionKind = sh.detector.lastKind
+				sh.session.AttentionFingerprint = sh.detector.lastFingerprint
+			}
+			sh.mu.Unlock()
+		},
+	)
+	// PTY regex is TERMINAL fallback only. EVENTS/CONTROL_API (future structured
+	// adapters) must not scrape stdout for agent attention.
+	sh.detector.SetControlPolicy(cfg.Session.ControlLevel, false, cfg.Session.AgentID)
+
+	return sh, nil
 }
 
 // Start launches the supervised process and begins listening for IPC control connections.
 func (sh *SessionHost) Start() error {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
+	setStage := func(stage registry.StartupStage, fault registry.StartupFault) {
+		sh.session.StartupStage = stage
+		sh.session.StageChangedAt = time.Now()
+		sh.session.LastFault = fault
+		_ = registry.DefaultRegistry().UpdateStartupStage(sh.session.RuntimeID, stage, fault)
+	}
+	setStage(registry.StartupHostStarting, "")
+	setStage(registry.StartupIPCBinding, "")
+
+	// Bind IPC before starting the provider so a bind failure is reported as
+	// IPC_BIND_FAILED instead of being hidden behind a generic handshake timeout.
+	l, err := protocol.Listen(sh.session.RuntimeID)
+	if err != nil {
+		setStage(registry.StartupIPCBinding, registry.StartupFaultIPCBindFailed)
+		sh.session.State = registry.StateFailed
+		_ = registry.DefaultRegistry().UpdateState(sh.session.RuntimeID, registry.StateFailed)
+		return fmt.Errorf("failed to create control endpoint: %w", err)
+	}
+	sh.listener = l
+	setStage(registry.StartupIPCBound, "")
+	go sh.serveIPC()
+	setStage(registry.StartupProtocolReady, "")
 
 	// 1. Start process with terminal backend
 	rows := sh.cfg.InitialRows
@@ -93,10 +147,25 @@ func (sh *SessionHost) Start() error {
 	}
 
 	prepareCmd(sh.cmd)
+	setStage(registry.StartupTerminalStarting, "")
+	setStage(registry.StartupProviderStarting, "")
 
 	if err := sh.termBackend.Start(sh.cmd, rows, cols); err != nil {
+		setStage(registry.StartupProviderStarting, registry.StartupFaultConPTYStartFailed)
+		_ = sh.listener.Close()
+		sh.listener = nil
 		return fmt.Errorf("failed to start terminal backend: %w", err)
 	}
+	if err := sh.termBackend.Supervise(); err != nil {
+		setStage(registry.StartupProviderStarting, registry.StartupFaultProcessSupervision)
+		_ = sh.termBackend.Kill()
+		_ = sh.termBackend.Wait()
+		_ = sh.termBackend.Close()
+		_ = sh.listener.Close()
+		sh.listener = nil
+		return fmt.Errorf("failed to supervise provider process: %w", err)
+	}
+	setStage(registry.StartupTerminalReady, "")
 
 	// Start reading stdout from terminal backend
 	go sh.streamReader(sh.termBackend)
@@ -106,6 +175,7 @@ func (sh *SessionHost) Start() error {
 	sh.session.HostPID = os.Getpid()
 	sh.session.HostGeneration = time.Now().UnixNano()
 	sh.session.State = registry.StateRunning
+	setStage(registry.StartupRunning, "")
 	sh.session.ControlEndpoint = protocol.EndpointPath(sh.session.RuntimeID)
 
 	// Persist in Registry
@@ -121,23 +191,7 @@ func (sh *SessionHost) Start() error {
 		map[string]any{"pid": sh.session.PID, "host_pid": sh.session.HostPID, "endpoint": sh.session.ControlEndpoint},
 	))
 
-	// 2. Start IPC listener
-	l, err := protocol.Listen(sh.session.RuntimeID)
-	if err != nil {
-		// Clean up and terminate the spawned child process immediately so it is not orphaned
-		if sh.cmd != nil && sh.cmd.Process != nil {
-			_ = killProcessGroup(sh.cmd.Process)
-			_, _ = sh.cmd.Process.Wait()
-		}
-		_ = sh.termBackend.Close()
-		sh.session.State = registry.StateFailed
-		_ = registry.DefaultRegistry().UpdateState(sh.session.RuntimeID, registry.StateFailed)
-		return fmt.Errorf("failed to create control endpoint: %w", err)
-	}
-	sh.listener = l
-	go sh.serveIPC()
-
-	// 3. Monitor process termination
+	// Monitor process termination.
 	go sh.waitProcess()
 
 	return nil
@@ -145,17 +199,77 @@ func (sh *SessionHost) Start() error {
 
 func (sh *SessionHost) streamReader(r io.Reader) {
 	buf := make([]byte, 4096)
+	var pending []byte
 	for {
 		n, err := r.Read(buf)
 		if n > 0 {
-			chunk := buf[:n]
-			sh.ringBuffer.Write(chunk)
-			sh.broadcast(chunk)
+			pending = append(pending, buf[:n]...)
+			for {
+				idx := bytes.IndexByte(pending, '\n')
+				if idx < 0 {
+					// Flush non-JSON partials so interactive output stays live.
+					if len(pending) > 0 && pending[0] != '{' {
+						chunk := pending
+						pending = nil
+						sh.ringBuffer.Write(chunk)
+						sh.broadcast(chunk)
+						if sh.detector != nil {
+							sh.detector.ProcessChunk(chunk)
+						}
+					} else if len(pending) > MaxFrameSize {
+						chunk := pending
+						pending = nil
+						sh.ringBuffer.Write(chunk)
+						sh.broadcast(chunk)
+						if sh.detector != nil {
+							sh.detector.ProcessChunk(chunk)
+						}
+					}
+					break
+				}
+				line := pending[:idx+1]
+				pending = pending[idx+1:]
+				if isHostProtocolControlFrame(line) {
+					continue
+				}
+				sh.ringBuffer.Write(line)
+				sh.broadcast(line)
+				if sh.detector != nil {
+					sh.detector.ProcessChunk(line)
+				}
+			}
 		}
 		if err != nil {
+			if len(pending) > 0 && !isHostProtocolControlFrame(pending) {
+				sh.ringBuffer.Write(pending)
+				sh.broadcast(pending)
+				if sh.detector != nil {
+					sh.detector.ProcessChunk(pending)
+				}
+			}
 			break
 		}
 	}
+}
+
+// isHostProtocolControlFrame detects Nexus Control RPC lines that must never
+// enter the ring buffer / fanout (e.g. lease_acquire echoed into the PTY).
+func isHostProtocolControlFrame(data []byte) bool {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return false
+	}
+	var probe map[string]json.RawMessage
+	if json.Unmarshal(trimmed, &probe) != nil {
+		return false
+	}
+	if _, hasCommand := probe["command"]; hasCommand {
+		return true
+	}
+	if _, hasOK := probe["ok"]; hasOK {
+		return true
+	}
+	return false
 }
 
 func (sh *SessionHost) broadcast(data []byte) {
@@ -182,8 +296,11 @@ func (sh *SessionHost) handleClient(conn net.Conn) {
 
 	// Read initial RPC command frames
 	for {
-		line, err := reader.ReadBytes('\n')
+		line, err := readBoundedLine(reader, MaxFrameSize)
 		if err != nil {
+			if err == errFrameTooLarge {
+				sh.broadcast([]byte("\r\n[Nexus Control] Error: oversized IPC frame rejected\r\n"))
+			}
 			sh.removeClient(conn)
 			_ = conn.Close()
 			return
@@ -215,67 +332,153 @@ func (sh *SessionHost) handleClient(conn net.Conn) {
 	}
 }
 
+// errFrameTooLarge is returned when an IPC frame exceeds MaxFrameSize.
+var errFrameTooLarge = errors.New("IPC frame exceeds maximum allowed size")
+
+// readBoundedLine reads a newline-terminated frame while never allocating more
+// than limit bytes. This prevents a malicious peer from forcing unbounded
+// memory growth by omitting the newline (see readBytes-safety requirement).
+func readBoundedLine(r *bufio.Reader, limit int) ([]byte, error) {
+	var buf []byte
+	for {
+		b, err := r.ReadByte()
+		if err != nil {
+			return buf, err
+		}
+		if b == '\n' {
+			return buf, nil
+		}
+		buf = append(buf, b)
+		if len(buf) > limit {
+			return buf, errFrameTooLarge
+		}
+	}
+}
+
 func (sh *SessionHost) streamAttachedInput(conn net.Conn, reader *bufio.Reader) {
 	_ = conn.SetDeadline(time.Time{})
-	buf := make([]byte, 2048)
-	for {
-		n, err := reader.Read(buf)
-		if n > 0 {
-			chunk := buf[:n]
-			trimmed := bytes.TrimSpace(chunk)
-			if bytes.HasPrefix(trimmed, []byte("{\"version\":")) || bytes.HasPrefix(trimmed, []byte("{\"command\":")) {
-				var req protocol.Request
-				if json.Unmarshal(trimmed, &req) == nil && req.Command != "" {
-					sh.handleRPCRequest(conn, req)
-					if err != nil {
-						sh.removeClient(conn)
-						_ = conn.Close()
-						return
-					}
-					continue
-				}
-			}
-			sh.processAttachedInput(conn, chunk)
+	// Mix of newline-terminated RPC frames and raw PTY keystrokes on one
+	// stream. Raw bytes must be forwarded immediately — interactive shells
+	// send single keystrokes with no trailing \n (Enter is usually \r).
+	var jsonBuf []byte
+	inJSON := false
+
+	flushRaw := func(data []byte) {
+		if len(data) == 0 {
+			return
 		}
+		sh.processAttachedInput(conn, data)
+	}
+	resetJSON := func() {
+		jsonBuf = nil
+		inJSON = false
+	}
+	looksLikeProtocol := func(buf []byte) bool {
+		return bytes.HasPrefix(buf, []byte(`{"version"`)) ||
+			bytes.HasPrefix(buf, []byte(`{"command"`)) ||
+			bytes.HasPrefix(buf, []byte(`{"id"`))
+	}
+
+	for {
+		b, err := reader.ReadByte()
 		if err != nil {
+			if inJSON && len(jsonBuf) > 0 {
+				flushRaw(jsonBuf)
+			}
 			sh.removeClient(conn)
 			_ = conn.Close()
 			return
 		}
+
+		if !inJSON {
+			if b == '{' {
+				inJSON = true
+				jsonBuf = append(jsonBuf[:0], b)
+				continue
+			}
+			flushRaw([]byte{b})
+			continue
+		}
+
+		jsonBuf = append(jsonBuf, b)
+		if len(jsonBuf) > MaxFrameSize {
+			flushRaw(jsonBuf)
+			resetJSON()
+			continue
+		}
+		// Enter (\r) mid-buffer means interactive typing, not an RPC frame.
+		if b == '\r' {
+			flushRaw(jsonBuf)
+			resetJSON()
+			continue
+		}
+		// Once long enough, reject buffers that cannot be protocol JSON.
+		if len(jsonBuf) >= 11 && !looksLikeProtocol(jsonBuf) {
+			flushRaw(jsonBuf)
+			resetJSON()
+			continue
+		}
+		if b != '\n' {
+			continue
+		}
+
+		trimmed := bytes.TrimSpace(jsonBuf)
+		var req protocol.Request
+		if json.Unmarshal(trimmed, &req) == nil && req.Command != "" {
+			sh.handleRPCRequest(conn, req)
+		} else {
+			flushRaw(jsonBuf)
+		}
+		resetJSON()
 	}
 }
 
 func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 	sh.mu.Lock()
-	defer sh.mu.Unlock()
+
+	if req.Version != 0 && req.Version != protocol.ProtocolVersion {
+		resp := protocol.NewErrorResponse("ERROR_PROTOCOL_VERSION")
+		sh.mu.Unlock()
+		data, _ := json.Marshal(resp)
+		_, _ = conn.Write(append(data, '\n'))
+		return
+	}
 
 	var resp protocol.Response
+	var resizeRows, resizeCols int
+	var promptWrite []byte
+	var forwardWrite []byte
+	var controlCmd string
+	skipResponse := false
 
 	switch req.Command {
 	case protocol.CmdPing:
 		resp, _ = protocol.NewResponse("pong")
 
 	case protocol.CmdStatus:
+		fanoutStats := sh.fanout.Stats()
 		resp, _ = protocol.NewResponse(protocol.StatusData{
-			RuntimeID:         sh.session.RuntimeID,
-			ProviderID:        sh.session.ProviderID,
-			ProfileID:         sh.session.ProfileID,
-			ProviderSessionID: sh.session.ProviderSessionID,
-			Workspace:         sh.session.Workspace,
-			PID:               sh.session.PID,
-			State:             string(sh.session.State),
-			ControlLevel:      string(sh.session.ControlLevel),
-			StartedAt:         sh.session.StartedAt,
+			RuntimeID:           sh.session.RuntimeID,
+			ProviderID:          sh.session.ProviderID,
+			ProfileID:           sh.session.ProfileID,
+			ProviderSessionID:   sh.session.ProviderSessionID,
+			Workspace:           sh.session.Workspace,
+			PID:                 sh.session.PID,
+			State:               string(sh.session.State),
+			StartupStage:        string(sh.session.StartupStage),
+			StageChangedAt:      sh.session.StageChangedAt,
+			LastFault:           string(sh.session.LastFault),
+			ControlLevel:        string(sh.session.ControlLevel),
+			StartedAt:           sh.session.StartedAt,
+			DroppedOutputChunks: fanoutStats.DroppedChunks,
 		})
 
 	case protocol.CmdAttach:
 		sh.clients[conn] = true
 		sh.fanout.AddClient(conn)
-		// Acquire single-writer lease if none active
 		if sh.activeWriter == nil {
 			sh.activeWriter = conn
 		}
-		// Send initial terminal history from ring buffer
 		history := sh.ringBuffer.Bytes()
 		resp, _ = protocol.NewResponse(string(history))
 
@@ -291,7 +494,7 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		if req.Payload != nil {
 			var p protocol.ResizePayload
 			if json.Unmarshal(req.Payload, &p) == nil && p.Rows > 0 && p.Cols > 0 {
-				_ = sh.termBackend.Resize(p.Rows, p.Cols)
+				resizeRows, resizeCols = p.Rows, p.Cols
 			}
 		}
 		resp, _ = protocol.NewResponse("resized")
@@ -300,10 +503,22 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		if req.Payload != nil {
 			var p protocol.InputPayload
 			if json.Unmarshal(req.Payload, &p) == nil && p.Data != "" {
-				sh.processAttachedInputLocked(conn, []byte(p.Data))
+				forwardWrite = sh.collectAttachedInputLocked(conn, []byte(p.Data))
+				controlCmd = sh.pendingControlCommand
+				sh.pendingControlCommand = ""
 			}
 		}
 		resp, _ = protocol.NewResponse("input_received")
+
+	case protocol.CmdSubmitPrompt:
+		var p protocol.SubmitPromptPayload
+		if req.Payload == nil || json.Unmarshal(req.Payload, &p) != nil || strings.TrimSpace(p.Prompt) == "" {
+			resp = protocol.NewErrorResponse("prompt is required")
+			break
+		}
+		prompt := strings.TrimRight(p.Prompt, "\r\n") + "\r"
+		promptWrite = []byte(prompt)
+		resp, _ = protocol.NewResponse("prompt_submitted")
 
 	case protocol.CmdStop:
 		go sh.Stop()
@@ -314,6 +529,10 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		resp, _ = protocol.NewResponse("terminated")
 
 	case protocol.CmdLeaseAcquire:
+		if _, attached := sh.clients[conn]; !attached {
+			resp = protocol.NewErrorResponse("lease acquisition requires attached streaming client")
+			break
+		}
 		sh.activeWriter = conn
 		resp, _ = protocol.NewResponse("lease_acquired")
 
@@ -327,46 +546,76 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		resp = protocol.NewErrorResponse(fmt.Sprintf("unknown command %q", req.Command))
 	}
 
-	// In attached streaming mode, do not echo RPC response back for CmdResize to avoid polluting stdout
-	if _, isAttached := sh.clients[conn]; isAttached && req.Command == protocol.CmdResize {
+	_, isAttached := sh.clients[conn]
+	if isAttached && req.Command == protocol.CmdResize {
+		skipResponse = true
+	}
+	sh.mu.Unlock()
+
+	if resizeRows > 0 && resizeCols > 0 {
+		_ = sh.termBackend.Resize(resizeRows, resizeCols)
+	}
+	if len(forwardWrite) > 0 {
+		_, _ = sh.termBackend.Write(forwardWrite)
+	}
+	if len(promptWrite) > 0 {
+		_, _ = sh.termBackend.Write(promptWrite)
+	}
+	if controlCmd != "" {
+		sh.mu.Lock()
+		sh.handleControlCommandLocked(controlCmd)
+		sh.mu.Unlock()
+	}
+	if skipResponse {
 		return
 	}
-
 	data, _ := json.Marshal(resp)
 	_, _ = conn.Write(append(data, '\n'))
 }
 
 func (sh *SessionHost) processAttachedInput(conn net.Conn, data []byte) {
 	sh.mu.Lock()
-	defer sh.mu.Unlock()
-	sh.processAttachedInputLocked(conn, data)
+	forward := sh.collectAttachedInputLocked(conn, data)
+	controlCmd := sh.pendingControlCommand
+	sh.pendingControlCommand = ""
+	sh.mu.Unlock()
+
+	if len(forward) > 0 {
+		_, _ = sh.termBackend.Write(forward)
+	}
+	if controlCmd != "" {
+		sh.mu.Lock()
+		sh.handleControlCommandLocked(controlCmd)
+		sh.mu.Unlock()
+	}
 }
 
-func (sh *SessionHost) processAttachedInputLocked(conn net.Conn, data []byte) {
+func (sh *SessionHost) collectAttachedInputLocked(conn net.Conn, data []byte) []byte {
+	var forward []byte
 	// Only active writer (or first attached client) can send input to child process
 	if sh.activeWriter != nil && sh.activeWriter != conn {
-		return
+		return nil
 	}
 	if sh.activeWriter == nil {
 		sh.activeWriter = conn
 	}
 
-	// Discard spurious browser terminal focus tracking and cursor report sequences
 	if bytes.Equal(data, []byte("\x1b[I")) || bytes.Equal(data, []byte("\x1b[O")) ||
 		bytes.Equal(data, []byte("[I")) || bytes.Equal(data, []byte("[O")) ||
 		bytes.Equal(data, []byte("\x1b[1;1R")) || bytes.Equal(data, []byte("[1;1R")) {
-		return
+		return nil
 	}
 
 	for _, b := range data {
 		out := sh.prefixRouter.ProcessByte(b)
 		if len(out.ForwardBytes) > 0 {
-			_, _ = sh.termBackend.Write(out.ForwardBytes)
+			forward = append(forward, out.ForwardBytes...)
 		}
 		if out.Action == ActionControlCommand && out.ControlCmd != "" {
-			sh.handleControlCommandLocked(out.ControlCmd)
+			sh.pendingControlCommand = out.ControlCmd
 		}
 	}
+	return forward
 }
 
 func (sh *SessionHost) handleControlCommandLocked(cmd string) {
@@ -390,9 +639,9 @@ func (sh *SessionHost) handleControlCommandLocked(cmd string) {
 			go func(target string) {
 				_, err := PerformAccountHandoff(context.Background(), sh.session.RuntimeID, target)
 				if err != nil {
-					sh.broadcast([]byte(fmt.Sprintf("\r\n[AI Control] Handoff failed: %v\r\n", err)))
+					sh.broadcast([]byte(fmt.Sprintf("\r\n[Nexus Control] Handoff failed: %v\r\n", err)))
 				} else {
-					sh.broadcast([]byte("\r\n[AI Control] Handoff succeeded.\r\n"))
+					sh.broadcast([]byte("\r\n[Nexus Control] Handoff succeeded.\r\n"))
 				}
 			}(route.ActionArg)
 		}
@@ -408,9 +657,9 @@ func (sh *SessionHost) handleControlCommandLocked(cmd string) {
 				}
 				_, err := PerformContextHandoff(context.Background(), sh.session.RuntimeID, provider, profile)
 				if err != nil {
-					sh.broadcast([]byte(fmt.Sprintf("\r\n[AI Control] Context handoff failed: %v\r\n", err)))
+					sh.broadcast([]byte(fmt.Sprintf("\r\n[Nexus Control] Context handoff failed: %v\r\n", err)))
 				} else {
-					sh.broadcast([]byte("\r\n[AI Control] Context handoff succeeded.\r\n"))
+					sh.broadcast([]byte("\r\n[Nexus Control] Context handoff succeeded.\r\n"))
 				}
 			}(route.ActionArg)
 		}
@@ -428,12 +677,24 @@ func (sh *SessionHost) removeClient(conn net.Conn) {
 }
 
 func (sh *SessionHost) waitProcess() {
-	err := sh.cmd.Wait()
+	err := sh.termBackend.Wait()
 
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 
 	_ = sh.termBackend.Close()
+
+	// Tear down IPC surfaces so attached clients disconnect cleanly instead of
+	// hanging on a dead runtime.
+	if sh.listener != nil {
+		_ = sh.listener.Close()
+	}
+	sh.fanout.Close()
+	for c := range sh.clients {
+		_ = c.Close()
+	}
+	sh.clients = make(map[net.Conn]bool)
+	sh.activeWriter = nil
 
 	state := registry.StateStopped
 	if err != nil {
@@ -463,17 +724,32 @@ func (sh *SessionHost) Wait() {
 func (sh *SessionHost) Stop() error {
 	sh.stopOnce.Do(func() { close(sh.stopChan) })
 	sh.mu.Lock()
-	if sh.cmd != nil && sh.cmd.Process != nil {
-		_ = signalProcessGroup(sh.cmd.Process, os.Interrupt)
-	}
+	provider := sh.session.ProviderID
+	_ = sh.termBackend.Signal(gracefulStopSignal(provider))
 	sh.mu.Unlock()
 
 	select {
 	case <-sh.doneChan:
 		return nil
-	case <-time.After(3 * time.Second):
+	case <-time.After(gracefulStopWait(provider)):
 		return sh.Terminate()
 	}
+}
+
+func gracefulStopWait(providerID string) time.Duration {
+	if strings.EqualFold(strings.TrimSpace(providerID), "shell") {
+		// Interactive shells ignore SIGINT at an idle prompt, so a 3s Ctrl+C
+		// wait just stalls the Close dialog. TERM then a short kill is enough.
+		return 250 * time.Millisecond
+	}
+	return 3 * time.Second
+}
+
+func gracefulStopSignal(providerID string) os.Signal {
+	if strings.EqualFold(strings.TrimSpace(providerID), "shell") {
+		return syscall.SIGTERM
+	}
+	return os.Interrupt
 }
 
 // Terminate forcefully kills the supervised process.
@@ -482,9 +758,7 @@ func (sh *SessionHost) Terminate() error {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 
-	if sh.cmd != nil && sh.cmd.Process != nil {
-		_ = killProcessGroup(sh.cmd.Process)
-	}
+	_ = sh.termBackend.Kill()
 	if sh.listener != nil {
 		_ = sh.listener.Close()
 	}

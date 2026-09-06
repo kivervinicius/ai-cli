@@ -26,9 +26,13 @@ func newPlatformBackend() Backend {
 	return &unixPTYBackend{}
 }
 
+// BackendMechanism reports the platform's primary terminal backend.
+func BackendMechanism() string { return "PTY (creack/pty)" }
+
 func (b *unixPTYBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	prepareInteractiveCommand(cmd)
 
 	b.cmd = cmd
 	if initialRows <= 0 {
@@ -165,4 +169,63 @@ func (b *unixPTYBackend) SupportsRawMode() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.isPTY
+}
+
+func (b *unixPTYBackend) Mechanism() string {
+	return "PTY (creack/pty)"
+}
+
+func (b *unixPTYBackend) Supervise() error { return nil }
+
+func (b *unixPTYBackend) Wait() error {
+	b.mu.Lock()
+	cmd := b.cmd
+	ptmx := b.ptmx
+	b.mu.Unlock()
+	if cmd == nil {
+		return nil
+	}
+	err := cmd.Wait()
+	if ptmx != nil {
+		buf := make([]byte, 4096)
+		for {
+			_, readErr := ptmx.Read(buf)
+			if readErr != nil {
+				break
+			}
+		}
+	}
+	return err
+}
+
+// Signal delivers sig to the child process group.
+func (b *unixPTYBackend) Signal(sig os.Signal) error {
+	b.mu.Lock()
+	cmd := b.cmd
+	b.mu.Unlock()
+	if cmd == nil || cmd.Process == nil || cmd.Process.Pid <= 0 {
+		return nil
+	}
+	sysSig, ok := sig.(syscall.Signal)
+	if !ok {
+		sysSig = syscall.SIGTERM
+	}
+	if err := syscall.Kill(-cmd.Process.Pid, sysSig); err != nil {
+		return cmd.Process.Signal(sig)
+	}
+	return nil
+}
+
+// Kill forcefully terminates the child process group.
+func (b *unixPTYBackend) Kill() error {
+	b.mu.Lock()
+	cmd := b.cmd
+	b.mu.Unlock()
+	if cmd == nil || cmd.Process == nil || cmd.Process.Pid <= 0 {
+		return nil
+	}
+	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err != nil {
+		return cmd.Process.Kill()
+	}
+	return nil
 }

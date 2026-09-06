@@ -1,11 +1,16 @@
-# Binaries
+# Binaries and archives
 /ai
+/nexus
+/nexus-desktop
 /dist/
 bin/
 *.exe
 *.dll
 *.so
 *.dylib
+*.zip
+*.tar.gz
+*.7z
 
 # Logs and databases
 *.log
@@ -25,6 +30,7 @@ history.jsonl
 *jetski*
 .env
 .env.*
+.superpowers/
 
 # Local Profile and Storage Dirs
 profiles/
@@ -32,6 +38,8 @@ profiles/
 .gemini/
 scratch/
 tmp/
+.worktrees/
+.tempmediaStorage/
 
 # OS and IDE Files
 .DS_Store
@@ -42,6 +50,26 @@ tmp/
 *~
 
 # Frontend Web Build
+/node_modules/
+/web/node_modules
 web/node_modules/
 web/dist/
+/internal/control/web/embedded/*
+!/internal/control/web/embedded/.keep
+# Bun is the packageManager (web/package.json); ignore npm lock churn.
+web/package-lock.json
 
+# Local Yarn state; dependencies are managed by web/bun.lock.
+.pnp.*
+.yarn/*
+!.yarn/patches/
+!.yarn/plugins/
+!.yarn/releases/
+!.yarn/versions/
+yarn.lock
+yarn.lock
+
+# Ephemeral dated test/verification reports and gate status crumbs
+DEV/validation/FRONTEND_20*.md
+DEV/validation/*.status
+DEV/validation/baseline/*.status

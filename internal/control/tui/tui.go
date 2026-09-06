@@ -15,6 +15,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
+	"github.com/kivervinicius/ai-cli/internal/localization"
 )
 
 var (
@@ -27,11 +28,6 @@ var (
 	headerStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#9CA3AF")).
 			Bold(true)
-
-	borderStyle = lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#4B5563")).
-			Padding(0, 1)
 
 	activeBorderStyle = lipgloss.NewStyle().
 				BorderStyle(lipgloss.RoundedBorder()).
@@ -145,7 +141,7 @@ func (m ControlModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			reg := registry.DefaultRegistry()
 			_, _ = reg.CleanupStale()
 			m.runtimes = reg.List()
-			m.statusMessage = "Refreshed runtimes"
+			m.statusMessage = localization.T("tui.refreshed")
 			m.statusTime = time.Now()
 			return m, nil
 
@@ -215,7 +211,7 @@ func (m ControlModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "h":
 			if len(m.runtimes) > 0 && m.selectedIndex < len(m.runtimes) {
-				m.statusMessage = "To handoff, attach ([a]) and type: /ai handoff <profile>"
+				m.statusMessage = localization.T("tui.handoff")
 				m.statusTime = time.Now()
 			}
 			return m, nil
@@ -245,7 +241,7 @@ func (m ControlModel) View() string {
 	// 1. Top Title Bar
 	wsBasename := filepath.Base(m.workspace)
 	headerLeft := titleStyle.Render("⚡ AI CONTROL CENTER")
-	headerRight := lipgloss.NewStyle().Foreground(lipgloss.Color("#9CA3AF")).Render(fmt.Sprintf("Workspace: %s", wsBasename))
+	headerRight := lipgloss.NewStyle().Foreground(lipgloss.Color("#9CA3AF")).Render(localization.T("tui.workspace", map[string]any{"Name": wsBasename}))
 	gap := w - lipgloss.Width(headerLeft) - lipgloss.Width(headerRight) - 4
 	if gap < 2 {
 		gap = 2
@@ -281,7 +277,7 @@ func (m ControlModel) View() string {
 	}
 
 	shortcutsStr := " [a/Enter] Attach"
-	
+
 	if m.activeTab == TabRuntimes && len(m.runtimes) > 0 && m.selectedIndex < len(m.runtimes) {
 		sel := m.runtimes[m.selectedIndex]
 		if d, err := driver.DefaultRegistry().Get(sel.ProviderID); err == nil {
@@ -314,7 +310,7 @@ func (m ControlModel) renderRuntimesTab(width int) string {
 	sb.WriteString("  " + strings.Repeat("─", max(20, width-6)) + "\n")
 
 	if len(m.runtimes) == 0 {
-		sb.WriteString("\n   (No managed runtimes running. Start one with: ai control start <provider>)\n\n")
+		sb.WriteString("\n   (No managed runtimes running. Start one with: nexus start <provider>)\n\n")
 		return sb.String()
 	}
 
@@ -387,8 +383,6 @@ func truncate(s string, maxLen int) string {
 	}
 	return s
 }
-
-
 
 // RunControlTUI launches the interactive AI Control Center TUI.
 func RunControlTUI(ctx context.Context) (attachTargetID string, err error) {

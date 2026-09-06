@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kivervinicius/ai-cli/internal/buildinfo"
 	"github.com/kivervinicius/ai-cli/internal/control/driver"
 	"github.com/kivervinicius/ai-cli/internal/control/events"
 	"github.com/kivervinicius/ai-cli/internal/control/handoff"
@@ -18,6 +19,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/quota"
 	"github.com/kivervinicius/ai-cli/internal/core/security"
+	"github.com/kivervinicius/ai-cli/internal/nexus"
 	"github.com/kivervinicius/ai-cli/internal/profile"
 )
 
@@ -61,7 +63,7 @@ func (h *APIHandler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":    "ok",
 		"timestamp": time.Now().Unix(),
-		"version":   "0.4.0",
+		"version":   buildinfo.Version,
 	})
 }
 
@@ -74,9 +76,18 @@ func (h *APIHandler) handleSession(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    sess.ID,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"authenticated": true,
 		"csrf_token":    sess.CSRFToken,
+		"expires_at":    sess.ExpiresAt,
+		"idle_timeout":  int(sessionIdleTTL.Seconds()),
 	})
 }
 
@@ -134,7 +145,11 @@ func (h *APIHandler) handleRuntimes(w http.ResponseWriter, r *http.Request) {
 		all := h.reg.List()
 		sanitized := make([]registry.RuntimeSession, len(all))
 		for i, s := range all {
-			sanitized[i] = sanitizeSession(s)
+			clean := sanitizeSession(s)
+			if agentID, err := nexus.Default().ResolveAgentByRuntimeID(s.RuntimeID); err == nil {
+				clean.AgentID = agentID
+			}
+			sanitized[i] = clean
 		}
 		writeJSON(w, http.StatusOK, sanitized)
 		return
@@ -239,6 +254,14 @@ func (h *APIHandler) handleRuntimeDetail(w http.ResponseWriter, r *http.Request)
 				_ = client.Stop()
 				_ = client.Close()
 			}
+			// Wait briefly for the host to reap the child (shells SIGKILL after 250ms).
+			if s, ok := h.reg.Get(runtimeID); ok {
+				deadline := time.Now().Add(1500 * time.Millisecond)
+				for time.Now().Before(deadline) && s.PID > 0 && registry.IsProcessAlive(s.PID) {
+					time.Sleep(25 * time.Millisecond)
+					s, _ = h.reg.Get(runtimeID)
+				}
+			}
 			_ = h.reg.UpdateState(runtimeID, registry.StateStopped)
 			writeJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
 			return
@@ -292,6 +315,34 @@ func (h *APIHandler) handleRuntimeDetail(w http.ResponseWriter, r *http.Request)
 			}
 			writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "title": payload.Title})
 			return
+
+		case "respond":
+			var payload struct {
+				Input string `json:"input"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid payload")
+				return
+			}
+			client, err := protocol.NewClient(runtimeID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to connect to runtime: "+err.Error())
+				return
+			}
+			defer client.Close()
+
+			inputStr := payload.Input
+			if !strings.HasSuffix(inputStr, "\n") {
+				inputStr += "\n"
+			}
+			inputBytes, _ := json.Marshal(protocol.InputPayload{Data: inputStr})
+			_, err = client.Send(protocol.CmdInput, inputBytes)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to send response: "+err.Error())
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "sent": payload.Input})
+			return
 		}
 	}
 
@@ -302,21 +353,26 @@ func (h *APIHandler) handleRuntimeDetail(w http.ResponseWriter, r *http.Request)
 func (h *APIHandler) handleProviders(w http.ResponseWriter, r *http.Request) {
 	drivers := h.drivers.List()
 	type ProviderView struct {
-		ID           string                      `json:"id"`
-		Installed    bool                        `json:"installed"`
-		Version      string                      `json:"version"`
-		ControlLevel registry.ControlLevel       `json:"control_level"`
+		ID           string                       `json:"id"`
+		Installed    bool                         `json:"installed"`
+		Version      string                       `json:"version"`
+		ControlLevel registry.ControlLevel        `json:"control_level"`
 		Capabilities driver.EffectiveCapabilities `json:"capabilities"`
 	}
 
 	showInternal := r.URL.Query().Get("internal") == "true"
 	var res []ProviderView
 	for _, d := range drivers {
-		if !showInternal && d.ProviderID() == "fake" {
+		// fake and shell are control-plane implementation drivers, not user-selectable AI providers.
+		if !showInternal && (d.ProviderID() == "fake" || d.ProviderID() == "shell") {
 			continue
 		}
-		det, _ := d.Detect(r.Context())
-		caps := d.EffectiveCaps(r.Context(), model.Profile{Name: "default", Provider: d.ProviderID()})
+		// Bound provider detection: a slow/hung provider binary must never stall
+		// the whole endpoint (server WriteTimeout would otherwise kill the conn).
+		pctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		det, _ := d.Detect(pctx)
+		caps := d.EffectiveCaps(pctx, model.Profile{Name: "default", Provider: d.ProviderID()})
+		cancel()
 		res = append(res, ProviderView{
 			ID:           d.ProviderID(),
 			Installed:    det.Installed,
