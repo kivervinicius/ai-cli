@@ -330,14 +330,6 @@ func isLoopbackHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-func splitHostPortLoose(value string) (string, string) {
-	value = strings.TrimSpace(value)
-	if host, port, err := net.SplitHostPort(value); err == nil {
-		return strings.Trim(host, "[]"), port
-	}
-	return strings.Trim(value, "[]"), ""
-}
-
 func (a *AuthManager) isLoopbackListen() bool {
 	return isLoopbackHost(a.listenHost)
 }

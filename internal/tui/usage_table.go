@@ -39,6 +39,20 @@ func (m ExecutionMode) String() string {
 	}
 }
 
+func modeFlags(mode ExecutionMode, continueSession bool) []string {
+	var flags []string
+	switch mode {
+	case ModeYOLO:
+		flags = append(flags, "--yolo")
+	case ModePlan:
+		flags = append(flags, "--plan")
+	}
+	if continueSession {
+		flags = append(flags, "--continue")
+	}
+	return flags
+}
+
 // ActiveTab defines which view is displayed in the main table area.
 type ActiveTab int
 
@@ -138,8 +152,6 @@ type usageTableModel struct {
 	filter textinput.Model
 
 	// Selection & lifecycle
-	selectedRow  *UsageTableRow
-	selectedSess *conversation.Conversation
 	chosenResult *SelectionResult
 	quitting     bool
 	width        int
@@ -414,34 +426,41 @@ func (m usageTableModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "l", "L":
 			// Trigger login
-			if m.activeTab == TabAccounts && len(m.filteredAccounts) > 0 {
-				idx := m.accountTable.Cursor()
-				if idx >= 0 && idx < len(m.filteredAccounts) {
-					row := m.filteredAccounts[idx]
-					if !row.IsUnconfigured {
-						m.quitting = true
-						m.chosenResult = &SelectionResult{
-							Action:      ActionLogin,
-							Provider:    row.Provider,
-							ProfileName: row.Profile,
+			switch m.activeTab {
+			case TabAccounts:
+				if len(m.filteredAccounts) > 0 {
+					idx := m.accountTable.Cursor()
+					if idx >= 0 && idx < len(m.filteredAccounts) {
+						row := m.filteredAccounts[idx]
+						if !row.IsUnconfigured {
+							m.quitting = true
+							m.chosenResult = &SelectionResult{
+								Action:      ActionLogin,
+								Provider:    row.Provider,
+								ProfileName: row.Profile,
+							}
+							return m, tea.Quit
 						}
-						return m, tea.Quit
 					}
 				}
 			}
 			return m, nil
 		case "a", "A":
 			// Hint on adding profile
-			if m.activeTab == TabAccounts && len(m.filteredAccounts) > 0 {
-				idx := m.accountTable.Cursor()
-				if idx >= 0 && idx < len(m.filteredAccounts) {
-					row := m.filteredAccounts[idx]
-					m.statusMsg = fmt.Sprintf("Para configurar %s: execute 'nexus add %s <nome>'", row.Provider, row.Provider)
+			switch m.activeTab {
+			case TabAccounts:
+				if len(m.filteredAccounts) > 0 {
+					idx := m.accountTable.Cursor()
+					if idx >= 0 && idx < len(m.filteredAccounts) {
+						row := m.filteredAccounts[idx]
+						m.statusMsg = fmt.Sprintf("Para configurar %s: execute 'nexus add %s <nome>'", row.Provider, row.Provider)
+					}
 				}
 			}
 			return m, nil
 		case "enter":
-			if m.activeTab == TabAccounts {
+			switch m.activeTab {
+			case TabAccounts:
 				idx := m.accountTable.Cursor()
 				if idx >= 0 && idx < len(m.filteredAccounts) {
 					row := m.filteredAccounts[idx]
@@ -449,15 +468,7 @@ func (m usageTableModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.statusMsg = fmt.Sprintf("⚠ %s não está configurado. Execute: nexus add %s <nome>", row.Provider, row.Provider)
 						return m, nil
 					}
-					var flags []string
-					if m.execMode == ModeYOLO {
-						flags = append(flags, "--yolo")
-					} else if m.execMode == ModePlan {
-						flags = append(flags, "--plan")
-					}
-					if m.continueSession {
-						flags = append(flags, "--continue")
-					}
+					flags := modeFlags(m.execMode, m.continueSession)
 					m.quitting = true
 					m.chosenResult = &SelectionResult{
 						Action:      ActionRunProfile,
@@ -467,16 +478,11 @@ func (m usageTableModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, tea.Quit
 				}
-			} else if m.activeTab == TabSessions {
+			case TabSessions:
 				idx := m.sessionTable.Cursor()
 				if idx >= 0 && idx < len(m.filteredSessions) {
 					sess := m.filteredSessions[idx]
-					var flags []string
-					if m.execMode == ModeYOLO {
-						flags = append(flags, "--yolo")
-					} else if m.execMode == ModePlan {
-						flags = append(flags, "--plan")
-					}
+					flags := modeFlags(m.execMode, false)
 					m.quitting = true
 					m.chosenResult = &SelectionResult{
 						Action:         ActionResumeConversation,
@@ -560,9 +566,10 @@ func (m usageTableModel) View() string {
 
 	// Mode Explanation Banner
 	modeDesc := "🛡️  Modo Safe: Execução interativa supervisionada com pedidos de confirmação."
-	if m.execMode == ModeYOLO {
+	switch m.execMode {
+	case ModeYOLO:
 		modeDesc = warnStyle.Render("⚡ Modo YOLO: Auto-aprova permissões e bypassa sandbox (--yolo).")
-	} else if m.execMode == ModePlan {
+	case ModePlan:
 		modeDesc = planStyle.Render("📋 Modo Plan: Inicia o runtime em modo de análise e planejamento (--plan).")
 	}
 	modeDescLine := "  " + modeDesc
@@ -578,7 +585,7 @@ func (m usageTableModel) View() string {
 	} else {
 		tab2 = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15")).Background(lipgloss.Color("57")).Render(" [● 2: " + tab2Label + "] ")
 	}
-	tabsLine := fmt.Sprintf("  %s  %s   %s", tab1, tab2, subStyle.Render("(pressione Tab para alternar)"))
+	tabsLine := fmt.Sprintf("  %s  %s   %s", tab1, tab2, subStyle.Render("(pressione Tab para mudar)"))
 
 	// Active table view
 	var tableContent string
@@ -627,7 +634,7 @@ func (m usageTableModel) View() string {
 	}
 
 	// Bottom action keys bar
-	help := subStyle.Render("  [↑/↓] Navegar  [Tab] Alternar Aba  [1-3/y/p] Alternar Modo  [c] Continuar  [s] Detalhes  [d] Padrão  [l] Login  [/] Filtrar  [Esc/q] Sair")
+	help := subStyle.Render("  [↑/↓] Navegar  [Tab] Mudar Aba  [1-3/y/p] Mudar Modo  [c] Continuar  [s] Detalhes  [d] Padrão  [l] Login  [/] Filtrar  [Esc/q] Sair")
 	if m.filter.Focused() {
 		help = subStyle.Render("  Digite para filtrar  [Enter/Esc] Concluir filtro")
 	}

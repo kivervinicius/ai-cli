@@ -937,10 +937,6 @@ func usageCmd(args []string) error {
 	}
 }
 
-func usageTableCmd(ps []model.Profile) error {
-	return usageCmd(nil)
-}
-
 func quotaWindowDisplay(windows []quota.Window, kind string) string {
 	for _, window := range windows {
 		matches := kind == "5h" && (window.Kind == "5h" || window.Kind == "daily" || window.Kind == "claude_5h" || window.Kind == "claude_five_hour")
