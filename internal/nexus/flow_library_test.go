@@ -77,3 +77,29 @@ func TestSetFlowLeaderPolicyAllowsExplicitlyNoLeader(t *testing.T) {
 		t.Fatalf("invalid no-leader policy: %+v", policy)
 	}
 }
+
+func TestCloneFlowToProjectPreservesNoLeaderPolicy(t *testing.T) {
+	n := openTestNexus(t)
+	st, _ := n.OpenProject()
+	from, _ := st.CreateProject(store.Project{Name: "No leader source", CanonicalPath: t.TempDir()})
+	to, _ := st.CreateProject(store.Project{Name: "No leader destination", CanonicalPath: t.TempDir()})
+	plan, err := n.CreateWorkPlan(context.Background(), from.ID, "Portable no leader flow", "", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.SetFlowLeaderPolicy(context.Background(), plan.ID, FlowLeaderPolicy{Strategy: "NONE"}); err != nil {
+		t.Fatal(err)
+	}
+
+	clone, err := n.CloneFlowToProject(context.Background(), plan.ID, to.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := n.GetFlowLeaderPolicy(context.Background(), clone.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if policy.Strategy != "NONE" || policy.Role != "" || policy.PreferredAgentID != "" {
+		t.Fatalf("no-leader policy changed during clone: %+v", policy)
+	}
+}

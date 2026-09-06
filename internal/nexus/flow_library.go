@@ -121,7 +121,14 @@ func (n *Nexus) CloneFlowToProject(ctx context.Context, planID, destinationProje
 		var policy FlowLeaderPolicy
 		if json.Unmarshal([]byte(raw), &policy) == nil {
 			policy.PreferredAgentID = ""
-			policy.Strategy = "AUTO"
+			if strings.EqualFold(policy.Strategy, "NONE") {
+				policy.Role = ""
+			} else {
+				policy.Strategy = "AUTO"
+				if strings.TrimSpace(policy.Role) == "" {
+					policy.Role = "orchestrator"
+				}
+			}
 			encoded, _ := json.Marshal(policy)
 			clone.StructuredFacts[flowLeaderPolicyFact] = string(encoded)
 		}

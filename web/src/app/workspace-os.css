@@ -48,7 +48,7 @@
   --nx-z-modal-backdrop: 13000;
   --nx-z-modal: 13010;
   --nx-z-contextmenu: 14000;
-  --nx-z-toast: 15000;
+  --nx-z-toast: 12500;
   --nx-z-tooltip: 16000;
   /* Compatibility aliases for legacy surfaces */
   --color-background: var(--nx-bg);
@@ -6012,7 +6012,7 @@ button {
   pointer-events: none;
 }
 .nx-attention-toaster-root [data-sonner-toaster] {
-  z-index: 20000 !important;
+  z-index: var(--nx-z-toast) !important;
   pointer-events: none !important;
 }
 .nx-attention-toaster-root [data-sonner-toast] {

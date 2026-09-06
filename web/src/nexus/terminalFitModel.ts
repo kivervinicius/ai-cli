@@ -7,6 +7,11 @@ export interface TerminalFitState {
   height: number;
 }
 
+export interface TerminalFrameState {
+  disposed: boolean;
+  socketOpen: boolean;
+}
+
 export function canFitTerminal(state: TerminalFitState): boolean {
   return (
     !state.disposed &&
@@ -16,4 +21,8 @@ export function canFitTerminal(state: TerminalFitState): boolean {
     state.width > 0 &&
     state.height > 0
   );
+}
+
+export function canRunTerminalFrame(state: TerminalFrameState): boolean {
+  return !state.disposed && state.socketOpen;
 }

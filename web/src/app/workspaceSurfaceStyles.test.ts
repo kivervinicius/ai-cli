@@ -14,6 +14,11 @@ describe('workspace surface layering and responsive resource layout', () => {
       /\.nx-context-drawer\s*\{[\s\S]*?z-index:\s*calc\(var\(--nx-z-drawer\) \+ 1\);/,
     );
     expect(styles).toMatch(/--nx-z-modal-backdrop:\s*13000;/);
+    expect(styles).toMatch(/--nx-z-toast:\s*12500;/);
+    expect(styles).toMatch(
+      /\.nx-attention-toaster-root \[data-sonner-toaster\]\s*\{[\s\S]*?z-index:\s*var\(--nx-z-toast\) !important;/,
+    );
+    expect(styles).not.toMatch(/z-index:\s*20000/);
   });
 
   it('renders provider resources in two desktop columns and one mobile column', () => {

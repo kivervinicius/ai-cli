@@ -35,7 +35,7 @@ import { ConfirmDialog, Tooltip } from '../design-system';
 import type { RuntimeSession } from '../types';
 import { consumePtyOutputForChrome, extractOscTitle } from '../workspace/ptyLiveChrome';
 import { usePtyLiveChromeOptional } from '../workspace/PtyLiveChromeContext';
-import { canFitTerminal } from './terminalFitModel';
+import { canFitTerminal, canRunTerminalFrame } from './terminalFitModel';
 import styles from './AgentTerminal.module.scss';
 
 export const AgentTerminal: React.FC<{
@@ -163,6 +163,7 @@ export const AgentTerminal: React.FC<{
     let recoverInFlight = false;
     let termInstance: Terminal | null = null;
     const redrawTimers: number[] = [];
+    let openFrame: number | undefined;
 
     (container as any).__triggerReconnect = () => {
       stopReconnect = false;
@@ -394,8 +395,13 @@ export const AgentTerminal: React.FC<{
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'lease_acquire' }));
         }
-        window.requestAnimationFrame(() => {
+        openFrame = window.requestAnimationFrame(() => {
+          openFrame = undefined;
+          if (!canRunTerminalFrame({ disposed, socketOpen: ws.readyState === WebSocket.OPEN })) {
+            return;
+          }
           fitAndResize(true);
+          if (disposed) return;
           term.focus();
           scheduleRedrawPulse();
         });
@@ -505,6 +511,7 @@ export const AgentTerminal: React.FC<{
       disposed = true;
       stopReconnect = true;
       if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+      if (openFrame !== undefined) window.cancelAnimationFrame(openFrame);
       redrawTimers.forEach((timer) => window.clearTimeout(timer));
       observer.disconnect();
       document.removeEventListener('visibilitychange', visibility);

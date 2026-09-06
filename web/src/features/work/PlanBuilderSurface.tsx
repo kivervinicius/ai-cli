@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowRight,
   Bot,
@@ -79,6 +80,7 @@ export const PlanBuilderSurface: React.FC<{
   compactGoal = false,
   initialPlan = null,
 }) => {
+  const { t } = useTranslation();
   const [plans, setPlans] = useState<WorkPlan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<WorkPlan | null>(null);
   const [_loading, setLoading] = useState(false);
@@ -1094,7 +1096,7 @@ export const PlanBuilderSurface: React.FC<{
                   options={[
                     { value: 'AUTO', label: 'Sugerir automaticamente' },
                     { value: 'EXISTING', label: 'Agent cadastrado' },
-                    { value: 'NONE', label: 'Sem líder' },
+                    { value: 'NONE', label: t('work.noLeader') },
                   ]}
                   selectStyle={{ minWidth: 170 }}
                 />
