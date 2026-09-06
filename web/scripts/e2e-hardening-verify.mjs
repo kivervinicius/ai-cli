@@ -125,8 +125,6 @@ async function main() {
     console.log(
       `  ✓ Axe accessibility scan passed (${axeResults.violations.length} minor violations)`,
     );
-    await page.waitForTimeout(1000);
-
     console.log('4. Testing semantic global deep-links...');
     const routeUrl = (pathname) => new URL(pathname, bootstrapUrl);
     const updatesUrl = routeUrl('/updates');
@@ -166,7 +164,6 @@ async function main() {
     console.log('5. Testing Breakpoints and Create Menu Button...');
     for (const vp of viewports) {
       await page.setViewportSize({ width: vp.width, height: vp.height });
-      await page.waitForTimeout(400);
 
       const createBtn = page.locator('[data-testid="topbar-create-menu-btn"]').first();
       await createBtn.waitFor({ state: 'visible', timeout: 5000 });
@@ -217,12 +214,13 @@ async function main() {
       .first();
     await settingsBtn.waitFor({ state: 'visible', timeout: 5000 });
     await settingsBtn.click();
-    await page.waitForTimeout(500);
 
     const settingsTab = page.locator('.nx-workspace-tab[data-kind="settings"]').first();
     await settingsTab.waitFor({ state: 'visible', timeout: 5000 });
     await settingsTab.click();
-    await page.waitForTimeout(500);
+    await page.waitForFunction(
+      () => document.querySelector('.nx-workspace-tab[data-kind="settings"]')?.getAttribute('aria-selected') === 'true',
+    );
 
     const settingsTabs = page.locator('.nx-settings-tabs [role="tab"]');
     assert.ok((await settingsTabs.count()) >= 5, 'Settings must expose all five semantic tabs');
@@ -244,7 +242,9 @@ async function main() {
       'arrow navigation must remain within settings tabs',
     );
     await settingsTabs.first().click();
-    await page.waitForTimeout(300);
+    await page.waitForFunction(
+      () => document.querySelector('.nx-settings-tabs [role="tab"]')?.getAttribute('aria-selected') === 'true',
+    );
 
     // Validação do Accordion
     const accordionHeader = page.locator('button[id^="theme-cat-hdr-"]').first();
@@ -277,10 +277,10 @@ async function main() {
     await densityComfBtn.waitFor({ state: 'visible', timeout: 5000 });
     await densityCompBtn.waitFor({ state: 'visible', timeout: 5000 });
     await densityComfBtn.click();
-    await page.waitForTimeout(300);
+    await page.waitForFunction(() => document.documentElement.dataset.density === 'comfortable');
     const boxComf = await card.boundingBox();
     await densityCompBtn.click();
-    await page.waitForTimeout(300);
+    await page.waitForFunction(() => document.documentElement.dataset.density === 'compact');
     const boxComp = await card.boundingBox();
     assert.ok(boxComf && boxComp, 'density cards must have measurable bounds');
     console.log(
