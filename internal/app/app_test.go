@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/quota"
 	"github.com/kivervinicius/ai-cli/internal/profile"
 )
@@ -293,5 +294,23 @@ func TestPerformSystemUpdateDoesNotClaimNexusBinaryUpdated(t *testing.T) {
 	}
 	if !strings.Contains(result.Error, "Nexus binary update") {
 		t.Fatalf("missing honest Nexus update status: %+v", result)
+	}
+}
+
+func TestQuotaUnknownLabelReturnsStatusAwarePlaceholder(t *testing.T) {
+	tests := []struct {
+		status string
+		want   string
+	}{
+		{string(model.UsageUnknown), "— desconhecido"},
+		{string(model.UsageError), "— erro"},
+		{string(model.UsageRateLimited), "— rate limited"},
+		{"CACHED", "—"},
+		{"", "—"},
+	}
+	for _, tt := range tests {
+		if got := quotaUnknownLabel(tt.status); got != tt.want {
+			t.Errorf("quotaUnknownLabel(%q) = %q, want %q", tt.status, got, tt.want)
+		}
 	}
 }

@@ -1,6 +1,7 @@
 # Binaries and archives
 /ai
 /nexus
+/nexus-desktop
 /dist/
 bin/
 *.exe

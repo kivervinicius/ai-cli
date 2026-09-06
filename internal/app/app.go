@@ -858,8 +858,12 @@ func usageTableCmd(ps []model.Profile) error {
 		qv := profile.GetQuotaView(p.Provider, p.Name, acc.Plan, acc.Email)
 		for _, group := range qv.ModelGroups {
 			fiveHour, weekly := quotaWindowDisplay(group.Windows, "5h"), quotaWindowDisplay(group.Windows, "weekly")
+			// When no quota windows are available, show a status-aware
+			// placeholder so the provider still appears in the table.
 			if fiveHour == "-" && weekly == "-" {
-				continue
+				label := quotaUnknownLabel(qv.Status)
+				fiveHour = label
+				weekly = label
 			}
 			modelName := qv.ModelGroups[0].Name
 			if len(qv.ModelGroups) > 1 {
@@ -924,6 +928,21 @@ func quotaGroupStatus(group quota.ModelGroup, snapshotStatus string) string {
 		}
 	}
 	return "DISPONIVEL"
+}
+
+// quotaUnknownLabel returns a human-readable placeholder for providers
+// whose quota data is not available (UNKNOWN, ERROR, etc).
+func quotaUnknownLabel(status string) string {
+	switch status {
+	case string(model.UsageUnknown):
+		return "— desconhecido"
+	case string(model.UsageError):
+		return "— erro"
+	case string(model.UsageRateLimited):
+		return "— rate limited"
+	default:
+		return "—"
+	}
 }
 
 func sessionsCmd(args []string) error {

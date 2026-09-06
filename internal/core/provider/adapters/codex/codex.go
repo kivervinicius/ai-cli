@@ -532,7 +532,7 @@ func (a *Adapter) getUsageFromRollouts(ctx context.Context, p model.Profile) (mo
 				Status:     model.UsageLive,
 				Source:     model.SourceObservation,
 				ModelName:  detectedModel,
-				FetchedAt:  rf.modTime,
+				FetchedAt:  time.Now(),
 				Windows:    windows,
 			}, true
 		}
