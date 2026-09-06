@@ -91,3 +91,26 @@ func TestWorkspaceListSortedByRecency(t *testing.T) {
 		t.Error("list must be ordered by LastUsedAt DESC")
 	}
 }
+
+func TestWorkspaceStoreRemoveResolvesFilesystemAliases(t *testing.T) {
+	root := t.TempDir()
+	realPath := filepath.Join(root, "real")
+	aliasPath := filepath.Join(root, "alias")
+	if err := os.Mkdir(realPath, 0755); err != nil {
+		t.Fatalf("create real workspace: %v", err)
+	}
+	if err := os.Symlink(realPath, aliasPath); err != nil {
+		t.Fatalf("create workspace alias: %v", err)
+	}
+
+	store := NewStore(filepath.Join(root, "projects.json"))
+	if _, err := store.Add(realPath, "real"); err != nil {
+		t.Fatalf("add workspace: %v", err)
+	}
+	if err := store.Remove(aliasPath); err != nil {
+		t.Fatalf("remove workspace through filesystem alias: %v", err)
+	}
+	if len(store.List()) != 1 {
+		t.Fatalf("expected only the automatically discovered cwd workspace after removal, got %d", len(store.List()))
+	}
+}
