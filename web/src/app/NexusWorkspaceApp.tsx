@@ -448,7 +448,10 @@ const WorkspaceCoordinator: React.FC<{
 
     if (parsedRoute.kind === 'project' && parsedRoute.projectId === project.id) {
       const targetSurface = routeToWorkspaceSurface(parsedRoute, { agents: data.agents });
-      if (targetSurface && (lastSyncedRouteRef.current !== routeKey || activeSurface?.type !== targetSurface.type)) {
+      if (
+        targetSurface &&
+        (lastSyncedRouteRef.current !== routeKey || activeSurface?.type !== targetSurface.type)
+      ) {
         lastSyncedRouteRef.current = routeKey;
         workspace.open(targetSurface);
       }
