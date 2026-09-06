@@ -99,6 +99,8 @@ func (n *Nexus) ListResources() ([]ProviderAccount, error) {
 		return accounts[i].Profile < accounts[j].Profile
 	})
 
+	DefaultQuotaDropMonitor().CheckAccounts(accounts)
+
 	return accounts, nil
 }
 
