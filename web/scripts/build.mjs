@@ -2,7 +2,7 @@ import { build } from 'esbuild';
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { dirname, resolve } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import * as sass from 'sass';
@@ -39,7 +39,10 @@ const sassPlugin = {
     buildInstance.onLoad({ filter: /\.module\.(scss|css)$/ }, (args) => {
       const isScss = args.path.endsWith('.scss');
       const compiledCss = isScss ? sass.compile(args.path).css : readFileSync(args.path, 'utf8');
-      const fileHash = createHash('md5').update(args.path).digest('hex').slice(0, 6);
+      // Hash the module's repository-relative identity so builds are stable
+      // when the same checkout is built from a different absolute directory.
+      const moduleIdentity = relative(webDir, args.path).replaceAll('\\', '/');
+      const fileHash = createHash('md5').update(moduleIdentity).digest('hex').slice(0, 6);
 
       const classMap = {};
       const transformedCss = compiledCss.replace(/\.([a-zA-Z_][a-zA-Z0-9_-]*)/g, (match, className) => {
