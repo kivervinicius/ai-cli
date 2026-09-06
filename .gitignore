@@ -54,6 +54,8 @@ tmp/
 /web/node_modules
 web/node_modules/
 web/dist/
+/internal/control/web/embedded/*
+!/internal/control/web/embedded/.keep
 # Bun is the packageManager (web/package.json); ignore npm lock churn.
 web/package-lock.json
 

@@ -111,11 +111,11 @@ function build() {
 function checkEmbeddedSync() {
   const started = Date.now();
   const webBundle = resolve(webDir, 'dist/bundle.js');
-  const embeddedBundle = resolve(repoDir, 'internal/control/web/dist/bundle.js');
+  const embeddedBundle = resolve(repoDir, 'internal/control/web/embedded/bundle.js');
   if (!existsSync(webBundle) || !existsSync(embeddedBundle)) {
     return {
       ok: false,
-      detail: 'bundle.js ausente em web/dist ou internal/control/web/dist — rode o build',
+      detail: 'bundle.js ausente em web/dist ou internal/control/web/embedded — rode o build',
       durationMs: Date.now() - started,
     };
   }
@@ -124,7 +124,7 @@ function checkEmbeddedSync() {
   if (a.length !== b.length || !a.equals(b)) {
     return {
       ok: false,
-      detail: 'web/dist e internal/control/web/dist divergem — o binário nexus pode servir UI antiga',
+      detail: 'web/dist e internal/control/web/embedded divergem — o binário nexus pode servir UI antiga',
       durationMs: Date.now() - started,
     };
   }
@@ -251,14 +251,14 @@ const gates = [
   { id: 'test', title: 'Vitest (`vitest run`)', hard: true, check: () => testAll() },
   { id: 'i18n', title: 'i18n catalog parity', hard: true, check: () => checkI18nParityQuick() },
   { id: 'build', title: 'Build + embed (`node scripts/build.mjs`)', hard: true, check: () => build() },
-  { id: 'embed-sync', title: 'Embed sync (web/dist ≡ internal/.../dist)', hard: true, check: () => checkEmbeddedSync() },
+  { id: 'embed-sync', title: 'Embed sync (web/dist ≡ internal/.../embedded)', hard: true, check: () => checkEmbeddedSync() },
   { id: 'ui-markers', title: 'Critical UI markers in bundle', hard: true, check: () => checkCriticalUiMarkers() },
 ];
 
 function gitMeta() {
   const branch = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoDir, encoding: 'utf8' });
   const commit = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: repoDir, encoding: 'utf8' });
-  const dirty = spawnSync('git', ['status', '--porcelain', '--', 'web', 'internal/control/web/dist'], {
+  const dirty = spawnSync('git', ['status', '--porcelain', '--', 'web', 'internal/control/web/embedded'], {
     cwd: repoDir,
     encoding: 'utf8',
   });

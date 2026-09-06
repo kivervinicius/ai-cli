@@ -11,7 +11,7 @@ Adotar o **Wails v2 estável** (`v2.15.0`) exclusivamente como uma casca nativa 
 
 ### Princípios Chave:
 1. **One Nexus Core**: O mesmo Nexus Core escrito em Go (`internal/app`, `internal/control`, `internal/nexus`, etc.) gerencia tanto a execução web quanto desktop.
-2. **One React Frontend**: Um único SPA React compilado em `web/src -> web/dist` é embarcado no servidor web e na casca Wails (`web.EmbeddedDistFS()`).
+2. **One React Frontend**: Um único SPA React compilado em `web/src -> web/dist`, copiado para o diretório gerado `internal/control/web/embedded`, é embarcado no servidor web e na casca Wails (`web.EmbeddedDistFS()`).
 3. **One Control API & Contract**: A comunicação entre a interface do usuário e o domínio Nexus é realizada via REST e WebSocket autenticado em loopback.
 4. **Wails is a Shell, not a Second Backend**: O Wails expõe apenas capacidades nativas do SO (`internal/desktop`), não duplicando regras de negócio, runtimes de terminal (PTY/ConPTY), escalonador ou updater.
 5. **No Electron, No Tauri**: Electron foi rejeitado por introduzir um runtime Node duplicado de 150MB+ e overhead desnecessário de memória. Tauri foi rejeitado por exigir uma stack Rust paralela. Wails utiliza os webviews nativos do SO (WebView2 no Windows, WKWebView no macOS, WebKitGTK no Linux) com Go unificado.

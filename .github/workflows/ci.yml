@@ -65,7 +65,7 @@ jobs:
         run: bun run build
 
       - name: Verify embedded bundle is synchronized
-        run: git diff --exit-code -- internal/control/web/dist
+        run: test -f internal/control/web/embedded/index.html && test -f internal/control/web/embedded/bundle.js && test -f internal/control/web/embedded/bundle.css
 
   browser:
     name: Browser E2E, Axe & visual smoke

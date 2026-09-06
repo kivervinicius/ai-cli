@@ -1,5 +1,5 @@
 import { build } from 'esbuild';
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, relative, resolve } from 'node:path';
@@ -10,7 +10,7 @@ import * as sass from 'sass';
 const webDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repoDir = resolve(webDir, '..');
 const distDir = resolve(webDir, 'dist');
-const embeddedDir = resolve(repoDir, 'internal/control/web/dist');
+const embeddedDir = resolve(repoDir, 'internal/control/web/embedded');
 
 await rm(distDir, { recursive: true, force: true });
 await mkdir(distDir, { recursive: true });
@@ -102,8 +102,10 @@ const manifest = {
 };
 await writeFile(resolve(distDir, 'build-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 
-await rm(embeddedDir, { recursive: true, force: true });
 await mkdir(embeddedDir, { recursive: true });
+for (const entry of await readdir(embeddedDir)) {
+  if (entry !== '.keep') await rm(resolve(embeddedDir, entry), { recursive: true, force: true });
+}
 await cp(distDir, embeddedDir, { recursive: true });
 
 const index = await readFile(resolve(distDir, 'index.html'), 'utf8');

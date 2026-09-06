@@ -1,9 +1,0 @@
-{
-  "files": [
-    "index.html",
-    "bundle.css",
-    "bundle.js",
-    "logo.png"
-  ],
-  "builder": "node+esbuild+tailwind+code-splitting"
-}

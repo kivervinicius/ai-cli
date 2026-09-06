@@ -522,7 +522,7 @@ bun install --frozen-lockfile
 bun run typecheck
 bun run lint
 bun run test
-bun run build      # produces the embedded frontend (internal/control/web/dist)
+bun run build      # produces the embedded frontend (internal/control/web/embedded)
 
 # Release snapshot
 goreleaser release --snapshot --clean

@@ -47,7 +47,7 @@ jobs:
           bun run build
 
       - name: Verify embedded bundle
-        run: git diff --exit-code -- internal/control/web/dist
+        run: test -f internal/control/web/embedded/index.html && test -f internal/control/web/embedded/bundle.js && test -f internal/control/web/embedded/bundle.css
 
       - name: Run release gates
         run: |

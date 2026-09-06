@@ -539,7 +539,7 @@ bun install --frozen-lockfile
 bun run typecheck
 bun run lint
 bun run test
-bun run build      # gera o frontend embutido (internal/control/web/dist)
+bun run build      # gera o frontend embutido (internal/control/web/embedded)
 
 # Release snapshot
 goreleaser release --snapshot --clean
