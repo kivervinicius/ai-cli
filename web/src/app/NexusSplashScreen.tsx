@@ -27,7 +27,7 @@ export const NexusSplashScreen: React.FC<{
         </div>
 
         <div className="nx-splash-brand">
-          <span className="nx-splash-eyebrow">Workspace OS · Powered by Maestro</span>
+          <span className="nx-splash-eyebrow">Workspace OS · Powered by Orquestrador Maestro</span>
           <h1 className="nx-splash-title">IAPro Nexus</h1>
         </div>
 

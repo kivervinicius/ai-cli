@@ -35,11 +35,45 @@ type AuthManager struct {
 	bootstrapToken string
 	usedBootstrap  bool
 	sessions       map[string]*Session
+	desktopSession *Session
 	listenHost     string
 	listenPort     string
 	storeDir       string
 	lastPersist    time.Time
 	entropy        io.Reader
+}
+
+func (a *AuthManager) SetDesktopSession(sess *Session) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.desktopSession != nil && (sess == nil || a.desktopSession.ID != sess.ID) {
+		delete(a.sessions, a.desktopSession.ID)
+	}
+	a.desktopSession = sess
+	if sess != nil {
+		a.sessions[sess.ID] = sess
+	}
+	_ = a.persistLocked()
+}
+
+func (a *AuthManager) GetDesktopSession() *Session {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.desktopSession == nil {
+		return nil
+	}
+	if _, exists := a.sessions[a.desktopSession.ID]; !exists {
+		a.desktopSession = nil
+		return nil
+	}
+	now := time.Now()
+	if now.After(a.desktopSession.ExpiresAt) || now.Sub(a.desktopSession.LastActiveAt) > sessionIdleTTL {
+		delete(a.sessions, a.desktopSession.ID)
+		a.desktopSession = nil
+		_ = a.persistLocked()
+		return nil
+	}
+	return a.desktopSession
 }
 
 func NewAuthManager(listenHost, listenPort string) (*AuthManager, string, error) {
@@ -125,15 +159,58 @@ func (a *AuthManager) CreateSession() (*Session, error) {
 }
 
 func (a *AuthManager) AuthenticateRequest(r *http.Request) *Session {
-	cookie, err := r.Cookie(sessionCookieName)
-	if err != nil || cookie.Value == "" {
-		return nil
+	var token string
+	if cookie, err := r.Cookie(sessionCookieName); err == nil && cookie.Value != "" {
+		token = cookie.Value
 	}
-
+	if token == "" {
+		if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+			token = strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+		}
+	}
+	if token == "" {
+		token = strings.TrimSpace(r.Header.Get("X-Nexus-Session"))
+	}
+	if token == "" && (websocket.IsWebSocketUpgrade(r) || strings.EqualFold(r.Header.Get("Upgrade"), "websocket")) {
+		token = strings.TrimSpace(r.URL.Query().Get("token"))
+		if token == "" {
+			token = strings.TrimSpace(r.URL.Query().Get("session"))
+		}
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	sess, ok := a.sessions[cookie.Value]
+	// If no explicit token or cookie was provided, check if this request originates from the local native desktop shell
+	if token == "" && a.desktopSession != nil {
+		origin := r.Header.Get("Origin")
+		referer := r.Header.Get("Referer")
+
+		if originpolicy.IsTrustedDesktopRequest(r.Host, origin, referer) {
+			// Ensure desktop session still exists and has not expired or idled out
+			if _, exists := a.sessions[a.desktopSession.ID]; !exists {
+				a.desktopSession = nil
+				return nil
+			}
+			now := time.Now()
+			if now.After(a.desktopSession.ExpiresAt) || now.Sub(a.desktopSession.LastActiveAt) > sessionIdleTTL {
+				delete(a.sessions, a.desktopSession.ID)
+				a.desktopSession = nil
+				_ = a.persistLocked()
+				return nil
+			}
+			a.desktopSession.LastActiveAt = now
+			if a.storeDir != "" && now.Sub(a.lastPersist) >= sessionPersistMinGap {
+				_ = a.persistLocked()
+			}
+			return a.desktopSession
+		}
+	}
+
+	if token == "" {
+		return nil
+	}
+
+	sess, ok := a.sessions[token]
 	if !ok {
 		return nil
 	}
@@ -141,7 +218,10 @@ func (a *AuthManager) AuthenticateRequest(r *http.Request) *Session {
 	now := time.Now()
 	// Check absolute expiry and idle TTL (A8 security requirement)
 	if now.After(sess.ExpiresAt) || now.Sub(sess.LastActiveAt) > sessionIdleTTL {
-		delete(a.sessions, cookie.Value)
+		if a.desktopSession != nil && a.desktopSession.ID == token {
+			a.desktopSession = nil
+		}
+		delete(a.sessions, token)
 		_ = a.persistLocked()
 		return nil
 	}
@@ -157,6 +237,9 @@ func (a *AuthManager) AuthenticateRequest(r *http.Request) *Session {
 func (a *AuthManager) RevokeSession(sessionID string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.desktopSession != nil && a.desktopSession.ID == sessionID {
+		a.desktopSession = nil
+	}
 	delete(a.sessions, sessionID)
 	_ = a.persistLocked()
 }
@@ -188,6 +271,9 @@ func (a *AuthManager) RotateSession(oldSessionID string) (*Session, error) {
 	}
 	delete(a.sessions, oldSessionID)
 	a.sessions[sessID] = sess
+	if a.desktopSession != nil && a.desktopSession.ID == oldSessionID {
+		a.desktopSession = sess
+	}
 	_ = a.persistLocked()
 	return sess, nil
 }
@@ -242,6 +328,14 @@ func isLoopbackHost(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+func splitHostPortLoose(value string) (string, string) {
+	value = strings.TrimSpace(value)
+	if host, port, err := net.SplitHostPort(value); err == nil {
+		return strings.Trim(host, "[]"), port
+	}
+	return strings.Trim(value, "[]"), ""
 }
 
 func (a *AuthManager) isLoopbackListen() bool {

@@ -15,17 +15,26 @@ export function normalizeLanguage(value?: string | null): SupportedLanguage {
   return 'en';
 }
 
+const savedLanguage =
+  typeof window !== 'undefined'
+    ? window.localStorage?.getItem(languageStorageKey) ||
+      window.localStorage?.getItem('iapro:nexus:lang:v1')
+    : null;
+
+const initialLanguage = savedLanguage ? normalizeLanguage(savedLanguage) : 'pt-BR';
+
 const initialization = i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
     resources: { en: { translation: en }, 'pt-BR': { translation: ptBR }, es: { translation: es } },
     supportedLngs: [...supportedLanguages],
-    fallbackLng: 'en',
+    fallbackLng: 'pt-BR',
+    lng: initialLanguage,
     load: 'currentOnly',
     interpolation: { escapeValue: false },
     detection: {
-      order: ['localStorage', 'navigator'],
+      order: ['localStorage'],
       lookupLocalStorage: languageStorageKey,
       caches: ['localStorage'],
       convertDetectedLanguage: normalizeLanguage,

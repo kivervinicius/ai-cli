@@ -25,6 +25,10 @@ describe('Agent terminal model', () => {
     expect(agentTerminalWebSocketURL('http:', 'localhost:3000', 'agt_1', 'rt_9')).toBe(
       'ws://localhost:3000/api/v1/agents/agt_1/terminal?runtime_id=rt_9',
     ));
+  it('appends auth token and runtime_id for desktop sessions', () =>
+    expect(agentTerminalWebSocketURL('http:', 'localhost:3000', 'agt_1', 'rt_9', 'sess_abc')).toBe(
+      'ws://localhost:3000/api/v1/agents/agt_1/terminal?runtime_id=rt_9&token=sess_abc',
+    ));
   it('supports agent-scoped reattachment after a runtime generation changes', () =>
     expect(agentTerminalWebSocketURL('http:', 'localhost:3000', 'agt_1')).toBe(
       'ws://localhost:3000/api/v1/agents/agt_1/terminal',

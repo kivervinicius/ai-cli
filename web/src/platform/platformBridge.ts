@@ -1,4 +1,9 @@
-import { PlatformCapabilities, FilePickerOptions, NotificationOptions } from './capabilities';
+import {
+  PlatformCapabilities,
+  FilePickerOptions,
+  NotificationOptions,
+  DesktopBootstrapInfo,
+} from './capabilities';
 
 export interface PlatformBridge {
   readonly kind: 'web' | 'desktop';
@@ -13,6 +18,8 @@ export interface PlatformBridge {
   openExternal(url: string): Promise<void>;
 
   getSystemTheme(): Promise<'light' | 'dark' | 'unknown'>;
+
+  getBootstrapInfo?(): Promise<DesktopBootstrapInfo | null>;
 
   isMaximized?(): Promise<boolean>;
   minimizeWindow?(): Promise<void>;

@@ -1630,7 +1630,7 @@ export const es: TranslationShape<typeof en> = {
   },
   welcome: {
     title: 'Bienvenido a IAPro Nexus',
-    subtitle: 'Workspace OS Autónomo Web-first para Coding Agents · Powered by Maestro',
+    subtitle: 'Workspace OS Autónomo Web-first para Coding Agents · Powered by Orquestrador Maestro',
     tabOverview: 'Resumen',
     tabQuickstart: 'Guía Rápida',
     tabShortcuts: 'Atajos y Comandos',
@@ -1639,7 +1639,7 @@ export const es: TranslationShape<typeof en> = {
     overviewP1:
       'IAPro Nexus es un espacio de control local diseñado para coding agents de IA (Codex, Claude Code, Gemini CLI, OpenCode, AGY, Cursor Agent).',
     overviewP2:
-      'Powered by Maestro: Orquestrador Maestro proporciona método de ingeniería de software, skills, puertas de calidad y evaluación de riesgos sin duplicar la ejecución de procesos.',
+      'Powered by Orquestrador Maestro: Orquestrador Maestro proporciona método de ingeniería de software, skills, puertas de calidad y evaluación de riesgos sin duplicar la ejecución de procesos.',
     honestyModel:
       'Modelo de Honestidad: La intención nunca se muestra como un hecho. Los runtimes reportan estados reales observados (WORKING, RECOVERABLE, RATE_LIMITED) y evidencias de verificación.',
     quickstartTitle: 'Comience en 3 Pasos Sencillos',

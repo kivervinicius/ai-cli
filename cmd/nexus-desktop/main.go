@@ -52,12 +52,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 3. Initialize native desktop bridge and window state manager
+	// 3. Provision pre-authenticated desktop session
+	desktopSess, err := core.CreateDesktopSession()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to provision desktop session: %v\n", err)
+		os.Exit(1)
+	}
+
+	// 4. Initialize native desktop bridge and window state manager
 	windowManager := desktop.NewWindowStateManager("")
 	windowState := windowManager.Load()
-	desktopApp := desktop.NewApp(nil, windowManager)
+	desktopApp := desktop.NewApp(nil, windowManager, desktop.BootstrapInfo{
+		ServerURL:    core.URL(),
+		SessionToken: desktopSess.ID,
+		CSRFToken:    desktopSess.CSRFToken,
+	})
 
-	// 4. Launch Wails native shell
+	// 5. Launch Wails native shell
 	err = wails.Run(&options.App{
 		Title:     "IAPro Nexus",
 		Width:     windowState.Width,
@@ -65,7 +76,8 @@ func main() {
 		MinWidth:  800,
 		MinHeight: 600,
 		AssetServer: &assetserver.Options{
-			Assets: distFS,
+			Assets:  distFS,
+			Handler: core.Handler(),
 		},
 		BackgroundColour: &options.RGBA{R: 15, G: 17, B: 23, A: 255},
 		OnStartup:        desktopApp.Startup,

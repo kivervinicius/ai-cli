@@ -13,6 +13,7 @@ import {
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { nexus } from './api';
+import { getDesktopAuthToken, getDesktopBaseUrl } from '../api';
 import {
   TERMINAL_MAX_RECONNECT_ATTEMPTS,
   agentTerminalWebSocketURL,
@@ -374,13 +375,22 @@ export const AgentTerminal: React.FC<{
         if (wsRef.current === previous) wsRef.current = null;
       }
 
+      let wsProto = window.location.protocol;
+      let wsHost = window.location.host;
+      const desktopBase = getDesktopBaseUrl();
+      if (desktopBase) {
+        try {
+          const parsed = new URL(desktopBase);
+          wsProto = parsed.protocol;
+          wsHost = parsed.host;
+        } catch {
+          // ignore
+        }
+      }
+      const token = getDesktopAuthToken();
+
       const ws = new WebSocket(
-        agentTerminalWebSocketURL(
-          window.location.protocol,
-          window.location.host,
-          agentId,
-          boundRuntimeId,
-        ),
+        agentTerminalWebSocketURL(wsProto, wsHost, agentId, boundRuntimeId, token),
       );
       wsRef.current = ws;
       roleRef.current = 'VIEW_ONLY';

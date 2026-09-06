@@ -58,7 +58,7 @@ export const ProjectHub: React.FC<{ onCreated: (project: Project) => void }> = (
           <span className="nx-brand-mark nx-brand-mark--hero">
             <img src="./nexus-icon.png" alt="Nexus" className="nx-brand-mark__img" />
           </span>
-          <span className="nx-eyebrow">IAPro Nexus · Powered by Maestro</span>
+          <span className="nx-eyebrow">IAPro Nexus · Powered by Orquestrador Maestro</span>
           <h1>{t('projects.headline')}</h1>
           <p>{t('projects.intro')}</p>
         </div>

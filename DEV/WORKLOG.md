@@ -1,6 +1,71 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
-## 2026-09-05 — Implementação Completa Web + Desktop Multiplataforma (Wails v2 Estável)
+## 2026-09-06 — Resolução Definitiva de Sessão / Autenticação, WebSockets e Idioma Padrão no IAPro Nexus Desktop
+
+- **Objetivo**: Corrigir a falha de autenticação/sessão ao abrir o aplicativo nativo Desktop (`nexus-desktop`), onde o aplicativo caía diretamente na tela de *"Session Expired or Unauthorized"* (`auth.sessionExpired`). Corrigir também a inicialização do idioma para que venha por padrão em português (`pt-BR`). Garantir paridade arquitetural 100% entre Web e Desktop em conformidade com o Contrato Oficial do Nexus.
+- **Causas Raízes Identificadas**:
+  1. `cmd/nexus-desktop/main.go` inicializava o Wails `AssetServer` com `Handler: nil`. Requisições para `/api/v1/session` caíam em 404/fallback em vez de serem tratadas pelo multiplexer do Nexus Core.
+  2. O WebView nativo (`wails://wails`) nunca realizava o handshake com troca de token de bootstrap (`/?token=...`) que ocorre no fluxo do browser, iniciando sem qualquer cookie de sessão.
+  3. Cookies sobre o esquema customizado `wails://` são descartados ou tratados como cross-site pelo WebKitGTK / WKWebView.
+  4. `originpolicy.Validate` rejeitava esquemas `wails://` e hosts `wails.localhost`, bloqueando requisições locais com 403 Forbidden.
+  5. Conexões de terminal WebSocket (`/api/v1/.../terminal`) tentavam se conectar a `ws://wails/...`, onde o Wails AssetServer não provê suporte a WebSockets nativos.
+  6. Configuração de idioma do i18n (`web/src/i18n/index.ts`) caía para o locale do sistema operacional (`LANG=en_US.UTF-8`) na ausência de preferência gravada no `localStorage`.
+- **Soluções Implementadas**:
+  1. **Provisionamento Automático de Sessão Desktop (`internal/app/core.go`, `internal/control/web/server.go`, `auth.go`)**:
+     - Implementado `CreateDesktopSession()` em `Server` e `Core`, gerando sessão autenticada com CSRF token no boot do shell desktop.
+     - `AuthManager` agora registra a sessão desktop criada e autentica automaticamente requisições originadas do WebView nativo (`wails://wails` / `wails.localhost`) no loopback, mesmo que cookies não sejam transmitidos pelo WebKitGTK.
+     - Endpoint `/api/v1/desktop/bootstrap` exposto para fallback e sincronização direta de sessão e CSRF.
+  2. **Exposição de BootstrapInfo no Bridge Wails (`internal/desktop/app.go`, `cmd/nexus-desktop/main.go`)**:
+     - Adicionado struct `BootstrapInfo` com `ServerURL`, `SessionToken` e `CSRFToken`.
+     - Exposto método `GetBootstrapInfo()` no binding Go Wails `desktop.App`.
+     - Configurado `AssetServer.Handler = core.Handler()` para resolução in-process de assets e APIs dinâmicas.
+  3. **Política de Origens Segura (`internal/control/originpolicy/origin.go`)**:
+     - `Validate` agora aceita origens de desktop (`wails://wails`, `http://wails.localhost`) destinadas ao loopback (`127.0.0.1`, `localhost`).
+  4. **Autenticação Flexível por Header e Query Token (`internal/control/web/auth.go`, `server.go`, `handlers_api.go`)**:
+     - `AuthenticateRequest` agora aceita `Authorization: Bearer <session_id>`, `X-Nexus-Session: <session_id>` e query param `token` (para upgrades de WebSocket).
+     - Emissão de cookie `ai_control_session` em respostas autenticadas de sessão e CORS adaptado para origens Wails.
+  5. **Bridge Frontend e Resolução de WebSockets (`web/src/platform/`, `web/src/api.ts`, `web/src/nexus/`)**:
+     - `DesktopBridge` implementa `getBootstrapInfo()` com retry loop aguardando a injeção do runtime Wails e fallback HTTP.
+     - `isDesktopApp()` ajustado com optional chaining (`window.location?.protocol`) garantindo compatibilidade com ambientes Node / Vitest.
+     - `initSession()` detecta ambiente desktop e aplica tokens imediatamente via `Authorization: Bearer`, eliminando qualquer possibilidade de tela de sessão expirada.
+     - Implementado `getWebSocketEndpoint()` e atualizado `AgentTerminal.tsx` e `TerminalPane.tsx` para conectar WebSockets ao loopback TCP com token de autenticação.
+  6. **Padronização do Idioma Inicial em Português (`pt-BR`) (`web/src/i18n/index.ts`)**:
+     - Configurado `fallbackLng: 'pt-BR'` e resolução inicial priorizando `pt-BR` caso o usuário ainda não tenha salvo uma preferência explícita no storage da aplicação, ignorando a inicialização em inglês do SO.
+- **Validação, Code Review com Codex e Rebuild**:
+  - `go test ./internal/control/originpolicy/... ./internal/control/web/... ./internal/desktop/...` — 100% PASS (incluindo testes negativos contra ataques de bypass de origem/referer, expiração, revogação e limpeza no shutdown).
+  - `make web-verify` — 10/10 gates PASS (format, typecheck, lint, stylelint, null-arrays, 58 arquivos vitest / 282 testes, i18n, build, embed-sync, ui-markers).
+  - **Revisão Formal via Codex (`codex exec -s read-only`)**:
+    - Apontamento 1 (P1): Restrição estrita de origem contra bypass de host em `IsTrustedDesktopRequest` e precedência de `Origin` sobre `Referer` implementada e testada.
+    - Apontamento 2 (P1): Invalidação de sessão desktop anterior em `SetDesktopSession`, ciclo de vida e encerramento em `Server.Shutdown` corrigidos e cobertos por testes unitários em `desktop_auth_test.go`.
+    - Resultado: **PARECER FORMAL: APPROVE**.
+  - Binários `nexus` e `nexus-desktop` v0.5.0-beta.23 compilados e instalados em `~/.local/bin/`.
+
+- **Objetivo**: Extinguir o `--tui` como uma tela separada e integrar todas as suas funcionalidades (contas, quotas, sessões recentes, troca de perfil padrão, login, atalhos e modal de quotas) diretamente no comando principal `nexus usage`. Permitir que flags como `--yolo` e `--plan` sejam opções interativas diretamente na interface, exibindo todos os CLIs instalados mesmo que ainda não configurados.
+- **Alterações Realizadas**:
+  1. **Dashboard TUI Unificado (`internal/tui/usage_table.go`)**:
+     - Implementado seletor de modos interativo na tela (`Safe` padrão, `⚡ YOLO` e `📋 Plan`), alternáveis pelas teclas `1`, `2`/`y`, `3`/`p` ou `m`.
+     - Adicionado toggle `[c] Continuar Sessão: ON/OFF` (`--continue`).
+     - Sistema de abas com navegação suave entre `[1: CONTAS & QUOTAS]` e `[2: SESSÕES RECENTES]` com tecla `Tab`.
+     - Exibição de CLIs instalados sem perfis configurados com status `NÃO CONFIGURADO`, orientando o comando `nexus add <prov> <nome>`.
+     - Tratamento confiável de saída imediata com `Esc` e `q`/`Q`.
+     - Modal de quotas detalhadas com atalho `s`.
+     - Visualização dinâmica no rodapé refletindo as flags ativas e a ação ao teclar `Enter`.
+  2. **Compatibilidade e Transição Transparente (`internal/app/app.go`, `internal/tui/tui.go`)**:
+     - `nexus --tui` agora invoca o dashboard unificado `nexus usage`.
+     - `nexus usage` aceita flags de pré-ativação de modo via CLI (`--yolo`, `-y`, `--plan`, `--continue`, `-c`).
+     - Comandos diretos de provedor (`nexus <provider>`, `nexus codex`, `nexus agy`, etc.) permanecem inalterados.
+  3. **Correções e Estabilidade**:
+     - Corrigida importação de `originpolicy` em `internal/control/web/server.go` e `net/http` em `internal/app/core.go`.
+     - Ajustada contagem de colunas em `sessionColumns` para evitar mismatch na renderização de linhas de sessão.
+     - Padronização de badges de provedor evitando quebras de alinhamento com sequências ANSI em células de tabela.
+  4. **Validação**:
+     - `go test ./internal/tui/ -v` — PASS.
+     - `go test ./internal/app/ -v` — PASS.
+     - `go test ./...` — PASS (100% da suíte de testes do repositório).
+     - Validação interativa via PTY de inicialização, seleção de modos com teclas de atalho, alternância de abas e saída com `q` e `esc` — PASS.
+     - Binário compilado e instalado em `~/.local/bin/nexus`.
+
+
 
 - **Objetivo**: Tornar oficialmente o IAPro Nexus uma aplicação com duas superfícies de execução equivalentes (Web e Desktop nativo para Windows, macOS e Linux), compartilhando o mesmo frontend React, o mesmo Nexus Core Go, a mesma API e contratos de terminal, isolando a integração do Maestro como 100% opcional e unificando o serviço de atualizações com consciência de empacotamento do SO.
 - **Alterações Realizadas**:

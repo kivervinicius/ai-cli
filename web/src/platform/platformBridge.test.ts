@@ -53,4 +53,25 @@ describe('PlatformBridge', () => {
     const result = await bridge.selectDirectory();
     expect(result).toBeNull();
   });
+
+  it('getBootstrapInfo returns server connection and auth tokens', async () => {
+    (globalThis as any).window.go = {
+      desktop: {
+        App: {
+          GetBootstrapInfo: async () => ({
+            serverUrl: 'http://127.0.0.1:45678',
+            sessionToken: 'sess_12345',
+            csrfToken: 'csrf_67890',
+          }),
+        },
+      },
+    };
+    const bridge = new DesktopBridge();
+    const info = await bridge.getBootstrapInfo();
+    expect(info).toEqual({
+      serverUrl: 'http://127.0.0.1:45678',
+      sessionToken: 'sess_12345',
+      csrfToken: 'csrf_67890',
+    });
+  });
 });

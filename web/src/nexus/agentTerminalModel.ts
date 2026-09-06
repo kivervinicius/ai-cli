@@ -8,11 +8,17 @@ export function agentTerminalWebSocketURL(
   host: string,
   agentId: string,
   runtimeId?: string,
+  token?: string,
 ): string {
-  const base = `${protocol === 'https:' ? 'wss:' : 'ws:'}//${host}/api/v1/agents/${encodeURIComponent(agentId)}/terminal`;
-  const trimmed = (runtimeId || '').trim();
-  if (!trimmed) return base;
-  return `${base}?runtime_id=${encodeURIComponent(trimmed)}`;
+  const wsProto = protocol === 'https:' || protocol === 'wss:' ? 'wss:' : 'ws:';
+  const base = `${wsProto}//${host}/api/v1/agents/${encodeURIComponent(agentId)}/terminal`;
+  const params = new URLSearchParams();
+  const trimmedRuntime = (runtimeId || '').trim();
+  if (trimmedRuntime) params.set('runtime_id', trimmedRuntime);
+  const trimmedToken = (token || '').trim();
+  if (trimmedToken) params.set('token', trimmedToken);
+  const qs = params.toString();
+  return qs ? `${base}?${qs}` : base;
 }
 
 export function normalizeTerminalRole(role: unknown): TerminalRole {

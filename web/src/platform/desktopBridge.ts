@@ -1,5 +1,10 @@
 import { PlatformBridge } from './platformBridge';
-import { PlatformCapabilities, FilePickerOptions, NotificationOptions } from './capabilities';
+import {
+  PlatformCapabilities,
+  FilePickerOptions,
+  NotificationOptions,
+  DesktopBootstrapInfo,
+} from './capabilities';
 
 declare global {
   interface Window {
@@ -18,6 +23,7 @@ declare global {
           CloseWindow?: () => Promise<void>;
           QuitApp?: () => Promise<void>;
           GetCapabilities?: () => Promise<PlatformCapabilities>;
+          GetBootstrapInfo?: () => Promise<DesktopBootstrapInfo>;
         };
       };
     };
@@ -33,8 +39,54 @@ declare global {
 export class DesktopBridge implements PlatformBridge {
   readonly kind = 'desktop' as const;
 
+  private cachedBootstrap: DesktopBootstrapInfo | null = null;
+
   private get appBinding() {
     return window.go?.desktop?.App;
+  }
+
+  async getBootstrapInfo(): Promise<DesktopBootstrapInfo | null> {
+    if (this.cachedBootstrap) {
+      return this.cachedBootstrap;
+    }
+
+    // 1. Check for Wails Go binding (with retry for async binding injection)
+    for (let i = 0; i < 20; i++) {
+      if (window.go?.desktop?.App?.GetBootstrapInfo) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    if (window.go?.desktop?.App?.GetBootstrapInfo) {
+      try {
+        const info = await window.go.desktop.App.GetBootstrapInfo();
+        if (info && info.serverUrl) {
+          this.cachedBootstrap = info;
+          return info;
+        }
+      } catch (err) {
+        console.warn('Wails App.GetBootstrapInfo error:', err);
+      }
+    }
+
+    // 2. Fallback: query desktop bootstrap endpoint directly via HTTP
+    try {
+      const res = await fetch('/api/v1/desktop/bootstrap', {
+        headers: { Accept: 'application/json' },
+      });
+      if (res.ok) {
+        const info = (await res.json()) as DesktopBootstrapInfo;
+        if (info && info.serverUrl) {
+          this.cachedBootstrap = info;
+          return info;
+        }
+      }
+    } catch (fetchErr) {
+      console.warn('HTTP desktop bootstrap endpoint probe error:', fetchErr);
+    }
+
+    return null;
   }
 
   getCapabilities(): PlatformCapabilities {

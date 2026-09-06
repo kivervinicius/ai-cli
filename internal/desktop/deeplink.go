@@ -15,9 +15,10 @@ type DeepLinkAction struct {
 
 // ParseDeepLink parses and validates a nexus:// URI.
 // Supported schemes:
-//   nexus://project/<id>
-//   nexus://mission/<id>
-//   nexus://agent/<id>
+//
+//	nexus://project/<id>
+//	nexus://mission/<id>
+//	nexus://agent/<id>
 func ParseDeepLink(rawURL string) (*DeepLinkAction, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {

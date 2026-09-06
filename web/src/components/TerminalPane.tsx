@@ -6,6 +6,7 @@ import { scrubProtocolOutput } from '../nexus/terminalProtocol';
 import { canFitTerminal } from '../nexus/terminalFitModel';
 import { consumePtyOutputForChrome, extractOscTitle } from '../workspace/ptyLiveChrome';
 import { usePtyLiveChromeOptional } from '../workspace/PtyLiveChromeContext';
+import { getWebSocketEndpoint } from '../api';
 
 interface TerminalPaneProps {
   runtimeId: string;
@@ -168,8 +169,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     });
 
     // Connect WebSocket
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/api/v1/runtimes/${runtimeId}/terminal`;
+    const wsUrl = getWebSocketEndpoint(`/api/v1/runtimes/${runtimeId}/terminal`);
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

@@ -20,7 +20,7 @@
 </p>
 
 <h3 align="center">
-  ⚡ IAPro Nexus — Web-first Workspace for Coding Agents · Powered by Maestro
+  ⚡ IAPro Nexus — Web-first Workspace for Coding Agents · Powered by Orquestrador Maestro
 </h3>
 
 <p align="center">
@@ -53,7 +53,7 @@ In short, Nexus does three things:
    (`nexus web`) with real terminals (xterm.js) inside the browser. No giant
    mandatory terminal, nothing to install beyond a single binary.
 
-Nexus is **Powered by Maestro**: the [Orquestrador Maestro](https://github.com/IAPro-Community/Orquestrador-Maestro)
+Nexus is **Powered by Orquestrador Maestro**: the [Orquestrador Maestro](https://github.com/IAPro-Community/Orquestrador-Maestro)
 is the authority on method, skills, risk and quality gates. Nexus executes the
 real work (processes, terminals, accounts, quotas) without duplicating Maestro's
 knowledge.
@@ -539,6 +539,6 @@ Apache-2.0. A project of the **IAPro Community**.
 
 ---
 
-*IAPro Nexus · Powered by Maestro · Community-first. If a feature says "arrives
+*IAPro Nexus · Powered by Orquestrador Maestro · Community-first. If a feature says "arrives
 in Gate N", it has not been built yet — Nexus does not promise what does not
 exist.*

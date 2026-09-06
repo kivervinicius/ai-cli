@@ -37,6 +37,14 @@ type NativeDialogHandler interface {
 	ShowNotification(opts NotificationOptions) error
 }
 
+// BootstrapInfo encapsulates loopback connection details and pre-seeded authentication
+// for the desktop webview environment.
+type BootstrapInfo struct {
+	ServerURL    string `json:"serverUrl"`
+	SessionToken string `json:"sessionToken"`
+	CSRFToken    string `json:"csrfToken"`
+}
+
 // App is the Wails bridge struct exposed to the frontend.
 // It contains ONLY native OS integration capabilities.
 type App struct {
@@ -45,18 +53,31 @@ type App struct {
 	dialogHandler NativeDialogHandler
 	capabilities  Capabilities
 	windowManager *WindowStateManager
+	bootstrap     BootstrapInfo
 }
 
 // NewApp creates a new desktop App instance.
-func NewApp(dialogHandler NativeDialogHandler, windowManager *WindowStateManager) *App {
+func NewApp(dialogHandler NativeDialogHandler, windowManager *WindowStateManager, bootstrap ...BootstrapInfo) *App {
 	if windowManager == nil {
 		windowManager = NewWindowStateManager("")
+	}
+	var b BootstrapInfo
+	if len(bootstrap) > 0 {
+		b = bootstrap[0]
 	}
 	return &App{
 		dialogHandler: dialogHandler,
 		capabilities:  DefaultCapabilities(),
 		windowManager: windowManager,
+		bootstrap:     b,
 	}
+}
+
+// GetBootstrapInfo returns loopback connection details and pre-seeded auth tokens.
+func (a *App) GetBootstrapInfo() BootstrapInfo {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.bootstrap
 }
 
 // Startup is called by Wails when the application starts.

@@ -257,23 +257,7 @@ func interactive(args []string) error {
 }
 
 func interactiveTUI() error {
-	res, err := tui.ShowMenu()
-	if err != nil {
-		return err
-	}
-	if res == nil || res.Action == tui.ActionQuit || res.Action == tui.ActionNone {
-		return nil
-	}
-	switch res.Action {
-	case tui.ActionRunProfile:
-		return executeProviderWithSmartSelection(res.Provider, res.ProfileName, res.Args)
-	case tui.ActionResumeConversation:
-		return executeResume(res.Provider, res.ProfileName, res.ConversationID, res.Args)
-	case tui.ActionLogin:
-		return loginCmd([]string{res.Provider, res.ProfileName})
-	default:
-		return nil
-	}
+	return usageCmd(nil)
 }
 
 func executeProviderWithSmartSelection(provName, explicitProfile string, args []string) error {
@@ -817,19 +801,24 @@ func usageCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(ps) == 0 {
-		fmt.Println("No profiles configured.")
-		return nil
-	}
 
 	isJSON := false
 	refresh := false
+	initialMode := tui.ModeSafe
+	initialContinue := false
+
 	for _, arg := range args {
 		switch arg {
 		case "--json":
 			isJSON = true
 		case "--refresh":
 			refresh = true
+		case "--yolo", "-y":
+			initialMode = tui.ModeYOLO
+		case "--plan":
+			initialMode = tui.ModePlan
+		case "--continue", "-c":
+			initialContinue = true
 		}
 	}
 	if refresh {
@@ -848,18 +837,43 @@ func usageCmd(args []string) error {
 		fmt.Println(string(b))
 		return nil
 	}
-	return usageTableCmd(ps)
-}
 
-func usageTableCmd(ps []model.Profile) error {
+	// Detect installed CLIs across the system to show both configured profiles
+	// and installed tools that are awaiting configuration (e.g. Claude Code, Gemini CLI, Cursor CLI).
+	reg := initRegistry()
+	ctx := context.Background()
+	detections := reg.DetectAll(ctx)
+
+	profCount := make(map[string]int)
+	for _, p := range ps {
+		profCount[p.Provider]++
+	}
+
+	var unconfiguredCLIs []tui.InstalledProviderInfo
+	for _, p := range reg.List() {
+		id := string(p.ID())
+		det := detections[id]
+		if det.Installed && profCount[id] == 0 {
+			unconfiguredCLIs = append(unconfiguredCLIs, tui.InstalledProviderInfo{
+				ID:        id,
+				Name:      p.Name(),
+				Version:   det.Version,
+				Installed: true,
+				Profiles:  0,
+			})
+		}
+	}
+
+	cfg, _ := config.LoadConfig()
+	accs := make(map[string]model.AccountInfo)
 	rows := make([]tui.UsageTableRow, 0, len(ps)*2)
+
 	for _, p := range ps {
 		acc := profile.GetAccountInfo(p.Provider, p.Name)
+		accs[p.Provider+":"+p.Name] = acc
 		qv := profile.GetQuotaView(p.Provider, p.Name, acc.Plan, acc.Email)
 		for _, group := range qv.ModelGroups {
 			fiveHour, weekly := quotaWindowDisplay(group.Windows, "5h"), quotaWindowDisplay(group.Windows, "weekly")
-			// When no quota windows are available, show a status-aware
-			// placeholder so the provider still appears in the table.
 			if fiveHour == "-" && weekly == "-" {
 				label := quotaUnknownLabel(qv.Status)
 				fiveHour = label
@@ -884,21 +898,47 @@ func usageTableCmd(ps []model.Profile) error {
 				Status:      quotaGroupStatus(group, qv.Status),
 				ModelName:   modelName,
 				LastUpdated: lastUpdated,
+				IsDefault:   cfg.Defaults[p.Provider] == p.Name,
 			})
 		}
 	}
-	if len(rows) == 0 {
-		fmt.Println("Nenhuma quota disponível para exibir.")
-		return nil
+
+	cwd, _ := os.Getwd()
+	convs := conversation.ListRecent(30, cwd)
+
+	opts := tui.UnifiedUsageOptions{
+		Rows:             rows,
+		UnconfiguredCLIs: unconfiguredCLIs,
+		Sessions:         convs,
+		Accounts:         accs,
+		Defaults:         cfg.Defaults,
+		Workspace:        cwd,
+		InitialMode:      initialMode,
+		InitialContinue:  initialContinue,
 	}
-	sel, err := tui.RunUsageTable(rows)
+
+	sel, err := tui.RunUnifiedUsage(opts)
 	if err != nil {
 		return err
 	}
-	if sel != nil {
-		return executeProviderWithSmartSelection(sel.Provider, sel.Profile, nil)
+	if sel == nil || sel.Action == tui.ActionQuit || sel.Action == tui.ActionNone {
+		return nil
 	}
-	return nil
+
+	switch sel.Action {
+	case tui.ActionRunProfile:
+		return executeProviderWithSmartSelection(sel.Provider, sel.ProfileName, sel.Args)
+	case tui.ActionResumeConversation:
+		return executeResume(sel.Provider, sel.ProfileName, sel.ConversationID, sel.Args)
+	case tui.ActionLogin:
+		return loginCmd([]string{sel.Provider, sel.ProfileName})
+	default:
+		return nil
+	}
+}
+
+func usageTableCmd(ps []model.Profile) error {
+	return usageCmd(nil)
 }
 
 func quotaWindowDisplay(windows []quota.Window, kind string) string {

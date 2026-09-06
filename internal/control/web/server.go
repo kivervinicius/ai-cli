@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kivervinicius/ai-cli/internal/control/originpolicy"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/nexus"
 )
@@ -92,6 +93,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	// REST API Routes
 	mux.HandleFunc("/api/v1/health", api.handleHealth)
 	mux.HandleFunc("/api/v1/session", api.handleSession)
+	mux.HandleFunc("/api/v1/desktop/bootstrap", s.handleDesktopBootstrap)
 	mux.HandleFunc("/api/v1/session/rotate", s.authMiddleware(s.handleSessionRotate))
 	mux.HandleFunc("/api/v1/session/logout", s.authMiddleware(s.handleSessionLogout))
 	mux.HandleFunc("/api/v1/workspaces", s.authMiddleware(api.handleWorkspaces))
@@ -271,14 +273,26 @@ func projectSubroute(path string) string {
 // response, including CSP, MIME sniffing prevention and framing protection.
 func (s *Server) withSecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" && originpolicy.Validate(r.Host, origin) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-CSRF-Token, X-Nexus-Session, Accept")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+		}
+
 		h := w.Header()
 		h.Set("Content-Security-Policy",
-			"default-src 'self'; "+
-				"script-src 'self'; "+
+			"default-src 'self' wails:; "+
+				"script-src 'self' 'unsafe-inline' 'unsafe-eval' wails:; "+
 				"style-src 'self' 'unsafe-inline'; "+
-				"img-src 'self' data:; "+
+				"img-src 'self' data: wails:; "+
 				"font-src 'self' data:; "+
-				"connect-src 'self' ws: wss:; "+
+				"connect-src 'self' ws: wss: http: https: wails:; "+
 				"base-uri 'self'; "+
 				"form-action 'self'; "+
 				"frame-ancestors 'none'; "+
@@ -598,8 +612,55 @@ func (s *Server) Start() error {
 	return s.httpServer.Serve(s.listener)
 }
 
+func (s *Server) Handler() http.Handler {
+	if s.httpServer == nil {
+		return nil
+	}
+	return s.httpServer.Handler
+}
+
+func (s *Server) CreateDesktopSession() (*Session, error) {
+	sess, err := s.auth.CreateSession()
+	if err != nil {
+		return nil, err
+	}
+	s.auth.SetDesktopSession(sess)
+	return sess, nil
+}
+
+func (s *Server) handleDesktopBootstrap(w http.ResponseWriter, r *http.Request) {
+	if !originpolicy.IsTrustedDesktopRequest(r.Host, r.Header.Get("Origin"), r.Header.Get("Referer")) {
+		writeError(w, http.StatusForbidden, "desktop origin required")
+		return
+	}
+
+	sess := s.auth.GetDesktopSession()
+	if sess == nil {
+		writeError(w, http.StatusNotFound, "desktop session not available")
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    sess.ID,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"serverUrl":     s.url,
+		"sessionToken":  sess.ID,
+		"csrfToken":     sess.CSRFToken,
+		"authenticated": true,
+	})
+}
+
 func (s *Server) Shutdown(ctx context.Context) error {
 	removeListenState(s.pid)
+	if s.auth != nil {
+		if sess := s.auth.GetDesktopSession(); sess != nil {
+			s.auth.RevokeSession(sess.ID)
+		}
+	}
 	return s.httpServer.Shutdown(ctx)
 }
 

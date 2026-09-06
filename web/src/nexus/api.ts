@@ -1,6 +1,7 @@
 /* Nexus product API client (projects, agents, layouts, config). */
 
 import { Project, Agent, AgentDetail, RuntimeSession, AgentConfig, ConfigImpact } from '../types';
+import { getDesktopAuthToken, getDesktopBaseUrl } from '../api';
 import { normalizeWorkPlan } from './workPlan';
 
 export type SystemDoctorCheck = {
@@ -46,11 +47,17 @@ export function setNexusCSRF(token: string) {
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
   headers.set('Accept', 'application/json');
+  const token = getDesktopAuthToken();
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
   if (options.method && options.method !== 'GET' && options.method !== 'HEAD') {
     headers.set('Content-Type', 'application/json');
     if (csrf) headers.set('X-CSRF-Token', csrf);
   }
-  const res = await fetch(path, { ...options, headers });
+  const baseUrl = getDesktopBaseUrl();
+  const targetUrl = baseUrl && path.startsWith('/') ? `${baseUrl}${path}` : path;
+  const res = await fetch(targetUrl, { ...options, headers });
   if (!res.ok) {
     if (res.status === 401 && typeof window !== 'undefined')
       window.dispatchEvent(new CustomEvent('nexus:session-expired'));

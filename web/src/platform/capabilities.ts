@@ -25,3 +25,9 @@ export interface NotificationOptions {
   icon?: string;
   silent?: boolean;
 }
+
+export interface DesktopBootstrapInfo {
+  serverUrl: string;
+  sessionToken: string;
+  csrfToken: string;
+}

@@ -76,6 +76,13 @@ func (h *APIHandler) handleSession(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    sess.ID,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"authenticated": true,
 		"csrf_token":    sess.CSRFToken,

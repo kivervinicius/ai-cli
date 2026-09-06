@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -104,6 +105,26 @@ func (c *Core) BootstrapURL() string {
 		return ""
 	}
 	return c.server.BootstrapURL()
+}
+
+// Handler returns the HTTP handler of the underlying Nexus Core server.
+func (c *Core) Handler() http.Handler {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.server == nil {
+		return nil
+	}
+	return c.server.Handler()
+}
+
+// CreateDesktopSession provisions a pre-authenticated session for the native desktop shell.
+func (c *Core) CreateDesktopSession() (*web.Session, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.server == nil {
+		return nil, fmt.Errorf("nexus core server not initialized")
+	}
+	return c.server.CreateDesktopSession()
 }
 
 // Stop gracefully shuts down the Core server and clears loopback state.
