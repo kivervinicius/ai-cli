@@ -11,6 +11,8 @@
 - Latest CI SHA: `4570afca8434bc181e4a64831dc9365bd020867b`
 - Latest CI status: failure
 - CI log limitation: `gh run view --log-failed` returned HTTP 403 (repository admin rights required).
+- Final local verification SHA: `08432558f911b859f01a7f1beae10b5c1bc1290d`.
+- Fix branch was not pushed; no same-SHA GitHub Actions run exists.
 
 ## Findings revalidation
 
@@ -80,3 +82,14 @@ Updates are appended below after each reproduce/root-cause/fix/verification cycl
 - Root causes: brand/meta styles used insufficient semantic contrast; the E2E route/auth path and server bootstrap redirect did not preserve deep-link state; durable layout hydration overwrote the route-opened surface once and the route guard did not retry.
 - Changes: brand controls use contrast-safe semantic tokens; metadata uses `--nx-muted`; bootstrap redirects preserve `r.URL.Path`; route synchronization reopens the requested surface only if hydration made another surface active; E2E retains the authenticated browser cookie for SPA deep-link navigation.
 - GREEN: `npm run test:e2e` passed Axe, deep-link back/forward, all six viewport checks, Settings Accordion and density assertions.
+
+### Final verification at `08432558f911b859f01a7f1beae10b5c1bc1290d`
+
+- `gofmt`, `go vet ./...`, `go test -race ./...`, `make lint-go`, `make security`, `make quality`: PASS.
+- `npm --prefix web run quality`: PASS (58 files, 280 tests; 38 pre-existing warnings, zero errors).
+- `npm --prefix web run test:e2e`: PASS with browser assertions and no arbitrary `waitForTimeout` calls in the official hardening gate.
+- `make build`: PASS and produced only the checkout-local `./nexus` artifact; no install/symlink side effect.
+- `make build-desktop`: PASS on Linux.
+- `goreleaser release --snapshot --clean`: PASS; 6 archives, 4 Linux packages, and all 10 checksum entries validated OK.
+- Hardcoded `/home/desenvolvedor` search: only historical documentation remains; operational legacy Playwright imports were made repository-relative.
+- Remaining external evidence: native Windows and macOS execution, native Wails desktop jobs, and same-SHA GitHub Actions are not executed in this environment. Verdict therefore remains NO-GO.
