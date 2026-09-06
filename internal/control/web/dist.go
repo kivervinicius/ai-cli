@@ -17,3 +17,8 @@ func DistFileSystem() (http.FileSystem, error) {
 	}
 	return http.FS(sub), nil
 }
+
+// EmbeddedDistFS returns the io/fs.FS rooted at the compiled web dist directory.
+func EmbeddedDistFS() (fs.FS, error) {
+	return fs.Sub(embeddedDist, "dist")
+}

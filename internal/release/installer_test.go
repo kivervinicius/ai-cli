@@ -87,3 +87,36 @@ func TestInstallerArchiveNamingMatchesGoReleaser(t *testing.T) {
 		t.Errorf(".goreleaser.yaml should define nfpms package section for Linux packages")
 	}
 }
+
+func TestInstallerDoesNotSilentlyInstallMaestro(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatalf("failed to determine repository root: %v", err)
+	}
+
+	installShBytes, err := os.ReadFile(filepath.Join(root, "install.sh"))
+	if err != nil {
+		t.Fatalf("failed to read install.sh: %v", err)
+	}
+	installSh := string(installShBytes)
+
+	installPs1Bytes, err := os.ReadFile(filepath.Join(root, "install.ps1"))
+	if err != nil {
+		t.Fatalf("failed to read install.ps1: %v", err)
+	}
+	installPs1 := string(installPs1Bytes)
+
+	if !strings.Contains(installSh, "--with-maestro") {
+		t.Error("install.sh must guard Maestro installation behind --with-maestro")
+	}
+	if !strings.Contains(installSh, `[ "$WITH_MAESTRO" = true ]`) {
+		t.Error("install.sh must only execute Maestro installation when WITH_MAESTRO is true")
+	}
+
+	if !strings.Contains(installPs1, "WithMaestro") {
+		t.Error("install.ps1 must declare WithMaestro parameter")
+	}
+	if !strings.Contains(installPs1, "if ($WithMaestro)") {
+		t.Error("install.ps1 must only execute Maestro installation when $WithMaestro is true")
+	}
+}

@@ -24,6 +24,7 @@ import {
   Terminal,
   Code2,
 } from 'lucide-react';
+import { getPlatformBridge } from '../../platform';
 import {
   Button,
   Card,
@@ -231,7 +232,22 @@ export const ProjectManagerSurface: React.FC<{
             <Plus size={14} />
             <span>{t('projectManager.addNew')}</span>
           </Button>
-          <Button tone="ghost" onClick={() => setDirPickerOpen(true)}>
+          <Button
+            tone="ghost"
+            onClick={async () => {
+              const bridge = getPlatformBridge();
+              if (bridge.getCapabilities().folderPicker) {
+                const path = await bridge.selectDirectory(t('projectManager.browseOS'));
+                if (path) {
+                  setNewPath(path);
+                  setNewName(path.split(/[/\\]/).filter(Boolean).pop() || 'Project');
+                  setAddOpen(true);
+                  return;
+                }
+              }
+              setDirPickerOpen(true);
+            }}
+          >
             <FolderOpen size={14} />
             <span>{t('projectManager.browseOS')}</span>
           </Button>

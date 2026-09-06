@@ -156,7 +156,7 @@ func controlWebCmd(args []string) error {
 		}
 	}
 
-	srv, err := web.NewServer(web.ServerOptions{
+	core, err := NewCore(CoreConfig{
 		Host:   host,
 		Port:   port,
 		NoOpen: noOpen,
@@ -166,21 +166,6 @@ func controlWebCmd(args []string) error {
 		return err
 	}
 
-	bootstrapURL := srv.BootstrapURL()
-	fmt.Println("=== Nexus Control Center (Web UI) ===")
-	fmt.Printf("URL:       %s\n", srv.URL())
-	fmt.Printf("Bootstrap: %s\n\n", bootstrapURL)
-	fmt.Println("Press Ctrl+C to stop the Web Control Center.")
-	fmt.Printf("Reopen from any terminal: %s web open\n", progName())
-
-	if !noOpen {
-		go func() {
-			time.Sleep(200 * time.Millisecond)
-			_ = web.OpenBrowser(bootstrapURL)
-		}()
-	}
-
-	// Trap SIGINT / SIGTERM for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -188,11 +173,26 @@ func controlWebCmd(args []string) error {
 		fmt.Println("\nShutting down Nexus Control Center...")
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		_ = srv.Shutdown(ctx)
+		_ = core.Stop(ctx)
 		os.Exit(0)
 	}()
 
-	return srv.Start()
+	go func() {
+		<-core.Ready()
+		bootstrapURL := core.BootstrapURL()
+		fmt.Println("=== Nexus Control Center (Web UI) ===")
+		fmt.Printf("URL:       %s\n", core.URL())
+		fmt.Printf("Bootstrap: %s\n\n", bootstrapURL)
+		fmt.Println("Press Ctrl+C to stop the Web Control Center.")
+		fmt.Printf("Reopen from any terminal: %s web open\n", progName())
+
+		if !noOpen {
+			time.Sleep(200 * time.Millisecond)
+			_ = web.OpenBrowser(bootstrapURL)
+		}
+	}()
+
+	return core.Start(context.Background())
 }
 
 func controlWebReopenCmd(printOnly bool) error {

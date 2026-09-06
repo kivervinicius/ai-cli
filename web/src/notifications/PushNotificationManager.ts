@@ -1,4 +1,5 @@
 import { formatAttentionPushBody, shouldSendBrowserAttentionPush } from './attentionPushCopy';
+import { getPlatformBridge } from '../platform';
 
 export interface PushNotificationPayload {
   runtimeId: string;
@@ -100,6 +101,17 @@ class PushNotificationService {
     if (!body) return;
 
     try {
+      const bridge = getPlatformBridge();
+      if (bridge.getCapabilities().native) {
+        void bridge.showNotification({
+          title,
+          body,
+          icon: './nexus-icon.png',
+          silent: false,
+        });
+        return;
+      }
+
       const notif = new Notification(title, {
         body,
         icon: './nexus-icon.png',

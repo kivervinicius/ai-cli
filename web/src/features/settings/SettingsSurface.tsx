@@ -69,6 +69,9 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<{
     nexus_version: string;
+    channel?: string;
+    installation_method?: string;
+    allows_self_update?: boolean;
     maestro_version: string;
     maestro_latest_version?: string;
     maestro_available: boolean;
@@ -444,6 +447,30 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
                     <span>IAPro Nexus Core:</span>
                     <Badge tone="success">v{updateInfo.nexus_version}</Badge>
                   </div>
+                  {updateInfo.channel && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span>Canal de Lançamento:</span>
+                      <Badge tone="brand">{updateInfo.channel}</Badge>
+                    </div>
+                  )}
+                  {updateInfo.installation_method && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span>Método de Instalação:</span>
+                      <Badge tone="info">{updateInfo.installation_method}</Badge>
+                    </div>
+                  )}
                   <div
                     style={{
                       display: 'flex',

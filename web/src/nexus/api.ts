@@ -268,6 +268,11 @@ export const nexus = {
   getSystemUpdates: () =>
     request<{
       nexus_version: string;
+      nexus_commit?: string;
+      nexus_build_date?: string;
+      channel?: string;
+      installation_method?: string;
+      allows_self_update?: boolean;
       maestro_version: string;
       maestro_latest_version?: string;
       maestro_available: boolean;

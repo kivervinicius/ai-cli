@@ -1,6 +1,33 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
-## 2026-09-05 — Frontend Code-Splitting, Route Chunking & SCSS Modules Modularization
+## 2026-09-05 — Implementação Completa Web + Desktop Multiplataforma (Wails v2 Estável)
+
+- **Objetivo**: Tornar oficialmente o IAPro Nexus uma aplicação com duas superfícies de execução equivalentes (Web e Desktop nativo para Windows, macOS e Linux), compartilhando o mesmo frontend React, o mesmo Nexus Core Go, a mesma API e contratos de terminal, isolando a integração do Maestro como 100% opcional e unificando o serviço de atualizações com consciência de empacotamento do SO.
+- **Alterações Realizadas**:
+  1. **Core Lifecycle Reutilizável (`internal/app/core.go`)**:
+     - Criado tipo `Core` que encapsula o ciclo de vida do servidor de controle, rotas HTTP/WebSocket, autenticação loopback segura e encerramento gracioso com `Ready()` e `Stop()`.
+     - `cmd/nexus` e `cmd/nexus-desktop` consomem exatamente o mesmo Core.
+  2. **PlatformBridge Abstrato no Frontend (`web/src/platform/`)**:
+     - Desenvolvido `PlatformBridge` com contratos `WebBridge` e `DesktopBridge` para seletores de arquivo/pasta, notificações nativas, tema do SO, controle de janelas e deep links.
+     - Integrado em `PushNotificationManager.ts` e `ProjectManagerSurface.tsx` consultando `capabilities` sem condicionais `window.wails` soltas.
+  3. **Wails v2 Desktop Shell (`internal/desktop/` e `cmd/nexus-desktop/`)**:
+     - Criado `internal/desktop/app.go`, `capabilities.go`, `window.go`, `deeplink.go`, `autostart.go` com suite de testes focada.
+     - `cmd/nexus-desktop/main.go` inicializa o Nexus Core em porta loopback efêmera segura, consome o bundle estático idêntico através de `web.EmbeddedDistFS()` e orquestra a janela nativa sem duplicar runtimes.
+  4. **Update Service Unificado & InstallationMethod (`internal/update/`)**:
+     - Implementado `Service` em `internal/update/service.go` com verificação de manifesto assinado Ed25519, SHA256 de artefatos, canais e detecção de método de instalação (`internal/update/installation.go`: STANDALONE, NSIS, DEB, RPM, HOMEBREW, WINGET).
+     - Instalações gerenciadas por pacotes bloqueiam substituição arbitrária de binário em disco e orientam o usuário com o comando de upgrade correto do sistema.
+     - Bloqueio de atualizações concorrentes durante execução de agentes/missões ativas.
+  5. **Desacoplamento e Opcionalidade Estrita do Maestro**:
+     - Removida a instalação automática e silenciosa via `npm install -g @iapro/orquestrador-maestro-cli` dos instaladores `install.sh` e `install.ps1`.
+     - Adicionada flag explícita de opt-in (`--with-maestro` / `-WithMaestro`).
+     - Nexus opera perfeitamente no modo degradado `MAESTRO_DEGRADED` sem falhar o produto.
+  6. **Expansão de Diagnósticos (`internal/doctor/doctor.go`)**:
+     - Adicionadas verificações de ConPTY/WebView2 (Windows), PTY/WKWebView (macOS) e PTY/WebKitGTK (Linux) além da shell Wails v2.
+  7. **Documentação e ADRs**:
+     - Criados `docs/architecture/ADR-desktop-wails.md`, `docs/architecture/ADR-update-architecture.md`, `docs/architecture/ADR-maestro-integration.md`, `docs/platform/PLATFORM_SUPPORT_MATRIX.md` e `docs/superpowers/reports/NEXUS_DESKTOP_MULTIPLATFORM_FINAL_REPORT.md`.
+  8. **Validação Completa de Qualidade**:
+     - Todos os testes Go passando (`go test ./...`).
+     - Todos os testes e checks frontend passando (`bun run quality`).
 
 - **Objetivo**: Concluir a refatoração arquitetural de frontend dividindo o monólito `bundle.js` em rotas/superfícies e modais sob demanda (`React.lazy` + `Suspense`), além de migrar componentes para o padrão oficial de estilos (`SCSS Modules` + tokens de design).
 - **Alterações Realizadas**:

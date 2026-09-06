@@ -96,6 +96,14 @@ build: web
 	ln -sf $(LOCAL_BIN)/$(BINARY) $(LOCAL_BIN)/ai; \
 	echo "Built and installed $(BINARY) v$$VERSION to $(LOCAL_BIN)/$(BINARY) (alias: ai)"
 
+build-desktop: web
+	@set -e; VERSION=$$(cat VERSION 2>/dev/null || echo "dev"); \
+	COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo "unknown"); \
+	BUILDDATE=$$(date -u +%Y-%m-%dT%H:%M:%SZ); \
+	LDFLAGS="-s -w -X $(MODULE)/internal/buildinfo.Version=$$VERSION -X $(MODULE)/internal/buildinfo.Commit=$$COMMIT -X $(MODULE)/internal/buildinfo.BuildDate=$$BUILDDATE"; \
+	echo "Building nexus-desktop v$$VERSION (commit: $$COMMIT)..."; \
+	go build -ldflags="$$LDFLAGS" -o nexus-desktop ./cmd/nexus-desktop
+
 release-local:
 	go run ./cmd/nexus release
 

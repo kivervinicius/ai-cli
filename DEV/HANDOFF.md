@@ -1,5 +1,14 @@
 # Handoff
 
+## Atualização 2026-09-05 — Implementação Completa Web + Desktop Multiplataforma
+
+A implementação da arquitetura multiplataforma equivalente Web + Desktop foi concluída com sucesso no branch `feat/nexus-desktop-multiplatform`:
+- **Dual Surface Equivalence**: Web (`nexus web`) e Desktop (`nexus-desktop` via Wails v2 estável) consomem exatamente o mesmo Core em Go (`internal/app/core.go`), o mesmo frontend React (`web.EmbeddedDistFS()`) e a mesma API REST / WebSocket.
+- **PlatformBridge Abstrato**: Contrato unificado em `web/src/platform/` eliminando condicionais de plataforma espalhadas e integrando seletores de pastas, notificações, tema do SO e deep links.
+- **Update Service Único**: Centralizado em `internal/update/service.go` com verificação estrita de assinatura Ed25519, SHA256 e respeito ao `InstallationMethod`.
+- **Maestro Opcional**: Remoção de instalações silenciosas em `install.sh` / `install.ps1`, suporte à flag explícita `--with-maestro` e degradação graciosa para `MAESTRO_DEGRADED`.
+- **Verificação**: `bun run quality` (8/8 gates, 280 testes unitários), `go test ./...` e `go vet ./...` 100% verdes. Sem auto-commit ou auto-push.
+
 ## Atualização 2026-09-05 — Autopilot Platform Stabilization
 
 A campanha `01a07224-1c17-7863-881a-6b1963a6ce43` está em execução no branch

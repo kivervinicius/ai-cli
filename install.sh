@@ -121,19 +121,34 @@ fi
 
 echo "✓ Successfully installed IAPro Nexus to ${TARGET_DIR}/nexus (with 'ai' alias)"
 
-# 4. Check and install Maestro dependency
+# 4. Check and install Maestro dependency (OPT-IN ONLY)
+WITH_MAESTRO=false
+for arg in "$@"; do
+    case "$arg" in
+        --with-maestro)
+            WITH_MAESTRO=true
+            ;;
+    esac
+done
+
 echo ""
-echo "Checking Orquestrador Maestro dependency..."
-if ! command -v orquestrador-maestro >/dev/null 2>&1 && ! command -v maestro >/dev/null 2>&1; then
-    if command -v npm >/dev/null 2>&1; then
-        echo "Installing Orquestrador Maestro CLI (@iapro/orquestrador-maestro-cli)..."
-        npm install -g @iapro/orquestrador-maestro-cli 2>/dev/null || {
-            echo "⚠️  Could not install @iapro/orquestrador-maestro-cli globally with npm. You can install it manually:"
-            echo "   npm install -g @iapro/orquestrador-maestro-cli"
-        }
-    else
-        echo "⚠️  Node.js / npm not detected. Maestro will remain unavailable/degraded; Nexus will not fabricate Maestro advice or skills."
+if [ "$WITH_MAESTRO" = true ]; then
+    echo "Checking Orquestrador Maestro dependency (--with-maestro requested)..."
+    if ! command -v orquestrador-maestro >/dev/null 2>&1 && ! command -v maestro >/dev/null 2>&1; then
+        if command -v npm >/dev/null 2>&1; then
+            echo "Installing Orquestrador Maestro CLI (@iapro/orquestrador-maestro-cli)..."
+            npm install -g @iapro/orquestrador-maestro-cli 2>/dev/null || {
+                echo "⚠️  Could not install @iapro/orquestrador-maestro-cli globally with npm. You can install it manually:"
+                echo "   npm install -g @iapro/orquestrador-maestro-cli"
+            }
+        else
+            echo "⚠️  Node.js / npm not detected. Maestro will remain unavailable/degraded; Nexus will not fabricate Maestro advice or skills."
+        fi
     fi
+else
+    echo "Maestro auto-install skipped (Nexus does not silently install third-party packages)."
+    echo "To install Maestro orchestration capabilities, run with '--with-maestro' or install manually:"
+    echo "  npm install -g @iapro/orquestrador-maestro-cli"
 fi
 
 # Link maestro and orquestrador binary aliases if orquestrador-maestro is available

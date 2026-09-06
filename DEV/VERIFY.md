@@ -1,6 +1,25 @@
 # Verification: Nexus V1 (post-pending-issues)
 
-## 2026-09-05 — Autopilot Platform Stabilization T0–T4
+## 2026-09-05 — Implementação Completa Web + Desktop Multiplataforma
+
+- `go test ./...` — PASS (100% de sucesso nos pacotes `internal/app`, `internal/desktop`, `internal/update`, `internal/control/web`, `internal/doctor`, `internal/release`, etc.).
+- `go vet ./...` — PASS.
+- Frontend Quality (`bun run quality`):
+  - `check:styles` — PASS (allowlist SCSS Modules estrita).
+  - `format:check` — PASS.
+  - `lint` — PASS (0 erros).
+  - `lint:styles` — PASS.
+  - `typecheck` — PASS (`tsc --noEmit` 0 erros).
+  - `vitest run` — PASS (58 arquivos de teste, 280 testes unitários).
+- Frontend Build (`bun run build`):
+  - Geração de chunks ESM sob demanda em `web/dist` — PASS.
+  - Sincronização e verificação de integridade do bundle embutido no Core e no Desktop (`web.EmbeddedDistFS()`) — PASS.
+- Desktop Shell & Capabilities:
+  - Wails v2 estável (`v2.15.0`) — build e testes unitários do bridge nativo (`internal/desktop`) — PASS.
+  - Deep links (`nexus://`), window management e PlatformBridge — PASS.
+- Maestro Desacoplado:
+  - Scripts de instalação (`install.sh` e `install.ps1`) com opt-in explícito (`--with-maestro` / `-WithMaestro`) verificados — PASS.
+  - Modo degradado `MAESTRO_DEGRADED` sem falhar o produto — PASS.
 
 - `bun install --frozen-lockfile` — PASS com Bun 1.3.9 após regeneração do lockfile.
 - Frontend format/typecheck/lint/stylelint — PASS; lint com 0 erros e 36 warnings preexistentes.
@@ -315,7 +334,7 @@ All business logic lives in `internal/nexus/` (service layer). Web and TUI consu
 Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CURRENT_CODE_REVIEW.md).
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-06T00:27:37Z
+## Frontend gate — 2026-09-06T01:01:51Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
 

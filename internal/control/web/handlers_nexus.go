@@ -22,6 +22,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/nexus/runner"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 	nexusruntime "github.com/kivervinicius/ai-cli/internal/runtime"
+	"github.com/kivervinicius/ai-cli/internal/update"
 
 	"time"
 
@@ -845,10 +846,16 @@ func (h *NexusHandler) handleSystemUpdates(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	execP, _ := exec.LookPath("nexus")
+	installMethod := update.DetectInstallationMethod(execP)
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"nexus_version":          buildinfo.Version,
 		"nexus_commit":           buildinfo.Commit,
 		"nexus_build_date":       buildinfo.BuildDate,
+		"channel":                "stable",
+		"installation_method":    installMethod,
+		"allows_self_update":     installMethod.AllowsSelfUpdate(),
 		"maestro_version":        maestroVer,
 		"maestro_latest_version": latestMaestroVer,
 		"maestro_available":      mStatus.Available,

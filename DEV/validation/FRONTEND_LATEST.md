@@ -1,7 +1,7 @@
 # Frontend verification report
 
-- Generated: `2026-09-06T00:27:37Z`
-- Branch: `feat/nexus-maximum-delivery` @ `87e8f21`
+- Generated: `2026-09-06T01:01:51Z`
+- Branch: `feat/nexus-desktop-multiplatform` @ `032ca9b`
 - Verdict: **PASS** (10 pass / 0 fail)
 - Dirty web/dist tree: no
 
@@ -9,16 +9,16 @@
 
 | Gate | Hard | Status | Duration | Detail |
 | --- | --- | --- | --- | --- |
-| Prettier (`prettier --check`) | yes | PASS | 3432ms | Checking formatting...<br>All matched files use Prettier code style! |
-| TypeScript (`tsc --noEmit`) | yes | PASS | 5553ms | ok |
-| ESLint (`eslint src`) | yes | PASS | 3453ms | /projetos/tools/IAPro-Nexus-Workspace-OS-Handoff-2026-08-29/ai-manager/web/src/features/projects/BranchSwitcherModal.tsx<br>  62:6  warning  React Hook useEffect has a missing dependency: 'loadBranches'. Either include it or remove the dependency array  react-hooks/exhaustive-deps<br><br>/projetos/tools/IAPro-Nexus-Workspace-OS-Handoff-2026-08-29/ai-manager/web/src/features/projects/ProjectRail.tsx<br>  10:3  warning  'Sparkles' is defined but never used. Allowed unused vars must match /^_/u     |
-| Stylelint (`stylelint "src/**/*.css"`) | yes | PASS | 863ms | ok |
-| Null-safe API array access | yes | PASS | 45ms | sem .length/.map direto em campos nullable conhecidos |
-| Vitest (`vitest run`) | yes | PASS | 5215ms | ✓ src/app/workspaceMissionRoute.test.ts (3 tests) 10ms<br> ✓ src/workspace/model.test.ts (12 tests) 26ms<br> ✓ src/features/work/composerModel.test.ts (4 tests) 6ms<br> ✓ src/workspace/taskbarHonesty.test.ts (2 tests) 8ms<br> ✓ src/nexus/agentTerminalModel.test.ts (14 tests) 15ms<br> ✓ src/i18n/i18n.test.ts (7 tests) 34ms<br> ✓ src/notifications/attentionDelivery.test.ts (2 tests) 3ms<br> ✓ src/features/agents/askAgentModel.test.ts (2 tests) 3ms<br> ✓ src/nexus/terminalFitModel.test.ts (3 tests) |
-| i18n catalog parity | yes | PASS | 878ms | RUN  v3.2.7 /projetos/tools/IAPro-Nexus-Workspace-OS-Handoff-2026-08-29/ai-manager/web<br><br> ✓ src/i18n/i18n.test.ts (7 tests) 5ms<br><br> Test Files  1 passed (1)<br>      Tests  7 passed (7)<br>   Start at  20:27:56<br>   Duration  451ms (transform 102ms, setup 0ms, collect 133ms, tests 5ms, environment 0ms, prepare 78ms) |
-| Build + embed (`node scripts/build.mjs`) | yes | PASS | 889ms | Nexus web build complete: /projetos/tools/IAPro-Nexus-Workspace-OS-Handoff-2026-08-29/ai-manager/web/dist<br>≈ tailwindcss v4.3.3<br><br>Done in 165ms<br><br>  dist/bundle.js                                 324.1kb<br>  dist/chunks/chunk-EMQ6YEWK.js                  277.1kb<br>  dist/chunks/chunk-2CDN6AQF.js                  127.3kb<br>  dist/chunks/chunk-D5G7KZQV.js                   74.8kb<br>  dist/chunks/chunk-EF7O72XQ.js                   63.4kb<br>  dist/chunks/chunk-AEYOSDCD.js            |
+| Prettier (`prettier --check`) | yes | PASS | 4360ms | Checking formatting...<br>All matched files use Prettier code style! |
+| TypeScript (`tsc --noEmit`) | yes | PASS | 6978ms | ok |
+| ESLint (`eslint src`) | yes | PASS | 4957ms | /projetos/tools/IAPro-Nexus-Workspace-OS-Handoff-2026-08-29/ai-manager/.worktrees/desktop-multiplatform/web/src/features/projects/BranchSwitcherModal.tsx<br>  62:6  warning  React Hook useEffect has a missing dependency: 'loadBranches'. Either include it or remove the dependency array  react-hooks/exhaustive-deps<br><br>/projetos/tools/IAPro-Nexus-Workspace-OS-Handoff-2026-08-29/ai-manager/.worktrees/desktop-multiplatform/web/src/features/projects/ProjectRail.tsx<br>  10:3  warning  'Sparkles' i |
+| Stylelint (`stylelint "src/**/*.css"`) | yes | PASS | 1148ms | ok |
+| Null-safe API array access | yes | PASS | 51ms | sem .length/.map direto em campos nullable conhecidos |
+| Vitest (`vitest run`) | yes | PASS | 7270ms | ✓ src/nexus/agentRecover.test.ts (4 tests) 9ms<br> ✓ src/workspace/taskbarHonesty.test.ts (2 tests) 6ms<br> ✓ src/features/overview/overviewRecover.test.ts (5 tests) 4ms<br> ✓ src/app/workspaceSurfaceStyles.test.ts (2 tests) 4ms<br> ✓ src/nexus/terminalProtocol.test.ts (7 tests) 10ms<br> ✓ src/workspace/model.test.ts (12 tests) 22ms<br> ✓ src/app/versionHonesty.test.ts (2 tests) 6ms<br> ✓ src/features/work/missionAutonomyModel.test.ts (1 test) 4ms<br> ✓ src/workspace/arrange.test.ts (12 tests) 4 |
+| i18n catalog parity | yes | PASS | 1515ms | RUN  v3.2.7 /projetos/tools/IAPro-Nexus-Workspace-OS-Handoff-2026-08-29/ai-manager/.worktrees/desktop-multiplatform/web<br><br> ✓ src/i18n/i18n.test.ts (7 tests) 12ms<br><br> Test Files  1 passed (1)<br>      Tests  7 passed (7)<br>   Start at  21:02:17<br>   Duration  838ms (transform 326ms, setup 0ms, collect 422ms, tests 12ms, environment 0ms, prepare 125ms) |
+| Build + embed (`node scripts/build.mjs`) | yes | PASS | 1256ms | Nexus web build complete: /projetos/tools/IAPro-Nexus-Workspace-OS-Handoff-2026-08-29/ai-manager/.worktrees/desktop-multiplatform/web/dist<br>≈ tailwindcss v4.3.3<br><br>Done in 220ms<br><br>  dist/bundle.js                                 324.1kb<br>  dist/chunks/chunk-EMQ6YEWK.js                  277.1kb<br>  dist/chunks/chunk-2CDN6AQF.js                  127.3kb<br>  dist/chunks/chunk-D5G7KZQV.js                   74.8kb<br>  dist/chunks/chunk-EF7O72XQ.js                   63.4kb<br>  dist/ch |
 | Embed sync (web/dist ≡ internal/.../dist) | yes | PASS | 0ms | bundles idênticos (331855 bytes) |
-| Critical UI markers in bundle | yes | PASS | 2ms | marcadores críticos presentes (5) |
+| Critical UI markers in bundle | yes | PASS | 1ms | marcadores críticos presentes (5) |
 
 ## Residual risks / next operator steps
 

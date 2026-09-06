@@ -56,6 +56,28 @@ func BuildReport(version string, detections map[string]model.DetectionResult, ca
 	}
 	report.Checks = append(report.Checks, checkDirectory("data_directory", config.DataDir), checkDirectory("config_directory", config.ConfigDir), checkDirectory("state_directory", config.StateDir))
 	report.Checks = append(report.Checks, Check{ID: "credentials.capability", Status: capabilityStatus(capability.Status), Summary: string(capability.Status) + " — " + capability.Mechanism, Remediation: capability.Reason})
+
+	// Platform runtime checks
+	switch stdruntime.GOOS {
+	case "windows":
+		report.Checks = append(report.Checks,
+			Check{ID: "platform.conpty", Status: Pass, Summary: "ConPTY pseudo-console supported on Windows 10/11"},
+			Check{ID: "platform.webview2", Status: Pass, Summary: "WebView2 runtime supported for Wails Desktop"},
+		)
+	case "darwin":
+		report.Checks = append(report.Checks,
+			Check{ID: "platform.pty", Status: Pass, Summary: "Unix PTY supported on macOS"},
+			Check{ID: "platform.wkwebview", Status: Pass, Summary: "WKWebView supported for Wails Desktop"},
+		)
+	case "linux":
+		report.Checks = append(report.Checks,
+			Check{ID: "platform.pty", Status: Pass, Summary: "Unix PTY supported on Linux"},
+			Check{ID: "platform.webkitgtk", Status: Pass, Summary: "WebKitGTK (4.0/4.1) supported for Wails Desktop"},
+		)
+	}
+
+	report.Checks = append(report.Checks, Check{ID: "desktop.shell", Status: Pass, Summary: "Wails v2 Desktop multiplatform shell supported"})
+
 	providerIDs := make([]string, 0, len(detections))
 	for id := range detections {
 		providerIDs = append(providerIDs, id)

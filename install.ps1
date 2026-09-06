@@ -2,6 +2,10 @@
 # Supports direct zero-clone installation via:
 # irm https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.ps1 | iex
 
+param(
+    [switch]$WithMaestro = $false
+)
+
 $ErrorActionPreference = 'Stop'
 
 $Repo = "kivervinicius/ai-cli"
@@ -116,13 +120,21 @@ if (Test-Path $TargetPath) {
     Copy-Item -Path $TargetPath -Destination $AiAliasPath -Force
 }
 
-# Check and install Maestro dependency
-Write-Host "`nChecking Orquestrador Maestro dependency..." -ForegroundColor Yellow
-if (-not (Get-Command orquestrador-maestro -ErrorAction SilentlyContinue) -and -not (Get-Command maestro -ErrorAction SilentlyContinue)) {
-    if (Get-Command npm -ErrorAction SilentlyContinue) {
-        Write-Host "Installing Orquestrador Maestro CLI (@iapro/orquestrador-maestro-cli)..." -ForegroundColor Yellow
-        npm install -g @iapro/orquestrador-maestro-cli 2>$null
+# Check and install Maestro dependency (OPT-IN ONLY)
+if ($WithMaestro) {
+    Write-Host "`nChecking Orquestrador Maestro dependency (-WithMaestro requested)..." -ForegroundColor Yellow
+    if (-not (Get-Command orquestrador-maestro -ErrorAction SilentlyContinue) -and -not (Get-Command maestro -ErrorAction SilentlyContinue)) {
+        if (Get-Command npm -ErrorAction SilentlyContinue) {
+            Write-Host "Installing Orquestrador Maestro CLI (@iapro/orquestrador-maestro-cli)..." -ForegroundColor Yellow
+            npm install -g @iapro/orquestrador-maestro-cli 2>$null
+        } else {
+            Write-Host "Node.js / npm not detected. Maestro will remain unavailable/degraded." -ForegroundColor Yellow
+        }
     }
+} else {
+    Write-Host "`nMaestro auto-install skipped (Nexus does not silently install third-party packages)." -ForegroundColor Gray
+    Write-Host "To install Maestro orchestration capabilities, run with '-WithMaestro' or install manually:" -ForegroundColor Gray
+    Write-Host "  npm install -g @iapro/orquestrador-maestro-cli" -ForegroundColor Gray
 }
 
 $MaestroCmd = Get-Command orquestrador-maestro -ErrorAction SilentlyContinue
