@@ -158,6 +158,53 @@ func TestFSMkdir(t *testing.T) {
 	}
 }
 
+func TestIsWithinAllowedRoots(t *testing.T) {
+	home, _ := os.UserHomeDir()
+
+	tests := []struct {
+		path   string
+		allow  bool
+		reason string
+	}{
+		{filepath.Join(home, "projects", "myapp"), true, "under home"},
+		{"/tmp/something", true, "under /tmp"},
+		{"/etc/cron.d/evil", false, "system directory"},
+		{"/proc/self/environ", false, "proc filesystem"},
+	}
+	for _, tc := range tests {
+		got := isWithinAllowedRoots(tc.path)
+		if got != tc.allow {
+			t.Errorf("isWithinAllowedRoots(%q) = %v, want %v (%s)", tc.path, got, tc.allow, tc.reason)
+		}
+	}
+}
+
+func TestIsWithinAllowedRootsProjectWorkspace(t *testing.T) {
+	tempDir := t.TempDir()
+	// Create a .git marker so tempDir looks like a project workspace
+	_ = os.MkdirAll(filepath.Join(tempDir, ".git"), 0755)
+
+	child := filepath.Join(tempDir, "subdir", "newdir")
+	if !isWithinAllowedRoots(child) {
+		t.Errorf("expected child of project workspace to be allowed")
+	}
+}
+
+func TestFSMkdirRejectsOutsideAllowedRoots(t *testing.T) {
+	auth, _, _ := NewAuthManager("127.0.0.1", "")
+	handler := NewNexusHandler(auth)
+
+	bodyBytes, _ := json.Marshal(map[string]string{"path": "/etc/cron.d/evil"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/fs/mkdir", strings.NewReader(string(bodyBytes)))
+	w := httptest.NewRecorder()
+
+	handler.handleFSMkdir(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for path outside allowed roots, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestGetGitRemoteRedactsCredentials(t *testing.T) {
 	dir := t.TempDir()
 	gitDir := filepath.Join(dir, ".git")

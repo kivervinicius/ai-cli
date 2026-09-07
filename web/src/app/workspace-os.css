@@ -32,6 +32,31 @@
   --nx-radius: 10px;
   --nx-radius-sm: 7px;
   --nx-radius-lg: 14px;
+  /* Canonical spacing scale: 4px base, shared by Web and embedded Desktop UI. */
+  --nx-spacing-0: 0;
+  --nx-spacing-1: 4px;
+  --nx-spacing-2: 8px;
+  --nx-spacing-3: 12px;
+  --nx-spacing-4: 16px;
+  --nx-spacing-5: 20px;
+  --nx-spacing-6: 24px;
+  --nx-spacing-7: 28px;
+  --nx-spacing-8: 32px;
+  --nx-spacing-9: 36px;
+  --nx-spacing-10: 40px;
+  --nx-spacing-11: 44px;
+  --nx-spacing-12: 48px;
+  --nx-spacing-16: 64px;
+  /* Backward-compatible aliases for surfaces using the shorter token name. */
+  --nx-space-0: var(--nx-spacing-0);
+  --nx-space-1: var(--nx-spacing-1);
+  --nx-space-2: var(--nx-spacing-2);
+  --nx-space-3: var(--nx-spacing-3);
+  --nx-space-4: var(--nx-spacing-4);
+  --nx-space-5: var(--nx-spacing-5);
+  --nx-space-6: var(--nx-spacing-6);
+  --nx-space-8: var(--nx-spacing-8);
+  --nx-space-12: var(--nx-spacing-12);
   --nx-topbar: 46px;
   --nx-project-nav: 38px;
   --nx-taskbar: 38px;
@@ -1307,6 +1332,12 @@ button {
 }
 .nx-dialog[data-wide="true"] {
   width: min(760px, 96vw);
+}
+.nx-dialog[data-full="true"] {
+  width: calc(100vw - 24px);
+  height: calc(100vh - 24px);
+  max-height: calc(100vh - 24px);
+  border-radius: 12px;
 }
 .nx-dialog > header {
   display: flex;
@@ -3262,6 +3293,10 @@ button {
   align-items: center;
   gap: 12px;
 }
+.nx-maestro-status-header > div:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
 .nx-maestro-status-icon {
   width: 40px;
   height: 40px;
@@ -3301,7 +3336,7 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  max-height: 120px;
+  max-height: 160px;
   overflow-y: auto;
 }
 .nx-skill-pill {

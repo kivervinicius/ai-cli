@@ -58,6 +58,34 @@ describe('api request layer', () => {
     expect(init.headers.get('X-CSRF-Token')).toBe('tok-123');
   });
 
+  it('exchanges the browser fragment bootstrap token and removes it from history', async () => {
+    const replaceState = vi.fn();
+    vi.stubGlobal('window', {
+      location: {
+        hash: '#nexus_bootstrap=bootstrap-token',
+        pathname: '/',
+        search: '',
+        protocol: 'http:',
+        hostname: '127.0.0.1',
+      },
+      history: { replaceState },
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ authenticated: true }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ authenticated: true, csrf_token: 'csrf-from-browser' }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(initSession()).resolves.toMatchObject({ authenticated: true });
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/auth/bootstrap');
+    expect(fetchMock.mock.calls[0][1].body).toBe(JSON.stringify({ token: 'bootstrap-token' }));
+    expect(replaceState).toHaveBeenCalledWith(null, '', '/');
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/v1/session');
+  });
+
   it('keeps desktop bootstrap API calls same-origin inside the Wails webview', async () => {
     const desktopBridge: PlatformBridge = {
       kind: 'desktop',

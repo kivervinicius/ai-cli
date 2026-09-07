@@ -352,7 +352,6 @@ func (h *APIHandler) handleRuntimeDetail(w http.ResponseWriter, r *http.Request)
 
 // Providers Handler
 func (h *APIHandler) handleProviders(w http.ResponseWriter, r *http.Request) {
-	drivers := h.drivers.List()
 	type ProviderView struct {
 		ID           string                       `json:"id"`
 		Installed    bool                         `json:"installed"`
@@ -360,6 +359,23 @@ func (h *APIHandler) handleProviders(w http.ResponseWriter, r *http.Request) {
 		ControlLevel registry.ControlLevel        `json:"control_level"`
 		Capabilities driver.EffectiveCapabilities `json:"capabilities"`
 	}
+	if os.Getenv("NEXUS_DOCS_CAPTURE") == "1" {
+		// Documentation captures must never disclose which provider binaries or
+		// versions happen to be installed on the capture host.
+		demo := driver.NewShellDriver().EffectiveCaps(r.Context(), model.Profile{
+			Name: "docs-fixture",
+		})
+		writeJSON(w, http.StatusOK, []ProviderView{{
+			ID:           "demo-provider",
+			Installed:    true,
+			Version:      "synthetic-fixture",
+			ControlLevel: demo.ControlLevel,
+			Capabilities: demo,
+		}})
+		return
+	}
+
+	drivers := h.drivers.List()
 
 	showInternal := r.URL.Query().Get("internal") == "true"
 	var selectedDrivers []driver.ControlDriver

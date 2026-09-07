@@ -10,7 +10,6 @@ import {
   Search,
   Check,
   Loader2,
-  ChevronRight,
   FolderPlus,
 } from 'lucide-react';
 import { Dialog, Button, Input, IconButton, Badge } from '../../design-system';
@@ -26,6 +25,7 @@ export const DirectoryBrowserModal: React.FC<{
 }> = ({ open, onClose, initialPath, onSelectPath }) => {
   const { t } = useTranslation();
   const [currentPath, setCurrentPath] = useState(initialPath || '');
+  const [pathInput, setPathInput] = useState(initialPath || '');
   const [data, setData] = useState<FSBrowseResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('');
@@ -59,6 +59,7 @@ export const DirectoryBrowserModal: React.FC<{
         cacheRef.current.set(res.current_path, res);
         setData(res);
         setCurrentPath(res.current_path);
+        setPathInput(res.current_path);
         setQuery('');
         setNewFolderOpen(false);
       } catch (err) {
@@ -115,6 +116,13 @@ export const DirectoryBrowserModal: React.FC<{
     (e) => e.is_dir && e.name.toLowerCase().includes(query.toLowerCase()),
   );
 
+  const handlePathInputSubmit = () => {
+    const trimmed = pathInput.trim();
+    if (trimmed) {
+      void loadDirectory(trimmed);
+    }
+  };
+
   const getBookmarkIcon = (icon: string) => {
     switch (icon) {
       case 'home':
@@ -135,7 +143,7 @@ export const DirectoryBrowserModal: React.FC<{
       open={open}
       onClose={onClose}
       title={t('projectManager.browseOS')}
-      wide
+      full
       className={styles.dialog}
     >
       <div className={styles.picker}>
@@ -150,25 +158,18 @@ export const DirectoryBrowserModal: React.FC<{
             </IconButton>
           )}
 
-          <div className={styles.breadcrumbsList}>
-            {(data?.breadcrumbs || []).map((crumb, idx, arr) => {
-              const label = crumb === '/' ? '/' : crumb.split('/').filter(Boolean).pop();
-              const isLast = idx === arr.length - 1;
-              return (
-                <React.Fragment key={crumb}>
-                  {idx > 0 && <ChevronRight size={12} className={styles.crumbSep} />}
-                  <button
-                    type="button"
-                    className={`${styles.crumbButton} ${isLast ? styles.crumbButtonActive : ''}`}
-                    onClick={() => !isLast && loadDirectory(crumb)}
-                    disabled={isLast}
-                  >
-                    {label}
-                  </button>
-                </React.Fragment>
-              );
-            })}
-          </div>
+          <input
+            type="text"
+            className={styles.pathInput}
+            value={pathInput}
+            onChange={(e) => setPathInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handlePathInputSubmit();
+            }}
+            onBlur={handlePathInputSubmit}
+            placeholder={t('projectManager.pathPlaceholder')}
+            spellCheck={false}
+          />
 
           <div className={styles.topActions}>
             <Button size="sm" tone="ghost" onClick={() => setNewFolderOpen((prev) => !prev)}>

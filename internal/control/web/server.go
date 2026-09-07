@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -93,6 +94,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	// REST API Routes
 	mux.HandleFunc("/api/v1/health", api.handleHealth)
 	mux.HandleFunc("/api/v1/session", api.handleSession)
+	mux.HandleFunc("/api/v1/auth/bootstrap", s.handleAuthBootstrap)
 	mux.HandleFunc("/api/v1/desktop/bootstrap", s.handleDesktopBootstrap)
 	mux.HandleFunc("/api/v1/session/rotate", s.authMiddleware(s.handleSessionRotate))
 	mux.HandleFunc("/api/v1/session/logout", s.authMiddleware(s.handleSessionLogout))
@@ -154,24 +156,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	}
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// 1. Check for one-time bootstrap token query parameter: ?token=...
-		if token := r.URL.Query().Get("token"); token != "" {
-			sess, ok := s.auth.ExchangeBootstrapToken(token)
-			if ok && sess != nil {
-				http.SetCookie(w, &http.Cookie{
-					Name:     sessionCookieName,
-					Value:    sess.ID,
-					Path:     "/",
-					HttpOnly: true,
-					SameSite: http.SameSiteStrictMode,
-				})
-				// Redirect to clean URL without the token
-				http.Redirect(w, r, r.URL.Path, http.StatusFound)
-				return
-			}
-		}
-
-		// 2. Serve static SPA assets
+		// 1. Serve static SPA assets
 		if fileServer != nil {
 			// Disable client caching for index.html, bundle.js, bundle.css during development/live use
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -204,10 +189,11 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	}
 
 	if err := writeListenState(ListenState{
-		URL:          s.url,
-		BootstrapURL: s.BootstrapURL(),
-		PID:          s.pid,
-		Loopback:     loopback,
+		URL:            s.url,
+		BootstrapURL:   s.BootstrapURL(),
+		BootstrapToken: s.bootstrap,
+		PID:            s.pid,
+		Loopback:       loopback,
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "nexus web: failed to write listen state: %v\n", err)
 	}
@@ -289,11 +275,11 @@ func (s *Server) withSecurityHeaders(next http.Handler) http.Handler {
 		h := w.Header()
 		h.Set("Content-Security-Policy",
 			"default-src 'self' wails:; "+
-				"script-src 'self' 'unsafe-inline' 'unsafe-eval' wails:; "+
+				"script-src 'self' wails:; "+
 				"style-src 'self' 'unsafe-inline'; "+
 				"img-src 'self' data: wails:; "+
 				"font-src 'self' data:; "+
-				"connect-src 'self' ws: wss: http: https: wails:; "+
+				"connect-src 'self' ws: wss: wails:; "+
 				"base-uri 'self'; "+
 				"form-action 'self'; "+
 				"frame-ancestors 'none'; "+
@@ -606,7 +592,16 @@ func (s *Server) URL() string {
 }
 
 func (s *Server) BootstrapURL() string {
-	return fmt.Sprintf("%s/?token=%s", s.url, s.bootstrap)
+	// The token lives in the browser fragment. The SPA exchanges it through
+	// POST, so it never travels in an HTTP request URL or server access log.
+	return s.url + "/#nexus_bootstrap=" + s.bootstrap
+}
+
+// BootstrapToken returns the bootstrap token for trusted local programmatic
+// clients. Browser launches carry it only in a fragment, which is removed by
+// the SPA before normal navigation and is never sent in an HTTP request.
+func (s *Server) BootstrapToken() string {
+	return s.bootstrap
 }
 
 func (s *Server) Start() error {
@@ -627,6 +622,40 @@ func (s *Server) CreateDesktopSession() (*Session, error) {
 	}
 	s.auth.SetDesktopSession(sess)
 	return sess, nil
+}
+
+// handleAuthBootstrap exchanges a one-time bootstrap token sent via POST body
+// for a session cookie. The token must never appear in URLs, logs, or browser
+// history.
+func (s *Server) handleAuthBootstrap(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Token == "" {
+		writeError(w, http.StatusBadRequest, "missing bootstrap token")
+		return
+	}
+	sess, ok := s.auth.ExchangeBootstrapToken(body.Token)
+	if !ok || sess == nil {
+		writeError(w, http.StatusUnauthorized, "invalid or expired bootstrap token")
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    sess.ID,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"authenticated": true,
+		"csrf_token":    sess.CSRFToken,
+		"expires_at":    sess.ExpiresAt,
+	})
 }
 
 func (s *Server) handleDesktopBootstrap(w http.ResponseWriter, r *http.Request) {

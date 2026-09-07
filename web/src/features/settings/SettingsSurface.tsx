@@ -266,7 +266,7 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
           <ArrowUpCircle size={15} />
           <span>Atualizações & Sistema</span>
           {updateInfo?.update_available && (
-            <span className="nx-badge" data-tone="warning" style={{ fontSize: 10 }}>
+            <span className={`nx-badge ${styles.updateBadge}`} data-tone="warning">
               Update
             </span>
           )}
@@ -788,6 +788,7 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
                         key={presetKey}
                         role="radio"
                         aria-checked={isSelected}
+                        data-selected={isSelected}
                         tabIndex={0}
                         onClick={() => theme.setPreset(presetKey as ThemePresetKey)}
                         onKeyDown={(e) => {
@@ -796,59 +797,24 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
                             theme.setPreset(presetKey as ThemePresetKey);
                           }
                         }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 8,
-                          padding: '8px 10px',
-                          borderRadius: 6,
-                          border: isSelected
-                            ? '1.5px solid var(--nx-accent)'
-                            : '1px solid var(--nx-border)',
-                          background: isSelected
-                            ? 'var(--nx-accent-soft)'
-                            : 'var(--nx-bg-elevated)',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
+                        className={styles.themePresetItem}
                       >
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            fontSize: '0.857rem',
-                            fontWeight: isSelected ? 650 : 500,
-                          }}
-                        >
+                        <div className={styles.themePresetName} data-selected={isSelected}>
                           <span>{preset.name}</span>
                           {isSelected && <Check size={14} color="var(--nx-accent)" />}
                         </div>
 
                         {/* Amostras de Cores (Swatches) */}
-                        <div
-                          style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-                          aria-hidden="true"
-                        >
+                        <div className={styles.themeSwatches} aria-hidden="true">
                           <span
                             title={`Fundo: ${palette.bg}`}
-                            style={{
-                              width: 14,
-                              height: 14,
-                              borderRadius: 3,
-                              background: palette.bg,
-                              border: '1px solid var(--nx-border)',
-                            }}
+                            className={styles.themeSwatchBg}
+                            style={{ background: palette.bg }}
                           />
                           <span
                             title={`Acento: ${palette.accent}`}
-                            style={{
-                              width: 14,
-                              height: 14,
-                              borderRadius: 3,
-                              background: palette.accent,
-                            }}
+                            className={styles.themeSwatchAccent}
+                            style={{ background: palette.accent }}
                           />
                         </div>
                       </div>

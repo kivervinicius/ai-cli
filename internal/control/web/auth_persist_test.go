@@ -131,10 +131,11 @@ func TestListenStateRoundTripForLivePID(t *testing.T) {
 	}))
 	t.Cleanup(health.Close)
 	state := ListenState{
-		URL:          health.URL,
-		BootstrapURL: health.URL + "/?token=abc",
-		PID:          os.Getpid(),
-		Loopback:     true,
+		URL:            health.URL,
+		BootstrapURL:   health.URL,
+		BootstrapToken: "abc",
+		PID:            os.Getpid(),
+		Loopback:       true,
 	}
 	if err := writeListenState(state); err != nil {
 		t.Fatal(err)
@@ -143,7 +144,7 @@ func TestListenStateRoundTripForLivePID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.URL != state.URL || got.BootstrapURL != state.BootstrapURL {
+	if got.URL != state.URL || got.BootstrapURL != state.BootstrapURL || got.BootstrapToken != state.BootstrapToken {
 		t.Fatalf("listen state mismatch: %+v", got)
 	}
 	removeListenState(os.Getpid())
@@ -155,10 +156,11 @@ func TestListenStateRoundTripForLivePID(t *testing.T) {
 func TestReadListenStateRejectsDeadPID(t *testing.T) {
 	t.Setenv("NEXUS_DATA_DIR", t.TempDir())
 	if err := writeListenState(ListenState{
-		URL:          "http://127.0.0.1:3000",
-		BootstrapURL: "http://127.0.0.1:3000/?token=abc",
-		PID:          1 << 30,
-		Loopback:     true,
+		URL:            "http://127.0.0.1:3000",
+		BootstrapURL:   "http://127.0.0.1:3000",
+		BootstrapToken: "abc",
+		PID:            1 << 30,
+		Loopback:       true,
 	}); err != nil {
 		t.Fatal(err)
 	}

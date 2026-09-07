@@ -16,13 +16,17 @@ const errors = [];
 for (const file of required) if (!existsSync(path.join(root, file))) errors.push(`missing required file: ${file}`);
 
 const markdownFiles = [];
+const publicMarkdownFiles = [];
 function walk(dir) {
   if (!existsSync(dir)) return;
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'DEV' || entry.name === 'superpowers' || entry.name === 'community-preview' || entry.name === 'engineering' || entry.name === 'design') continue;
+    if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'DEV') continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(full);
-    else if (entry.isFile() && full.endsWith('.md')) markdownFiles.push(full);
+    else if (entry.isFile() && full.endsWith('.md')) {
+      markdownFiles.push(full);
+      publicMarkdownFiles.push(full);
+    }
   }
 }
 for (const file of ['README.md', 'README.en.md', 'README.es.md']) markdownFiles.push(path.join(root, file));
@@ -40,9 +44,24 @@ for (const file of markdownFiles) {
     if (/^(?:\.\.\/)*\.?(?:DEV|\.omx)(?:\/|$)/i.test(clean)) errors.push(`public doc links internal path: ${path.relative(root, file)} -> ${target}`);
   }
 }
+const forbiddenDocumentationData = [
+  /\/projetos\//i,
+  /escolanet-futura/i,
+  /sistemas2/i,
+  /proxy-nginx/i,
+  /real-local-bootstrap/i,
+];
+for (const file of publicMarkdownFiles) {
+  const text = readFileSync(file, 'utf8');
+  for (const pattern of forbiddenDocumentationData) {
+    if (pattern.test(text)) errors.push(`public documentation contains non-synthetic data or stale capture marker: ${path.relative(root, file)} -> ${pattern}`);
+  }
+}
 const manifestPath = path.join(root, 'docs/assets/screenshots/manifest.json');
 if (existsSync(manifestPath)) {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  if (manifest.scenario !== 'isolated-synthetic-fixture') errors.push('visual manifest must use isolated-synthetic-fixture');
+  if (manifest.data_classification !== 'SYNTHETIC') errors.push('visual manifest must declare SYNTHETIC data classification');
   const items = Array.isArray(manifest) ? manifest : manifest.captures || [];
   const requiredVisualIds = Array.from({ length: 11 }, (_, index) => `VIS-${String(index + 1).padStart(3, '0')}`);
   const itemById = new Map();
@@ -51,8 +70,13 @@ if (existsSync(manifestPath)) {
     else if (itemById.has(item.id)) errors.push(`visual manifest duplicate id: ${item.id}`);
     else itemById.set(item.id, item);
     if (item.status !== 'PASS') errors.push(`visual manifest item is not PASS: ${item.id || '(unknown)'}`);
-    for (const field of ['surface', 'scenario', 'viewport', 'capture_command', 'source_sha']) {
+    for (const field of ['surface', 'scenario', 'viewport', 'capture_command', 'source_sha', 'data_classification']) {
       if (!item[field]) errors.push(`visual manifest item ${item.id || '(unknown)'} missing ${field}`);
+    }
+    if (typeof item.scenario !== 'string' || !item.scenario.startsWith('isolated-synthetic-')) errors.push(`visual manifest item uses unsafe scenario: ${item.id || '(unknown)'}`);
+    if (item.data_classification !== 'SYNTHETIC') errors.push(`visual manifest item is not SYNTHETIC: ${item.id || '(unknown)'}`);
+    if (item.id === 'VIS-005' && (!item.terminal_evidence || item.terminal_evidence.verified !== true || !item.terminal_evidence.marker)) {
+      errors.push('VIS-005 requires verified terminal evidence and marker');
     }
     if (item.source_sha && !/^[0-9a-f]{40}$/i.test(item.source_sha)) {
       errors.push(`visual manifest item has invalid source_sha: ${item.id || '(unknown)'}`);
@@ -62,6 +86,9 @@ if (existsSync(manifestPath)) {
   for (const item of items) {
     if (!item.file) errors.push('visual manifest item has no file');
     else if (!existsSync(path.join(root, 'docs/assets/screenshots', item.file))) errors.push(`manifest file missing: ${item.file}`);
+  }
+  if (items.some((item) => item.status === 'PASS' && item.scenario === 'real-local-bootstrap')) {
+    errors.push('visual manifest contains PASS evidence from real-local-bootstrap');
   }
 
   if (manifest.source_sha && !/^[0-9a-f]{40}$/i.test(manifest.source_sha)) {

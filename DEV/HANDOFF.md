@@ -1,5 +1,39 @@
 # Handoff
 
+## Atualização 2026-09-07 — Auth inválida ao abrir `nexus web`
+
+A causa era o comando abrir apenas a URL base depois que o token deixou de ser
+colocado na URL. A SPA recebia `/api/v1/session` sem cookie e entrava como não
+autenticada.
+
+Agora `Server.BootstrapURL()` entrega o token em fragmento
+`#nexus_bootstrap=...`; `web/src/api.ts` troca esse token por POST, remove o
+fragmento com `history.replaceState` e então valida a sessão normalmente.
+`nexus web open` e `nexus web url` usam o BootstrapURL persistido, inclusive
+para estados antigos que ainda armazenam apenas o token separado.
+
+Validação real concluída com `nexus web --port 0 --no-open`: bootstrap, cookie,
+sessão autenticada e CSRF foram confirmados. O token não aparece em query string
+nem em URL enviada ao servidor.
+
+## Atualização 2026-09-07 — Mídia documental sem dados reais
+
+O capturador documental agora trabalha somente com dados temporários e
+sintéticos. Ele cria `Nexus Demo Workspace`, inicia um Project Shell real com
+prompt neutro, exige retorno do marcador `__NEXUS_DOCS_TERMINAL_OK__` e falha
+quando encontra erro, recuperação, desconexão ou dados conhecidos do host.
+
+O modo `NEXUS_DOCS_CAPTURE=1` também substitui o inventário de providers por
+`demo-provider`/`synthetic-fixture`, evitando que versões de Codex, Claude,
+AGY ou outros binários instalados apareçam na documentação. O manifesto e o
+verificador exigem classificação `SYNTHETIC`; VIS-005 contém evidência de
+terminal e VIS-011 permanece explicitamente como tela inicial Desktop sem
+projeto/runtime.
+
+Validação concluída: captura Web isolada PASS, teste Go de inventário sintético
+PASS e `node scripts/docs-verify.mjs` PASS. Não considerar o screenshot Desktop
+como prova de terminal nativo; ele documenta apenas o estado inicial seguro.
+
 ## Atualização 2026-09-07 — Memoização do Flow
 
 `FlowTaskNode` foi memoizado após a revisão final do caminho de renderização.
@@ -565,3 +599,21 @@ Após recompilar e reiniciar a Web, o smoke real confirmou helper invisível,
 terminal sem `W` espúrio e sem erros de console. A Web ativa continua em
 `127.0.0.1:3000`; depois de mudanças no frontend, use `make build` e reinicie
 somente a instância Nexus dessa porta para validar a tela de Terminais.
+
+Na validação seguinte, a porta estava servindo o executável global antigo em
+`/home/desenvolvedor/.local/bin/nexus`, apesar de o build correto existir na
+worktree. Essa instância foi encerrada e substituída por `./nexus web --no-open`.
+O smoke novo contra `127.0.0.1:3000` confirmou o helper invisível (`0x0`,
+`opacity: 0`) e um terminal montado sem o overlay de `W`.
+
+## Espaçamento semântico — 2026-09-07
+
+A escala `--nx-spacing-*` foi restaurada em `workspace-os.css`, com aliases
+`--nx-space-*` para compatibilidade. O binário ativo em `127.0.0.1:3000` foi
+regenerado após `make build`; para visualizar a alteração no navegador, faça
+hard refresh (`Ctrl+Shift+R`).
+
+Nota operacional: neste ambiente `HOME` pode apontar para um perfil do Codex.
+Para atualizar a instância usada pelo serviço, instalar explicitamente com
+`LOCAL_BIN=/home/desenvolvedor/.local/bin make install-local`; `make build`
+sozinho não substitui o executável global.

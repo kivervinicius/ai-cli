@@ -2,27 +2,35 @@
 @use '../../styles/typography';
 @use '../../styles/mixins';
 
+.surface {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+  padding: clamp(12px, 1.8vw, 20px);
+  @include mixins.custom-scrollbar;
+}
+
 .container {
-  width: min(100%, 1320px);
-  padding: clamp(16px, 2.4vw, 32px);
+  width: 100%;
+  max-width: 1280px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: clamp(18px, 2.2vw, 28px);
-  min-height: 100%;
+  gap: clamp(14px, 1.6vw, 20px);
   box-sizing: border-box;
-  overflow-x: clip;
 }
 
 .hero {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--nx-spacing-4);
-  padding: clamp(18px, 2.5vw, 28px);
+  gap: clamp(12px, 1.5vw, 16px);
+  padding: clamp(14px, 1.8vw, 20px);
   background: linear-gradient(135deg, var(--nx-surface-2), var(--nx-surface-1));
   border: 1px solid var(--nx-border-strong);
-  border-radius: var(--nx-radius-xl);
+  border-radius: var(--nx-radius-lg);
   position: relative;
   overflow: hidden;
 
@@ -40,18 +48,18 @@
 .heroContent {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .eyebrow,
 .sectionEyebrow {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   color: var(--nx-accent-text);
   font-size: var(--nx-font-size-2xs);
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -66,34 +74,36 @@
 .heroTitleRow {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .heroIcon {
   color: var(--nx-accent);
+  flex-shrink: 0;
 }
 
 .heroTitle {
-  font-size: var(--nx-font-size-xl);
+  font-size: clamp(1.15rem, 1.4vw, 1.35rem);
   font-weight: 700;
   color: var(--nx-text);
   margin: 0;
+  line-height: var(--nx-line-height-tight);
 }
 
 .heroDesc {
-  font-size: var(--nx-font-size-sm);
+  font-size: var(--nx-font-size-xs);
   color: var(--nx-text-soft);
   margin: 0;
   max-width: 760px;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 
 .heroBadges {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 4px;
+  gap: 6px;
+  margin-top: 2px;
 }
 
 .statusPill {
@@ -171,52 +181,53 @@
 .overviewGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .infoCard {
-  padding: 16px;
+  padding: 10px 14px;
   background: var(--nx-surface-1);
   border: 1px solid var(--nx-border);
-  border-radius: var(--nx-radius-md);
+  border-radius: var(--nx-radius-sm);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .infoCardTitle {
-  font-size: var(--nx-font-size-sm);
+  font-size: var(--nx-font-size-xs);
   font-weight: 600;
   color: var(--nx-text);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .infoCardText {
-  font-size: var(--nx-font-size-xs);
+  font-size: 0.75rem;
   color: var(--nx-text-soft);
-  line-height: 1.5;
+  line-height: 1.4;
   margin: 0;
 }
 
 .catalogSection {
   display: flex;
   flex-direction: column;
-  gap: var(--nx-spacing-4);
+  gap: 12px;
 }
 
 .catalogHeadingRow {
   display: flex;
   align-items: end;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
 }
 
 .catalogTitle {
-  margin: 4px 0 0;
+  margin: 2px 0 0;
   color: var(--nx-text);
-  font-size: var(--nx-font-size-lg);
+  font-size: var(--nx-font-size-md);
+  font-weight: 650;
   line-height: var(--nx-line-height-tight);
 }
 
@@ -230,35 +241,37 @@
 .catalogHeader {
   display: flex;
   flex-direction: column;
-  gap: var(--nx-spacing-3);
+  gap: 8px;
 }
 
 .catalogToolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--nx-spacing-4);
+  gap: 10px;
   flex-wrap: wrap;
 }
 
 .searchBox {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 6px;
+  padding: 5px 10px;
+  min-height: 32px;
   background: var(--nx-surface-2);
   border: 1px solid var(--nx-border);
-  border-radius: var(--nx-radius-md);
-  min-width: min(100%, 280px);
+  border-radius: var(--nx-radius-sm);
+  min-width: min(100%, 240px);
   flex: 1;
-  max-width: 450px;
+  max-width: 420px;
+  box-sizing: border-box;
 
   input {
     flex: 1;
     background: transparent;
     border: none;
     color: var(--nx-text);
-    font-size: var(--nx-font-size-sm);
+    font-size: var(--nx-font-size-xs);
     font-family: inherit;
 
     &:focus {
@@ -274,9 +287,9 @@
 
 .categoryFilterRow {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   overflow-x: auto;
-  padding-bottom: 4px;
+  padding-bottom: 2px;
   scrollbar-width: thin;
   @include mixins.custom-scrollbar;
 }
@@ -284,10 +297,10 @@
 .categoryButton {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  min-height: 30px;
-  padding: 5px 10px;
-  font-size: var(--nx-font-size-xs);
+  gap: 4px;
+  min-height: 26px;
+  padding: 3px 8px;
+  font-size: var(--nx-font-size-2xs);
   font-family: inherit;
   font-weight: 500;
   border-radius: var(--nx-radius-full);
@@ -328,16 +341,16 @@
 
 .skillsGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
+  gap: 8px;
 }
 
 .skillItem {
   min-width: 0;
-  padding: 16px;
+  padding: 12px 14px;
   background: var(--nx-surface-1);
   border: 1px solid var(--nx-border);
-  border-radius: var(--nx-radius-md);
+  border-radius: var(--nx-radius-sm);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -578,17 +591,19 @@
 }
 
 @media (max-width: 560px) {
+  .surface {
+    padding: 10px;
+  }
   .container {
-    padding: 14px;
-    gap: 18px;
+    gap: 12px;
   }
   .heroTitle {
-    font-size: var(--nx-font-size-lg);
+    font-size: var(--nx-font-size-md);
   }
   .catalogHeadingRow {
     align-items: flex-start;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
   }
   .catalogToolbar {
     display: block;

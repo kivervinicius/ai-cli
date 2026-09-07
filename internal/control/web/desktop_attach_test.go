@@ -12,9 +12,9 @@ func TestAttachLoopbackSessionReusesWebSession(t *testing.T) {
 	srv := newStartedTestServer(t)
 
 	sess, err := AttachLoopbackSession(ListenState{
-		URL:          srv.URL(),
-		BootstrapURL: srv.BootstrapURL(),
-		Loopback:     true,
+		URL:            srv.URL(),
+		BootstrapToken: srv.bootstrap,
+		Loopback:       true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -26,9 +26,9 @@ func TestAttachLoopbackSessionReusesWebSession(t *testing.T) {
 
 func TestAttachLoopbackSessionRejectsDifferentBootstrapOrigin(t *testing.T) {
 	sess, err := AttachLoopbackSession(ListenState{
-		URL:          "http://127.0.0.1:3000",
-		BootstrapURL: "http://127.0.0.1:3001/?token=local",
-		Loopback:     true,
+		URL:            "http://127.0.0.1:3000",
+		BootstrapToken: "local",
+		Loopback:       true,
 	})
 	if err == nil || sess != nil {
 		t.Fatal("expected bootstrap origin mismatch to be rejected")
@@ -38,9 +38,9 @@ func TestAttachLoopbackSessionRejectsDifferentBootstrapOrigin(t *testing.T) {
 func TestLoopbackBackendProxyRewritesWailsOrigin(t *testing.T) {
 	srv := newStartedTestServer(t)
 	sess, err := AttachLoopbackSession(ListenState{
-		URL:          srv.URL(),
-		BootstrapURL: srv.BootstrapURL(),
-		Loopback:     true,
+		URL:            srv.URL(),
+		BootstrapToken: srv.bootstrap,
+		Loopback:       true,
 	})
 	if err != nil {
 		t.Fatal(err)

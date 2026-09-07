@@ -180,7 +180,7 @@ func TestAskAgentStoppedUsesStartAndAskWithoutCreatingAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := n.StopAgent(agent.ID); err != nil {
+	if err := n.StopAgent(context.Background(), agent.ID); err != nil {
 		t.Fatal(err)
 	}
 	_ = sess

@@ -188,7 +188,9 @@ func OpenStore() (*store.Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	_ = os.MkdirAll(dir, 0700)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return nil, fmt.Errorf("create data dir: %w", err)
+	}
 	return store.Open(filepath.Join(dir, "nexus.db"))
 }
 
@@ -416,7 +418,10 @@ func (n *Nexus) StartAgent(ctx context.Context, agentID, provider, profile strin
 	agent.ContinuityStatus = continuityLaunch.Status
 	now := time.Now().UTC()
 	agent.LastStartedAt = &now
-	_ = st.UpdateAgent(agent)
+	if err := st.UpdateAgent(agent); err != nil {
+		n.stopRuntime(sess.RuntimeID)
+		return nil, fmt.Errorf("persist agent state after launch: %w", err)
+	}
 
 	// Notify terminal broker of new runtime (Gate 4).
 	oldRuntimeID := ""
@@ -433,16 +438,7 @@ func (n *Nexus) StartAgent(ctx context.Context, agentID, provider, profile strin
 // StopAgent performs a verified stop: sets STOPPING, sends graceful stop,
 // waits for process termination (PID identity check), then persists STOPPED.
 // Failures leave the agent in STOPPING/FAILED with explanation (P0-3).
-func (n *Nexus) StopAgent(args ...interface{}) error {
-	var agentID string
-	if len(args) == 1 {
-		agentID, _ = args[0].(string)
-	} else if len(args) == 2 {
-		_, _ = args[0].(context.Context)
-		agentID, _ = args[1].(string)
-	} else {
-		return fmt.Errorf("agent id is required")
-	}
+func (n *Nexus) StopAgent(ctx context.Context, agentID string) error {
 	st, err := n.OpenProject()
 	if err != nil {
 		return err
@@ -454,14 +450,20 @@ func (n *Nexus) StopAgent(args ...interface{}) error {
 
 	// Phase 1: transition to STOPPING immediately.
 	agent.Status = store.AgentStopping
-	_ = st.UpdateAgent(agent)
+	if err := st.UpdateAgent(agent); err != nil {
+		// TODO: emit alert metric
+		_ = err
+	}
 	n.notifyAgentState(agentID, "STOPPING")
 
 	gen, gerr := st.CurrentGeneration(agentID)
 	if gerr != nil || gen.RuntimeID == "" {
 		// No runtime generation — agent is already stopped.
 		agent.Status = store.AgentStopped
-		_ = st.UpdateAgent(agent)
+		if err := st.UpdateAgent(agent); err != nil {
+			// TODO: emit alert metric
+			_ = err
+		}
 		n.notifyAgentState(agentID, "STOPPED")
 		return nil
 	}
@@ -470,7 +472,10 @@ func (n *Nexus) StopAgent(args ...interface{}) error {
 	if !n.runtimeAlive(gen.RuntimeID) {
 		// Runtime already dead — proceed to finalize.
 		agent.Status = store.AgentStopped
-		_ = st.UpdateAgent(agent)
+		if err := st.UpdateAgent(agent); err != nil {
+			// TODO: emit alert metric
+			_ = err
+		}
 		stopped := time.Now().UTC()
 		_ = st.StopGeneration(gen.ID, stopped)
 		n.notifyAgentState(agentID, "STOPPED")
@@ -489,7 +494,10 @@ func (n *Nexus) StopAgent(args ...interface{}) error {
 			// Timeout: force kill and mark as failed.
 			agent.Status = store.AgentFailed
 			agent.ContinuityStatus = "STOP_TIMEOUT"
-			_ = st.UpdateAgent(agent)
+			if err := st.UpdateAgent(agent); err != nil {
+				// TODO: emit alert metric
+				_ = err
+			}
 			n.notifyAgentState(agentID, "FAILED")
 			return fmt.Errorf("stop timeout for runtime %s (agent marked FAILED)", gen.RuntimeID)
 		case <-ticker.C:
@@ -498,7 +506,10 @@ func (n *Nexus) StopAgent(args ...interface{}) error {
 				stopped := time.Now().UTC()
 				_ = st.StopGeneration(gen.ID, stopped)
 				agent.Status = store.AgentStopped
-				_ = st.UpdateAgent(agent)
+				if err := st.UpdateAgent(agent); err != nil {
+					// TODO: emit alert metric
+					_ = err
+				}
 				n.notifyAgentState(agentID, "STOPPED")
 				return nil
 			}

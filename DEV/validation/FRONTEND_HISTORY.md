@@ -254,3 +254,5 @@
 - 2026-09-07T17:26:22Z · PASS · feat/nexus-maximum-delivery@8ff720c · failed=[-] · DEV/validation/FRONTEND_2026-09-07T17-26-22Z.md
 - 2026-09-07T17:28:09Z · PASS · feat/nexus-maximum-delivery@8ff720c · failed=[-] · DEV/validation/FRONTEND_2026-09-07T17-28-09Z.md
 - 2026-09-07T17:28:33Z · PASS · feat/nexus-maximum-delivery@8ff720c · failed=[-] · DEV/validation/FRONTEND_2026-09-07T17-28-33Z.md
+- 2026-09-07T17:53:16Z · FAIL · feat/nexus-maximum-delivery@2358618 · failed=[format,typecheck,lint,test,build,embed-sync,ui-markers] · DEV/validation/FRONTEND_2026-09-07T17-53-16Z.md
+- 2026-09-07T17:56:30Z · PASS · feat/nexus-maximum-delivery@2358618 · failed=[-] · DEV/validation/FRONTEND_2026-09-07T17-56-30Z.md

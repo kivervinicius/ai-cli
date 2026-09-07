@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/cookiejar"
+	"strings"
 	"testing"
 
 	"github.com/kivervinicius/ai-cli/internal/nexus"
@@ -24,11 +25,15 @@ func newTestClient(t *testing.T) (*http.Client, *Server) {
 
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar}
-	resp, err := client.Get(srv.BootstrapURL())
+	body := strings.NewReader(`{"token":"` + srv.bootstrap + `"}`)
+	resp, err := client.Post(srv.URL()+"/api/v1/auth/bootstrap", "application/json", body)
 	if err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
 	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("bootstrap POST returned %d", resp.StatusCode)
+	}
 	return client, srv
 }
 

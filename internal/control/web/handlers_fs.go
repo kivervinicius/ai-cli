@@ -531,6 +531,42 @@ func (h *NexusHandler) handleFSScan(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, discovered)
 }
 
+// isWithinAllowedRoots checks whether path falls inside a safe directory.
+// Allowed roots are: user home dir, /tmp, and any ancestor containing .git
+// or AGENTS.md (project workspace markers).
+func isWithinAllowedRoots(path string) bool {
+	abs, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(abs, home+string(filepath.Separator)) {
+		return true
+	}
+
+	if strings.HasPrefix(abs, "/tmp"+string(filepath.Separator)) || abs == "/tmp" {
+		return true
+	}
+
+	// Walk upward looking for project workspace markers
+	dir := abs
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return true
+		}
+		if _, err := os.Stat(filepath.Join(dir, "AGENTS.md")); err == nil {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+
+	return false
+}
+
 // handleFSMkdir POST /api/v1/fs/mkdir
 func (h *NexusHandler) handleFSMkdir(w http.ResponseWriter, r *http.Request) {
 	if !h.hostFilesystemEnabled {
@@ -558,6 +594,11 @@ func (h *NexusHandler) handleFSMkdir(w http.ResponseWriter, r *http.Request) {
 	absPath, err := filepath.Abs(filepath.Clean(targetPath))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if !isWithinAllowedRoots(absPath) {
+		writeError(w, http.StatusForbidden, "path is outside allowed directories")
 		return
 	}
 

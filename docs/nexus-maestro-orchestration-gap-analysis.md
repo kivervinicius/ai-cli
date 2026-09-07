@@ -1,7 +1,7 @@
 # Nexus × Maestro orchestration gap analysis
 
 Audit date: 2026-09-06. Sources: Nexus `internal/nexus`, `web/src/features/work`,
-and Maestro `/projetos/tools/Orquestrador-Maestro` (`TASK_SCHEMA.json`,
+and Maestro `<orchestrator-repository>` (`TASK_SCHEMA.json`,
 `WORKFLOW_SCHEMAS.json`, `runtime/`, `tests/`). Nexus remains the execution/control
 plane; Maestro remains the owner of methodology, task/workflow contracts and planning
 advice.

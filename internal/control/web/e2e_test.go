@@ -62,12 +62,16 @@ func TestWeb_FullE2E(t *testing.T) {
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar}
 
-	// 1. Visit bootstrap URL
-	resp, err := client.Get(srv.BootstrapURL())
+	// 1. Bootstrap via POST
+	body := strings.NewReader(`{"token":"` + srv.bootstrap + `"}`)
+	resp, err := client.Post(srv.URL()+"/api/v1/auth/bootstrap", "application/json", body)
 	if err != nil {
-		t.Fatalf("failed to visit bootstrap URL: %v", err)
+		t.Fatalf("failed to POST bootstrap token: %v", err)
 	}
 	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("bootstrap POST returned %d", resp.StatusCode)
+	}
 
 	// 2. Fetch session details (CSRF token)
 	sessResp, err := client.Get(srv.URL() + "/api/v1/session")

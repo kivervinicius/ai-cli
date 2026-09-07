@@ -182,7 +182,6 @@ func controlWebCmd(args []string) error {
 		bootstrapURL := core.BootstrapURL()
 		fmt.Println("=== Nexus Control Center (Web UI) ===")
 		fmt.Printf("URL:       %s\n", core.URL())
-		fmt.Printf("Bootstrap: %s\n\n", bootstrapURL)
 		fmt.Println("Press Ctrl+C to stop the Web Control Center.")
 		fmt.Printf("Reopen from any terminal: %s web open\n", progName())
 
@@ -203,6 +202,9 @@ func controlWebReopenCmd(printOnly bool) error {
 	target := state.BootstrapURL
 	if target == "" {
 		target = state.URL
+	}
+	if state.BootstrapToken != "" && !strings.Contains(target, "#nexus_bootstrap=") {
+		target = strings.TrimRight(state.URL, "/") + "/#nexus_bootstrap=" + state.BootstrapToken
 	}
 	if printOnly {
 		fmt.Println(target)

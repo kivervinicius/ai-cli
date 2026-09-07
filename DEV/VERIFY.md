@@ -1,5 +1,26 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-07 — Correção do bootstrap de autenticação Web
+
+- `nexus web` + `curl` em processo real — PASS: fragmento de bootstrap trocado
+  por cookie; `/api/v1/session` retornou `authenticated=true` e CSRF válido.
+- `go test ./internal/control/web -run 'TestServerBootstrapURLKeepsTokenInFragment|TestProvidersDocsCaptureUsesSyntheticInventory|TestServer_BootstrapAndAuth'` — PASS.
+- `npm --prefix web run test -- --run src/api.test.ts` — PASS, incluindo
+  consumo do fragmento e limpeza via `history.replaceState`.
+- `npm --prefix web run typecheck` — PASS; `make build` — PASS.
+
+## 2026-09-07 — Higiene de mídia documental
+
+- `npm --prefix web run docs:capture` — PASS em fixture sintética isolada; shell
+  real validado por round-trip do marcador `__NEXUS_DOCS_TERMINAL_OK__`.
+- `go test ./internal/control/web -run 'TestProvidersDocsCaptureUsesSyntheticInventory|TestServer_BootstrapAndAuth'` — PASS.
+- `node scripts/docs-verify.mjs` — PASS; manifesto com VIS-001…VIS-011,
+  classificação `SYNTHETIC` e rejeição do cenário `real-local-bootstrap`.
+- Inspeção visual — PASS para terminal, providers, workspace e Direct; sem
+  projetos, paths de usuário, credenciais ou versões reais de providers.
+- `git diff --check` continua apontando whitespace em bindings Wails já
+  modificados por outra alteração do worktree; não foi alterado nesta tarefa.
+
 ## 2026-09-07 — Review closure local
 
 - `npm run verify` — PASS, 10/10 gates; 61 arquivos Vitest / 310 testes.
@@ -635,7 +656,21 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
   página.
 - O problema era visual do CSS ausente, não saída indevida do PTY.
 
+## Tokens de espaçamento — 2026-09-07
+
+- `bun run build` — PASS.
+- `bun run typecheck` — PASS.
+- `bun run lint:styles` — PASS.
+- Bundle final contém `--nx-spacing-1`, `--nx-spacing-8`,
+  `--nx-spacing-16` e aliases `--nx-space-4` — PASS.
+- `make build` — PASS; bundle embutido regenerado.
+- Instalação/execução final — PASS; `LOCAL_BIN=/home/desenvolvedor/.local/bin
+  make install-local`, CSS HTTP contém `--nx-spacing-4: 16px` e o navegador
+  calcula `16px` no `:root`.
+- `make -n install` — PASS; fluxo local padrão e fluxo `DESTDIR` ficam explícitos
+  no Makefile.
+
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-07T17:28:33Z
+## Frontend gate — 2026-09-07T17:56:30Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).

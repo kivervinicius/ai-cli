@@ -11,6 +11,8 @@ bin/
 *.zip
 *.tar.gz
 *.7z
+*.test
+*.test.exe
 
 # Logs and databases
 *.log

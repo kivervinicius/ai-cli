@@ -21,7 +21,7 @@ const (
 	// LastKnownTTL is intentionally much longer than DefaultTTL. It is used
 	// only to recover the last successful observation after a transient CLI or
 	// network failure; it must never make an old snapshot trustworthy.
-	LastKnownTTL = 3650 * 24 * time.Hour
+	LastKnownTTL = 30 * 24 * time.Hour
 )
 
 var (

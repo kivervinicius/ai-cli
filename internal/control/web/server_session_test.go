@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/cookiejar"
+	"strings"
 	"testing"
 )
 
@@ -13,11 +14,15 @@ func authenticatedTestClient(t *testing.T, srv *Server) (*http.Client, string) {
 	t.Helper()
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar}
-	resp, err := client.Get(srv.BootstrapURL())
+	body := strings.NewReader(`{"token":"` + srv.bootstrap + `"}`)
+	resp, err := client.Post(srv.URL()+"/api/v1/auth/bootstrap", "application/json", body)
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("bootstrap POST returned %d", resp.StatusCode)
+	}
 	sessResp, err := client.Get(srv.URL() + "/api/v1/session")
 	if err != nil {
 		t.Fatal(err)

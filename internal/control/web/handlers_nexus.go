@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -110,7 +111,7 @@ func (h *NexusHandler) handleProjectsList(w http.ResponseWriter, r *http.Request
 			Name string `json:"name"`
 			Path string `json:"path"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Path) == "" {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil || strings.TrimSpace(body.Path) == "" {
 			writeError(w, http.StatusBadRequest, "path is required")
 			return
 		}
@@ -169,7 +170,7 @@ func (h *NexusHandler) handleProjectDetail(w http.ResponseWriter, r *http.Reques
 			DefaultBranch    *string `json:"default_branch"`
 			ResourcePolicy   *string `json:"resource_policy"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid body")
 			return
 		}
@@ -268,7 +269,7 @@ func (h *NexusHandler) handleProjectContextPrepare(w http.ResponseWriter, r *htt
 	var body struct {
 		CreateContext bool `json:"create_context"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body)
 	var readiness *nexus.ContextReadiness
 	var err error
 	if body.CreateContext {
@@ -333,7 +334,7 @@ func (h *NexusHandler) handleProjectLayout(w http.ResponseWriter, r *http.Reques
 			Layout   string `json:"layout"`
 			Revision *int64 `json:"revision"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid body")
 			return
 		}
@@ -407,7 +408,7 @@ func (h *NexusHandler) handleAgentCreate(w http.ResponseWriter, r *http.Request)
 		Name string `json:"name"`
 		Role string `json:"role"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Name) == "" {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil || strings.TrimSpace(body.Name) == "" {
 		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
@@ -459,7 +460,7 @@ func (h *NexusHandler) handleAgentDetail(w http.ResponseWriter, r *http.Request)
 			Name *string `json:"name"`
 			Role *string `json:"role"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid body")
 			return
 		}
@@ -497,7 +498,7 @@ func (h *NexusHandler) handleAgentStart(w http.ResponseWriter, r *http.Request) 
 		Provider string `json:"provider"`
 		Profile  string `json:"profile"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body)
 
 	provider, profile, err := h.nexus.ResolveStartParams(id, body.Provider, body.Profile)
 	if err != nil {
@@ -531,7 +532,7 @@ func (h *NexusHandler) handleAgentAsk(w http.ResponseWriter, r *http.Request) {
 		Scope         string   `json:"scope,omitempty"`
 		StartIfNeeded bool     `json:"start_if_needed"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Prompt) == "" {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil || strings.TrimSpace(body.Prompt) == "" {
 		writeError(w, http.StatusBadRequest, "prompt is required")
 		return
 	}
@@ -654,7 +655,7 @@ func (h *NexusHandler) handleAgentConfigApply(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var cfg nexus.AgentConfig
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&cfg); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid config body")
 		return
 	}
@@ -683,7 +684,7 @@ func (h *NexusHandler) handleAgentConfigImpact(w http.ResponseWriter, r *http.Re
 		return
 	}
 	var cfg nexus.AgentConfig
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&cfg); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid config body")
 		return
 	}
@@ -742,7 +743,7 @@ func (h *NexusHandler) handleResourceSelect(w http.ResponseWriter, r *http.Reque
 		Policy   string `json:"policy"`
 		AgentID  string `json:"agent_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
@@ -772,7 +773,7 @@ func (h *NexusHandler) handleResourceRecommend(w http.ResponseWriter, r *http.Re
 		Requirements nexus.TaskRequirements `json:"requirements"`
 		Policy       string                 `json:"policy"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
@@ -811,7 +812,7 @@ func (h *NexusHandler) handleMaestroAdvice(w http.ResponseWriter, r *http.Reques
 		AgentID   string `json:"agent_id"`
 		Intent    string `json:"intent"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
@@ -917,7 +918,7 @@ func (h *NexusHandler) handleMaestroUpdate(w http.ResponseWriter, r *http.Reques
 		TargetVersion string `json:"target_version"`
 		Confirmed     bool   `json:"confirmed"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil ||
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&request); err != nil ||
 		request.Product != "maestro" || request.TargetVersion != "latest" || !request.Confirmed {
 		writeError(w, http.StatusBadRequest, "explicit Maestro update requires product=maestro, target_version=latest, and confirmed=true")
 		return
@@ -972,7 +973,7 @@ func (h *NexusHandler) handleMissionCreate(w http.ResponseWriter, r *http.Reques
 		Scope       string `json:"scope"`
 		RiskLevel   string `json:"risk_level"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
@@ -1035,7 +1036,7 @@ func (h *NexusHandler) handleMissionDetail(w http.ResponseWriter, r *http.Reques
 			Scope       *string `json:"scope"`
 			RiskLevel   *string `json:"risk_level"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid body")
 			return
 		}
@@ -1098,7 +1099,7 @@ func (h *NexusHandler) handleMissionTaskCreate(w http.ResponseWriter, r *http.Re
 		Priority     int    `json:"priority"`
 		Dependencies string `json:"dependencies"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
@@ -1137,7 +1138,7 @@ func (h *NexusHandler) handleMissionAssign(w http.ResponseWriter, r *http.Reques
 		TaskID  string `json:"task_id"`
 		AgentID string `json:"agent_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
@@ -1300,7 +1301,7 @@ func (h *NexusHandler) handleProjectGitCheckout(w http.ResponseWriter, r *http.R
 		Branch string `json:"branch"`
 		Create bool   `json:"create"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Branch) == "" {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil || strings.TrimSpace(body.Branch) == "" {
 		writeError(w, http.StatusBadRequest, "branch is required")
 		return
 	}
@@ -1383,7 +1384,7 @@ func (h *NexusHandler) handleProjectPlans(w http.ResponseWriter, r *http.Request
 			Phases      []store.PlanPhase `json:"phases"`
 			Facts       map[string]string `json:"facts"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid body")
 			return
 		}
@@ -1458,7 +1459,7 @@ func (h *NexusHandler) handleProjectComposerSessions(w http.ResponseWriter, r *h
 			InputMode    string `json:"input_mode"`
 			SourcePrompt string `json:"source_prompt"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid body")
 			return
 		}
@@ -1495,7 +1496,7 @@ func (h *NexusHandler) handleComposerSession(w http.ResponseWriter, r *http.Requ
 			writeError(w, http.StatusMethodNotAllowed, "POST required for refine")
 			return
 		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body)
 		artifact, err := h.nexus.RefineComposerArtifact(r.Context(), id, body.Goal)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -1518,7 +1519,7 @@ func (h *NexusHandler) handleComposerSession(w http.ResponseWriter, r *http.Requ
 			Status           string `json:"status"`
 			ExpectedRevision int    `json:"expected_revision,omitempty"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
@@ -1539,7 +1540,7 @@ func (h *NexusHandler) handleComposerSession(w http.ResponseWriter, r *http.Requ
 			Content          string `json:"content"`
 			ExpectedRevision int    `json:"expected_revision,omitempty"`
 		}
-		if r.Method != http.MethodPost || json.NewDecoder(r.Body).Decode(&body) != nil {
+		if r.Method != http.MethodPost || json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body) != nil {
 			writeError(w, http.StatusBadRequest, "content is required")
 			return
 		}
@@ -1557,7 +1558,7 @@ func (h *NexusHandler) handleComposerSession(w http.ResponseWriter, r *http.Requ
 			SkillIDs    []string `json:"skill_ids"`
 			ConfirmGaps bool     `json:"confirm_gaps"`
 		}
-		if r.Method != http.MethodPost || json.NewDecoder(r.Body).Decode(&body) != nil {
+		if r.Method != http.MethodPost || json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body) != nil {
 			writeError(w, http.StatusBadRequest, "invalid body")
 			return
 		}
@@ -1578,7 +1579,7 @@ func (h *NexusHandler) handleComposerSession(w http.ResponseWriter, r *http.Requ
 		var body struct {
 			State string `json:"state"`
 		}
-		if json.NewDecoder(r.Body).Decode(&body) != nil || strings.TrimSpace(body.State) == "" {
+		if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body) != nil || strings.TrimSpace(body.State) == "" {
 			writeError(w, http.StatusBadRequest, "state is required")
 			return
 		}
@@ -1652,7 +1653,7 @@ func (h *NexusHandler) handlePlanDetail(w http.ResponseWriter, r *http.Request) 
 			Plan          store.WorkPlan `json:"plan"`
 			ChangeSummary string         `json:"change_summary"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid body")
 			return
 		}
@@ -1696,7 +1697,7 @@ func (h *NexusHandler) handlePlanCompile(w http.ResponseWriter, r *http.Request)
 		PhaseID   string `json:"phase_id"`
 		PackageID string `json:"package_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.PackageID == "" {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil || body.PackageID == "" {
 		writeError(w, http.StatusBadRequest, "package_id is required")
 		return
 	}
@@ -1729,7 +1730,7 @@ func (h *NexusHandler) handleFlowLeader(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var policy nexus.FlowLeaderPolicy
-	if err := json.NewDecoder(r.Body).Decode(&policy); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&policy); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
@@ -1750,7 +1751,7 @@ func (h *NexusHandler) handleFlowClone(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ProjectID string `json:"project_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.ProjectID) == "" {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil || strings.TrimSpace(body.ProjectID) == "" {
 		writeError(w, http.StatusBadRequest, "destination project_id is required")
 		return
 	}
@@ -1786,7 +1787,7 @@ func (h *NexusHandler) handleFlowDecompose(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var req nexus.FlowDecompositionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -1818,7 +1819,7 @@ func (h *NexusHandler) handlePlanRun(w http.ResponseWriter, r *http.Request) {
 		VerificationCommands  []string `json:"verification_commands"`
 		Autonomous            *bool    `json:"autonomous"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -1901,7 +1902,7 @@ func (h *NexusHandler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Reason string `json:"reason"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body)
 	var (
 		run *runner.MissionRun
 		err error
@@ -2001,7 +2002,7 @@ func (h *NexusHandler) handleIntelligence(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusOK, status)
 	case http.MethodPut:
 		var body coreconfig.IntelligenceConfig
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid body")
 			return
 		}
@@ -2072,7 +2073,7 @@ func (h *NexusHandler) handleClarification(w http.ResponseWriter, r *http.Reques
 		var body struct {
 			Answers map[string]string `json:"answers"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid body")
 			return
 		}
@@ -2131,7 +2132,7 @@ func (h *NexusHandler) handleMissionSchedules(w http.ResponseWriter, r *http.Req
 			CancelID     string                  `json:"cancel_id"`
 			Contract     runner.AutonomyContract `json:"contract"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid body")
 			return
 		}
@@ -2176,7 +2177,7 @@ func (h *NexusHandler) handlePlanRestore(w http.ResponseWriter, r *http.Request)
 	var body struct {
 		Revision int `json:"revision"`
 	}
-	if json.NewDecoder(r.Body).Decode(&body) != nil || body.Revision <= 0 {
+	if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body) != nil || body.Revision <= 0 {
 		writeError(w, http.StatusBadRequest, "revision is required")
 		return
 	}

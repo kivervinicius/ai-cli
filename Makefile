@@ -126,9 +126,19 @@ release-local:
 	go run ./cmd/nexus release
 
 install: build
-	@if [ -n "$(DESTDIR)" ]; then \
+	@set -e; \
+	if [ -n "$(DESTDIR)" ]; then \
 		install -d $(DESTDIR)/usr/local/bin; \
 		install -m 755 $(BINARY) $(DESTDIR)/usr/local/bin/$(BINARY); \
+		echo "Installed $(BINARY) to $(DESTDIR)/usr/local/bin/$(BINARY)"; \
+	else \
+		mkdir -p $(LOCAL_BIN); \
+		rm -f $(LOCAL_BIN)/$(BINARY).tmp; \
+		cp -f $(BINARY) $(LOCAL_BIN)/$(BINARY).tmp; \
+		chmod +x $(LOCAL_BIN)/$(BINARY).tmp; \
+		mv -f $(LOCAL_BIN)/$(BINARY).tmp $(LOCAL_BIN)/$(BINARY); \
+		ln -sf $(LOCAL_BIN)/$(BINARY) $(LOCAL_BIN)/ai; \
+		echo "Installed $(BINARY) to $(LOCAL_BIN)/$(BINARY) (alias: ai)"; \
 	fi
 
 clean:

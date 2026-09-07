@@ -16,7 +16,7 @@ em torno de quatro ideias simples:
    concreto que está executando naquele momento.
 3. **Runtime** — a geração de execução que pode iniciar, parar, reconectar ou
    ser recuperada com estados honestos.
-4. **Terminal real** — PTY/ConPTY supervisionado pelo Core e transmitido ao
+4. **Terminal supervisionado** — PTY/ConPTY supervisionado pelo Core e transmitido ao
    navegador por WebSocket.
 
 ## O que há de especial
@@ -112,4 +112,3 @@ sequenceDiagram
 Para o tutorial completo, consulte [account-selection](../account-selection.pt-BR.md),
 [usage and quota](../usage-and-quota.pt-BR.md) e a seção de troubleshooting do
 README.
-

@@ -1,5 +1,38 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-07 — Spacing, Padding & Surface Architecture Refactor (Maestro, Overview & Settings)
+
+### Summary
+Addressed padding and spacing issues across the frontend, with primary focus on the **Orquestrador Maestro** screen and adjacent surfaces:
+
+1. **Maestro Surface Spacing & Double Padding Elimination**:
+   - **Root Cause**: `WorkspaceSurfaceHost.tsx` previously wrapped `surface.type === 'maestro'` inside `<div className="nx-surface-scroll">` (which applied `clamp(16px, 2.5vw, 28px)` padding), while `MaestroSurface.module.scss` simultaneously applied another `clamp(16px, 2.4vw, 32px)` on `.container`. This produced ~60px of dead padding horizontally and vertically, wasting layout space and squishing content.
+   - **Fix**: Removed redundant `.nx-surface-scroll` wrapper in `WorkspaceSurfaceHost.tsx`. Added dedicated `.surface` class as the top-level scroll container with lean `padding: clamp(12px, 1.8vw, 20px)`.
+   - **OpenDesign UI Compactness**:
+     - Compacted `.hero` padding from `28px` to `clamp(14px, 1.8vw, 20px)` and reduced hero title size to responsive `clamp(1.15rem, 1.4vw, 1.35rem)`.
+     - Compacted `.infoCard` from `16px` to `10px 14px; gap: 4px;` and `.skillsGrid` / `.skillItem` from `16px` to `12px 14px; gap: 8px;`.
+     - Reduced search box height (`min-height: 32px`) and category filter pills (`min-height: 26px; padding: 3px 8px`).
+     - Improved mobile breakpoint (`<=560px`): `padding: 10px; gap: 12px;` with full-width search.
+
+2. **Maestro Modal & Workspace OS CSS Spacing**:
+   - Adjusted `.nx-maestro-status-header > div:nth-child(2)` with `flex: 1; min-width: 0;` so the refresh action button aligns neatly to the right.
+   - Increased `.nx-skills-grid` max-height to `160px` with fluid scroll.
+
+3. **Project Overview & Settings Inline Styles Migration**:
+   - Created `web/src/features/overview/ProjectOverviewSurface.module.scss` and migrated all remaining static inline styles (`.branchCode`, `.updateAlert`, `.updateAlertContent`, `.updateAlertText`, `.fleetContainer`, `.fleetStatusBadges`, `.emptyActions`, `.agentCardContent`, `.agentInfo`, `.agentName`, `.agentSubtitle`, `.agentActions`).
+   - Replaced inline styles in `web/src/features/settings/SettingsSurface.tsx` (theme preset items, name typography, swatches, and update badge) with module classes in `SettingsSurface.module.scss`.
+   - Fixed optional chaining in `web/src/nexus/AgentTerminal.tsx` (`__triggerReconnect?.()`).
+
+### Verification
+- `npm run check:styles`: PASS (100% compliant with SCSS Modules and allowlist)
+- `npm run lint:styles`: PASS (Stylelint 0 errors)
+- `npm run format:check`: PASS (Prettier 100%)
+- `npm run lint`: PASS (ESLint 0 errors)
+- `npm run typecheck`: PASS (TypeScript tsc --noEmit 0 errors)
+- `npm run test`: PASS (61/61 test files, 310/310 tests)
+- `npm run test:e2e-hardening`: PASS (Axe-core a11y, 320px–1440px responsive zero obstruction, density delta)
+- `make web-verify`: PASS (All 10 quality gates green)
+
 ## 2026-09-07 — OpenDesign UI/UX Evaluation & Complete Hardening
 
 ### Summary
@@ -2909,3 +2942,57 @@ build` PASS e Web reiniciado em HTTP 200.
 - Evidência: `make build`, sincronização do bundle embutido e smoke Playwright
   real passaram; helper com `opacity: 0`/`position: absolute`, nenhum `W` visível
   e nenhum erro fatal de console.
+- Na confirmação final foi encontrado um processo antigo de
+  `/home/desenvolvedor/.local/bin/nexus` ocupando a porta 3000; ele foi
+  substituído pelo binário `./nexus` compilado nesta worktree. O smoke foi
+  repetido contra essa instância correta.
+
+## 2026-09-07 — Restauração dos tokens `--nx-spacing-*`
+
+- A auditoria encontrou consumidores de `--nx-spacing-8` sem declaração na
+  escala global de tokens.
+- `workspace-os.css` agora define a escala canônica de espaçamento (base de
+  4px, incluindo `--nx-spacing-0`…`--nx-spacing-16`) e aliases compatíveis
+  `--nx-space-*` para superfícies legadas.
+- O gate de UI passou a verificar `--nx-spacing-8` no bundle final.
+- `bun run build`, `bun run typecheck`, `bun run lint:styles`, `make build` e
+  verificação dos tokens no bundle — PASS.
+- A primeira instalação foi para o `HOME` do perfil do Codex, diferente do
+  binário usado pelo serviço. A instalação final foi feita explicitamente com
+  `LOCAL_BIN=/home/desenvolvedor/.local/bin make install-local`; CSS servido e
+  valor calculado no navegador confirmados como `--nx-spacing-4: 16px`.
+
+## 2026-09-07 — Semântica de `make install`
+
+- O alvo `make install` foi ajustado para instalar localmente em `$(LOCAL_BIN)`
+  quando `DESTDIR` não for informado, eliminando a falsa impressão de que só
+  compilar atualiza o executável em uso.
+- O fluxo de empacotamento foi preservado: com `DESTDIR`, a instalação continua
+  indo para `$(DESTDIR)/usr/local/bin`.
+
+## 2026-09-07 — Capturas documentais isoladas e evidência de terminal
+
+- `web/scripts/docs-capture.mjs` passou a iniciar o Nexus com diretórios de
+  dados temporários, workspace sintético e shell `/bin/sh` com prompt neutro;
+  a captura exige o marcador `__NEXUS_DOCS_TERMINAL_OK__` no xterm antes de
+  marcar VIS-005 como PASS.
+- O endpoint de providers usa apenas `demo-provider`/`synthetic-fixture` no
+  modo `NEXUS_DOCS_CAPTURE=1`, impedindo que versões instaladas no host vazem
+  para screenshots.
+- `scripts/docs-verify.mjs` rejeita paths/projetos reais, o cenário antigo
+  `real-local-bootstrap`, manifestos sem `SYNTHETIC` e terminal sem marcador.
+- README PT/EN/ES, Visual Tour, Terminals e Community Preview distinguem
+  evidência de captura, suporte de plataforma e estado real do runtime.
+- Verificação: captura Web isolada PASS; `go test ./internal/control/web` PASS;
+  `node scripts/docs-verify.mjs` PASS com VIS-001…VIS-011; revisão visual
+  confirmou somente dados sintéticos.
+
+## 2026-09-07 — Bootstrap Web sem auth inválida
+
+- Corrigido o fluxo em que `nexus web` abria a URL base sem sessão depois da
+  remoção do token da query.
+- `Server.BootstrapURL()` agora usa fragmento; a SPA faz POST para bootstrap,
+  remove o fragmento do histórico e valida `/api/v1/session` com cookie.
+- `nexus web open/url` reutiliza o BootstrapURL persistido e reconstrói o
+  fragmento para estados antigos.
+- Testes unitários Web/Go, typecheck, build e validação real com `curl` passaram.

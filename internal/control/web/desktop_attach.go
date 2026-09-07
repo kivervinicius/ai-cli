@@ -20,17 +20,8 @@ func AttachLoopbackSession(state ListenState) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(state.BootstrapURL) == "" {
-		return nil, fmt.Errorf("loopback web state has no bootstrap URL")
-	}
-	bootstrapURL, err := validatedLoopbackURL(state.BootstrapURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid loopback bootstrap URL: %w", err)
-	}
-	base, _ := url.Parse(baseURL)
-	bootstrap, _ := url.Parse(bootstrapURL)
-	if base.Scheme != bootstrap.Scheme || !strings.EqualFold(base.Host, bootstrap.Host) {
-		return nil, fmt.Errorf("loopback bootstrap URL has a different origin")
+	if strings.TrimSpace(state.BootstrapToken) == "" {
+		return nil, fmt.Errorf("loopback web state has no bootstrap token")
 	}
 	client := &http.Client{
 		Timeout: 3 * time.Second,
@@ -38,17 +29,19 @@ func AttachLoopbackSession(state ListenState) (*Session, error) {
 			return http.ErrUseLastResponse
 		},
 	}
-	bootstrapReq, err := http.NewRequest(http.MethodGet, bootstrapURL, nil)
+	bootstrapReq, err := http.NewRequest(http.MethodPost, baseURL+"/api/v1/auth/bootstrap",
+		strings.NewReader(fmt.Sprintf(`{"token":%q}`, state.BootstrapToken)))
 	if err != nil {
 		return nil, fmt.Errorf("create loopback bootstrap request: %w", err)
 	}
+	bootstrapReq.Header.Set("Content-Type", "application/json")
 	bootstrapResp, err := client.Do(bootstrapReq)
 	if err != nil {
-		return nil, fmt.Errorf("exchange loopback bootstrap URL: %w", err)
+		return nil, fmt.Errorf("exchange loopback bootstrap token: %w", err)
 	}
 	defer bootstrapResp.Body.Close()
-	_, _ = io.Copy(io.Discard, bootstrapResp.Body)
-	if bootstrapResp.StatusCode != http.StatusFound && bootstrapResp.StatusCode != http.StatusSeeOther {
+	if bootstrapResp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, bootstrapResp.Body)
 		return nil, fmt.Errorf("loopback bootstrap exchange returned HTTP %d", bootstrapResp.StatusCode)
 	}
 
@@ -60,8 +53,10 @@ func AttachLoopbackSession(state ListenState) (*Session, error) {
 		}
 	}
 	if sessionToken == "" {
+		_, _ = io.Copy(io.Discard, bootstrapResp.Body)
 		return nil, fmt.Errorf("loopback bootstrap exchange returned no session cookie")
 	}
+	_, _ = io.Copy(io.Discard, bootstrapResp.Body)
 
 	sessionReq, err := http.NewRequest(http.MethodGet, baseURL+"/api/v1/session", nil)
 	if err != nil {

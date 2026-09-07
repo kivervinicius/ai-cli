@@ -100,3 +100,61 @@
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 8px;
 }
+
+.updateBadge {
+  font-size: 10px;
+}
+
+.themePresetItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--nx-border);
+  background: var(--nx-bg-elevated);
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &[data-selected='true'] {
+    border: 1.5px solid var(--nx-accent);
+    background: var(--nx-accent-soft);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--nx-accent);
+    outline-offset: -2px;
+  }
+}
+
+.themePresetName {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.857rem;
+  font-weight: 500;
+
+  &[data-selected='true'] {
+    font-weight: 650;
+  }
+}
+
+.themeSwatches {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.themeSwatchBg {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--nx-border);
+}
+
+.themeSwatchAccent {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}

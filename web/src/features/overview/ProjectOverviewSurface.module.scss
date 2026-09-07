@@ -1,0 +1,72 @@
+@use '../../styles/tokens';
+@use '../../styles/typography';
+
+.branchCode {
+  color: var(--nx-accent-text);
+}
+
+.updateAlert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  gap: 12px;
+}
+
+.updateAlertContent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.updateAlertText {
+  margin: 0;
+  font-size: 0.857rem;
+  color: var(--nx-muted);
+}
+
+.fleetContainer {
+  display: grid;
+  gap: 16px;
+}
+
+.fleetStatusBadges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.emptyActions {
+  margin-top: 4px;
+  justify-content: center;
+}
+
+.agentCardContent {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.agentInfo {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.agentName {
+  font-size: 1rem;
+  display: block;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.agentSubtitle {
+  color: var(--nx-muted);
+  font-size: 0.821rem;
+}
+
+.agentActions {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--nx-border);
+}

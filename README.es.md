@@ -2,7 +2,7 @@
 
 **Una estación de trabajo local para operar coding agents.**
 
-Proyectos, agentes persistentes, terminales reales, proveedores, worktrees y automatización en una experiencia integrada de Web, Desktop y CLI.
+Proyectos, agentes persistentes, sesiones de terminal supervisadas, proveedores, worktrees y automatización en una experiencia integrada de Web, Desktop y CLI.
 
 <p align="center"><a href="README.md">Português</a> · <a href="README.en.md">English</a> · <strong>Español</strong></p>
 
@@ -10,7 +10,7 @@ Proyectos, agentes persistentes, terminales reales, proveedores, worktrees y aut
 
 ## TL;DR
 
-IAPro Nexus es una estación de trabajo local para trabajar con coding agents. Organiza proyectos, agentes persistentes, sesiones, terminales reales, proveedores, worktrees y uso/cuota alrededor de un Core común. El camino más sencillo es: abrir un proyecto, crear una AI Session, elegir un proveedor y trabajar en la terminal. Composer, Flow, Mission y Maestro son capas progresivas, no requisitos para el trabajo directo.
+IAPro Nexus es una estación de trabajo local para trabajar con coding agents. Organiza proyectos, agentes persistentes, sesiones, terminales supervisados, proveedores, worktrees y uso/cuota alrededor de un Core común. El camino más sencillo es: abrir un proyecto, crear una AI Session, elegir un proveedor y trabajar en la terminal. Composer, Flow, Mission y Maestro son capas progresivas, no requisitos para el trabajo directo.
 
 ## Empieza en minutos
 

@@ -462,7 +462,9 @@ export const nexus = {
       body: JSON.stringify(data),
     }),
   compilePackagePrompt: (planId: string, packageId: string, phaseId?: string) =>
-    request<any>(`/api/v1/plans/${planId}/compile`, {
+    request<{ compiled_prompt: string; package_id: string }>(
+      `/api/v1/plans/${planId}/compile`,
+      {
       method: 'POST',
       body: JSON.stringify({ package_id: packageId, phase_id: phaseId }),
     }),
@@ -530,7 +532,15 @@ export const nexus = {
       method: 'POST',
       body: JSON.stringify({ cancel_id: scheduleId }),
     }),
-  recommendResources: (requirements: any, policy?: string) =>
+  recommendResources: (
+    requirements: {
+      task_kind: string;
+      role: string;
+      current_provider?: string;
+      prefer_provider?: string;
+    },
+    policy?: string,
+  ) =>
     request<import('../types').RecommendationResult>('/api/v1/resources/recommend', {
       method: 'POST',
       body: JSON.stringify({ requirements, policy }),

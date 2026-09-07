@@ -37,10 +37,11 @@ type persistedAuth struct {
 // ListenState is the on-disk pointer to the running Web Control Center so
 // `nexus web open` can re-auth from any terminal.
 type ListenState struct {
-	URL          string `json:"url"`
-	BootstrapURL string `json:"bootstrap_url"`
-	PID          int    `json:"pid"`
-	Loopback     bool   `json:"loopback"`
+	URL            string `json:"url"`
+	BootstrapURL   string `json:"bootstrap_url"`
+	BootstrapToken string `json:"bootstrap_token,omitempty"`
+	PID            int    `json:"pid"`
+	Loopback       bool   `json:"loopback"`
 }
 
 func loopbackAuthStoreDir() string {
@@ -132,6 +133,7 @@ func (a *AuthManager) loadPersistedLocked() {
 func writeListenState(state ListenState) error {
 	if !state.Loopback {
 		state.BootstrapURL = ""
+		state.BootstrapToken = ""
 	}
 	dir := loopbackAuthStoreDir()
 	if dir == "" {

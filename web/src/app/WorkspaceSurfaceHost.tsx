@@ -383,11 +383,7 @@ export const WorkspaceSurfaceHost: React.FC<{
     }
 
     if (surface.type === 'maestro') {
-      return (
-        <div className="nx-surface-scroll">
-          <MaestroSurface />
-        </div>
-      );
+      return <MaestroSurface />;
     }
 
     if (surface.type === 'missions') {

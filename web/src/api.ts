@@ -50,6 +50,21 @@ export function getWebSocketEndpoint(path: string): string {
   return `${url}${delimiter}token=${encodeURIComponent(token)}`;
 }
 
+function consumeBrowserBootstrapToken(): string {
+  if (typeof window === 'undefined' || !window.location.hash) return '';
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  const token = params.get('nexus_bootstrap') || '';
+  if (!token) return '';
+
+  // Remove the token before navigation or subsequent requests can retain it.
+  window.history.replaceState(
+    null,
+    typeof document === 'undefined' ? '' : document.title,
+    `${window.location.pathname}${window.location.search}`,
+  );
+  return token;
+}
+
 function notifySessionExpired() {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('nexus:session-expired'));
@@ -58,6 +73,15 @@ function notifySessionExpired() {
 
 export async function initSession(): Promise<BrowserSession> {
   try {
+    const bootstrapToken = consumeBrowserBootstrapToken();
+    if (bootstrapToken && !isDesktopApp()) {
+      const bootstrapResponse = await fetch('/api/v1/auth/bootstrap', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: bootstrapToken }),
+      });
+      if (!bootstrapResponse.ok) return { authenticated: false };
+    }
     if (isDesktopApp()) {
       try {
         const bridge = getPlatformBridge();

@@ -56,6 +56,11 @@ import { usePtyLiveChromeOptional } from '../workspace/PtyLiveChromeContext';
 import { canFitTerminal, canRunTerminalFrame } from './terminalFitModel';
 import styles from './AgentTerminal.module.scss';
 
+interface AgentTerminalHostElement extends HTMLDivElement {
+  __triggerReconnect?: () => void;
+  __takeControl?: () => void;
+}
+
 export interface AgentTerminalSkill {
   id: string;
   name?: string;
@@ -217,7 +222,7 @@ export const AgentTerminal: React.FC<{
     const redrawTimers: number[] = [];
     let openFrame: number | undefined;
 
-    (container as any).__triggerReconnect = () => {
+    (container as AgentTerminalHostElement).__triggerReconnect = () => {
       stopReconnect = false;
       reconnectAttempt = 0;
       lastError = '';
@@ -228,7 +233,7 @@ export const AgentTerminal: React.FC<{
       connect();
     };
 
-    (container as any).__takeControl = () => {
+    (container as AgentTerminalHostElement).__takeControl = () => {
       const ws = wsRef.current;
       if (ws?.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'lease_acquire' }));
@@ -938,7 +943,7 @@ export const AgentTerminal: React.FC<{
   const windowChrome = chrome === 'window';
 
   const takeControl = () => {
-    const host = containerRef.current as any;
+    const host = containerRef.current as AgentTerminalHostElement | null;
     if (typeof host?.__takeControl === 'function') {
       host.__takeControl();
       return;
@@ -1349,8 +1354,11 @@ export const AgentTerminal: React.FC<{
               onClick={() => {
                 setMessage(t('terminal.reconnectingTransport'));
                 setConnection('CONNECTING');
-                if (containerRef.current && (containerRef.current as any).__triggerReconnect) {
-                  (containerRef.current as any).__triggerReconnect();
+                if (
+                  containerRef.current &&
+                  (containerRef.current as AgentTerminalHostElement).__triggerReconnect
+                ) {
+                  (containerRef.current as AgentTerminalHostElement).__triggerReconnect?.();
                 } else {
                   setConnectNonce((n) => n + 1);
                 }
