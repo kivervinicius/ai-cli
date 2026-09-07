@@ -8,7 +8,7 @@
 
 .sectionLabel {
   display: block;
-  font-size: 12px;
+  font-size: 0.857rem;
   font-weight: 700;
   margin-bottom: 8px;
   color: var(--nx-text-soft);
@@ -61,12 +61,12 @@
 }
 
 .presetTitle {
-  font-size: 12.5px;
+  font-size: 0.893rem;
   display: block;
 }
 
 .presetDesc {
-  font-size: 11px;
+  font-size: 0.786rem;
   color: var(--nx-muted);
   line-height: 1.3;
   display: block;
@@ -83,12 +83,12 @@
 }
 
 .fieldSublabel {
-  font-size: 11.5px;
+  font-size: 0.821rem;
   color: var(--nx-muted);
 }
 
 .hintText {
-  font-size: 11px;
+  font-size: 0.786rem;
   color: var(--nx-subtle);
 }
 
@@ -104,12 +104,12 @@
   align-items: center;
   gap: 6px;
   margin-bottom: 4px;
-  font-size: 11.5px;
+  font-size: 0.821rem;
   color: var(--nx-subtle);
 }
 
 .previewCode {
-  font-size: 12px;
+  font-size: 0.857rem;
   color: var(--nx-accent-text);
   word-break: break-all;
 }

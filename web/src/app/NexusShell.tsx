@@ -14,6 +14,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { IconButton } from '../design-system';
 import { LanguagePicker } from './components/LanguagePicker';
+import { FontScalePicker } from './components/FontScalePicker';
 import { WorkspaceTaskbar } from '../workspace/WorkspaceTaskbar';
 import { nexus } from '../nexus/api';
 import { AttentionIntermediationBanner } from '../components/AttentionIntermediationBanner';
@@ -168,6 +169,9 @@ export const NexusShell: React.FC<{
 
               {/* Language Switcher */}
               <LanguagePicker />
+
+              {/* Reading accessibility is an immediate toolbar preference. */}
+              <FontScalePicker />
 
               {/* Command Palette Trigger */}
               <button

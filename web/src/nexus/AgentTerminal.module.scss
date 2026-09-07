@@ -81,7 +81,7 @@
   padding: 0 5px;
   min-width: 16px;
   height: 16px;
-  font-size: 10px;
+  font-size: 0.714rem;
   font-weight: 700;
   border-radius: var(--nx-radius-full);
   background: var(--nx-accent);
@@ -133,7 +133,7 @@
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  font-size: 11px;
+  font-size: 0.786rem;
   font-family: inherit;
   font-weight: 500;
   border-radius: var(--nx-radius-full);
@@ -210,7 +210,7 @@
 }
 
 .skillCategoryBadge {
-  font-size: 10px;
+  font-size: 0.714rem;
   padding: 1px 6px;
   border-radius: var(--nx-radius-sm);
   background: var(--nx-surface-3);
@@ -220,7 +220,7 @@
 }
 
 .skillRiskBadge {
-  font-size: 10px;
+  font-size: 0.714rem;
   padding: 1px 5px;
   border-radius: var(--nx-radius-sm);
   font-weight: 600;
@@ -260,7 +260,7 @@
 }
 
 .skillTriggerTag {
-  font-size: 10px;
+  font-size: 0.714rem;
   font-family: var(--nx-font-mono);
   padding: 1px 5px;
   background: var(--nx-bg);
@@ -284,7 +284,7 @@
   align-items: center;
   gap: 5px;
   padding: 3px 8px;
-  font-size: 11px;
+  font-size: 0.786rem;
   font-family: inherit;
   border-radius: var(--nx-radius-sm);
   border: 1px solid var(--nx-border);
@@ -473,7 +473,7 @@
   color: var(--nx-text-soft);
   padding: 0 4px;
   height: 100%;
-  font-size: 10px;
+  font-size: 0.714rem;
   font-family: var(--nx-font-mono);
   cursor: pointer;
   transition: color 0.12s ease;
@@ -497,7 +497,7 @@
   background: color-mix(in srgb, var(--nx-surface-2) 92%, transparent);
   backdrop-filter: blur(8px);
   color: var(--nx-text);
-  font-size: 11px;
+  font-size: 0.786rem;
   font-weight: 500;
   cursor: pointer;
   z-index: 5;

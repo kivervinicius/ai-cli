@@ -322,7 +322,7 @@ export const ComposerSurface: React.FC<{
                 border: '1px solid var(--nx-border)',
                 resize: 'vertical',
                 fontFamily: 'inherit',
-                fontSize: 13,
+                fontSize: '0.929rem',
               }}
               disabled={busy}
             />
@@ -377,7 +377,7 @@ export const ComposerSurface: React.FC<{
                 value: s.id,
                 label: `${s.title || `Sessão ${s.id.slice(-6)}`} · ${s.state}`,
               }))}
-              selectStyle={{ fontSize: 12, height: 28 }}
+              selectStyle={{ fontSize: '0.857rem', height: 28 }}
             />
           </div>
         )}
@@ -417,7 +417,7 @@ export const ComposerSurface: React.FC<{
                 value: s.id,
                 label: `${s.title || `Sessão ${s.id.slice(-6)}`} (${s.state})`,
               }))}
-              selectStyle={{ fontSize: 12, height: 28 }}
+              selectStyle={{ fontSize: '0.857rem', height: 28 }}
             />
           )}
           <Badge tone={view.session.state === 'FINALIZED' ? 'success' : 'brand'}>
@@ -484,7 +484,7 @@ export const ComposerSurface: React.FC<{
                   background: 'var(--nx-bg-elevated)',
                   border: '1px solid var(--nx-border)',
                   color: 'var(--nx-text)',
-                  fontSize: 13,
+                  fontSize: '0.929rem',
                   lineHeight: 1.45,
                   fontFamily: 'inherit',
                 }}
@@ -548,7 +548,7 @@ export const ComposerSurface: React.FC<{
                     padding: '4px 8px',
                     borderRadius: 6,
                     background: 'var(--nx-surface)',
-                    fontSize: 12,
+                    fontSize: '0.857rem',
                   }}
                 >
                   <div style={{ flex: 1 }}>
@@ -641,7 +641,7 @@ export const ComposerSurface: React.FC<{
                         onChange={(e) =>
                           setUnknownAnswers({ ...unknownAnswers, [unknown.id]: e.target.value })
                         }
-                        style={{ fontSize: 12, padding: '4px 8px' }}
+                        style={{ fontSize: '0.857rem', padding: '4px 8px' }}
                         disabled={busy}
                       />
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

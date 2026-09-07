@@ -182,7 +182,7 @@ export const ProjectOverviewSurface: React.FC<{
             <ArrowUpCircle size={18} className="nx-spin-slow" />
             <div>
               <strong>{t('settings.updates', 'Atualização disponível')}</strong>
-              <p style={{ margin: 0, fontSize: '12px', color: 'var(--nx-muted)' }}>
+              <p style={{ margin: 0, fontSize: '0.857rem', color: 'var(--nx-muted)' }}>
                 Nexus v{updateInfo.nexus_version} · Maestro{' '}
                 {updateInfo.maestro_latest_version
                   ? `v${updateInfo.maestro_latest_version}`
@@ -262,7 +262,7 @@ export const ProjectOverviewSurface: React.FC<{
                   <div style={{ minWidth: 0, overflow: 'hidden' }}>
                     <strong
                       style={{
-                        fontSize: '14px',
+                        fontSize: '1.000rem',
                         display: 'block',
                         textOverflow: 'ellipsis',
                         overflow: 'hidden',
@@ -271,7 +271,7 @@ export const ProjectOverviewSurface: React.FC<{
                     >
                       {agent.name || agent.id}
                     </strong>
-                    <small style={{ color: 'var(--nx-muted)', fontSize: '11.5px' }}>
+                    <small style={{ color: 'var(--nx-muted)', fontSize: '0.821rem' }}>
                       {agent.role || t('overview.developmentAgent')} · {agent.id}
                     </small>
                   </div>

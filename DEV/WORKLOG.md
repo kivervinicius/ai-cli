@@ -2705,3 +2705,21 @@ build` PASS e Web reiniciado em HTTP 200.
 - `html` passou a aplicar o fator de escala uma única vez; densidades compacta
   e confortável também usam rem.
 - `make build` passou e o servidor foi reiniciado na porta 3000.
+
+## 2026-09-07 — Escala de leitura no toolbar
+
+- Adicionado `FontScalePicker` reutilizável no toolbar, com opções 90%, 100%,
+  110% e 120% e persistência pelo `ThemeProvider` existente.
+- O controle permanece detalhado em Configurações, mas a mudança cotidiana não
+  exige sair da tela atual.
+- Build, TypeScript, Stylelint, testes de tema e Go focado passaram; servidor
+  reiniciado com health `status: ok`.
+
+## 2026-09-07 — Migração completa da tipografia para rem
+
+- Varredura encontrou 399 ocorrências tipográficas; fontes literais em px foram
+  convertidas em `rem` no shell, terminais, modais, Composer e Plan Builder.
+- Incluídos estilos inline estáticos, mantendo somente dimensões não tipográficas
+  em px quando apropriado.
+- Busca final de fontes em px, format check, typecheck, Stylelint, testes,
+  build e visual QA passaram.

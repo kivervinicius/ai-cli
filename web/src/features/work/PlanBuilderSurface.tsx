@@ -1261,7 +1261,7 @@ export const PlanBuilderSurface: React.FC<{
           >
             <Route size={14} /> COMPOSER · FLOW DRAFT
           </span>
-          <h1 style={{ fontSize: '24px', fontWeight: 600, margin: '4px 0' }}>
+          <h1 style={{ fontSize: '1.714rem', fontWeight: 600, margin: '4px 0' }}>
             Flow Canvas & Step Inspector
           </h1>
           <p style={{ color: 'var(--color-text-muted)' }}>
@@ -1419,7 +1419,9 @@ export const PlanBuilderSurface: React.FC<{
             <>
               <div className="nx-flow-editor-toolbar">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 12, color: 'var(--nx-muted)' }}>Autonomy policy:</span>
+                  <span style={{ fontSize: '0.857rem', color: 'var(--nx-muted)' }}>
+                    Autonomy policy:
+                  </span>
                   <Select
                     value={flowDraft.policy}
                     onChange={(val) =>
@@ -1561,7 +1563,7 @@ export const PlanBuilderSurface: React.FC<{
                                     }}
                                   />
                                   <div>
-                                    <strong style={{ fontSize: '15px' }}>{pkg.title}</strong>
+                                    <strong style={{ fontSize: '1.071rem' }}>{pkg.title}</strong>
                                     <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
                                       <Badge
                                         tone={
@@ -1598,7 +1600,7 @@ export const PlanBuilderSurface: React.FC<{
 
                               <p
                                 style={{
-                                  fontSize: '13px',
+                                  fontSize: '0.929rem',
                                   color: 'var(--color-text-muted)',
                                   margin: '6px 0',
                                 }}
@@ -1612,7 +1614,7 @@ export const PlanBuilderSurface: React.FC<{
                                   gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                                   gap: 8,
                                   marginTop: 10,
-                                  fontSize: 11,
+                                  fontSize: '0.786rem',
                                 }}
                               >
                                 <label style={{ display: 'grid', gap: 4 }}>
@@ -1699,7 +1701,7 @@ export const PlanBuilderSurface: React.FC<{
                               </div>
 
                               {(pkg.acceptance_criteria || []).length > 0 && (
-                                <div style={{ marginTop: '8px', fontSize: '12px' }}>
+                                <div style={{ marginTop: '8px', fontSize: '0.857rem' }}>
                                   <span
                                     style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}
                                   >
@@ -1776,7 +1778,7 @@ export const PlanBuilderSurface: React.FC<{
                     gridTemplateColumns: '1fr auto auto',
                     gap: 6,
                     alignItems: 'center',
-                    fontSize: 11,
+                    fontSize: '0.786rem',
                   }}
                 >
                   <span>
@@ -1804,7 +1806,7 @@ export const PlanBuilderSurface: React.FC<{
                     padding: 8,
                     border: '1px solid var(--color-border)',
                     borderRadius: 6,
-                    fontSize: 11,
+                    fontSize: '0.786rem',
                   }}
                 >
                   Rev {revisionDiff.from_revision} → {revisionDiff.to_revision}: +
@@ -1856,7 +1858,7 @@ export const PlanBuilderSurface: React.FC<{
                 <div
                   key={item.id}
                   style={{
-                    fontSize: 11,
+                    fontSize: '0.786rem',
                     color: 'var(--color-text-muted)',
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -1918,7 +1920,7 @@ export const PlanBuilderSurface: React.FC<{
                   </Badge>
                 </div>
 
-                <div style={{ fontSize: '13px', marginBottom: '12px' }}>
+                <div style={{ fontSize: '0.929rem', marginBottom: '12px' }}>
                   <div>
                     Progresso:{' '}
                     {
@@ -1927,12 +1929,12 @@ export const PlanBuilderSurface: React.FC<{
                     }{' '}
                     de {(activeRun.package_runs || []).length} pacotes verificados
                   </div>
-                  <div style={{ color: 'var(--nx-muted)', fontSize: '12px' }}>
+                  <div style={{ color: 'var(--nx-muted)', fontSize: '0.857rem' }}>
                     Snapshot: {activeRun.execution_snapshot_id || '—'} · Rev{' '}
                     {activeRun.plan_revision} · Iteração {activeRun.total_iterations}/
                     {activeRun.contract.max_total_iterations}
                   </div>
-                  <div style={{ color: 'var(--nx-muted)', fontSize: '12px' }}>
+                  <div style={{ color: 'var(--nx-muted)', fontSize: '0.857rem' }}>
                     Tentativas permitidas: {activeRun.contract.max_retries} | Verificação:{' '}
                     {activeRun.contract.require_verification ? 'Ativa' : 'Desativada'}
                   </div>
@@ -1960,7 +1962,7 @@ export const PlanBuilderSurface: React.FC<{
                           idx === activeRun.current_pkg_index
                             ? '1px solid color-mix(in srgb, var(--nx-accent) 35%, var(--nx-border))'
                             : '1px solid var(--nx-border)',
-                        fontSize: '12px',
+                        fontSize: '0.857rem',
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
@@ -2011,7 +2013,13 @@ export const PlanBuilderSurface: React.FC<{
                     <XCircle size={14} /> Cancel
                   </Button>
                 </div>
-                <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '10px 0 0' }}>
+                <p
+                  style={{
+                    fontSize: '0.786rem',
+                    color: 'var(--color-text-muted)',
+                    margin: '10px 0 0',
+                  }}
+                >
                   The runner advances automatically. Take Control pauses autonomy and opens the
                   current persistent Agent; Return to Mission resumes from the persisted checkpoint.
                 </p>
@@ -2039,7 +2047,12 @@ export const PlanBuilderSurface: React.FC<{
 
             {compiledPrompt ? (
               <div
-                style={{ fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}
+                style={{
+                  fontSize: '0.857rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                }}
               >
                 <div>
                   <strong style={{ color: 'var(--color-text-muted)' }}>
@@ -2082,7 +2095,7 @@ export const PlanBuilderSurface: React.FC<{
                 </div>
               </div>
             ) : (
-              <p style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
+              <p style={{ fontSize: '0.929rem', color: 'var(--color-text-muted)' }}>
                 Selecione &quot;Compilar Prompt&quot; em qualquer pacote de trabalho para
                 inspecionar o escopo determinístico compilado.
               </p>

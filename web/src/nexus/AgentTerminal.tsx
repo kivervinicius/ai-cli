@@ -1128,7 +1128,7 @@ export const AgentTerminal: React.FC<{
 
           <div className={styles.skillsList}>
             {filteredSkills.length === 0 ? (
-              <div className="nx-text-muted nx-p-4 nx-text-center" style={{ fontSize: '12px' }}>
+              <div className="nx-text-muted nx-p-4 nx-text-center" style={{ fontSize: '0.857rem' }}>
                 {availableSkills.length === 0
                   ? t('terminal.skillsLoading', 'Carregando catálogo dinâmico de skills...')
                   : t('terminal.skillsEmpty', 'Nenhuma skill encontrada para o filtro atual.')}

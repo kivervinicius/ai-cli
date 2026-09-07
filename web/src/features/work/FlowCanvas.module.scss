@@ -15,7 +15,7 @@
   justify-content: space-between;
   gap: 12px;
   color: var(--nx-muted);
-  font: 10.5px var(--nx-font-mono);
+  font: 0.75rem var(--nx-font-mono);
 }
 
 .viewport {
@@ -72,7 +72,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12.5px;
+  font-size: 0.893rem;
 }
 .nodeMeta {
   display: flex;
@@ -82,7 +82,7 @@
 .node small,
 .nodeAgent {
   color: var(--nx-muted);
-  font-size: 10.5px;
+  font-size: 0.75rem;
 }
 
 .invalid {

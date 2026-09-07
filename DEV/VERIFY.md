@@ -583,6 +583,10 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
   `git diff --check` — PASS. Existing ESLint warnings remain warnings only.
 - Typography tokens use `rem`; visual verification was repeated after the
   migration and the rebuilt server health endpoint returned `status: ok`.
+- `FontScalePicker` no toolbar foi validado por typecheck/build e usa o mesmo
+  `ThemeProvider` da tela Configurações, sem estado paralelo.
+- Tipografia completa: nenhuma declaração `font-size`, `font` ou `fontSize` em
+  px permanece em `web/src`; o servidor recompilado respondeu `status: ok`.
 
 <!-- frontend-verify:latest -->
 ## Frontend gate — 2026-09-07T13:20:49Z

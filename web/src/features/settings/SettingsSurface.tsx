@@ -330,7 +330,7 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
                   <small>{t('settings.workspaceDescription')}</small>
                 </div>
               </div>
-              <p className="nx-muted-copy" style={{ fontSize: '12px' }}>
+              <p className="nx-muted-copy" style={{ fontSize: '0.857rem' }}>
                 Restaura o layout original do projeto ativo, preservando workspaces e chaves
                 seguras.
               </p>
@@ -438,7 +438,7 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 8,
-                    fontSize: '13px',
+                    fontSize: '0.929rem',
                     maxWidth: 480,
                   }}
                 >
@@ -802,7 +802,7 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
                 color: 'var(--nx-text)',
                 cursor: 'pointer',
                 textAlign: 'left',
-                fontSize: 13,
+                fontSize: '0.929rem',
                 fontWeight: 650,
               }}
             >
@@ -814,7 +814,7 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
                 )}
                 <div>
                   <div style={{ color: 'var(--nx-text)' }}>{cat.title}</div>
-                  <div style={{ fontSize: 11, color: 'var(--nx-muted)', fontWeight: 400 }}>
+                  <div style={{ fontSize: '0.786rem', color: 'var(--nx-muted)', fontWeight: 400 }}>
                     {cat.description}
                   </div>
                 </div>
@@ -884,7 +884,7 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
                             display: 'flex',
                             alignItems: 'center',
                             gap: 6,
-                            fontSize: 12,
+                            fontSize: '0.857rem',
                             fontWeight: isSelected ? 650 : 500,
                           }}
                         >

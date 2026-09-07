@@ -102,6 +102,17 @@ normal. O `html` aplica a escala do usuário uma única vez; isso mantém zoom d
 navegador, preferências de acessibilidade e densidade compacta/comfortable
 coerentes sem misturar `px` fixos com tokens escaláveis.
 
+Ajuste de leitura é uma preferência frequente e foi promovido ao toolbar:
+`FontScalePicker` oferece 90%, 100%, 110% e 120% sem exigir navegação até
+Configurações. Configurações continua sendo o local para a descrição detalhada
+de acessibilidade e densidade; o toolbar é o atalho operacional.
+
+Uma segunda auditoria encontrou que tokens em `rem` não bastavam: o shell,
+terminais, modais, Composer e Plan Builder ainda possuíam fontes literais em
+pixels. Essas declarações, incluindo estilos inline estáticos, foram migradas
+para `rem`; a busca final não encontra mais `font-size`/`font`/`fontSize` literal
+em `px` no código de `web/src`.
+
 ### Direção Open Design do Maestro
 
 A tela adotou a direção **Tech Utility**: catálogo operacional, alta densidade

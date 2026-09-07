@@ -161,7 +161,7 @@ export const NexusWorkspaceApp: React.FC<{
             </span>
             <h2
               style={{
-                fontSize: '18px',
+                fontSize: '1.286rem',
                 fontWeight: 700,
                 margin: '6px 0 0',
                 color: 'var(--nx-text)',
@@ -171,7 +171,7 @@ export const NexusWorkspaceApp: React.FC<{
             </h2>
             <p
               style={{
-                fontSize: '12.5px',
+                fontSize: '0.893rem',
                 color: 'var(--nx-muted)',
                 lineHeight: 1.6,
                 margin: '0 0 12px',
