@@ -40,6 +40,7 @@ import {
 import { pushNotifications } from '../../notifications/PushNotificationManager';
 import { SystemDiagnosticsCard } from './SystemDiagnosticsCard';
 import type { SystemDoctorReport } from '../../nexus/api';
+import styles from './SettingsSurface.module.scss';
 
 type SettingsTab = 'appearance' | 'accessibility' | 'updates' | 'intelligence' | 'notifications';
 const SETTINGS_TABS: SettingsTab[] = [
@@ -310,7 +311,7 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
         {/* Tab 1: Appearance */}
         {activeTab === 'appearance' && (
           <>
-            <Card className="nx-settings-card" style={{ gridColumn: '1 / -1' }}>
+            <Card className={`nx-settings-card ${styles.gridFullWidth}`}>
               <div className="nx-settings-card__title">
                 <Palette size={17} />
                 <div>
@@ -330,7 +331,7 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
                   <small>{t('settings.workspaceDescription')}</small>
                 </div>
               </div>
-              <p className="nx-muted-copy" style={{ fontSize: '0.857rem' }}>
+              <p className={`nx-muted-copy ${styles.mutedTextSmall}`}>
                 Restaura o layout original do projeto ativo, preservando workspaces e chaves
                 seguras.
               </p>
@@ -424,7 +425,7 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
         {/* Tab 3: Updates & System */}
         {activeTab === 'updates' && (
           <>
-            <Card className="nx-settings-card" style={{ gridColumn: '1 / -1' }}>
+            <Card className={`nx-settings-card ${styles.gridFullWidth}`}>
               <div className="nx-settings-card__title">
                 <ArrowUpCircle size={17} />
                 <div>
@@ -433,33 +434,13 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
                 </div>
               </div>
               {updateInfo && (
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 8,
-                    fontSize: '0.929rem',
-                    maxWidth: 480,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
-                  >
+                <div className={styles.infoList}>
+                  <div className={styles.infoRow}>
                     <span>IAPro Nexus Core:</span>
                     <Badge tone="success">v{updateInfo.nexus_version}</Badge>
                   </div>
                   {updateInfo.nexus_latest_version && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                      }}
-                    >
+                    <div className={styles.infoRow}>
                       <span>{t('settings.nexusLatestVersion')}:</span>
                       <Badge tone={updateInfo.nexus_update_available ? 'warning' : 'success'}>
                         v{updateInfo.nexus_latest_version}
@@ -467,36 +448,18 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
                     </div>
                   )}
                   {updateInfo.channel && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                      }}
-                    >
+                    <div className={styles.infoRow}>
                       <span>Canal de Lançamento:</span>
                       <Badge tone="brand">{updateInfo.channel}</Badge>
                     </div>
                   )}
                   {updateInfo.installation_method && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                      }}
-                    >
+                    <div className={styles.infoRow}>
                       <span>Método de Instalação:</span>
                       <Badge tone="info">{updateInfo.installation_method}</Badge>
                     </div>
                   )}
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
-                  >
+                  <div className={styles.infoRow}>
                     <span>Orquestrador Maestro:</span>
                     <Badge tone={updateInfo.maestro_available ? 'brand' : 'warning'}>
                       v{updateInfo.maestro_version}
@@ -552,7 +515,7 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
                   {t('maestroControl.nexusBinaryNote', { version: updateResult.nexus_version })}
                 </InlineAlert>
               )}
-              <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+              <div className={styles.btnGroup}>
                 <Button onClick={() => void checkUpdates()} disabled={checkingUpdates || updating}>
                   <RefreshCw size={14} className={checkingUpdates ? 'nx-spin' : ''} />
                   {checkingUpdates ? 'Verificando…' : 'Verificar Atualizações Agora'}
@@ -574,7 +537,7 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
 
         {/* Tab 4: Intelligence */}
         {activeTab === 'intelligence' && (
-          <Card className="nx-settings-card" style={{ gridColumn: '1 / -1' }}>
+          <Card className={`nx-settings-card ${styles.gridFullWidth}`}>
             <div className="nx-settings-card__title">
               <Sparkles size={17} />
               <div>
@@ -673,7 +636,7 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
                 {intelligenceError}
               </InlineAlert>
             )}
-            <div style={{ marginTop: 8 }}>
+            <div className={styles.fieldGroupMargin}>
               <Button
                 tone="brand"
                 onClick={() => void saveIntelligence()}
@@ -687,7 +650,7 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
 
         {/* Tab 5: Notifications */}
         {activeTab === 'notifications' && (
-          <Card className="nx-settings-card" style={{ gridColumn: '1 / -1' }}>
+          <Card className={`nx-settings-card ${styles.gridFullWidth}`}>
             <div className="nx-settings-card__title">
               <Bell size={17} />
               <div>
@@ -735,21 +698,27 @@ interface ThemeCategory {
 const THEME_CATEGORIES: ThemeCategory[] = [
   {
     id: 'dark-modern',
-    title: 'Temas Escuros & Noturnos',
-    description: 'Paletas modernas com contraste equilibrado para ambientes com pouca luz',
-    presets: ['nexus-dark', 'midnight', 'nord', 'dracula', 'monokai'],
+    title: 'Dark Modern',
+    description: 'Paletas escuras premium, alto contraste de código e atmosfera imersiva.',
+    presets: ['nexus-dark', 'midnight', 'dracula'],
   },
   {
     id: 'light-clean',
-    title: 'Temas Claros & Clean',
-    description: 'Estilo clean e luminoso com legibilidade aprimorada',
+    title: 'Light Clean',
+    description: 'Interfaces diurnas, excelente legibilidade e visual limpo.',
     presets: ['nexus-light', 'solarized-light'],
   },
   {
-    id: 'high-contrast',
-    title: 'Acessibilidade & Alto Contraste (WCAG AAA)',
-    description: 'Relações de contraste máximas (>= 7:1) para máxima distinção visual',
-    presets: ['high-contrast-dark', 'high-contrast-light', 'solarized-dark'],
+    id: 'classic-code',
+    title: 'Clássicos do Código',
+    description: 'Esquemas consagrados por gerações de editores de texto.',
+    presets: ['monokai', 'nord', 'solarized-dark'],
+  },
+  {
+    id: 'accessibility',
+    title: 'Acessibilidade Extrema',
+    description: 'Contraste máximo e certificação WCAG 2.2 AA para visualização sem fadiga.',
+    presets: ['high-contrast-dark', 'high-contrast-light'],
   },
 ];
 
@@ -766,7 +735,7 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
   };
 
   return (
-    <div className="nx-theme-accordion-container" style={{ display: 'grid', gap: 10 }}>
+    <div className={`nx-theme-accordion-container ${styles.accordionContainer}`}>
       {/* Grupos de Categorias em Accordion WAI-ARIA */}
       {THEME_CATEGORIES.map((cat) => {
         const isOpen = Boolean(openCategories[cat.id]);
@@ -774,52 +743,27 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
         const panelId = `theme-cat-panel-${cat.id}`;
 
         return (
-          <div
-            key={cat.id}
-            className="nx-theme-cat-group"
-            style={{
-              border: '1px solid var(--nx-border)',
-              borderRadius: 8,
-              background: 'var(--nx-bg-elevated)',
-              overflow: 'hidden',
-            }}
-          >
+          <div key={cat.id} className={`nx-theme-cat-group ${styles.themeGroup}`}>
             <button
               type="button"
               id={headerId}
               aria-expanded={isOpen}
               aria-controls={panelId}
               onClick={() => toggleCategory(cat.id)}
-              className="nx-theme-accordion-hdr"
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '10px 14px',
-                border: 0,
-                background: 'transparent',
-                color: 'var(--nx-text)',
-                cursor: 'pointer',
-                textAlign: 'left',
-                fontSize: '0.929rem',
-                fontWeight: 650,
-              }}
+              className={`nx-theme-accordion-hdr ${styles.themeHeader}`}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div className={styles.themeHeaderLeft}>
                 {isOpen ? (
                   <ChevronDown size={15} color="var(--nx-accent)" />
                 ) : (
                   <ChevronRight size={15} color="var(--nx-muted)" />
                 )}
                 <div>
-                  <div style={{ color: 'var(--nx-text)' }}>{cat.title}</div>
-                  <div style={{ fontSize: '0.786rem', color: 'var(--nx-muted)', fontWeight: 400 }}>
-                    {cat.description}
-                  </div>
+                  <div className={styles.themeTitle}>{cat.title}</div>
+                  <div className={styles.themeDesc}>{cat.description}</div>
                 </div>
               </div>
-              <span className="nx-badge" data-tone="brand" style={{ fontSize: 10 }}>
+              <span className={`nx-badge ${styles.themeBadge}`} data-tone="brand">
                 {cat.presets.length} temas
               </span>
             </button>
@@ -830,19 +774,9 @@ const ThemeAccordionSelector: React.FC<{ theme: ReturnType<typeof useTheme> }> =
                 id={panelId}
                 role="region"
                 aria-labelledby={headerId}
-                style={{
-                  padding: '12px 14px',
-                  borderTop: '1px solid var(--nx-border)',
-                  background: 'var(--nx-surface-2)',
-                }}
+                className={styles.themePanel}
               >
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                    gap: 8,
-                  }}
-                >
+                <div className={styles.presetGrid}>
                   {cat.presets.map((presetKey) => {
                     const preset = THEME_PRESETS[presetKey];
                     if (!preset) return null;

@@ -56,7 +56,7 @@ export const NexusShell: React.FC<{
   zenMode = false,
   onToggleZenMode,
   onOpenRail,
-  onOpenSurface,
+  onOpenSurface: _onOpenSurface,
   onCommand,
   onOpenWelcome,
   onOpenProjectManager,
@@ -123,7 +123,7 @@ export const NexusShell: React.FC<{
                 type="button"
                 className="nx-topbar__project-btn"
                 onClick={onOpenProjectManager}
-                title="Open Project Manager (Ctrl+P)"
+                title={t('shell.projectManagerShortcut', 'Open Project Manager (Ctrl+P)')}
               >
                 <span className="nx-project-avatar nx-project-avatar--top">
                   {(project.name || 'PR').slice(0, 2).toUpperCase()}
@@ -146,6 +146,13 @@ export const NexusShell: React.FC<{
 
             {/* Right Status Controls */}
             <div className="nx-topbar__status" data-tour="status">
+              <div
+                className="nx-topbar-version-pill"
+                title={t('settings.nexusVersion', 'Nexus version')}
+              >
+                <span className="nx-ver-nexus">Nexus v{sysInfo?.nexus_version || 'unknown'}</span>
+              </div>
+
               {sysInfo?.update_available && (
                 <button
                   type="button"
@@ -157,15 +164,6 @@ export const NexusShell: React.FC<{
                   <span className="nx-update-badge">Updates</span>
                 </button>
               )}
-
-              {/* System Versions Pill */}
-              <div
-                className="nx-topbar-version-pill"
-                title="Nexus Version"
-                style={{ display: 'none' }}
-              >
-                <span className="nx-ver-nexus">Nexus v{sysInfo?.nexus_version || 'unknown'}</span>
-              </div>
 
               {/* Language Switcher */}
               <LanguagePicker />
@@ -179,7 +177,7 @@ export const NexusShell: React.FC<{
                 className="nx-command-trigger"
                 data-tour="command"
                 onClick={onCommand}
-                title="Search & Commands (Ctrl+K)"
+                title={t('shell.searchShortcut', 'Search & Commands (Ctrl+K)')}
               >
                 <Command size={13} />
                 <span>{t('shell.search')}</span>
@@ -189,7 +187,7 @@ export const NexusShell: React.FC<{
               {/* Push & In-App Attention Notification Trigger */}
               <div className={styles.notificationWrap}>
                 <IconButton
-                  label="Central de Notificações e Radar"
+                  label={t('shell.notificationsAndRadar', 'Central de Notificações e Radar')}
                   onClick={() => setNotificationDrawerOpen((prev) => !prev)}
                 >
                   {pushNotifications.getPermission() === 'granted' ? (
@@ -202,7 +200,11 @@ export const NexusShell: React.FC<{
               </div>
 
               {/* Help & Welcome Guide */}
-              <IconButton label={t('shell.tour')} onClick={onOpenWelcome}>
+              <IconButton
+                className="nx-topbar-tour-btn"
+                label={t('shell.tour')}
+                onClick={onOpenWelcome}
+              >
                 <CircleHelp size={15} />
               </IconButton>
 

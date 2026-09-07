@@ -22,6 +22,27 @@ func waitForHostEndpoint(t *testing.T, runtimeID string) {
 	}
 }
 
+func waitForTerminalReady(t *testing.T, client *protocol.Client, initial []byte) {
+	t.Helper()
+	if strings.Contains(string(initial), "NEXUS_TEST_READY") {
+		return
+	}
+	if err := client.RawConn().SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatalf("set terminal readiness deadline: %v", err)
+	}
+	var output strings.Builder
+	for !strings.Contains(output.String(), "NEXUS_TEST_READY") {
+		chunk, err := client.Reader().ReadString('\n')
+		if err != nil {
+			t.Fatalf("terminal readiness marker not observed: %v; output=%q", err, output.String())
+		}
+		output.WriteString(chunk)
+	}
+	if err := client.ClearDeadline(); err != nil {
+		t.Fatalf("clear terminal readiness deadline: %v", err)
+	}
+}
+
 func TestMain(m *testing.M) {
 	testDir, err := os.MkdirTemp("", "ai-control-host-test-*")
 	if err == nil {
@@ -444,7 +465,7 @@ func TestSessionHost_RejectsIncompatibleProtocolVersion(t *testing.T) {
 func TestSessionHost_SubmitPromptBypassesSlashRouterWithoutStealingWriterLease(t *testing.T) {
 	runtimeID := "rt-submit-prompt-test"
 	sess := registry.RuntimeSession{RuntimeID: runtimeID, ProviderID: "test", ProfileID: "default", Workspace: os.TempDir(), State: registry.StateStarting, ControlLevel: registry.ControlLevelTerminal}
-	sh, err := NewSessionHost(Config{Session: sess, Binary: testTerminalBinary, Args: testTerminalArgs(), Env: os.Environ(), Cwd: os.TempDir()})
+	sh, err := NewSessionHost(Config{Session: sess, Binary: interactiveTestTerminalBinary, Args: interactiveTestTerminalArgs(), Env: os.Environ(), Cwd: os.TempDir()})
 	if err != nil {
 		t.Fatalf("failed to create SessionHost: %v", err)
 	}
@@ -459,10 +480,11 @@ func TestSessionHost_SubmitPromptBypassesSlashRouterWithoutStealingWriterLease(t
 		t.Fatalf("writer connect: %v", err)
 	}
 	defer writer.Close()
-	if _, err := writer.Send(protocol.CmdAttach, nil); err != nil {
+	attachResponse, err := writer.Send(protocol.CmdAttach, nil)
+	if err != nil {
 		t.Fatalf("attach writer: %v", err)
 	}
-	_ = writer.ClearDeadline()
+	waitForTerminalReady(t, writer, attachResponse.Data)
 
 	submitter, err := protocol.NewClient(runtimeID)
 	if err != nil {
@@ -475,12 +497,18 @@ func TestSessionHost_SubmitPromptBypassesSlashRouterWithoutStealingWriterLease(t
 
 	_ = writer.RawConn().SetReadDeadline(time.Now().Add(2 * time.Second))
 	buf := make([]byte, 2048)
-	n, err := writer.RawConn().Read(buf)
-	if err != nil {
-		t.Fatalf("read submitted prompt echo: %v", err)
-	}
-	if !strings.Contains(string(buf[:n]), "/ai status should reach provider literally") {
-		t.Fatalf("prompt was intercepted or lost, got %q", string(buf[:n]))
+	var echoed strings.Builder
+	for {
+		n, readErr := writer.RawConn().Read(buf)
+		if n > 0 {
+			echoed.Write(buf[:n])
+			if strings.Contains(echoed.String(), "/ai status should reach provider literally") {
+				return
+			}
+		}
+		if readErr != nil {
+			t.Fatalf("prompt was intercepted or lost: %v; got %q", readErr, echoed.String())
+		}
 	}
 }
 
@@ -494,7 +522,7 @@ func TestSessionHost_AttachedLeaseAcquireDoesNotLeakToPTY(t *testing.T) {
 		State:        registry.StateStarting,
 		ControlLevel: registry.ControlLevelTerminal,
 	}
-	sh, err := NewSessionHost(Config{Session: sess, Binary: testTerminalBinary, Args: testTerminalArgs(), Env: os.Environ(), Cwd: os.TempDir()})
+	sh, err := NewSessionHost(Config{Session: sess, Binary: interactiveTestTerminalBinary, Args: interactiveTestTerminalArgs(), Env: os.Environ(), Cwd: os.TempDir()})
 	if err != nil {
 		t.Fatalf("create SessionHost: %v", err)
 	}
@@ -509,10 +537,11 @@ func TestSessionHost_AttachedLeaseAcquireDoesNotLeakToPTY(t *testing.T) {
 		t.Fatalf("connect: %v", err)
 	}
 	defer client.Close()
-	if _, err := client.Send(protocol.CmdAttach, nil); err != nil {
+	attachResponse, err := client.Send(protocol.CmdAttach, nil)
+	if err != nil {
 		t.Fatalf("attach: %v", err)
 	}
-	_ = client.ClearDeadline()
+	waitForTerminalReady(t, client, attachResponse.Data)
 
 	req, err := protocol.NewRequest(protocol.CmdLeaseAcquire, nil)
 	if err != nil {

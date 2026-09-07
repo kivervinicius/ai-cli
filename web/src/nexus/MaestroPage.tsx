@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, RefreshCw, Sparkles } from 'lucide-react';
 import { Badge, Button, Card, EmptyState, InlineAlert, Spinner } from '../design-system';
 import { nexus } from './api';
@@ -24,7 +24,7 @@ export const MaestroPage: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [advising, setAdvising] = useState(false);
-  const loadStatus = async () => {
+  const loadStatus = useCallback(async () => {
     setLoading(true);
     try {
       setStatus(await nexus.getMaestroStatus());
@@ -33,10 +33,10 @@ export const MaestroPage: React.FC<{ projectId: string }> = ({ projectId }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
   useEffect(() => {
     void loadStatus();
-  }, []);
+  }, [loadStatus]);
   const requestAdvice = async () => {
     setAdvising(true);
     try {

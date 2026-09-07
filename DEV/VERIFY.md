@@ -1,5 +1,22 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-07 — Review closure local
+
+- `npm run verify` — PASS, 10/10 gates; 61 arquivos Vitest / 310 testes.
+- Browser E2E — PASS: bootstrap/API readiness, Overview → Terminais, Axe,
+  deep-links, 320/390/768/1024/1280/1440px, accordion e density delta.
+- `go test ./...` — PASS; `go vet ./...` — PASS.
+- `make docs-verify` — PASS com manifest VIS-001…VIS-011.
+- `make build-desktop-wails` — PASS com Wails Linux production + `webkit2_41`.
+- `VIS-011` — PASS visual em janela Wails real, com Core Web isolado e captura
+  da tela de boas-vindas funcional; captura não é mock.
+- `git diff --check` — PASS.
+- `go run github.com/goreleaser/goreleaser/v2@v2.18.0 release --snapshot --clean`
+  — PASS; archives, DEB/RPM packages and checksums generated locally.
+- Pendentes obrigatórios para GO: execução nativa Windows/macOS, snapshot
+  GoReleaser, CI em SHA único após integração com `origin/main` e regeneração
+  do publication report nesse SHA. Nenhum commit/push foi feito.
+
 ## 2026-09-07 — Correções iniciais de desempenho Web/Desktop
 
 - `npm --prefix web run verify` — PASS, 10/10 gates.
@@ -608,15 +625,17 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
 - Tipografia completa: nenhuma declaração `font-size`, `font` ou `fontSize` em
   px permanece em `web/src`; o servidor recompilado respondeu `status: ok`.
 
+## Terminal helper do Project Shell — 2026-09-07
+
+- `make build` — PASS; frontend recompilado e binário Nexus gerado.
+- Verificação do bundle — PASS; `xterm-helper-textarea` presente em
+  `web/dist/bundle.css` e CSS embutido sincronizado.
+- Smoke Playwright contra o servidor real — PASS; os helpers do xterm ficaram
+  invisíveis, não houve sequência de `W` sobre o terminal e não houve erro de
+  página.
+- O problema era visual do CSS ausente, não saída indevida do PTY.
+
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-07T16:09:52Z
+## Frontend gate — 2026-09-07T17:28:33Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
-
-## Superfícies duplicadas ao navegar — 2026-09-07
-
-- Teste do modelo de workspace: PASS (13 testes), incluindo saneamento de
-  duplicatas por `logicalKey`.
-- `npm run verify`: PASS em todos os gates.
-- `make build-desktop-wails`: PASS; Desktop recompilado com o saneamento.
-- Web e Desktop ativos; health Web: `status: ok`.

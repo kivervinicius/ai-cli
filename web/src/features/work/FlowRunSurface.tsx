@@ -99,7 +99,7 @@ export const FlowRunSurface: React.FC<{
       return;
     const timer = window.setInterval(() => void refresh(), 1500);
     return () => window.clearInterval(timer);
-  }, [run?.state, refresh]);
+  }, [run, refresh]);
 
   const flow = useMemo(() => (plan ? flowFromWorkPlan(plan) : null), [plan]);
   const userState = flowRunStateFromMission(run?.state || 'PENDING');

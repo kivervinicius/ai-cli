@@ -346,6 +346,10 @@ func (a *Adapter) readCachedQuotaFiles(p model.Profile) (model.UsageSnapshot, bo
 	root, _ := config.ProfileRoot(string(a.ID()), p.Name)
 	home, _ := config.ProfileHome(string(a.ID()), p.Name)
 
+	// Resolve the authenticated email for this profile so we can reject
+	// cached snapshots that belong to a different Google account.
+	authEmail := a.resolveAuthenticatedEmail(home)
+
 	candidates := []string{}
 	if root != "" {
 		candidates = append(candidates, filepath.Join(root, "usage.json"), filepath.Join(root, "quota.json"))
@@ -355,7 +359,7 @@ func (a *Adapter) readCachedQuotaFiles(p model.Profile) (model.UsageSnapshot, bo
 	}
 
 	if debug {
-		slog.Debug("AGY readCachedQuotaFiles: checking candidates", "profile", p.Name, "candidates", candidates)
+		slog.Debug("AGY readCachedQuotaFiles: checking candidates", "profile", p.Name, "candidates", candidates, "authEmail", authEmail)
 	}
 
 	for _, file := range candidates {
@@ -372,6 +376,24 @@ func (a *Adapter) readCachedQuotaFiles(p model.Profile) (model.UsageSnapshot, bo
 			// Mark status as CACHED if it was originally LIVE (consistent with GetCachedUsage)
 			if s.Status == model.UsageLive {
 				s.Status = model.UsageCached
+			}
+			// Reject cached snapshot if the profile_id does not match.
+			// This prevents a cache file written for a different profile
+			// from being served (e.g. after a directory rename or migration).
+			if s.ProfileID != "" && s.ProfileID != p.Name {
+				if debug {
+					slog.Debug("AGY readCachedQuotaFiles: profile_id mismatch rejected", "profile", p.Name, "file", file, "cacheProfileID", s.ProfileID)
+				}
+				continue
+			}
+			// Reject cached snapshot if the account does not match the
+			// authenticated email. This prevents stale cross-profile cache
+			// from being served when profiles share the same data directory.
+			if authEmail != "" && s.Account != "" && !strings.EqualFold(authEmail, s.Account) {
+				if debug {
+					slog.Debug("AGY readCachedQuotaFiles: account mismatch rejected", "profile", p.Name, "file", file, "cacheAccount", s.Account, "authEmail", authEmail)
+				}
+				continue
 			}
 			if debug {
 				slog.Debug("AGY readCachedQuotaFiles: found UsageSnapshot", "profile", p.Name, "file", file, "status", s.Status, "fetchedAt", s.FetchedAt, "windows", len(s.Windows), "account", s.Account)
@@ -489,6 +511,32 @@ func fileModTime(path string) time.Time {
 		return st.ModTime()
 	}
 	return time.Time{}
+}
+
+// resolveAuthenticatedEmail reads the actual Google account email for this
+// profile from google_accounts.json or jetski_state.pbtxt. Returns "" when
+// no authoritative email can be determined (caller should skip mismatch check).
+func (a *Adapter) resolveAuthenticatedEmail(home string) string {
+	// 1. google_accounts.json — the canonical active account file.
+	accountsFile := filepath.Join(home, ".gemini", "google_accounts.json")
+	if data, err := os.ReadFile(accountsFile); err == nil {
+		var acc struct {
+			Active string `json:"active"`
+		}
+		if json.Unmarshal(data, &acc) == nil && acc.Active != "" {
+			return acc.Active
+		}
+	}
+
+	// 2. jetski_state.pbtxt — may contain the authenticated email.
+	jetskiFile := filepath.Join(home, ".gemini", "antigravity-cli", "jetski_state.pbtxt")
+	if data, err := os.ReadFile(jetskiFile); err == nil && len(data) > 0 {
+		if matches := emailRegex.FindAllString(string(data), -1); len(matches) > 0 {
+			return matches[0]
+		}
+	}
+
+	return ""
 }
 
 func firstNonEmpty(values ...string) string {

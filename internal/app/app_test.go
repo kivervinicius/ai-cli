@@ -15,19 +15,48 @@ import (
 
 func captureStdout(f func() error) (string, error) {
 	old := os.Stdout
-	r, w, _ := os.Pipe()
+	r, w, err := os.Pipe()
+	if err != nil {
+		return "", err
+	}
 	os.Stdout = w
-
-	err := f()
-
-	_ = w.Close()
-	os.Stdout = old
+	defer func() { os.Stdout = old }()
 
 	var buf bytes.Buffer
-	_, _ = io.Copy(&buf, r)
+	copyDone := make(chan error, 1)
+	go func() {
+		_, copyErr := io.Copy(&buf, r)
+		copyDone <- copyErr
+	}()
+
+	runErr := f()
+	closeErr := w.Close()
+	copyErr := <-copyDone
 	_ = r.Close()
 
-	return buf.String(), err
+	if runErr != nil {
+		return buf.String(), runErr
+	}
+	if closeErr != nil {
+		return buf.String(), closeErr
+	}
+	return buf.String(), copyErr
+}
+
+func TestCaptureStdoutDrainsLargeOutput(t *testing.T) {
+	const size = 256 * 1024
+	expected := strings.Repeat("nexus-output\n", size/len("nexus-output\n"))
+
+	out, err := captureStdout(func() error {
+		_, writeErr := os.Stdout.WriteString(expected)
+		return writeErr
+	})
+	if err != nil {
+		t.Fatalf("captureStdout returned error: %v", err)
+	}
+	if out != expected {
+		t.Fatalf("captured output mismatch: got %d bytes, want %d", len(out), len(expected))
+	}
 }
 
 func setupTestEnvironment(t *testing.T) (binDir, testOut string) {

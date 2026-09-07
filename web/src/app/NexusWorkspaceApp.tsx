@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, initSession, rotateSession, type BrowserSession } from '../api';
 import { setNexusCSRF, nexus } from '../nexus/api';
-import { Spinner } from '../design-system';
 import { ThemeProvider } from '../design-system';
 import { NexusSplashScreen } from './NexusSplashScreen';
+import unauthorizedStyles from './NexusUnauthorized.module.scss';
 import { WorkspaceProvider, useWorkspace } from '../workspace/WorkspaceProvider';
 import {
   WorkspacePresentationProvider,
@@ -58,7 +58,6 @@ import {
   isPtySurface,
   projectShellSurface,
   projectSurface,
-  type ProjectSurfaceKind,
 } from './surfaces';
 import {
   buildProjectRoute,
@@ -128,57 +127,13 @@ export const NexusWorkspaceApp: React.FC<{
   if (!authenticated) {
     return (
       <ThemeProvider>
-        <div
-          className="nx-app-unauthorized"
-          style={{
-            minHeight: '100vh',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '24px',
-            background: 'var(--nx-bg)',
-            color: 'var(--nx-text)',
-            textAlign: 'center',
-          }}
-        >
-          <div
-            style={{
-              maxWidth: '480px',
-              background: 'var(--nx-surface)',
-              border: '1px solid var(--nx-border)',
-              borderRadius: 'var(--nx-radius-lg)',
-              padding: '32px',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '12px',
-            }}
-          >
+        <div className={`nx-app-unauthorized ${unauthorizedStyles.container}`}>
+          <div className={unauthorizedStyles.card}>
             <span className="nx-brand-mark nx-brand-mark--hero">
               <img src="./nexus-icon.png" alt="Nexus" className="nx-brand-mark__img" />
             </span>
-            <h2
-              style={{
-                fontSize: '1.286rem',
-                fontWeight: 700,
-                margin: '6px 0 0',
-                color: 'var(--nx-text)',
-              }}
-            >
-              {t('auth.sessionExpired')}
-            </h2>
-            <p
-              style={{
-                fontSize: '0.893rem',
-                color: 'var(--nx-muted)',
-                lineHeight: 1.6,
-                margin: '0 0 12px',
-              }}
-            >
-              {t('auth.sessionExpiredDesc')}
-            </p>
+            <h2 className={unauthorizedStyles.title}>{t('auth.sessionExpired')}</h2>
+            <p className={unauthorizedStyles.hint}>{t('auth.sessionExpiredDesc')}</p>
             <button
               type="button"
               className="nx-button"
@@ -207,7 +162,6 @@ const NexusWorkspaceSession: React.FC<{
   popoutSurface?: WorkspaceSurface;
   initialGlobalSurface?: GlobalSurfaceKind;
 }> = ({ popoutSurface: explicitPopout, initialGlobalSurface }) => {
-  const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const data = useNexusData();
@@ -241,19 +195,20 @@ const NexusWorkspaceSession: React.FC<{
   }, [routeProjectId, selectedId]);
 
   const selected = resolveProjectSelection(data.projects, selectedId);
+  const selectedProjectId = selected?.id;
   const [layout, setLayout] = useState<string | undefined>();
   const [layoutRevision, setLayoutRevision] = useState<number | undefined>();
   const [layoutReady, setLayoutReady] = useState(false);
 
   useEffect(() => {
-    if (!selected) return;
+    if (!selectedProjectId) return;
     let cancelled = false;
     setLayoutReady(false);
-    setSelectedId(selected.id);
-    window.localStorage.setItem(selectedProjectKey, selected.id);
-    void data.refreshAgents(selected.id);
+    setSelectedId(selectedProjectId);
+    window.localStorage.setItem(selectedProjectKey, selectedProjectId);
+    void data.refreshAgents(selectedProjectId);
     nexus
-      .getProject(selected.id)
+      .getProject(selectedProjectId)
       .then((detail) => {
         if (cancelled) return;
         setLayout(detail.layout || undefined);
@@ -270,7 +225,7 @@ const NexusWorkspaceSession: React.FC<{
     return () => {
       cancelled = true;
     };
-  }, [selected?.id]);
+  }, [data.refreshAgents, selectedProjectId]);
 
   useEffect(() => {
     if (data.loading) return;
@@ -356,7 +311,7 @@ const WorkspaceCoordinator: React.FC<{
   parsedRoute: ParsedRoute;
   layoutReady: boolean;
 }> = ({ project, setProject, data, popout, parsedRoute, layoutReady }) => {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const workspace = useWorkspace();
@@ -442,7 +397,7 @@ const WorkspaceCoordinator: React.FC<{
     () => open(projectSurface(project.id, 'terminals')),
     [open, project.id],
   );
-  const openNewAISession = () => setDirectSession({ mode: 'direct', prompt: '' });
+  const openNewAISession = useCallback(() => setDirectSession({ mode: 'direct', prompt: '' }), []);
   const terminal = useCallback(
     (agent: Agent) => {
       open(agentTerminalSurface(agent.id, agent.name));
@@ -735,7 +690,18 @@ const WorkspaceCoordinator: React.FC<{
         run: () => setTour(true),
       },
     ],
-    [project.id, data.agents, flowRuns, t, i18n.language, presentation],
+    [
+      data.agents,
+      flowRuns,
+      t,
+      presentation,
+      open,
+      openKind,
+      openNewAISession,
+      terminal,
+      config,
+      shell,
+    ],
   );
 
   // Scoped Keyboard Shortcuts via KeyboardShortcutRegistry
@@ -839,7 +805,7 @@ const WorkspaceCoordinator: React.FC<{
       unregisterNewTerm();
       unregisterAltTabs.forEach((unreg) => unreg());
     };
-  }, [project.id, presentation, workspace.model.root]);
+  }, [project.id, presentation, workspace.model.root, openKind, shell]);
 
   const handleProjectUpdated = (updated: Project) => {
     data.setProjects((cur) => cur.map((p) => (p.id === updated.id ? updated : p)));
@@ -980,7 +946,52 @@ const WorkspaceCoordinator: React.FC<{
     project.id,
     workspace.model.root,
     presentation.state.activePtyViewId,
+    workspace,
   ]);
+
+  const handleFocusAttention = useCallback(
+    (item: RadarRuntimeItem | { runtimeId: string; projectId?: string; agentId?: string }) => {
+      const runtimeId = item.runtimeId;
+      const runtime = data.runtimes.find((entry) => entry.runtime_id === runtimeId);
+      const projectId =
+        'projectId' in item && item.projectId ? item.projectId : runtime?.project_id;
+      const agentId = 'agentId' in item && item.agentId ? item.agentId : runtime?.agent_id;
+      const agentName =
+        (agentId && data.agents.find((agent) => agent.id === agentId)?.name) ||
+        runtime?.dynamic_title ||
+        runtime?.title;
+
+      const actions = planFocusAttention(
+        { projectId, agentId, runtimeId },
+        { currentProjectId: project.id, runtime, agentName },
+      );
+      const switchAction = actions.find((action) => action.type === 'switch-project');
+      const openActions = actions.filter((action) => action.type !== 'switch-project');
+      const runOpen = () => {
+        for (const action of openActions) {
+          if (action.type === 'open-agent-terminal') {
+            open(agentTerminalSurface(action.agentId, action.title, '', action.runtimeId || ''));
+            open(projectSurface(project.id, 'terminals'));
+          } else if (action.type === 'open-project-shell') {
+            open(projectShellSurface(action.projectId, action.runtimeId, action.title));
+            open(projectSurface(action.projectId, 'terminals'));
+          } else if (action.type === 'refresh-agents') {
+            void data.refreshAgents(action.projectId).catch(() => undefined);
+          }
+        }
+      };
+      if (switchAction?.type === 'switch-project') {
+        const next = data.projects.find((entry) => entry.id === switchAction.projectId);
+        if (next) {
+          setProject(next);
+          window.setTimeout(runOpen, 0);
+          return;
+        }
+      }
+      runOpen();
+    },
+    [data, open, project.id, setProject],
+  );
 
   // Attention watcher for the focused project only (radar remains global).
   useEffect(() => {
@@ -1077,6 +1088,7 @@ const WorkspaceCoordinator: React.FC<{
     project.name,
     workspace.model.root,
     presentation.state.activePtyViewId,
+    handleFocusAttention,
   ]);
 
   if (popout) return <div className="nx-popout-shell">{renderer}</div>;
@@ -1105,51 +1117,6 @@ const WorkspaceCoordinator: React.FC<{
       }}
     />
   );
-
-  const handleFocusAttention = (
-    item: RadarRuntimeItem | { runtimeId: string; projectId?: string; agentId?: string },
-  ) => {
-    const runtimeId = item.runtimeId;
-    const runtime = data.runtimes.find((entry) => entry.runtime_id === runtimeId);
-    const projectId = 'projectId' in item && item.projectId ? item.projectId : runtime?.project_id;
-    const agentId = 'agentId' in item && item.agentId ? item.agentId : runtime?.agent_id;
-    const agentName =
-      (agentId && data.agents.find((agent) => agent.id === agentId)?.name) ||
-      runtime?.dynamic_title ||
-      runtime?.title;
-
-    const actions = planFocusAttention(
-      { projectId, agentId, runtimeId },
-      { currentProjectId: project.id, runtime, agentName },
-    );
-
-    const switchAction = actions.find((action) => action.type === 'switch-project');
-    const openActions = actions.filter((action) => action.type !== 'switch-project');
-
-    const runOpen = () => {
-      for (const action of openActions) {
-        if (action.type === 'open-agent-terminal') {
-          open(agentTerminalSurface(action.agentId, action.title, '', action.runtimeId || ''));
-          open(projectSurface(project.id, 'terminals'));
-        } else if (action.type === 'open-project-shell') {
-          open(projectShellSurface(action.projectId, action.runtimeId, action.title));
-          open(projectSurface(action.projectId, 'terminals'));
-        } else if (action.type === 'refresh-agents') {
-          void data.refreshAgents(action.projectId).catch(() => undefined);
-        }
-      }
-    };
-
-    if (switchAction && switchAction.type === 'switch-project') {
-      const next = data.projects.find((entry) => entry.id === switchAction.projectId);
-      if (next) {
-        setProject(next);
-        window.setTimeout(runOpen, 0);
-        return;
-      }
-    }
-    runOpen();
-  };
 
   const handleFocusRuntime = (runtimeId: string) => {
     handleFocusAttention({ runtimeId });

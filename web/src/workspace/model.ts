@@ -154,7 +154,7 @@ function deduplicateNode(node: WorkspaceNode, seen: Set<string>): WorkspaceNode 
   }
 
   const tabs = node.tabs.filter((tab) => {
-    const key = surfaceLogicalKey(tab);
+    const key = surfaceDeduplicationKey(tab);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -165,6 +165,22 @@ function deduplicateNode(node: WorkspaceNode, seen: Set<string>): WorkspaceNode 
     tabs,
     activeId: active?.id || tabs[0]?.id || '',
   };
+}
+
+/**
+ * Builds the identity used when repairing persisted layouts. Older versions
+ * could persist the same logical surface with a new id and without a
+ * logicalKey, so id alone is not safe here.
+ */
+function surfaceDeduplicationKey(surface: WorkspaceSurface): string {
+  if (surface.logicalKey) return `logical:${surface.logicalKey}`;
+
+  const data = surface.data ?? {};
+  const identity =
+    data.projectId || data.agentId || data.runtimeId || data.terminalId || data.flowId;
+  if (identity) return `data:${surface.type}:${identity}`;
+
+  return `id:${surface.id}`;
 }
 
 /** Remove duplicate logical tabs left by older navigation/layout versions. */

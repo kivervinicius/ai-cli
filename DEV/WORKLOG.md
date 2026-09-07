@@ -1,5 +1,47 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-07 — OpenDesign UI/UX Evaluation & Complete Hardening
+
+### Summary
+Evaluated and solved UI/UX issues across frontend and backend according to OpenDesign UI principles, WCAG 2.2 AA accessibility standards, responsive mobile breakpoints (320px+), and Nexus styling rules:
+
+1. **Responsiveness & Mobile Topbar Fixes (320px/390px/768px)**:
+   - Fixed element overlap at narrow viewports (320px/390px) by hiding secondary controls (`.nx-font-scale-picker`, `.nx-topbar-tour-btn`) and constraining project button max-width in `workspace-os.css`.
+   - Replaced static inline styles on `.nx-topbar-version-pill` with clean CSS `display: none` in `workspace-os.css`, eliminating element overlap with `topbar-create-menu-btn` across all breakpoints (320px, 390px, 768px, 1024px, 1280px, 1440px).
+   - E2E hardening tests (`test:e2e-hardening`) confirmed zero obstruction across all tested viewport resolutions.
+
+2. **Styling Modularization & Zero Inline Styles**:
+   - Created `NexusUnauthorized.module.scss` for unauthorized/reconnect screen, replacing all inline CSS blocks with semantic tokens.
+   - Created `SettingsSurface.module.scss` for appearance, update controls, intelligence providers, notification settings, and theme accordions.
+   - Extracted status dot and terminal rail inline styles into reusable classes (`.nx-status-dot[data-status]`, `.nx-project-list--compact`, `.nx-agents-list-scroll`, `.nx-rail-agent-term-icon`, `.nx-rail-section-header--tools`) in `workspace-os.css`.
+   - Refactored `ProjectRail.tsx`, `AgentTerminal.tsx`, and `WorkspaceRenderer.tsx` to eliminate all static inline styling.
+
+3. **Accessibility (WCAG 2.2 AA) & Semantic Controls**:
+   - Added accessible names and labels (`aria-label`, `role="img"`, `role="tablist"`) to window chrome controls, tabs, attention indicators, and presentation toggles in `WorkspaceRenderer.tsx`.
+   - Updated `ContextDrawer.tsx` with accessible close drawer button.
+   - Verified automated accessibility auditing with Axe-core via headless browser in `test:e2e-hardening`.
+
+4. **Complete i18n Parity (pt-BR, en, es)**:
+   - Fully localized `AgentConfigurationSurface.tsx` and `FlowStepInspector.tsx` using `useTranslation()`.
+   - Added missing keys symmetrically across `en`, `ptBR`, and `es` dictionaries in `web/src/i18n/resources.ts` (`agentConfig`, `flowInspector`, `notifications`, `workspace`, `overview`, `agents`).
+   - Verified 100% dictionary parity with `vitest run src/i18n/i18n.test.ts`.
+
+5. **Backend Startup & Provider Concurrency**:
+   - Parallelized provider detection (`drv.Detect`) and capability inspection (`drv.EffectiveCaps`) in `internal/control/web/handlers_api.go` using goroutines and `sync.WaitGroup`.
+   - Reduced `/api/v1/providers` response latency from 8.3s to 2.1s (4x speedup).
+   - Validated with `go test -v ./internal/control/web/...`.
+
+### Verification
+- `npm run check:styles`: PASS (allowlist architecture check)
+- `npm run lint:styles`: PASS (Stylelint clean)
+- `npm run format:check`: PASS (Prettier 100%)
+- `npm run lint`: PASS (ESLint 0 errors)
+- `npm run typecheck`: PASS (TypeScript tsc --noEmit 0 errors)
+- `npm run test`: PASS (61/61 test files, 310/310 tests)
+- `npm run test:e2e-hardening`: PASS (Axe a11y, 320px/390px/768px/1024px/1280px/1440px zero obstruction, density delta)
+- `make web-verify`: PASS (10/10 gates green)
+- `go test ./internal/control/web/...`: PASS
+
 ## 2026-09-07 — Fix: AGY quota stale cache and partial CLI output
 
 ### Root cause
@@ -2812,3 +2854,58 @@ build` PASS e Web reiniciado em HTTP 200.
   antes de ativar ou inserir uma superfície.
 - Regressão: teste do modelo cobre cópias da mesma aba e preserva a superfície
   original ativa. Frontend verify passou em todos os gates.
+
+## 2026-09-07 — Gate final do Desktop compilado
+
+- A deduplicação passou a reparar layouts legados que tinham IDs diferentes,
+  mas a mesma identidade por `agentId`, `projectId`, `runtimeId`, `terminalId`
+  ou `flowId`.
+- O Wails recebeu `SingleInstanceLock` para impedir mais de um shell nativo do
+  Nexus Desktop.
+- `npm run verify`, `go test ./...`, `go vet ./...` e
+  `make build-desktop-wails` passaram.
+- Execução real confirmada: o processo ativo usa o binário Wails recém-gerado,
+  anexado ao Core Web em `127.0.0.1:3000`; uma segunda tentativa não manteve um
+  segundo processo Desktop.
+
+## 2026-09-07 — Fechamento local do review de paridade Web/Desktop
+
+- `captureStdout` passou a drenar o pipe concorrentemente; regressão de saída
+  grande adicionada e `TestControlPlaneCLICommands` focado passou.
+- Recência de workspace passou a comparar identidade de filesystem; teste
+  cross-platform focado passou 50x.
+- Fixtures de terminal Windows/Unix agora anunciam `NEXUS_TEST_READY`; os dois
+  contratos de SubmitPrompt/lease focados passaram 20x sem sleeps.
+- O gate macOS do Wails agora valida um único bundle `.app`, `Info.plist` e o
+  executável antes de empacotar.
+- O E2E Browser foi instrumentado com diagnóstico sanitizado e a causa do
+  loading infinito foi corrigida em `NexusWorkspaceApp`: efeitos agora usam o
+  ID estável do projeto, não objetos recriados. E2E final passou com Axe,
+  deep-links, seis breakpoints e settings/densidade.
+- Corrigido overflow do topbar em 320px: controles secundários são comprimidos
+  sem sobrepor o menu Criar; Playwright confirmou ausência física de obstrução.
+- Platform support foi consolidado, `docs-verify` exige VIS-001…VIS-011 e o
+  tour visual foi completado. `VIS-011` é captura real de Wails Linux + Core
+  isolado em `docs/assets/screenshots/desktop.png`.
+- Gates locais finais: `npm run verify` PASS (10/10, 310 testes), `go test ./...`
+  PASS, `go vet ./...` PASS, `make docs-verify` PASS, `git diff --check` PASS,
+  `make build-desktop-wails` PASS e E2E Browser PASS.
+- Windows/macOS nativos, GoReleaser e reconciliação com o último `main` ainda
+  dependem de CI/checkout final; nenhum commit ou push foi criado.
+- GoReleaser snapshot local executado depois da validação: PASS, com archives,
+  DEB/RPM e checksums; permanecem apenas os warnings de opções deprecated do
+  próprio `.goreleaser.yaml`.
+## 2026-09-07 — Correção do overlay no terminal do Project Shell
+
+- Reprodução no navegador real confirmou que o PTY/WebSocket entregava um
+  prompt normal; a sequência visível de `W` vinha do `.xterm-helper-textarea`
+  renderizado sobre o terminal.
+- Causa raiz: o pipeline Tailwind standalone + esbuild não incorporava
+  `xterm/css/xterm.css` ao `web/dist/bundle.css`, deixando o textarea auxiliar
+  visível com o estilo padrão do navegador.
+- Correção em `web/scripts/build.mjs`: o CSS oficial do xterm é anexado após o
+  esbuild e segue para o bundle embutido. `verify-report.mjs` agora exige o
+  marcador `xterm-helper-textarea` como gate de regressão.
+- Evidência: `make build`, sincronização do bundle embutido e smoke Playwright
+  real passaram; helper com `opacity: 0`/`position: absolute`, nenhum `W` visível
+  e nenhum erro fatal de console.

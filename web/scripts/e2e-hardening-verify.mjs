@@ -52,6 +52,7 @@ async function terminateProcess(proc) {
 
 async function main() {
   console.log('2. Starting Nexus Web Server on ephemeral port (--port 0)...');
+  let serverOutput = '';
   const server = spawn(binPath, ['web', '--port', '0', '--listen', '127.0.0.1', '--no-open'], {
     cwd: repoRoot,
     detached: true,
@@ -67,6 +68,7 @@ async function main() {
     let output = '';
     server.stdout.on('data', (chunk) => {
       output += chunk.toString();
+      serverOutput += chunk.toString();
       const match = output.match(/Bootstrap:\s*(http:\/\/127\.0\.0\.1:\d+\/\?token=[a-f0-9]+)/i);
       if (match) {
         clearTimeout(timer);
@@ -77,6 +79,7 @@ async function main() {
 
     server.stderr.on('data', (chunk) => {
       output += chunk.toString();
+      serverOutput += chunk.toString();
     });
 
     server.on('exit', (code) => {
@@ -85,12 +88,20 @@ async function main() {
     });
   });
 
+  let browser;
+  let context;
+  let page;
+  const consoleErrors = [];
+  const requestFailures = [];
+  const responses = [];
+  const pageErrors = [];
+
   try {
     await portPromise;
     console.log(`Server bound successfully! Bootstrap URL: ${bootstrapUrl}`);
 
     console.log('3. Launching headless browser...');
-    const browser = await chromium.launch({
+    browser = await chromium.launch({
       executablePath: existsSync('/usr/bin/google-chrome') ? '/usr/bin/google-chrome' : undefined,
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
@@ -105,13 +116,32 @@ async function main() {
       { width: 1440, height: 900, name: 'desktop' },
     ];
 
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    const pageErrors = [];
+    context = await browser.newContext();
+    page = await context.newPage();
     page.on('pageerror', (error) => pageErrors.push(String(error?.message || error)));
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text());
+    });
+    page.on('requestfailed', (request) => {
+      requestFailures.push(
+        `${request.method()} ${request.url()} → ${request.failure()?.errorText || 'unknown'}`,
+      );
+    });
+    page.on('response', (response) => {
+      if (response.url().includes('/api/'))
+        responses.push(`${response.status()} ${response.url()}`);
+    });
 
     console.log(`Navigating to ${bootstrapUrl}...`);
-    await page.goto(bootstrapUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    const mainResponse = await page.goto(bootstrapUrl, {
+      waitUntil: 'domcontentloaded',
+      timeout: 15000,
+    });
+    assert.ok(mainResponse, 'bootstrap navigation must return a main response');
+    assert.ok(mainResponse.ok(), `bootstrap navigation returned HTTP ${mainResponse.status()}`);
+    await page.waitForFunction(
+      () => document.readyState === 'interactive' || document.readyState === 'complete',
+    );
     await page.waitForSelector('.nx-os-shell', { timeout: 10000 });
 
     console.log('3.1. Testing Overview → Terminal tab persistence...');
@@ -121,14 +151,28 @@ async function main() {
     await terminalsProductTab.waitFor({ state: 'visible', timeout: 10000 });
     await overviewProductTab.click();
     await page.waitForFunction(
-      () => document.querySelector('.nx-workspace-tab[data-kind="overview"]')?.getAttribute('aria-selected') === 'true',
+      () =>
+        document
+          .querySelector('.nx-workspace-tab[data-kind="overview"]')
+          ?.getAttribute('aria-selected') === 'true',
     );
-    assert.match(new URL(page.url()).pathname, /\/overview$/, 'Overview tab must own the overview route');
+    assert.match(
+      new URL(page.url()).pathname,
+      /\/overview$/,
+      'Overview tab must own the overview route',
+    );
     await terminalsProductTab.click();
     await page.waitForFunction(
-      () => document.querySelector('.nx-workspace-tab[data-kind="terminals"]')?.getAttribute('aria-selected') === 'true',
+      () =>
+        document
+          .querySelector('.nx-workspace-tab[data-kind="terminals"]')
+          ?.getAttribute('aria-selected') === 'true',
     );
-    assert.match(new URL(page.url()).pathname, /\/terminals$/, 'Terminal tab must own the terminals route');
+    assert.match(
+      new URL(page.url()).pathname,
+      /\/terminals$/,
+      'Terminal tab must own the terminals route',
+    );
     await page.waitForTimeout(750);
     assert.equal(
       await terminalsProductTab.getAttribute('aria-selected'),
@@ -242,14 +286,36 @@ async function main() {
       const elementAtPoint = await page.evaluate(
         ({ x, y }) => {
           const el = document.elementFromPoint(x, y);
-          return Boolean(el && el.closest('[data-testid="topbar-create-menu-btn"]'));
+          const describe = (node) =>
+            node
+              ? {
+                  tag: node.tagName,
+                  className: typeof node.className === 'string' ? node.className : null,
+                  testId: node.getAttribute('data-testid'),
+                  id: node.id || null,
+                  rect: (() => {
+                    const rect = node.getBoundingClientRect();
+                    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+                  })(),
+                  zIndex: getComputedStyle(node).zIndex,
+                  pointerEvents: getComputedStyle(node).pointerEvents,
+                  position: getComputedStyle(node).position,
+                }
+              : null;
+          return {
+            matches: Boolean(el && el.closest('[data-testid="topbar-create-menu-btn"]')),
+            topmost: describe(el),
+            layers: document.elementsFromPoint(x, y).slice(0, 8).map(describe),
+            point: { x, y },
+            scroll: { x: window.scrollX, y: window.scrollY },
+          };
         },
         { x: box.x + box.width / 2, y: box.y + box.height / 2 },
       );
       assert.equal(
-        elementAtPoint,
+        elementAtPoint.matches,
         true,
-        `Create menu button must be topmost element at ${vp.width}px`,
+        `Create menu button must be topmost element at ${vp.width}px: ${JSON.stringify(elementAtPoint)}`,
       );
 
       const shotPath = path.join(screenshotDir, `e2e_bp_${vp.width}.png`);
@@ -352,9 +418,61 @@ async function main() {
     await page.screenshot({ path: settingsShot });
     console.log(`  ✓ Settings & Accordion verified (shot: ${settingsShot})`);
 
-    await browser.close();
     console.log('✓ All E2E Hardening assertions PASSED successfully!');
+  } catch (error) {
+    const diagnostics = {
+      url: page?.url() || bootstrapUrl,
+      title: page ? await page.title().catch(() => '') : '',
+      pageErrors,
+      consoleErrors,
+      requestFailures,
+      responses,
+      serverOutput: serverOutput.replace(/token=[a-f0-9]+/gi, 'token=[REDACTED]'),
+      storageKeys: page
+        ? await page
+            .evaluate(() => ({
+              local: Object.keys(localStorage),
+              session: Object.keys(sessionStorage),
+            }))
+            .catch(() => ({ local: [], session: [] }))
+        : { local: [], session: [] },
+      cookies: page
+        ? await page
+            .context()
+            .cookies()
+            .then((items) =>
+              items.map(({ name, domain, path, secure, httpOnly, sameSite }) => ({
+                name,
+                domain,
+                path,
+                secure,
+                httpOnly,
+                sameSite,
+              })),
+            )
+            .catch(() => [])
+        : [],
+      bodyExcerpt: page
+        ? await page
+            .locator('body')
+            .innerText({ timeout: 1000 })
+            .then((value) => value.slice(0, 2000))
+            .catch(() => '')
+        : '',
+      error: String(error?.stack || error),
+    };
+    writeFileSync(
+      path.join(screenshotDir, 'e2e-failure-diagnostics.json'),
+      `${JSON.stringify(diagnostics, null, 2)}\n`,
+    );
+    if (page)
+      await page
+        .screenshot({ path: path.join(screenshotDir, 'e2e-failure.png'), fullPage: true })
+        .catch(() => {});
+    throw error;
   } finally {
+    if (context) await context.close().catch(() => {});
+    if (browser) await browser.close().catch(() => {});
     console.log('6. Terminating test server...');
     await terminateProcess(server);
   }

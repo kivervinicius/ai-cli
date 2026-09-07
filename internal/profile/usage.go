@@ -2,12 +2,16 @@ package profile
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/agy"
 	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/claude"
@@ -65,6 +69,28 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 	snap, found := qEng.GetCachedUsage(providerName, name)
 	if debug {
 		slog.Debug("loadUsageSnapshot: GetCachedUsage", "provider", providerName, "profile", name, "found", found, "snapStatus", snap.Status, "snapFetchedAt", snap.FetchedAt, "snapWindows", len(snap.Windows), "snapAccount", snap.Account)
+	}
+
+	// AGY profiles are per-Google-account. Reject cached snapshots whose
+	// recorded account does not match the profile's authenticated email.
+	// This prevents stale cross-profile cache from being served.
+	if providerName == "agy" && found && snap.Account != "" {
+		authEmail := resolveAGYAuthenticatedEmail(name)
+		if debug {
+			slog.Debug("loadUsageSnapshot: AGY account check", "provider", providerName, "profile", name, "cacheAccount", snap.Account, "authEmail", authEmail)
+		}
+		if authEmail != "" && !strings.EqualFold(authEmail, snap.Account) {
+			if debug {
+				slog.Debug("loadUsageSnapshot: AGY account mismatch, rejecting cache", "provider", providerName, "profile", name, "cacheAccount", snap.Account, "authEmail", authEmail)
+			}
+			snap = model.UsageSnapshot{
+				ProviderID: providerName,
+				ProfileID:  name,
+				Status:     model.UsageUnknown,
+				Source:     model.SourceNone,
+			}
+			found = false
+		}
 	}
 
 	// Codex rollouts are local filesystem reads (not a blocking CLI). Always
@@ -301,4 +327,56 @@ func RenderBar(percent float64, width int) string {
 func RenderShortBar(percent float64) string {
 	p := percent
 	return quota.RenderShortStatus(model.UsageLive, &p, 10)
+}
+
+var emailRegex = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
+
+// resolveAGYAuthenticatedEmail reads the actual Google account email for an
+// AGY profile from google_accounts.json or jetski_state.pbtxt.
+// Returns "" when no authoritative email can be determined.
+func resolveAGYAuthenticatedEmail(profileName string) string {
+	root, err := config.ProfileRoot("agy", profileName)
+	if err != nil {
+		return ""
+	}
+	home := filepath.Join(root, "home")
+
+	// 1. google_accounts.json in profile home.
+	accountsFile := filepath.Join(home, ".gemini", "google_accounts.json")
+	if email := readActiveEmailFromAccountsFile(accountsFile); email != "" {
+		return email
+	}
+
+	// 2. jetski_state.pbtxt in profile home.
+	jetskiFile := filepath.Join(home, ".gemini", "antigravity-cli", "jetski_state.pbtxt")
+	if email := readEmailFromJetski(jetskiFile); email != "" {
+		return email
+	}
+
+	return ""
+}
+
+func readActiveEmailFromAccountsFile(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var acc struct {
+		Active string `json:"active"`
+	}
+	if json.Unmarshal(data, &acc) == nil {
+		return acc.Active
+	}
+	return ""
+}
+
+func readEmailFromJetski(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return ""
+	}
+	if matches := emailRegex.FindAllString(string(data), -1); len(matches) > 0 {
+		return matches[0]
+	}
+	return ""
 }

@@ -10,3 +10,17 @@ func testTerminalArgs() []string {
 	// the test client can connect.
 	return []string{"/D", "/Q", "/C", "ping -t 127.0.0.1 >nul"}
 }
+
+var interactiveTestTerminalBinary = "powershell.exe"
+
+func interactiveTestTerminalArgs() []string {
+	return []string{
+		"-NoLogo",
+		"-NoProfile",
+		"-NonInteractive",
+		"-ExecutionPolicy",
+		"Bypass",
+		"-Command",
+		"$in=[Console]::OpenStandardInput();$out=[Console]::OpenStandardOutput();$ready=[Text.Encoding]::UTF8.GetBytes(\"NEXUS_TEST_READY`n\");$out.Write($ready,0,$ready.Length);$out.Flush();while(($b=$in.ReadByte()) -ge 0){$out.WriteByte([byte]$b);$out.Flush()}",
+	}
+}

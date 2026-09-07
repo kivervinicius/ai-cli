@@ -19,15 +19,7 @@ import {
   Sparkles,
   Trash2,
 } from 'lucide-react';
-import {
-  Badge,
-  Button,
-  Card,
-  ContextDrawer,
-  InlineAlert,
-  Input,
-  Select,
-} from '../../design-system';
+import { Badge, Button, Card, InlineAlert, Input, Select } from '../../design-system';
 import { nexusApi } from '../../nexus/api';
 import type {
   Agent,
@@ -153,10 +145,6 @@ export const PlanBuilderSurface: React.FC<{
   useEffect(() => {
     if (initialGoal.trim()) setAutoGoal((current) => current || initialGoal.trim());
   }, [initialGoal]);
-  useEffect(() => {
-    if (initialPlan) selectGeneratedPlan(initialPlan);
-  }, [initialPlan]);
-
   const loadPlans = useCallback(async () => {
     try {
       setLoading(true);
@@ -200,7 +188,7 @@ export const PlanBuilderSurface: React.FC<{
           setSelectedPlan(normalizeWorkPlan(detail.plan));
       })
       .catch((error) => console.error('Failed to load plan revisions:', error));
-  }, [selectedPlan?.id, selectedPlan?.current_revision]);
+  }, [selectedPlan]);
 
   useEffect(() => {
     if (!selectedPlan) return;
@@ -215,7 +203,7 @@ export const PlanBuilderSurface: React.FC<{
         })),
       )
       .catch(() => setLeader({ role: 'orchestrator', strategy: 'AUTO' }));
-  }, [selectedPlan?.id]);
+  }, [selectedPlan]);
 
   useEffect(() => {
     if (!selectedPlan) {
@@ -230,8 +218,10 @@ export const PlanBuilderSurface: React.FC<{
     );
   }, [selectedPlan]);
 
+  const activeRunId = activeRun?.id;
+  const activeRunState = activeRun?.state;
   useEffect(() => {
-    if (!activeRun) return;
+    if (!activeRunId || !activeRunState) return;
     const terminal = new Set([
       'COMPLETED_VERIFIED',
       'FAILED',
@@ -241,15 +231,15 @@ export const PlanBuilderSurface: React.FC<{
       'CANCELED_BY_USER',
     ]);
     if (
-      terminal.has(activeRun.state) ||
-      activeRun.state === 'PAUSED' ||
-      activeRun.state === 'BLOCKED_NEEDS_USER'
+      terminal.has(activeRunState) ||
+      activeRunState === 'PAUSED' ||
+      activeRunState === 'BLOCKED_NEEDS_USER'
     )
       return;
     let disposed = false;
     const refresh = async () => {
       try {
-        const run = await nexusApi.getRun(activeRun.id);
+        const run = await nexusApi.getRun(activeRunId);
         if (!disposed) setActiveRun(run);
       } catch (error) {
         if (!disposed) console.error('Failed to refresh mission run:', error);
@@ -260,7 +250,7 @@ export const PlanBuilderSurface: React.FC<{
       disposed = true;
       window.clearInterval(timer);
     };
-  }, [activeRun?.id, activeRun?.state]);
+  }, [activeRunId, activeRunState]);
 
   const chipsFromPlan = (plan: WorkPlan, goalText: string): string[] => {
     const chips: string[] = [];
@@ -276,18 +266,25 @@ export const PlanBuilderSurface: React.FC<{
     return [...new Set(chips)].slice(0, 8);
   };
 
-  const selectGeneratedPlan = (plan: WorkPlan) => {
-    const next = normalizeWorkPlan(plan);
-    setPlans((prev) => [next, ...prev.filter((item) => item.id !== next.id)]);
-    setSelectedPlan(next);
-    setGoalChips(chipsFromPlan(next, autoGoal || next.title || next.description || ''));
-    if (!compactGoal) setAutoGoal('');
-    setClarification(null);
-    setClarificationAnswers({});
-    if (next.phases.length > 0) {
-      setExpandedPhases({ [next.phases[0].id]: true });
-    }
-  };
+  const selectGeneratedPlan = useCallback(
+    (plan: WorkPlan) => {
+      const next = normalizeWorkPlan(plan);
+      setPlans((prev) => [next, ...prev.filter((item) => item.id !== next.id)]);
+      setSelectedPlan(next);
+      setGoalChips(chipsFromPlan(next, autoGoal || next.title || next.description || ''));
+      if (!compactGoal) setAutoGoal('');
+      setClarification(null);
+      setClarificationAnswers({});
+      if (next.phases.length > 0) {
+        setExpandedPhases({ [next.phases[0].id]: true });
+      }
+    },
+    [autoGoal, compactGoal],
+  );
+
+  useEffect(() => {
+    if (initialPlan) selectGeneratedPlan(initialPlan);
+  }, [initialPlan, selectGeneratedPlan]);
 
   const selectedStep = useMemo(
     () => flowDraft?.steps.find((step) => step.id === selectedStepId) || null,

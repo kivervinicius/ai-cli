@@ -1,18 +1,22 @@
 # Suporte de plataformas
 
-Build, runtime e terminal nativo são gates diferentes. Cross-compilation não
-prova execução. O estado abaixo é uma política
-documental: uma linha só deve ser marcada como verificada quando houver teste
-ou CI nativo correspondente.
+Build, runtime, terminal nativo, empacotamento e atualização são gates
+independentes. Cross-compilation prova somente compilação para o alvo; não
+prova execução nativa.
 
-| Área | Linux | Windows | macOS |
+| Capacidade | Linux amd64 | Windows amd64 | macOS arm64 |
 | --- | --- | --- | --- |
-| CLI/Core build | evidência local/CI | runner nativo necessário | runner nativo necessário |
+| CLI/Core build | CI nativo | CI nativo | CI nativo |
 | Web frontend | compartilhado | compartilhado | compartilhado |
-| PTY/runtime | PTY/UDS | ConPTY/Named Pipe | PTY/UDS |
-| Desktop Wails | build observado | build nativo necessário | build nativo necessário |
-| Installer/update | testes de contrato | smoke nativo necessário | smoke nativo necessário |
+| PTY/runtime | PTY + UDS | ConPTY + Named Pipe | PTY + UDS |
+| Browser E2E/Axe/visual | runner Linux | compartilhado | compartilhado |
+| Desktop Wails build | binário ELF | `.exe` | bundle `.app` |
+| Desktop runtime smoke | somente com evidência nativa | somente com evidência nativa | somente com evidência nativa |
+| Installer | `install.sh`, DEB/RPM quando publicados | PowerShell/NSIS quando publicados | app/DMG quando publicados |
+| Updater | manifesto/checksum/assinatura | manifesto/checksum/assinatura | manifesto/checksum/assinatura |
+| Native CI | obrigatório | obrigatório | obrigatório |
 
-Não trate cross-compilation como prova de runtime. Para diagnóstico, consulte
-[troubleshooting](troubleshooting.md). Use `nexus doctor --json` para o estado
-do ambiente. Não diga “suportado” apenas porque `GOOS=windows go build` passa.
+O status oficial de cada célula deve vir do CI nativo e do relatório da mesma
+revisão. Para diagnóstico, consulte [troubleshooting](troubleshooting.md) e
+use `nexus doctor --json`. Não trate uma plataforma como suportada apenas
+porque `GOOS=<alvo> go build` passa.

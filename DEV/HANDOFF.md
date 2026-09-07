@@ -534,5 +534,34 @@ WebView carregar um documento remoto e perca o estado do workspace.
 
 O novo binário foi gerado em `cmd/nexus-desktop/build/bin/nexus-desktop`, a
 instância antiga foi encerrada e a nova está ativa junto da Web em `127.0.0.1:3000`.
-O teste E2E confirmou a troca Overview → Terminais; o roteiro completo ainda
-reporta uma falha responsiva independente no menu de criação em viewport 320px.
+O teste E2E confirmou a troca Overview → Terminais; a execução inicial ainda
+registrava uma falha responsiva no menu de criação em viewport 320px, corrigida
+no fechamento local abaixo.
+
+## Review closure — 2026-09-07
+
+O bloqueio responsivo foi corrigido: o status do topbar não invade mais o
+contexto em 320px e o botão Criar permanece fisicamente acionável. Também foram
+corrigidos o deadlock de captura stdout, a comparação cross-platform de paths,
+o readiness determinístico das fixtures de terminal, o diagnóstico do Browser
+E2E, o bug de loop de loading por dependência de objetos em
+`NexusWorkspaceApp`, o gate do bundle macOS e os gates documentais.
+
+Estado local comprovado: frontend 10/10, 310 testes, Browser E2E/Axe PASS,
+Go test/vet PASS, docs-verify PASS, Wails Linux build PASS e VIS-011 capturado
+com Wails/Core reais. O relatório publicado permanece deliberadamente NO-GO
+até o CI nativo Windows/macOS, GoReleaser snapshot e a integração final com
+`origin/main` ocorrerem no mesmo SHA. Não fazer commit/push automático.
+
+## Project Shell terminal overlay — 2026-09-07
+
+O terminal do Project Shell apresentava uma linha de `W` porque o textarea
+auxiliar do xterm estava visível: o build final não continha o stylesheet
+oficial de `xterm`. O PTY e o WebSocket estavam corretos. `web/scripts/build.mjs`
+agora incorpora o CSS após o esbuild, e o relatório de verificação exige o
+marcador de isolamento do input.
+
+Após recompilar e reiniciar a Web, o smoke real confirmou helper invisível,
+terminal sem `W` espúrio e sem erros de console. A Web ativa continua em
+`127.0.0.1:3000`; depois de mudanças no frontend, use `make build` e reinicie
+somente a instância Nexus dessa porta para validar a tela de Terminais.

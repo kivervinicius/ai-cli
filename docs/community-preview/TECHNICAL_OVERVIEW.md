@@ -104,7 +104,6 @@ ConPTY, Named Pipe, WebView2, WKWebView, PTY, keyring, installer ou smoke de
 Desktop. A matriz pública mantém essas categorias separadas e exige runner
 nativo para elevar um alvo a `VERIFIED`.
 
-Consulte a [matriz de suporte](../platform/PLATFORM_SUPPORT_MATRIX.md), os ADRs
+Consulte a [matriz de suporte](../operations/platform-support.md), os ADRs
 em [`docs/architecture`](../architecture/) e o relatório de validação em
 [`DEV/validation`](../../DEV/validation/).
-

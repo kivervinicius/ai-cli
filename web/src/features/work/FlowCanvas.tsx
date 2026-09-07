@@ -84,7 +84,7 @@ export const FlowCanvas = ({
       setNodes([]);
       setEdges([]);
     }
-  }, [flow.steps]);
+  }, [flow]);
 
   useEffect(() => {
     setNodes((current) =>

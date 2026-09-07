@@ -133,7 +133,7 @@ export const InAppNotificationCenter: React.FC<{
         createPortal(
           <section
             className="nx-notification-center"
-            aria-label="Notificações recentes"
+            aria-label={t('notifications.recent', 'Notificações recentes')}
             aria-live="polite"
           >
             {notifications.map((notification) => (
@@ -171,13 +171,16 @@ export const InAppNotificationCenter: React.FC<{
                 )}
                 {notification.runtimeId && (
                   <IconButton
-                    label="Abrir terminal"
+                    label={t('notifications.openTerminal', 'Abrir terminal')}
                     onClick={() => onFocusRuntime(notification.runtimeId!)}
                   >
                     <Terminal size={15} />
                   </IconButton>
                 )}
-                <IconButton label="Fechar notificação" onClick={() => dismiss(notification.id)}>
+                <IconButton
+                  label={t('notifications.dismiss', 'Fechar notificação')}
+                  onClick={() => dismiss(notification.id)}
+                >
                   <X size={15} />
                 </IconButton>
               </article>
@@ -318,7 +321,7 @@ export const InAppNotificationCenter: React.FC<{
                       )}
                       {notif.runtimeId && (
                         <IconButton
-                          label="Abrir terminal"
+                          label={t('notifications.openTerminal', 'Abrir terminal')}
                           onClick={() => {
                             onCloseDrawer();
                             onFocusRuntime(notif.runtimeId!);

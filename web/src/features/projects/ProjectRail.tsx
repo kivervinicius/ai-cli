@@ -16,7 +16,6 @@ import {
   IconButton,
   ContextMenu,
   contextMenuFromEvent,
-  Tooltip,
   type ContextMenuPoint,
 } from '../../design-system';
 import { AddProjectModal } from './AddProjectModal';
@@ -59,8 +58,8 @@ export const ProjectRail: React.FC<{
   agents = [],
   onOpenAgent,
   onNewAgent,
-  onNewAISession,
-  onProjectShell,
+  onNewAISession: _onNewAISession,
+  onProjectShell: _onProjectShell,
 }) => {
   const { t } = useTranslation();
   const [addOpen, setAddOpen] = useState(false);
@@ -187,10 +186,10 @@ export const ProjectRail: React.FC<{
             <input
               type="search"
               className="nx-project-rail__search-input"
-              placeholder="Filtrar projetos ou agentes..."
+              placeholder={t('rail.filterPlaceholder', 'Filtrar projetos ou agentes...')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              aria-label="Filtrar projetos ou agentes"
+              aria-label={t('rail.filterPlaceholder', 'Filtrar projetos ou agentes')}
             />
           </div>
         )}
@@ -219,10 +218,7 @@ export const ProjectRail: React.FC<{
           </div>
 
           {projectsExpanded && (
-            <div
-              className="nx-project-list nx-rail-scrollable"
-              style={{ maxHeight: '160px', flex: '0 0 auto' }}
-            >
+            <div className="nx-project-list nx-rail-scrollable nx-project-list--compact">
               {filteredProjects.map((project) => (
                 <button
                   type="button"
@@ -250,7 +246,9 @@ export const ProjectRail: React.FC<{
               ))}
               {filteredProjects.length === 0 && (
                 <p className="nx-rail-empty-msg">
-                  {searchQuery ? 'Nenhum projeto encontrado' : t('rail.empty')}
+                  {searchQuery
+                    ? t('rail.noProjectsFound', 'Nenhum projeto encontrado')
+                    : t('rail.empty')}
                 </p>
               )}
             </div>
@@ -270,12 +268,12 @@ export const ProjectRail: React.FC<{
               aria-expanded={agentsExpanded}
             >
               <span className="nx-rail-chevron">{agentsExpanded ? '▾' : '▸'}</span>
-              <span>Agentes</span>
+              <span>{t('rail.agents', 'Agentes')}</span>
               <span className="nx-rail-count">({filteredAgents.length})</span>
             </button>
             <span className="nx-rail-header-actions" onClick={(e) => e.stopPropagation()}>
               {onNewAgent && (
-                <IconButton label="Novo Agente" onClick={onNewAgent}>
+                <IconButton label={t('agents.new', 'Novo Agente')} onClick={onNewAgent}>
                   <Plus size={13} />
                 </IconButton>
               )}
@@ -283,10 +281,7 @@ export const ProjectRail: React.FC<{
           </div>
 
           {agentsExpanded && (
-            <div
-              className="nx-project-list nx-rail-scrollable nx-agents-list-scroll"
-              style={{ flex: 1, minHeight: '100px' }}
-            >
+            <div className="nx-project-list nx-rail-scrollable nx-agents-list-scroll">
               {filteredAgents.map((agent) => (
                 <button
                   type="button"
@@ -301,38 +296,19 @@ export const ProjectRail: React.FC<{
                   }
                   title={`${agent.name} · ${agent.role || 'developer'} (${agent.status})`}
                 >
-                  <span
-                    className="nx-status-dot"
-                    style={{
-                      background:
-                        agent.status === 'WORKING'
-                          ? 'var(--nx-success, #10b981)'
-                          : agent.status === 'RECOVERABLE' || agent.status === 'WAITING'
-                            ? 'var(--nx-warning, #f59e0b)'
-                            : agent.status === 'FAILED' || agent.status === 'STALE'
-                              ? 'var(--nx-danger, #ef4444)'
-                              : 'var(--nx-muted, #64748b)',
-                      boxShadow:
-                        agent.status === 'WORKING'
-                          ? '0 0 6px var(--nx-success, #10b981)'
-                          : agent.status === 'RECOVERABLE'
-                            ? '0 0 6px var(--nx-warning, #f59e0b)'
-                            : 'none',
-                    }}
-                  />
+                  <span className="nx-status-dot" data-status={agent.status} />
                   <span className="nx-rail-item-copy">
                     <strong>{agent.name}</strong>
                     <small>{agent.role || 'developer'}</small>
                   </span>
-                  <TerminalSquare
-                    size={12}
-                    style={{ color: 'var(--nx-subtle)', marginLeft: 'auto' }}
-                  />
+                  <TerminalSquare size={12} className="nx-rail-agent-term-icon" />
                 </button>
               ))}
               {filteredAgents.length === 0 && (
                 <p className="nx-rail-empty-msg">
-                  {searchQuery ? 'Nenhum agente com esse filtro.' : 'Nenhum agente ainda.'}
+                  {searchQuery
+                    ? t('rail.noAgentsFound', 'Nenhum agente com esse filtro.')
+                    : t('rail.noAgentsYet', 'Nenhum agente ainda.')}
                 </p>
               )}
             </div>
@@ -344,10 +320,7 @@ export const ProjectRail: React.FC<{
           className="nx-rail-accordion-section nx-rail-section-tools"
           data-expanded={toolsExpanded ? 'true' : 'false'}
         >
-          <div
-            className="nx-project-rail__heading nx-rail-section-header"
-            style={{ borderTop: '1px solid var(--nx-border)' }}
-          >
+          <div className="nx-project-rail__heading nx-rail-section-header nx-rail-section-header--tools">
             <button
               type="button"
               className="nx-rail-header-label"
@@ -355,7 +328,7 @@ export const ProjectRail: React.FC<{
               aria-expanded={toolsExpanded}
             >
               <span className="nx-rail-chevron">{toolsExpanded ? '▾' : '▸'}</span>
-              <span>Ferramentas</span>
+              <span>{t('rail.tools', 'Ferramentas')}</span>
             </button>
           </div>
 

@@ -1,11 +1,11 @@
 {
-  "source_sha": "4cf7ebcc4308e126e59af2fb06508ed8f32a158e",
+  "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
   "generated_by": "web/scripts/docs-capture.mjs",
   "captures": [
     {
       "id": "VIS-001",
       "file": "workspace-overview.png",
-      "source_sha": "4cf7ebcc4308e126e59af2fb06508ed8f32a158e",
+      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
       "surface": "web/workspace",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
@@ -16,7 +16,7 @@
     {
       "id": "VIS-003",
       "file": "direct-session.png",
-      "source_sha": "4cf7ebcc4308e126e59af2fb06508ed8f32a158e",
+      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
       "surface": "web/direct-session",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
@@ -27,7 +27,7 @@
     {
       "id": "VIS-005",
       "file": "terminal.png",
-      "source_sha": "4cf7ebcc4308e126e59af2fb06508ed8f32a158e",
+      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
       "surface": "web/terminal",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
@@ -38,30 +38,8 @@
     {
       "id": "VIS-002",
       "file": "projects.png",
-      "source_sha": "4cf7ebcc4308e126e59af2fb06508ed8f32a158e",
+      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
       "surface": "web/projects",
-      "scenario": "real-local-bootstrap",
-      "viewport": "1440x900",
-      "automated": true,
-      "capture_command": "bun run docs:capture",
-      "status": "PASS"
-    },
-    {
-      "id": "VIS-004",
-      "file": "provider.png",
-      "source_sha": "4cf7ebcc4308e126e59af2fb06508ed8f32a158e",
-      "surface": "web/provider",
-      "scenario": "real-local-bootstrap",
-      "viewport": "1440x900",
-      "automated": true,
-      "capture_command": "bun run docs:capture",
-      "status": "PASS"
-    },
-    {
-      "id": "VIS-006",
-      "file": "agents.png",
-      "source_sha": "4cf7ebcc4308e126e59af2fb06508ed8f32a158e",
-      "surface": "web/agents",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
       "automated": true,
@@ -71,7 +49,7 @@
     {
       "id": "VIS-007",
       "file": "composer.png",
-      "source_sha": "4cf7ebcc4308e126e59af2fb06508ed8f32a158e",
+      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
       "surface": "web/composer",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
@@ -82,8 +60,19 @@
     {
       "id": "VIS-008",
       "file": "flow.png",
-      "source_sha": "4cf7ebcc4308e126e59af2fb06508ed8f32a158e",
+      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
       "surface": "web/flow",
+      "scenario": "real-local-bootstrap",
+      "viewport": "1440x900",
+      "automated": true,
+      "capture_command": "bun run docs:capture",
+      "status": "PASS"
+    },
+    {
+      "id": "VIS-006",
+      "file": "agents.png",
+      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
+      "surface": "web/agents",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
       "automated": true,
@@ -93,7 +82,7 @@
     {
       "id": "VIS-009",
       "file": "mission.png",
-      "source_sha": "4cf7ebcc4308e126e59af2fb06508ed8f32a158e",
+      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
       "surface": "web/mission",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
@@ -104,12 +93,34 @@
     {
       "id": "VIS-010",
       "file": "usage-quota.png",
-      "source_sha": "4cf7ebcc4308e126e59af2fb06508ed8f32a158e",
+      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
       "surface": "web/usage-quota",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
       "automated": true,
       "capture_command": "bun run docs:capture",
+      "status": "PASS"
+    },
+    {
+      "id": "VIS-004",
+      "file": "provider.png",
+      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
+      "surface": "web/provider",
+      "scenario": "real-local-bootstrap",
+      "viewport": "1440x900",
+      "automated": true,
+      "capture_command": "bun run docs:capture",
+      "status": "PASS"
+    },
+    {
+      "id": "VIS-011",
+      "file": "desktop.png",
+      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
+      "surface": "desktop/wails-linux",
+      "scenario": "real-local-core-and-wails-shell",
+      "viewport": "1280x800",
+      "automated": true,
+      "capture_command": "xvfb-run -a dbus-run-session -- cmd/nexus-desktop/build/bin/nexus-desktop",
       "status": "PASS"
     }
   ]

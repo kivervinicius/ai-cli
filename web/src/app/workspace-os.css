@@ -2623,7 +2623,7 @@ button {
   box-shadow: 0 0 0 2px var(--nx-accent-soft);
 }
 .nx-topbar-version-pill {
-  display: inline-flex;
+  display: none;
   align-items: center;
   gap: 6px;
   padding: 2px 8px;
@@ -2756,12 +2756,38 @@ button {
   height: 6px;
   border-radius: 50%;
 }
-.nx-status-dot--working {
-  background: var(--nx-warning);
-  box-shadow: 0 0 6px var(--nx-warning);
+.nx-status-dot--working,
+.nx-status-dot[data-status="WORKING"] {
+  background: var(--nx-success, #10b981);
+  box-shadow: 0 0 6px var(--nx-success, #10b981);
 }
-.nx-status-dot--idle {
-  background: var(--nx-success);
+.nx-status-dot--idle,
+.nx-status-dot[data-status="IDLE"] {
+  background: var(--nx-muted, #64748b);
+}
+.nx-status-dot[data-status="RECOVERABLE"],
+.nx-status-dot[data-status="WAITING"] {
+  background: var(--nx-warning, #f59e0b);
+  box-shadow: 0 0 6px var(--nx-warning, #f59e0b);
+}
+.nx-status-dot[data-status="FAILED"],
+.nx-status-dot[data-status="STALE"] {
+  background: var(--nx-danger, #ef4444);
+}
+.nx-project-list--compact {
+  max-height: 160px;
+  flex: 0 0 auto;
+}
+.nx-agents-list-scroll {
+  flex: 1;
+  min-height: 100px;
+}
+.nx-rail-agent-term-icon {
+  color: var(--nx-subtle);
+  margin-left: auto;
+}
+.nx-rail-section-header--tools {
+  border-top: 1px solid var(--nx-border);
 }
 .nx-statusbar-version {
   font-family: var(--nx-font-mono);
@@ -4714,6 +4740,17 @@ button {
 .nx-arrange-menu__item small {
   color: var(--nx-subtle);
   font-size: 0.75rem;
+}
+.nx-arrange-menu__separator {
+  height: 1px;
+  background: var(--nx-border);
+  margin: 4px 0;
+}
+.nx-arrange-menu__reset-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--nx-warning, #f59e0b);
 }
 @media (max-width: 720px) {
   .nx-presentation-toggle button span,
@@ -7613,7 +7650,13 @@ button {
     padding: 0 6px !important;
     gap: 4px !important;
   }
+  .nx-topbar__context {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
   .nx-topbar__status {
+    flex: 0 1 auto;
+    min-width: 0;
     gap: 4px !important;
   }
   .nx-topbar__project {
@@ -7625,6 +7668,30 @@ button {
   }
   .nx-topbar__project-btn .nx-project-info small {
     display: none !important;
+  }
+  .nx-font-scale-picker {
+    display: none !important;
+  }
+  .nx-topbar-tour-btn {
+    display: none !important;
+  }
+  .nx-topbar__status > [class*="focusToggleBtn"] {
+    display: none;
+  }
+}
+
+@media (max-width: 360px) {
+  .nx-topbar {
+    padding: 0 4px !important;
+    gap: 2px !important;
+  }
+  .nx-topbar__project-btn {
+    max-width: 90px !important;
+  }
+  .nx-create-menu__trigger {
+    padding: 0 6px !important;
+    min-width: 30px;
+    height: 28px;
   }
 }
 

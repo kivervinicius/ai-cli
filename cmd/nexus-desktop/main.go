@@ -92,7 +92,12 @@ func main() {
 
 	// 5. Launch Wails native shell
 	err = wails.Run(&options.App{
-		Title:     "IAPro Nexus",
+		Title: "IAPro Nexus",
+		// A second native shell must never create another visible Desktop
+		// workspace. Web/Core remains the shared source of truth.
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: "com.iapro.nexus.desktop",
+		},
 		Width:     windowState.Width,
 		Height:    windowState.Height,
 		MinWidth:  800,

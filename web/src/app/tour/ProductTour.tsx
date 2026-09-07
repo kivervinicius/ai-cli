@@ -20,7 +20,7 @@ export const ProductTour: React.FC<{ open: boolean; onClose: () => void }> = ({
         const r = el.getBoundingClientRect();
         return r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0;
       }),
-    [open],
+    [],
   );
 
   const step = steps[index];

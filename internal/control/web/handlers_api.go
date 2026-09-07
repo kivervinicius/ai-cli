@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/buildinfo"
@@ -361,26 +362,34 @@ func (h *APIHandler) handleProviders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	showInternal := r.URL.Query().Get("internal") == "true"
-	var res []ProviderView
+	var selectedDrivers []driver.ControlDriver
 	for _, d := range drivers {
-		// fake and shell are control-plane implementation drivers, not user-selectable AI providers.
 		if !showInternal && (d.ProviderID() == "fake" || d.ProviderID() == "shell") {
 			continue
 		}
-		// Bound provider detection: a slow/hung provider binary must never stall
-		// the whole endpoint (server WriteTimeout would otherwise kill the conn).
-		pctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		det, _ := d.Detect(pctx)
-		caps := d.EffectiveCaps(pctx, model.Profile{Name: "default", Provider: d.ProviderID()})
-		cancel()
-		res = append(res, ProviderView{
-			ID:           d.ProviderID(),
-			Installed:    det.Installed,
-			Version:      det.Version,
-			ControlLevel: caps.ControlLevel,
-			Capabilities: caps,
-		})
+		selectedDrivers = append(selectedDrivers, d)
 	}
+
+	res := make([]ProviderView, len(selectedDrivers))
+	var wg sync.WaitGroup
+	for i, d := range selectedDrivers {
+		wg.Add(1)
+		go func(idx int, drv driver.ControlDriver) {
+			defer wg.Done()
+			pctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+			defer cancel()
+			det, _ := drv.Detect(pctx)
+			caps := drv.EffectiveCaps(pctx, model.Profile{Name: "default", Provider: drv.ProviderID()})
+			res[idx] = ProviderView{
+				ID:           drv.ProviderID(),
+				Installed:    det.Installed,
+				Version:      det.Version,
+				ControlLevel: caps.ControlLevel,
+				Capabilities: caps,
+			}
+		}(i, d)
+	}
+	wg.Wait()
 	writeJSON(w, http.StatusOK, res)
 }
 

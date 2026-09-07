@@ -413,17 +413,32 @@ jobs:
 
       - name: Build macOS desktop with Wails
         run: |
+          set -euo pipefail
           cd cmd/nexus-desktop
           go run github.com/wailsapp/wails/v2/cmd/wails@v2.15.0 build -clean -s -m -tags production
-          test -d build/bin/nexus-desktop.app || test -f build/bin/nexus-desktop
+          mapfile -t apps < <(find build/bin -maxdepth 1 -type d -name '*.app' -print)
+          test "${#apps[@]}" -eq 1 || {
+            printf 'Expected exactly one macOS app bundle, found %s\n' "${#apps[@]}" >&2
+            printf '%s\n' "${apps[@]}" >&2
+            exit 1
+          }
+          app="${apps[0]}"
+          test -f "$app/Contents/Info.plist"
+          mapfile -t executables < <(find "$app/Contents/MacOS" -maxdepth 1 -type f -perm -111 -print)
+          test "${#executables[@]}" -eq 1 || {
+            printf 'Expected exactly one executable in %s, found %s\n' "$app/Contents/MacOS" "${#executables[@]}" >&2
+            printf '%s\n' "${executables[@]}" >&2
+            exit 1
+          }
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Contents/Info.plist" | grep -Fx 'IAPro Nexus'
+          printf 'Validated macOS bundle: %s\n' "$app"
 
       - name: Package macOS desktop artifact
         run: |
-          if [ -d cmd/nexus-desktop/build/bin/nexus-desktop.app ]; then
-            ditto -c -k --sequesterRsrc --keepParent cmd/nexus-desktop/build/bin/nexus-desktop.app "$RUNNER_TEMP/nexus-desktop_Darwin_arm64.zip"
-          else
-            tar -C cmd/nexus-desktop/build/bin -czf "$RUNNER_TEMP/nexus-desktop_Darwin_arm64.tar.gz" nexus-desktop
-          fi
+          set -euo pipefail
+          mapfile -t apps < <(find cmd/nexus-desktop/build/bin -maxdepth 1 -type d -name '*.app' -print)
+          test "${#apps[@]}" -eq 1
+          ditto -c -k --sequesterRsrc --keepParent "${apps[0]}" "$RUNNER_TEMP/nexus-desktop_Darwin_arm64.zip"
 
       - name: Upload macOS desktop artifact
         uses: actions/upload-artifact@v4

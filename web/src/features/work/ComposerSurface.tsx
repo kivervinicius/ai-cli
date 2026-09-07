@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   CheckCircle2,
@@ -65,11 +65,11 @@ export const ComposerSurface: React.FC<{
     [view?.skills],
   );
 
-  const refreshSessions = async () => {
+  const refreshSessions = useCallback(async () => {
     const next = await nexus.listComposerSessions(project.id);
     setSessions(next || []);
     return next || [];
-  };
+  }, [project.id]);
   useEffect(() => {
     void (async () => {
       try {
@@ -80,7 +80,7 @@ export const ComposerSurface: React.FC<{
         setError(err instanceof Error ? err.message : String(err));
       }
     })();
-  }, [project.id]);
+  }, [project.id, refreshSessions]);
 
   useEffect(() => {
     void nexus

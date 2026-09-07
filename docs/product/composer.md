@@ -6,4 +6,4 @@ Você pode parar, editar ou rejeitar inferências. Fatos, premissas e desconheci
 
 Composer oferece destinos equivalentes: **Copy Prompt**, **Send to Agent** e **Turn into Flow**. Copiar e enviar ao Agent não exigem Flow. Turn into Flow cria um draft/handoff e não inicia runtime por si só.
 
-Veja o [guia operacional](../nexus-composer-user-guide.md).
+Veja o [guia operacional do Composer](composer-guide.md).

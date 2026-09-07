@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, GitBranch, Plus, RefreshCw } from 'lucide-react';
 import {
@@ -36,7 +36,7 @@ export const BranchSwitcherModal: React.FC<BranchSwitcherModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  const loadBranches = async () => {
+  const loadBranches = useCallback(async () => {
     if (!project?.id) return;
     setLoading(true);
     setError(null);
@@ -48,7 +48,7 @@ export const BranchSwitcherModal: React.FC<BranchSwitcherModalProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [project?.id, t]);
 
   useEffect(() => {
     if (open) {
@@ -59,7 +59,7 @@ export const BranchSwitcherModal: React.FC<BranchSwitcherModalProps> = ({
       setSuccessMsg(null);
       void loadBranches();
     }
-  }, [open, project?.id]);
+  }, [open, loadBranches]);
 
   const handleCheckout = async (branchName: string, isNew = false) => {
     if (!branchName.trim() || switching) return;

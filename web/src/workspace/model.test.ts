@@ -51,6 +51,48 @@ describe('workspace model', () => {
     }
   });
 
+  it('repairs legacy duplicates that have different ids but the same data identity', () => {
+    const ws = {
+      version: 2 as const,
+      root: {
+        kind: 'split' as const,
+        id: 'split-1',
+        direction: 'horizontal' as const,
+        ratio: 0.5,
+        first: {
+          kind: 'stack' as const,
+          id: 'stack-1',
+          activeId: 'terminal-copy-a',
+          tabs: [
+            {
+              ...surface('terminal-copy-a'),
+              type: 'terminal',
+              data: { agentId: 'agent-1' },
+            },
+          ],
+        },
+        second: {
+          kind: 'stack' as const,
+          id: 'stack-2',
+          activeId: 'terminal-copy-b',
+          tabs: [
+            {
+              ...surface('terminal-copy-b'),
+              type: 'terminal',
+              data: { agentId: 'agent-1' },
+            },
+          ],
+        },
+      },
+    };
+
+    const repaired = openSurface(ws, surface('home'));
+    expect(listSurfaces(repaired.root)).toHaveLength(2);
+    expect(
+      listSurfaces(repaired.root).filter((tab) => tab.data?.agentId === 'agent-1'),
+    ).toHaveLength(1);
+  });
+
   it('splits an existing stack with a new surface', () => {
     const ws = splitWithSurface(
       createWorkspace(surface('home')),
