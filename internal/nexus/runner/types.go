@@ -181,6 +181,7 @@ type PackageRun struct {
 	PromptVersionID          string               `json:"prompt_version_id,omitempty"`
 	CompiledPrompt           string               `json:"compiled_prompt,omitempty"`
 	RemediationContext       string               `json:"remediation_context,omitempty"`
+	StrategyVariant          string               `json:"strategy_variant,omitempty"`
 	RetryFrom                State                `json:"retry_from,omitempty"`
 	LastFailureSignature     string               `json:"last_failure_signature,omitempty"`
 	NoProgressCount          int                  `json:"no_progress_count,omitempty"`
@@ -189,6 +190,23 @@ type PackageRun struct {
 	ErrorMessage             string               `json:"error_message,omitempty"`
 	StartedAt                time.Time            `json:"started_at"`
 	FinishedAt               *time.Time           `json:"finished_at,omitempty"`
+}
+
+// HumanIntervention is the durable, actionable contract surfaced whenever a
+// mission cannot safely continue autonomously. The summary/error string remains
+// available for legacy clients, but UI and recovery code can rely on these
+// structured fields instead of parsing prose.
+type HumanIntervention struct {
+	ReasonCode         string    `json:"reason_code"`
+	Summary            string    `json:"summary"`
+	Question           string    `json:"question"`
+	Context            string    `json:"context"`
+	RecommendedActions []string  `json:"recommended_actions"`
+	Impact             string    `json:"impact"`
+	MissionID          string    `json:"mission_id"`
+	TaskID             string    `json:"task_id"`
+	Source             string    `json:"source"`
+	Timestamp          time.Time `json:"timestamp"`
 }
 
 type MissionRun struct {
@@ -213,6 +231,7 @@ type MissionRun struct {
 	UpdatedAt           time.Time            `json:"updated_at"`
 	CompletedAt         *time.Time           `json:"completed_at,omitempty"`
 	GlobalVerifications []VerificationResult `json:"global_verifications,omitempty"`
+	NeedsHuman          *HumanIntervention   `json:"needs_human,omitempty"`
 }
 
 type AllocationResult struct {

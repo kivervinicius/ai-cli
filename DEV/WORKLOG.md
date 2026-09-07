@@ -7,6 +7,9 @@
 - Reexecutado `node web/scripts/verify-report.mjs`: 10/10 gates PASS.
 - Reexecutados `go test ./... -count=1`, testes do runner, Vitest (61 arquivos,
   311 testes), typecheck, lint de estilos, check de estilos e `git diff --check`.
+- Auditoria remota confirmou o CI run `34155789469` no SHA candidato; Frontend,
+  Windows e macOS falharam e Browser/Desktop/Snapshot foram pulados. Logs brutos
+  exigem reautenticação do GitHub (`HTTP 403` com token inválido).
 
 ## 2026-09-07 — Spacing, Padding & Surface Architecture Refactor (Maestro, Overview & Settings)
 

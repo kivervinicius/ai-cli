@@ -4,9 +4,11 @@ import type { ContextReadinessState } from '../../types';
 
 describe('Composer Context Readiness gate', () => {
   const states: ContextReadinessState[] = ['MISSING', 'HYDRATING', 'READY', 'STALE', 'FAILED'];
-  it('allows planning/refinement only when READY', () => {
-    for (const state of states)
-      expect(composerGateForReadiness(state).canCompose).toBe(state === 'READY');
+  it('keeps Composer editable while separating destination permissions', () => {
+    for (const state of states) expect(composerGateForReadiness(state).canCompose).toBe(true);
+    expect(composerGateForReadiness('READY').canMaterialize).toBe(true);
+    expect(composerGateForReadiness('MISSING').canMaterialize).toBe(false);
+    expect(composerGateForReadiness('STALE').canExecute).toBe(false);
   });
   it('maps non-ready states to explicit actions', () => {
     expect(composerGateForReadiness('MISSING').action).toBe('PREPARE');

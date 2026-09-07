@@ -578,6 +578,59 @@ func TestMissionRunnerHonorsAutoRemediateDisabled(t *testing.T) {
 	}
 }
 
+type overnightAcceptanceExecutor struct {
+	globalRepairExecutor
+	failedOnce bool
+}
+
+func (e *overnightAcceptanceExecutor) Execute(ctx context.Context, run *MissionRun, pkg *PackageRun, prompt string) (ExecutionResult, error) {
+	if !e.failedOnce {
+		e.failedOnce = true
+		return ExecutionResult{}, errors.New("injected overnight provider failure")
+	}
+	return e.globalRepairExecutor.Execute(ctx, run, pkg, prompt)
+}
+
+// TestOvernightAcceptanceSandbox exercises the unattended control loop with a
+// parallel plan, a dependency handoff, an injected provider failure, bounded
+// remediation and a final global Definition-of-Done check. It intentionally
+// uses the deterministic executor seam; provider/native acceptance remains a
+// separate external gate.
+func TestOvernightAcceptanceSandbox(t *testing.T) {
+	workspace := t.TempDir()
+	exec := &overnightAcceptanceExecutor{globalRepairExecutor: globalRepairExecutor{fakeExecutor: fakeExecutor{reviewOK: true}}}
+	r := NewMissionRunner(NewMemoryRunRepository(), exec)
+	contract := DefaultAutonomyContract()
+	contract.MaxRetries = 3
+	contract.MaxNoProgress = 2
+	contract.VerificationCommands = []string{"true"}
+	contract.GlobalVerificationCommands = []string{"test -f global-ready"}
+	plan := PlanSpec{ID: "overnight-sandbox", ProjectID: "nexus", Revision: 1, Packages: []PackageSpec{
+		{ID: "api", Title: "API contract", Goal: "Produce API contract", ParallelGroup: "foundation"},
+		{ID: "web", Title: "Web integration", Goal: "Consume API contract", Dependencies: []string{"api"}},
+	}}
+	run, err := r.StartMissionRun(context.Background(), plan, workspace, contract, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed, err := r.RunToTerminal(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.State != StateCompletedVerified {
+		t.Fatalf("overnight sandbox did not converge: %s", completed.State)
+	}
+	if completed.PackageRuns[0].Attempt == 0 || completed.PackageRuns[0].StrategyVariant == "" {
+		t.Fatalf("injected failure did not produce bounded remediation evidence: %+v", completed.PackageRuns[0])
+	}
+	if len(completed.PackageRuns[1].ContextCapsule.DependencyReceipts) != 1 {
+		t.Fatalf("dependency artifact handoff missing: %+v", completed.PackageRuns[1].ContextCapsule)
+	}
+	if len(completed.GlobalVerifications) == 0 || !completed.GlobalVerifications[len(completed.GlobalVerifications)-1].Passed {
+		t.Fatalf("global verification evidence incomplete: %+v", completed.GlobalVerifications)
+	}
+}
+
 type dispatchObservingExecutor struct {
 	fakeExecutor
 	repo              RunRepository

@@ -25,6 +25,13 @@ Ambas utilizando:
 
 ## Aceitação
 
+### Finalization autopilot status — 2026-09-07
+
+The fresh release-candidate ledger is maintained in
+[`DEV/NEXUS_1_FINAL_ACCEPTANCE.md`](../NEXUS_1_FINAL_ACCEPTANCE.md). Local
+control-plane gates are green; native Windows/macOS, authenticated crash/provider
+recovery, overnight acceptance and real dogfooding remain explicit blockers.
+
 1. **Baseline Zero-Red**:
    - `make quality`, `web-verify`, `go test ./...` 100% verdes.
 2. **Core Lifecycle & Discovery**:

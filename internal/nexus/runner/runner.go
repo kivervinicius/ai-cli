@@ -216,7 +216,7 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 		} else {
 			if err := r.executeOne(opCtx, run, pkg); err != nil {
 				if errors.Is(err, ErrDispatchOutcomeUnknown) {
-					run.State = StateBlockedNeedsUser
+					r.blockNeedsHuman(run, pkg, "DISPATCH_OUTCOME_UNKNOWN", err.Error(), "Provider outcome is unknown after the dispatch boundary.", []string{"Inspect provider runtime", "Retry only after confirming whether work completed"})
 					run.UpdatedAt = time.Now().UTC()
 					_ = r.saveRun(ctx, run)
 					return run, false, err
@@ -291,7 +291,7 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 			pkg.State = StateFailed
 			pkg.ErrorMessage = reason
 			if run.Contract.EscalateOnFailure {
-				run.State = StateBlockedNeedsUser
+				r.blockNeedsHuman(run, pkg, "NO_PROGRESS", reason, "The configured remediation budget was exhausted without verified progress.", []string{"Review failure evidence", "Choose a different strategy or agent", "Resume after updating the plan"})
 			} else {
 				run.State = StateFailedNoProgress
 			}
@@ -326,6 +326,16 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 	return run, false, nil
 }
 
+func (r *MissionRunner) blockNeedsHuman(run *MissionRun, pkg *PackageRun, reasonCode, summary, question string, actions []string) {
+	run.State = StateBlockedNeedsUser
+	run.NeedsHuman = &HumanIntervention{
+		ReasonCode: reasonCode, Summary: summary, Question: question,
+		Context: pkg.RemediationContext, RecommendedActions: append([]string(nil), actions...),
+		Impact:    "Only the affected task is paused; independent verified work is preserved.",
+		MissionID: run.ID, TaskID: pkg.PackageID, Source: "mission_runner", Timestamp: time.Now().UTC(),
+	}
+}
+
 func (r *MissionRunner) packageFailureFrom(ctx context.Context, run *MissionRun, pkg *PackageRun, retryFrom State, err error) (*MissionRun, bool, error) {
 	if terminalErr := r.markRemediation(run, pkg, retryFrom, err.Error()); terminalErr != nil {
 		run.UpdatedAt = time.Now().UTC()
@@ -349,7 +359,18 @@ func (r *MissionRunner) markRemediation(run *MissionRun, pkg *PackageRun, retryF
 		pkg.NoProgressCount = 1
 	}
 	pkg.ErrorMessage = failure
-	pkg.RemediationContext = failure
+	// Every remediation attempt must carry an explicit strategy change. This is
+	// persisted with the PackageRun so a restart cannot silently repeat the same
+	// approach or make the transition depend on in-memory state.
+	switch pkg.NoProgressCount {
+	case 1:
+		pkg.StrategyVariant = "ALTERNATE_APPROACH"
+	case 2:
+		pkg.StrategyVariant = "REPLAN_DECOMPOSE"
+	default:
+		pkg.StrategyVariant = fmt.Sprintf("ESCALATE_%d", pkg.NoProgressCount)
+	}
+	pkg.RemediationContext = fmt.Sprintf("strategy=%s; failure=%s", pkg.StrategyVariant, failure)
 	pkg.RetryFrom = retryFrom
 	pkg.State = StateRemediating
 	limit := run.Contract.MaxNoProgress

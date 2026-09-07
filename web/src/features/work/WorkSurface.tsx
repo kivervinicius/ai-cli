@@ -126,7 +126,7 @@ export const WorkSurface: React.FC<{
         </div>
       </div>
 
-      {!gate.canCompose && (
+      {!gate.canMaterialize && (
         <Card className="nx-context-readiness-card" data-state={state}>
           <div className="nx-context-readiness-card__status">
             <Network size={17} />
@@ -171,9 +171,13 @@ export const WorkSurface: React.FC<{
 
       {error && <div className="nx-inline-error">{error}</div>}
 
-      <div className="nx-composer-flow-region" data-gate={gate.canCompose ? 'ready' : 'blocked'}>
+      <div
+        className="nx-composer-flow-region"
+        data-gate={gate.canMaterialize ? 'ready' : 'destinations-blocked'}
+      >
         <ComposerSurface
           project={project}
+          destinationGate={gate}
           onTransformFlow={(artifact) => void materializeFlow(artifact)}
         />
         {flowError && (

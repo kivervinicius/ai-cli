@@ -13,6 +13,7 @@ O código canônico utiliza o binário `nexus`, mantendo `ai` como alias transpa
 - [`CONTEXT.md`](CONTEXT.md): Arquitetura corrente, runtime, drivers e restrições operacionais.
 - [`SPECS/ACTIVE.md`](SPECS/ACTIVE.md): Contrato ativo de trabalho e critérios de aceitação vigentes.
 - [`VERIFY.md`](VERIFY.md): Evidências e histórico consolidado de validações e gates.
+- [`NEXUS_1_FINAL_ACCEPTANCE.md`](NEXUS_1_FINAL_ACCEPTANCE.md): ledger executável da aceitação RC do Nexus 1.0.
 - [`WORKLOG.md`](WORKLOG.md): Diário de bordo detalhado de todas as implementações e mudanças.
 
 ---
@@ -53,3 +54,4 @@ O código canônico utiliza o binário `nexus`, mantendo `ai` como alias transpa
 - [`NEXUS_V0_FINAL_AUDIT.md`](NEXUS_V0_FINAL_AUDIT.md) & [`NEXUS_V1_FINAL_ENGINEERING_REPORT.md`](NEXUS_V1_FINAL_ENGINEERING_REPORT.md): Auditorias técnicas de consolidação.
 - [`DEV/validation/`](validation/): Logs brutos, capturas de tela e artefatos de testes automatizados e manuais.
 Decision record: [`DEV/DECISIONS/NEXUS_TERMINAL_CONTINUITY.md`](DECISIONS/NEXUS_TERMINAL_CONTINUITY.md)
+- [Nexus 1.0 delivery meta](NEXUS_1_DELIVERY_META.md)

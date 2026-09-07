@@ -7,6 +7,40 @@ import (
 	"testing"
 )
 
+func TestRemediationPersistsStrategyChangeBeforeRetry(t *testing.T) {
+	r := NewMissionRunner(NewMemoryRunRepository(), &fakeExecutor{})
+	run := &MissionRun{Contract: AutonomyContract{MaxNoProgress: 4}}
+	pkg := &PackageRun{PackageID: "pkg"}
+	if err := r.markRemediation(run, pkg, StateCompiling, "same failure"); err != nil {
+		t.Fatal(err)
+	}
+	if pkg.StrategyVariant != "ALTERNATE_APPROACH" || pkg.RemediationContext == "same failure" {
+		t.Fatalf("first remediation did not persist strategy change: %+v", pkg)
+	}
+	if err := r.markRemediation(run, pkg, StateCompiling, "same failure"); err != nil {
+		t.Fatal(err)
+	}
+	if pkg.StrategyVariant != "REPLAN_DECOMPOSE" {
+		t.Fatalf("second identical failure must force replan strategy, got %q", pkg.StrategyVariant)
+	}
+}
+
+func TestNeedsHumanContractIsStructuredAndDurable(t *testing.T) {
+	r := NewMissionRunner(NewMemoryRunRepository(), &fakeExecutor{})
+	run := &MissionRun{ID: "mission-1"}
+	pkg := &PackageRun{PackageID: "task-1", RemediationContext: "strategy=REPLAN_DECOMPOSE"}
+	r.blockNeedsHuman(run, pkg, "NO_PROGRESS", "verification kept failing", "Choose a different strategy", []string{"Review evidence"})
+	if run.State != StateBlockedNeedsUser || run.NeedsHuman == nil {
+		t.Fatalf("expected structured human blocker: %+v", run)
+	}
+	if run.NeedsHuman.ReasonCode != "NO_PROGRESS" || run.NeedsHuman.MissionID != run.ID || run.NeedsHuman.TaskID != pkg.PackageID {
+		t.Fatalf("human blocker lost identity: %+v", run.NeedsHuman)
+	}
+	if len(run.NeedsHuman.RecommendedActions) != 1 || run.NeedsHuman.Context == "" || run.NeedsHuman.Timestamp.IsZero() {
+		t.Fatalf("human blocker is not actionable: %+v", run.NeedsHuman)
+	}
+}
+
 func TestMissionRunnerLifecycleCompletesOnlyAfterVerificationAndReview(t *testing.T) {
 	repo := NewMemoryRunRepository()
 	exec := &fakeExecutor{reviewOK: true}

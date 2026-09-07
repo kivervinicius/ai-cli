@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	coreconfig "github.com/kivervinicius/ai-cli/internal/core/config"
@@ -107,6 +108,20 @@ func (b *boundedOutput) Write(p []byte) (int, error) {
 	return b.buf.Write(p)
 }
 
+// catalogCache provides a short-lived in-memory cache for the skill catalog.
+// SKILL.md files are expensive to read on every call; 30 s TTL is enough to
+// avoid redundant I/O within a single interactive session while remaining
+// fresh enough for edits made outside the process.
+type catalogCache struct {
+	mu        sync.RWMutex
+	catalog   *SkillCatalog
+	expiresAt time.Time
+}
+
+const catalogCacheTTL = 30 * time.Second
+
+var globalCatalogCache catalogCache
+
 func (c *MaestroClient) ApplySyncPreview(ctx context.Context, preview SkillSyncPreview) (*SkillSyncPreview, error) {
 	current, err := c.SyncPreview()
 	if err != nil {
@@ -118,16 +133,36 @@ func (c *MaestroClient) ApplySyncPreview(ctx context.Context, preview SkillSyncP
 	if filepath.Base(current.Tool) != "sync-skills.sh" {
 		return nil, fmt.Errorf("sync tool is not executable on this platform")
 	}
+	// Allowlist: the tool must reside under a known .orquestrador root so that
+	// an attacker who controls an arbitrary file on PATH cannot trick Nexus
+	// into executing it with --apply.
+	allowed := false
+	toolAbs, _ := filepath.Abs(current.Tool)
+	for _, dir := range findOrquestradorDirs() {
+		if strings.HasPrefix(toolAbs, filepath.Clean(dir)+string(filepath.Separator)) {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return nil, fmt.Errorf("sync tool path %q is outside known orquestrador roots", current.Tool)
+	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "bash", current.Tool, "--apply")
 	var output boundedOutput
 	output.max = maxSkillSyncOutput
 	cmd.Stdout = &output
+	cmd.Stderr = &output // capture stderr inside the bounded buffer
 	err = cmd.Run()
 	result := *current
 	result.DryRun = false
 	result.Output = output.buf.String()
+	// Invalidate the catalog cache so the next Catalog() call picks up newly
+	// synced skills.
+	globalCatalogCache.mu.Lock()
+	globalCatalogCache.catalog = nil
+	globalCatalogCache.mu.Unlock()
 	if err != nil {
 		return nil, fmt.Errorf("official skill sync failed: %w", err)
 	}
@@ -594,8 +629,18 @@ func (c *MaestroClient) Status() MaestroStatus {
 }
 
 // Catalog returns the merged operational catalog plus the local Maestro
-// library. No network lookup or installation is performed here.
+// library. No network lookup or installation is performed here. Results are
+// cached for catalogCacheTTL to avoid redundant disk reads within a single
+// interactive session.
 func (c *MaestroClient) Catalog() SkillCatalog {
+	globalCatalogCache.mu.RLock()
+	if globalCatalogCache.catalog != nil && time.Now().Before(globalCatalogCache.expiresAt) {
+		result := *globalCatalogCache.catalog
+		globalCatalogCache.mu.RUnlock()
+		return result
+	}
+	globalCatalogCache.mu.RUnlock()
+
 	groups := make([][]CatalogSkill, 0)
 	for i, dir := range findOrquestradorDirs() {
 		cap, err := c.queryCapabilitiesFromDir(dir)
@@ -616,7 +661,14 @@ func (c *MaestroClient) Catalog() SkillCatalog {
 		}
 		groups = append(groups, items)
 	}
-	return MergeSkillCatalog(groups...)
+	result := MergeSkillCatalog(groups...)
+
+	globalCatalogCache.mu.Lock()
+	globalCatalogCache.catalog = &result
+	globalCatalogCache.expiresAt = time.Now().Add(catalogCacheTTL)
+	globalCatalogCache.mu.Unlock()
+
+	return result
 }
 
 // CatalogSkill returns a validated skill contract by ID, including skills
