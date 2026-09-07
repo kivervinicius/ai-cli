@@ -177,14 +177,16 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 		return nil
 	}
 
-	// 3. Parent retains the client ends; ConPTY owns the server ends.
-	_ = closeHandle(hInRead)
-	_ = closeHandle(hOutWrite)
+	// 3. Keep the server ends open until CreateProcessW. Windows requires the
+	// handles passed to CreatePseudoConsole to remain valid while the child is
+	// attached to the pseudo console.
 
 	// 4. Build the PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE attribute list.
 	var attrSize uintptr
 	procInitializeProcThreadAttributeList.Call(0, 1, 0, uintptr(unsafe.Pointer(&attrSize)))
 	if attrSize == 0 {
+		_ = closeHandle(hInRead)
+		_ = closeHandle(hOutWrite)
 		_ = closeHandle(hInWrite)
 		_ = closeHandle(hOutRead)
 		_ = closePseudoConsole(hPC)
@@ -194,6 +196,8 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 	r, _, e = procInitializeProcThreadAttributeList.Call(
 		uintptr(unsafe.Pointer(&attrBuf[0])), 1, 0, uintptr(unsafe.Pointer(&attrSize)))
 	if r == 0 {
+		_ = closeHandle(hInRead)
+		_ = closeHandle(hOutWrite)
 		_ = closeHandle(hInWrite)
 		_ = closeHandle(hOutRead)
 		_ = closePseudoConsole(hPC)
@@ -205,10 +209,16 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 		uintptr(unsafe.Pointer(&attrBuf[0])),
 		0,
 		procThreadAttributePseudoConsole,
-		uintptr(unsafe.Pointer(&hPC)),
+		// PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE expects the HPCON handle
+		// value itself, not a pointer to the local handle variable. This
+		// matches the Win32 ConPTY contract and keeps the child attached
+		// to the pseudo console that was just created.
+		hPC,
 		unsafe.Sizeof(hPC),
 		0, 0)
 	if r == 0 {
+		_ = closeHandle(hInRead)
+		_ = closeHandle(hOutWrite)
 		_ = closeHandle(hInWrite)
 		_ = closeHandle(hOutRead)
 		_ = closePseudoConsole(hPC)
@@ -218,6 +228,8 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 	// 5. Launch the child attached to the pseudo console.
 	appName, err := syscall.UTF16PtrFromString(cmd.Path)
 	if err != nil {
+		_ = closeHandle(hInRead)
+		_ = closeHandle(hOutWrite)
 		_ = closeHandle(hInWrite)
 		_ = closeHandle(hOutRead)
 		_ = closePseudoConsole(hPC)
@@ -225,6 +237,8 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 	}
 	commandLine, err := syscall.UTF16FromString(buildCommandLine(cmd.Args))
 	if err != nil {
+		_ = closeHandle(hInRead)
+		_ = closeHandle(hOutWrite)
 		_ = closeHandle(hInWrite)
 		_ = closeHandle(hOutRead)
 		_ = closePseudoConsole(hPC)
@@ -235,6 +249,8 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 	if cmd.Dir != "" {
 		dirPtr, err = syscall.UTF16PtrFromString(cmd.Dir)
 		if err != nil {
+			_ = closeHandle(hInRead)
+			_ = closeHandle(hOutWrite)
 			_ = closeHandle(hInWrite)
 			_ = closeHandle(hOutRead)
 			_ = closePseudoConsole(hPC)
@@ -257,6 +273,8 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 		uintptr(unsafe.Pointer(&siEx)),
 		uintptr(unsafe.Pointer(&pi)))
 	if r == 0 {
+		_ = closeHandle(hInRead)
+		_ = closeHandle(hOutWrite)
 		_ = closeHandle(hInWrite)
 		_ = closeHandle(hOutRead)
 		_ = closePseudoConsole(hPC)
@@ -265,6 +283,8 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 	if pi.Thread != 0 {
 		_ = closeHandle(pi.Thread)
 	}
+	_ = closeHandle(hInRead)
+	_ = closeHandle(hOutWrite)
 
 	b.inPipe = os.NewFile(hInWrite, "conpty-in")
 	b.rPipe = os.NewFile(hOutRead, "conpty-out")
@@ -557,7 +577,6 @@ func utf16EnvBlock(env []string) []uint16 {
 	var block []uint16
 	for _, e := range env {
 		block = append(block, syscall.StringToUTF16(e)...)
-		block = append(block, 0)
 	}
 	block = append(block, 0)
 	if len(block) == 0 {

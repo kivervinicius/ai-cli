@@ -1,5 +1,266 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-06 — Agent Mode Switch & Crash/Reboot Clean Session Guarantee
+
+- **Garantia de Conversa Limpa na Troca de Modo (Safe ↔ YOLO)**:
+  - Corrigido `AnalyzeImpact` em `internal/nexus/config.go` para detectar alteração de `options["mode"]`. Quando o modo muda, define `impact.RequiresNewSess = true` e `impact.RequiresRestart = true`.
+  - No `SafeApply` (`internal/nexus/config.go`), quando `impact.RequiresNewSess` ou `ContinuityPolicy == "new_session"` estiver presente, força `continuityLaunch = continuityLaunch{Status: store.ContinuityNewSession}`, garantindo que o novo runtime seja lançado sem `--resume <oldSessionID>` e com sessão nova e limpa.
+  - No frontend (`web/src/app/WorkspaceSurfaceHost.tsx`), `onRestartWithMode` agora envia `continuity_policy: 'new_session'` ao aplicar nova configuração, eliminou a chamada redundante a `recoverOrStartAgent` (que tentava reanexar o runtime antigo), e faz o rebind diretamente no novo runtime retornado.
+- **Garantia de Conversa Limpa ao Abrir Terminal Após Reinicialização da Máquina**:
+  - Em `internal/nexus/nexus.go` (`RecoverAgent`): ao detectar que o runtime anterior morreu/não está vivo (`!n.runtimeAlive(gen.RuntimeID)`), o Nexus agora inicia uma nova sessão limpa (`store.ContinuityNewSession`, sem `--resume`), a menos que o agente tenha sido explicitamente configurado com `ContinuityPolicy: "native"`.
+  - Protegido contra estados corrompidos de sessões do provedor após reinicializações do sistema ou encerramento abrupto do host.
+- **Testes & Verificação**:
+  - Adicionados testes em `internal/nexus/config_test.go`: `TestAnalyzeImpactModeChangeRequiresNewSession` e `TestAnalyzeImpactContinuityPolicyNewSession`.
+  - Adicionado teste em `internal/nexus/nexus_p0_test.go`: `TestRecoverAgentDeadRuntimeStartsNewSessionUnlessNative`.
+  - Ajustado `mockLauncher` em `internal/nexus/nexus_test.go` para usar runtime IDs exclusivos com sequência atômica.
+  - `go test -v ./internal/nexus/...` passou 100%.
+  - `npm --prefix web run quality:full` passou 100% (Prettier, ESLint, Stylelint, Style Allowlist, TypeScript typecheck, 61 arquivos de teste Vitest com 306 testes e build de produção).
+
+## 2026-09-06 — CI closure reproduction and quota regression fix
+
+- Reproduced the remote CI reds from run `34060911997`: frontend stopped at
+  Prettier; Windows and macOS stopped at the first Go test step.
+- Fixed `QuotaDropMonitor` compatibility with legacy `OK` and `RATE_LIMITED`
+  observations while preserving fail-closed handling for unknown/degraded data.
+- Restored failover recommendation fields on exhausted-quota actions.
+- Formatted the four frontend files reported by CI and removed the Go lint
+  finding caused by an unused named return.
+- Verification: frontend verify 10/10, 306 Vitest tests, `go test ./...`,
+  `go test -race ./...`, `go vet ./...`, `golangci-lint v2.12.2` (0 issues),
+  Windows amd64 and macOS arm64 test compilation, Wails Linux package build,
+  GoReleaser v2.18.0 snapshot, `make quality`, and `git diff --check` all pass.
+
+## 2026-09-06 — Terminal Usability: Font Zoom, Smart Scrolling & Buffer Memory Safety
+
+- **Terminal Font Zoom & Synchronization**:
+  - Implemented `web/src/nexus/terminalSettings.ts` with persistent font size management (`DEFAULT = 13px`, `MIN = 9px`, `MAX = 24px`) in `localStorage` (`nx_terminal_font_size`).
+  - Added real-time cross-tab/cross-pane font synchronization via `subscribeTerminalFontSize`.
+  - Added dedicated keyboard shortcuts inside xterm via `attachCustomKeyEventHandler`: `Ctrl+=` / `Ctrl++` (zoom in), `Ctrl+-` (zoom out), `Ctrl+0` (reset to default 13px), carefully ignoring shell control keys (`Ctrl+C`, `Ctrl+Z`, `Ctrl+L`, etc.) to prevent hijacking terminal signals.
+  - Added compact font zoom controls (`[-] 13px [+]`) in both `TerminalPane` and `AgentTerminal` toolbars.
+- **Smart Scroll & Redraw Management**:
+  - Solved scroll displacement when new output arrives: `shouldAutoScrollToBottom` inspects `viewportY` vs `baseY`.
+  - If user was tracking the bottom, incoming data automatically snaps to the latest line. If user scrolled up to read history/logs, scroll position is strictly preserved without jarring viewport jumps.
+  - User typing (`term.onData`) immediately brings viewport to cursor prompt.
+  - Workspace OS panel reactivation (`panel.dataset.active === 'true'`) triggers forced `safeFit(true)` and aligns bottom.
+  - Added a floating, high-contrast pill button (`[↓ Rolar até o final]`) with SCSS module styles whenever the user is scrolled up, allowing 1-click instant return to bottom.
+- **Scrollback Buffer & Memory Protection**:
+  - Evaluated xterm circular buffer mechanics. Set `DEFAULT_TERMINAL_SCROLLBACK = 5000` across all terminals (`TerminalPane` and `AgentTerminal`), replacing the insufficient 1000-line default while capping heap allocation to ~5-10MB per terminal instance, preventing tab crashes in long-running agent chats.
+- **CSS Modules & i18n Compliance**:
+  - Created `web/src/components/TerminalPane.module.scss` and updated `web/src/nexus/AgentTerminal.module.scss`, eliminating inline styles and respecting `--nx-*` design tokens.
+  - Added translations in English, Portuguese, and Spanish in `web/src/i18n/resources.ts`.
+- **Verification & Testing**:
+  - Added comprehensive unit tests in `terminalSettings.test.ts` and `terminalUsability.test.ts`.
+  - 100% of test suites passing (61 files, 306 tests).
+  - Validation gates passing: `typecheck` (0 errors), `lint` (0 errors), `check:styles` (pass), `lint:styles` (pass), `format:check` (pass), `build` (pass), `quality:full` (pass).
+
+
+- Desacoplado o `QuotaDropMonitor` de `ListResources()` e criado
+  `QuotaMonitorService`, idempotente por processo, com primeira verificação
+  imediata, ticker de 60s e encerramento por contexto do Core/Nexus.
+- Alertas agora usam chave independente por `provider:profile:group:window:reset-cycle`;
+  leituras `ESTIMATED`/`UNKNOWN`/`UNSUPPORTED`/`ERROR` não geram consumo.
+- Estado de supressão é persistido atomicamente em `StateDir`; falhas do
+  notificador são registradas e geram capacidade degradada sem bloquear eventos.
+- Histórico global do Event Bus agrega runtimes quando `runtime_id` não é
+  filtrado; UI exibe grupo/janela/idade e reconhece `QUOTA_MONITOR_DEGRADED`.
+- Verificação: `go test ./...`, `go vet ./...`, typecheck, Vitest (306 testes),
+  ESLint, Stylelint, allowlist de estilos e build Web passaram.
+
+## 2026-09-06 — Notebook layout ergonomics & Focus / Zen mode
+
+- Resolved vertical and horizontal chrome tax for notebook screens (1366×768 / 1080p scaled):
+  - Added Focus / Zen Mode (`zenMode`) to `WorkspacePresentationState` with keyboard shortcuts (`Ctrl+Shift+F`, `F11`) and top-right toggle pill.
+  - In Focus Mode, topbar and statusbar are collapsed, recovering over 150px of vertical space (terminal expands from ~20 lines to 45–52 visible lines).
+  - Responsive ProjectRail drawer overlay for viewports `<= 1400px`, freeing 232px of permanent horizontal space and enabling split terminals to reach 85+ columns.
+  - Compact density design tokens for screens with height `<= 820px` or width `<= 1366px`.
+  - Added dedicated keyboard shortcuts inside `.xterm` targets (`Ctrl+Shift+F`, `Ctrl+B`, `Ctrl+Shift+T`, `Alt+1..9`) without hijacking shell control sequences.
+  - Removed duplicate header bars in `TerminalPane` when rendered in tabbed or zen mode (`hideHeader`).
+  - Added comprehensive unit tests in `presentation.test.ts` and `KeyboardShortcutRegistry.test.ts`. All 59 test suites (294 tests) passing.
+
+## 2026-09-06 — Native notification input safety
+
+- Removed AppleScript/PowerShell source interpolation from native notification
+  delivery.
+- Payloads are now process arguments to static scripts; regression test passed
+  under normal execution and race stress.
+
+## 2026-09-06 — External URL fallback safety
+
+- Centralized structural `http/https` validation for Web/Desktop external URL
+  opening, including native runtime and browser fallbacks.
+- Added unsafe-scheme regression coverage; frontend verification passed.
+
+## 2026-09-06 — Handoff secret hygiene
+
+- Redacted ephemeral bootstrap URLs and machine-local installation paths from
+  `DEV/HANDOFF.md`.
+- Preserved Git history; any historical token exposure requires external
+  expiration/rotation assessment rather than destructive history rewriting.
+
+## 2026-09-06 — Same-SHA security gate
+
+- Added an explicit CI Security job with pinned `govulncheck` and made it a
+  required named check in release same-SHA promotion.
+- Workflow lint and release tests passed locally; no remote run was started.
+
+## 2026-09-06 — Desktop input hardening
+
+- Rejected ambiguous/overlong/unsafe `nexus://` targets before routing.
+- Escaped Linux autostart executable paths according to the Desktop Entry
+  `Exec` grammar.
+- Added regression coverage; Desktop tests passed normally and under race.
+
+## 2026-09-06 — Desktop capability evidence
+
+- Fixed the Web `DesktopBridge` to use Go-reported capability evidence after
+  bootstrap rather than treating every generated Wails method as supported.
+- Added a regression fixture where `SelectFile` exists but the backend reports
+  the picker unavailable; frontend verification passed completely.
+
+## 2026-09-06 — Static manifest signature consumption
+
+- Found that the release signer published a detached `.sig` sidecar while the
+  shared Update Service only read HTTP signature headers.
+- Added same-origin sidecar discovery and fail-closed verification, with a
+  regression test covering the static registry contract.
+- Targeted update tests passed normally and under race (`-count=5`).
+
+## 2026-09-06 — Explicit Maestro boundary
+
+- Added `nexus maestro status|doctor|update` as the only explicit Maestro
+  command surface.
+- Kept `nexus update` on the shared Nexus Update Service and corrected help,
+  shell completions, and Web settings copy that implied a combined update.
+- Verified the unavailable-Maestro degraded status contract with an app test.
+
+## 2026-09-06 — Platform truth, signed-manifest fail-closed, and final audit
+
+- Baseline confirmed on `feat/nexus-maximum-delivery` at `1899ca6`, equal to
+  `origin`; all existing uncommitted work was preserved.
+- Added the current-state audit, final platform/release report, and independent
+  validation prompt with an evidence-backed **NO-GO** verdict. CI run
+  `34012236345` still fails Windows and macOS; failed logs require repository
+  admin permission.
+- Corrected Desktop capability truth and external URL validation, replacing
+  unsupported success claims and hardcoded theme detection with explicit
+  availability/error behavior.
+- Updated the shared Update Service to reject unsigned manifests and added a
+  regression test. Installer shell trust-chain gaps remain documented rather
+  than hidden by an unsafe fallback.
+- Aligned public MIT license references and downgraded platform matrix claims
+  to match current evidence.
+- Verification: `make web-verify` 10/10, `gofmt`, `go vet ./...`,
+  `go test ./...`, `go test -race ./...`, targeted Desktop/Update tests,
+  `make build-desktop`, `make security`, and `git diff --check` passed;
+  security reported `No vulnerabilities found` through the pinned fallback.
+- Follow-up verification: installed the CI-matching `golangci-lint v2.12.2`
+  in `/tmp/nexus-tools` without changing the repository; lint reported `0
+  issues`, `PATH=/tmp/nexus-tools:$PATH make quality` passed, and the targeted
+  Desktop/Update/SessionHost/Workspace stress suite passed with `-count=20`.
+- Security review also removed macOS AppleScript interpolation from native
+  picker/notification fallbacks; user-controlled labels are now passed as
+  `osascript` arguments. Desktop tests, full Go lint, and `git diff --check`
+  passed afterward.
+- Installer hardening: `install.sh` and `install.ps1` no longer use
+  `releases/latest`, `go install @latest`, or default-branch source clones.
+  They require a pinned version plus archive checksum, or explicit
+  build-from-source intent with a checkout/ref. Added static installer tests;
+  Bash syntax, release tests, and full Go lint passed. Ed25519 manifest/keyring
+  publication remains an external integration blocker.
+- Checksum verification was made portable for macOS (`sha256sum` or
+  `shasum -a 256`); installer syntax, release tests, lint, and diff checks
+  remained green.
+- Release gate hardening: CI now triggers on version tags, and Signed Release
+  waits for a completed CI run on the exact SHA and requires all Frontend,
+  Browser, Linux, Windows, macOS, Desktop, and GoReleaser jobs before its
+  write-enabled publication job. Both workflow files parse as YAML; execution
+  remains pending because no new CI run was pushed.
+- Fixed a byte-binding defect in the update signer: the detached Ed25519
+  signature now covers the exact published manifest, including its newline.
+  Added `TestWriteSignedManifestSignsPublishedBytes`; scripts/update/release
+  tests and full Go lint passed.
+- Wails audit found `desktop/wails.json` unusable because that directory has no
+  Go files. Replaced it with `cmd/nexus-desktop/wails.json` beside the actual
+  entrypoint, added `make build-desktop-wails`, and changed native CI Desktop
+  jobs to build the frontend and invoke Wails v2.15.0 with artifact checks.
+  A real local Linux Wails build generated bindings, compiled, and packaged
+  successfully; generated bindings were kept build-local and not committed.
+- Release promotion now uploads native Linux/Windows/macOS Desktop packages
+  from their CI jobs and downloads those exact artifacts by same-SHA CI run ID
+  before publication. YAML parsing and `actionlint v1.7.7` passed; no remote
+  execution occurred because the branch was not pushed.
+- Ran the configured GoReleaser v2.18.0 snapshot locally via `go run`; it
+  succeeded and generated Linux/Darwin/Windows amd64+arm64 archives, checksums,
+  and Linux DEB/RPM packages. The six archive names and `checksums.txt` were
+  verified. GoReleaser emitted configuration deprecation warnings, recorded as
+  non-blocking follow-up rather than hidden.
+- Fixed `scripts/sign-update-manifest` so generated artifact URLs are absolute
+  versioned HTTPS URLs, and passed the release base URL from the release
+  workflow. `go test ./scripts ./internal/release ./internal/update`, full Go
+  lint, Bash syntax, and diff checks passed.
+
+## 2026-09-06 — Revisão Formal via Codex e Implementação de Failover Inteligente e Ação Rápida de Handoff
+
+- **Objetivo**: Submeter o plano arquitetural de troca de agentes por exaustão de quotas à revisão formal do Codex (`codex exec -s read-only`) e implementar as recomendações emitidas, eliminando riscos de escritores concorrentes no workspace, associando runtimes afetados a eventos de quota e provendo ação de handoff assistido em 1 clique na interface Web/Desktop.
+- **Parecer Formal do Codex**:
+  - **Veredito**: *APPROVE WITH MODIFICATIONS*.
+  - **Principais Apontamentos e Resoluções**:
+    1. *Risco de Concorrência no Workspace*: `PerformContextHandoff` iniciava o processo destino antes de confirmar a parada do processo fonte. **Resolvido**: Adicionada barreira de quiescência no runtime fonte com protocolo de parada e polling de confirmação de saída (`registry.IsProcessAlive`) antes de iniciar o runtime alvo, com reversão de estado caso o alvo falhe.
+    2. *Ausência de Vínculo de Runtime em QUOTA_EXHAUSTED*: Eventos de conta não possuíam `runtime_id`, impedindo a UI de saber qual sessão alternar. **Resolvido**: `QuotaDropMonitor` agora consulta o `registry.DefaultRegistry()` e identifica se há um runtime ativo executando sob a conta esgotada, vinculando seu `runtime_id` ao evento e ação.
+    3. *Recomendação Estática vs Dinâmica*: A recomendação agora é gerada dinamicamente via `findBestAlternative` usando `RecommendResources()`, filtrando candidatos esgotados ou em rate-limit e selecionando o melhor recurso disponível do pool.
+    4. *Honestidade da UI em Cross-Provider*: Distinção explícita entre `account_handoff` ("Alternar para Perfil B" no mesmo provedor) e `context_continue` ("Continuar com Provedor B em nova sessão" com contexto resumido).
+- **Alterações Realizadas**:
+  1. **Eventos Canônicos de Failover (`internal/control/events/events.go`)**:
+     - Adicionados `EventQuotaFailoverRequested`, `EventQuotaFailoverCompleted`, `EventQuotaFailoverFailed`.
+  2. **Barreira de Quiescência no Handoff de Contexto (`internal/control/handoff/context.go`)**:
+     - Quiesce e parada graciosa do processo fonte antes de inicializar o novo CLI no mesmo workspace, com rollback para `StateRunning` caso o lançamento falhe.
+  3. **Recomendação Dinâmica no QuotaDropMonitor (`internal/nexus/quota_monitor.go`, `quota_monitor_test.go`)**:
+     - Implementado `CheckAccountWithPool(acc, pool)` e `findBestAlternative` conectando `RecommendResources` aos alertas de `QUOTA_EXHAUSTED`.
+     - Implementado `findActiveRuntime` associando sessões ativas do registry à conta esgotada.
+     - Cobertura com teste `TestQuotaDropMonitor_FailoverRecommendationAndAffectedRuntime`.
+  4. **Ação Rápida de Handoff no Frontend (`web/src/notifications/`, `InAppNotificationCenter.tsx`)**:
+     - `inAppNotificationModel.ts`: Estruturado `InAppNotificationAction` diferenciando `account_handoff` de `context_continue`, com 100% de cobertura nos testes unitários.
+     - `InAppNotificationCenter.tsx`: Renderização do botão semântico de ação rápida no toast e no painel da gaveta, disparando `api.accountHandoff` ou `api.contextContinue` e focando o novo terminal automaticamente ao concluir.
+  5. **Roteamento de Retentativa de Failover no Mission Runner (`internal/nexus/runner/runner.go`, `runner_test.go`)**:
+     - Detecção de erros de quota e rate limit (`isQuotaOrRateLimitError`).
+     - Em falhas de quota/rate limit, retentativas agora são roteadas de volta para `StateAllocating` (em vez de `StateCompiling`), permitindo nova alocação de agente/provedor.
+     - Cobertura de teste com `TestMissionRunner_QuotaErrorRoutesToAllocatingForFailover`.
+  6. **Alocação Autônoma com Recomendações e Exclusão do Provedor Esgotado (`internal/nexus/mission_executor.go`)**:
+     - Detecção de failover de quota na tentativa > 1.
+     - Filtragem do provedor/perfil esgotado (`filterOutFailingResource`) para prevenção de loops infinitos.
+     - Reavaliação de candidatos saudáveis via `RecommendResources`, reconfiguração dinâmica do agente e atualização do pacote de execução.
+     - Emissão do evento canônico `EventQuotaFailoverCompleted`.
+- **Validação de Qualidade**:
+  - `go test ./internal/...` — 100% PASS (todos os pacotes Go do repositório, incluindo `runner` e `quota_monitor`).
+  - `make web-verify` — 10/10 gates PASS.
+  - `make format-check` — PASS.
+  - `make build` — PASS (binário `nexus` gerado com sucesso).
+
+## 2026-09-06 — Implementação do Monitor de Queda de Quotas (QuotaDropMonitor) e Integração de Notificações Web/Desktop
+
+- **Objetivo**: Implementar o monitoramento contínuo do consumo de quotas e tokens com notificações em degraus decrescentes (30%, 20%, 10%, 5%, 0%), debounce de no mínimo 5% para evitar ruídos de pequenas oscilações, suspensão estrita de novos avisos ao atingir 0% (ou rate limit 429), rearmamento automático após renovação e entrega unificada no Desktop (notificações nativas do SO via `notify.Notifier`) e Web (In-App Notification Center e Event Bus).
+- **Alterações Realizadas**:
+  1. **Eventos de Quota no Core (`internal/control/events/events.go`)**:
+     - Adicionados tipos de evento canônicos: `EventQuotaLow = "QUOTA_LOW"` e `EventQuotaExhausted = "QUOTA_EXHAUSTED"`.
+  2. **Motor QuotaDropMonitor (`internal/nexus/quota_monitor.go`, `internal/nexus/resource_discovery.go`)**:
+     - Implementado struct `QuotaDropMonitor` thread-safe com marcos de alerta decrescentes: `[30, 20, 10, 5, 0]`.
+     - Lógica de debounce garantindo que novas notificações só disparem quando a quota cair pelo menos 5% em relação ao último alerta reportado.
+     - Supressão em 0%: Quando a quota atinge 0% ou entra em estado `RATE_LIMITED`, dispara exatamente 1 notificação crítica (`QUOTA_EXHAUSTED`) e seta `Exhausted = true`, silenciando notificações subsequentes até que o reset de quota ocorra (`remaining > 0`), quando é automaticamente rearmado.
+     - Integração de entrega dupla: Emite evento no barramento canônico `events.RecordEvent()` e, quando disponível, aciona o notificador nativo do sistema operacional (`notify.GetNotifier().Notify()`).
+     - Acoplado no pipeline de descoberta de recursos `ListResources()` em `internal/nexus/resource_discovery.go`.
+  3. **Testes Unitários Go (`internal/nexus/quota_monitor_test.go`)**:
+     - Cobertura completa testando degraus sucessivos (45% -> 28% -> 18% -> 9% -> 3% -> 0%), supressão contínua em 0%, ignorância de contas com quota indeterminada (`UNKNOWN`), e tratamento de 429/Rate Limited com disparo único de exaustão.
+  4. **Integração no Frontend Web (`web/src/notifications/`, `web/src/app/`)**:
+     - `inAppNotificationModel.ts`: Implementada função `notificationFromQuotaEvent(event: EventRecord)` transformando eventos `QUOTA_LOW` em toasts de alerta (`tone: 'warning'`) e `QUOTA_EXHAUSTED` em toasts críticos (`tone: 'danger'`). Tornou `runtimeId` opcional no modelo de notificação in-app.
+     - `inAppNotificationModel.test.ts`: Suíte de testes unitários para o modelo de eventos de quota, cobrindo `QUOTA_LOW`, `QUOTA_EXHAUSTED` e descarte de eventos não relacionados.
+     - `InAppNotificationCenter.tsx`: Renderização defensiva de ações de terminal (apenas quando `runtimeId` existir) e consumo de prop opcional `events?: EventRecord[]`, consolidando notificações de sessão e eventos de quota em tempo real no toast transitório e gaveta de histórico.
+     - `NexusShell.tsx` e `NexusWorkspaceApp.tsx`: Propagação de `data.events` diretamente do polling `useNexusData` para o `InAppNotificationCenter`.
+- **Validação de Qualidade**:
+  - `go test ./internal/nexus/... ./internal/control/...` — 100% PASS.
+  - `npm --prefix web run typecheck` — 0 erros.
+  - `npm --prefix web run test` — 58/58 arquivos, 285/285 testes PASS.
+  - `make web-verify` — 10/10 gates PASS (format, typecheck, lint, stylelint, null-arrays, unit tests, i18n, build, embed-sync, ui-markers).
+
 ## 2026-09-06 — Resolução Definitiva de Sessão / Autenticação, WebSockets e Idioma Padrão no IAPro Nexus Desktop
 
 - **Objetivo**: Corrigir a falha de autenticação/sessão ao abrir o aplicativo nativo Desktop (`nexus-desktop`), onde o aplicativo caía diretamente na tela de *"Session Expired or Unauthorized"* (`auth.sessionExpired`). Corrigir também a inicialização do idioma para que venha por padrão em português (`pt-BR`). Garantir paridade arquitetural 100% entre Web e Desktop em conformidade com o Contrato Oficial do Nexus.
@@ -1832,3 +2093,460 @@ build` PASS e Web reiniciado em HTTP 200.
   - **Wave 7 (Signed Updates & Rollback)**: Verificação de manifestos Ed25519 sobre bytes exatos, validação de SHA-256, backup atômico, recibos persistentes em JSON e rollback testado.
   - **Wave 8 (North Star & Evidence Report)**: Execução de todos os gates de qualidade (`quality:full`, `test:e2e`, `test:a11y`, `test:visual`, `go test -race ./internal/...`, `go vet`, `git diff --check`) e publicação de specs, plans e relatório final (`CONDITIONAL_GO`).
 
+## 2026-09-06 — TUI Usage Enter selection
+
+- Reproduzido o fluxo em que o filtro de Usage fica sem resultados: o componente
+  `bubbles/table` define o cursor como `-1` e não o restaura quando as linhas
+  retornam.
+- Também reproduzido que `Enter` no filtro era consumido apenas para desfocar o
+  campo, sem executar a seleção destacada.
+- Correção mínima: restaurar o cursor para a primeira linha válida e fazer
+  `Enter` confirmar o filtro e selecionar a linha atual no mesmo evento; `Esc`
+  continua apenas encerrando o filtro.
+- Teste determinístico adicionado em `internal/tui/usage_table_test.go`.
+- Verificação: teste TUI 20x e `go test ./...` passaram.
+
+## 2026-09-06 — Frontend embedded bundle gate
+
+- O job Frontend deixou de validar somente a existência dos arquivos embedded e
+  passou a executar `bun run verify`, incluindo comparação byte a byte entre
+  `web/dist` e `internal/control/web/embedded`.
+- README PT/EN foi alinhado ao instalador com versão fixada e checksum; o
+  instalador PowerShell deixou de exibir `AI CLI` como nome público.
+- Verificação: `bun run verify`, Actionlint, `git diff --check` e `bash -n
+  install.sh` passaram.
+
+## 2026-09-06 — Windows installer path compatibility
+
+- O instalador PowerShell agora instala em `Programs\\IAPro Nexus` e detecta a
+  localização legada `Programs\\ai-cli` sem apagá-la, mantendo compatibilidade
+  enquanto evita criar novas instalações com branding antigo.
+- Teste estático de política, sintaxe Bash e `git diff --check` passaram.
+
+## 2026-09-06 — Native CI diagnostics
+
+- Windows e macOS agora gravam logs completos dos testes nativos em artifacts
+  identificados pelo SHA, sem `continue-on-error` nem alteração do exit code.
+- Actionlint, parsing YAML e `git diff --check` passaram.
+
+## 2026-09-06 — PowerShell installer gate
+
+- O job Windows agora executa o parser oficial do PowerShell sobre `install.ps1`
+  antes dos testes Go, falhando explicitamente em erros de sintaxe.
+- YAML, Actionlint e `git diff --check` passaram.
+
+## 2026-09-06 — Windows listener failure fixture
+
+- `TestSessionHost_ListenerFailureTerminatesChild` deixou de usar `MkdirAll`
+  sobre um caminho de Named Pipe. A fixture agora é Unix-specific para socket
+  ocupado e Windows-specific para nome rejeitado pelo `go-winio`.
+- Teste Linux passou 20x e `GOOS=windows GOARCH=amd64 go test -c` do pacote
+  `internal/control/host` passou.
+
+## 2026-09-06 — ConPTY interactive fixture
+
+- Corrigido o comando de teste interativo para `cmd.exe /V:ON` com delayed
+  expansion (`!X!`) e entrada `CRLF`; a forma anterior expandia `%X%` antes do
+  `set /p` e podia produzir um falso failure.
+- `go test ./internal/control/terminal` e compilação Windows amd64 do pacote
+  passaram; execução ConPTY ainda requer runner Windows.
+
+## 2026-09-06 — Windows mkdir JSON fixture
+
+- `TestFSMkdir` deixou de concatenar paths Windows diretamente em JSON e passou a
+  usar `json.Marshal`, corrigindo a causa do `400 path is required` observado no
+  runner Windows.
+- Testes FS focados passaram 20x e o pacote Web compilou para Windows amd64.
+
+## 2026-09-06 — IPC readiness tests
+
+- Substituídos sleeps de readiness em `SessionHost` por `WaitForEndpoint` com
+  contexto/timeout; o teste de protocolo passou a depender da conexão real do
+  listener, não de atraso fixo.
+- `go test -count=20 ./internal/control/host ./internal/control/protocol` e
+  `go test -race` dos mesmos pacotes passaram.
+
+## 2026-09-06 — HTTP readiness tests
+
+- Removidos sleeps fixos dos testes de bootstrap/session/restart Web; o listener
+  criado em `NewServer` e a primeira request fornecem a sincronização real.
+- Seleção focada passou 3x e sob race detector.
+
+## 2026-09-06 — Web E2E readiness cleanup
+
+- Removidos sleeps de startup restantes em Web Full E2E, APIs Nexus e túnel
+  simulado; os testes agora sincronizam pelo listener/request real.
+- `go test ./internal/control/web -count=1` e o mesmo pacote com race passaram.
+
+## 2026-09-06 — PTY readiness test
+
+- `TestTerminalBackendExecution` deixou de usar sleep entre leituras; um leitor
+  assíncrono acumula output até o texto esperado ou timeout explícito.
+- Terminal passou 20x e sob race detector.
+- Revalidação agregada: terminal/host/protocol/web passaram em testes normais,
+  race e golangci-lint; `make quality PATH=/tmp/nexus-tools:$PATH` passou.
+- A suíte Go completa com race, security, GoReleaser snapshot v2.18.0 e
+  actionlint v1.7.7 também passou.
+
+## 2026-09-06 — Browser E2E i18n locator
+
+- Root cause: o teste procurava `Aparência` com case-sensitive, mas a tradução
+  renderizada era `Configurações de aparência`.
+- Fix: locator semântico por role/name com regex case-insensitive.
+- Browser E2E completo passou com Playwright, Axe, deep-links, breakpoints,
+  Settings/ARIA e screenshots visuais em três execuções consecutivas; o script
+  também passou pelo Prettier.
+
+## 2026-09-06 — Windows test fixture portability
+
+- Root cause reproduzido sob Wine: Host/QA fixtures usavam `cat`, inexistente
+  no Windows, resultando em `CreateProcessW failed: File not found`.
+- Fix: fixtures usam `cmd.exe /D /Q /C more` no Windows e `cat` no Unix.
+- Linux normal/race passaram; Host, Terminal e Web compilaram para Windows
+  amd64; Host e Terminal compilaram para macOS arm64.
+- Wine não é evidência nativa de ConPTY: o pseudo-console do Wine não entrega
+  output ao reader como Windows real.
+- `TestServiceCheckAndApply` agora isola `HOME` em `t.TempDir`; Update passou
+  20x e sob race, sem gerar `receipts/` no checkout.
+
+## 2026-09-06 — Cross-build evidence audit
+
+- Compilação cruzada local passou para CLI Linux amd64, Windows amd64 e macOS
+  arm64, além do Desktop Windows amd64.
+- O Desktop Linux com CGO/WebKitGTK não foi classificado como cross-build; o
+  fluxo Wails nativo Linux continua sendo a evidência correta.
+
+## 2026-09-06 — Doctor truth and registry cache race
+
+- `nexus doctor` deixou de declarar o shell Desktop como verificado sem smoke
+  nativo; WebKitGTK, WebView2 e ConPTY agora têm estados baseados em probe ou
+  evidência pendente (`PASS`, `WARN` ou `SKIPPED`).
+- Reproduzido o lost-update de `internal/control/registry` (39/40 sessões)
+  causado por invalidação baseada somente em `ModTime`; o cache agora também
+  acompanha tamanho e fingerprint SHA-256 do conteúdo.
+- Registro concorrente passou 50x, race do pacote passou 10x, `go test ./...`
+  e `golangci-lint` dos pacotes alterados passaram.
+
+## 2026-09-06 — Web Update Service parity
+
+- O endpoint Web `/api/v1/system/updates` agora consulta o mesmo serviço
+  assinado de `internal/update` usado pelo CLI/Desktop.
+- O resultado expõe versão latest, disponibilidade, método de instalação e
+  erro de confiança sem fabricar estado; o POST existente continua sendo
+  manutenção explícita do Maestro.
+- Contrato Web passou 20x, `go vet ./internal/control/web`, `go test ./...` e
+  `go test -race ./...` passaram; `bun run verify` também passou após atualizar
+  o estado de versões no Settings.
+- Settings agora separa visualmente a disponibilidade/instrução do Nexus da
+  ação explícita de manutenção do Maestro, evitando sugerir que um POST Maestro
+  atualiza o binário Nexus.
+
+## 2026-09-06 — Explicit Maestro mutation contract
+
+- Removida a rota genérica `/api/v1/system/update`; a manutenção explícita usa
+  `/api/v1/maestro/update`.
+- O handler exige `product=maestro`, `target_version=latest` e
+  `confirmed=true`, mantendo Nexus Update Service separado.
+- Casos inválidos e o fluxo válido passaram 20x.
+
+## 2026-09-06 — Axe status-bar landmark
+
+- Browser Axe identificou `aria-allowed-role` no status bar: um `<footer>`
+  carregava o papel implícito `contentinfo` dentro do shell da aplicação.
+- Substituído por `div role="status"`, preservando layout e anúncio acessível.
+- Browser E2E real passou com 0 violações minor, todos os breakpoints e Settings.
+- `PATH=/tmp/nexus-tools:$PATH make quality-full` passou depois dessa mudança,
+  incluindo race, security (`No vulnerabilities found`) e verify do frontend.
+## 2026-09-06 — ConPTY ABI root cause
+
+- Confirmed against Microsoft ConPTY samples that
+  `UpdateProcThreadAttribute(PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, ...)`
+  expects the `HPCON` handle value, not `&hPC`.
+- Applied the minimal Windows-only fix in
+  `internal/control/terminal/terminal_windows.go`.
+- Verified targeted Linux tests and Windows amd64/arm64 cross-compilation.
+- Native Windows remains a required follow-up gate; no native PASS is claimed.
+
+## 2026-09-06 — Final local hygiene revalidation
+
+- `git diff --check` passou.
+- Secret-pattern scan encontrou somente credenciais sintéticas em testes de
+  redaction/E2E; nenhum segredo real foi impresso ou adicionado ao relatório.
+- Os arquivos não rastreados são mudanças intencionais da campanha (docs,
+  fixtures platform-specific, configuração Wails e validador de URL); nenhum
+  `node_modules`, `dist` ou `.tempmediaStorage` foi tratado como fonte.
+- Revalidação direcionada de TUI Usage, registry, Web/API, Nexus,
+  localization e Doctor passou.
+- O HEAD local continua `1899ca6334576d859056d48a394e51d03758f313`; não houve
+  reset, commit ou push automático.
+
+## 2026-09-06 — Same-SHA release gate wait semantics
+
+- O gate de release podia selecionar um run concluído antigo e falhar enquanto
+  outro run do mesmo SHA ainda estava em andamento.
+- Agora ele consulta o run mais recente do SHA exato, aguarda estados não
+  terminais, rejeita explicitamente qualquer conclusão diferente de `success`
+  e só então valida a lista completa de jobs obrigatórios.
+- `actionlint` e `git diff --check` passaram.
+
+## 2026-09-06 — Same-SHA matrix job names
+
+- O gate de release exigia nomes Windows/macOS sem o sufixo da matriz Go
+  `(1.25.14)`, embora o GitHub publique os jobs com esse sufixo.
+- Ajustada a lista para os nomes efetivos; sem essa correção, um CI verde ainda
+  seria rejeitado como job ausente.
+- Em seguida, a validação foi generalizada para os prefixos funcionais dos
+  jobs, exigindo exatamente um sucesso por capacidade e tolerando somente o
+  sufixo legítimo da matriz Go.
+
+## 2026-09-06 — Actions Node runtime maintenance
+
+- Os warnings remotos indicavam `checkout@v4` e `setup-go@v5` executando Node 20
+  forçado em runners Node 24.
+- Atualizados os workflows para `actions/checkout@v5` e `actions/setup-go@v6`,
+  versões oficiais com runtime Node 24; `actionlint` passou.
+- A execução nativa do novo workflow ainda precisa ocorrer no próximo CI.
+
+## 2026-09-06 — Aggregate regression after workflow maintenance
+
+- `PATH=/tmp/nexus-tools:$PATH make quality-full` passou após as mudanças de
+  workflow: 58 arquivos de teste frontend/289 testes, Go tests/race, lint,
+  security (`No vulnerabilities found`) e build/embed.
+
+## 2026-09-06 — Public license metadata
+
+- README inglês e espanhol ainda anunciavam Apache-2.0, enquanto `LICENSE` e
+  GoReleaser eram MIT.
+- Corrigidas as superfícies públicas para MIT, sem alterar o arquivo de licença
+  nem o copyright.
+- Adicionado teste de release que falha se qualquer README voltar a divergir.
+
+## 2026-09-06 — Community Preview public files
+
+- Adicionados `CODE_OF_CONDUCT.md`, `SECURITY.md`, `SUPPORT.md`, `ROADMAP.md`,
+  `GOVERNANCE.md`, `CHANGELOG.md` e `.github/PULL_REQUEST_TEMPLATE.md`.
+- Os documentos declaram Community Preview, não inventam canais privados,
+  maintainer roster, signing ou suporte nativo ainda não comprovado.
+- `.github/CODEOWNERS` atribui o owner atual do repositório como default e não
+  inventa uma equipe de maintainers além disso.
+- `FINAL_LOCAL_VALIDATION_PROMPT.md` agora exige validar comunidade, licença,
+  claims por arquitetura, diferença entre tree remoto e worktree dirty e a
+  limitação checksum-only dos instaladores.
+
+## 2026-09-06 — Public-surface claim scan
+
+- Varredura fora de `DEV/` e relatórios históricos não encontrou claims
+  restantes de Apache-2.0, supply chain assinada, readiness de produção/
+  enterprise ou suporte Windows/macOS falsamente verificado.
+- As únicas ocorrências de failure de plataforma permanecem explicitamente
+  históricas na matriz de suporte.
+
+## 2026-09-06 — Final state revalidation
+
+- Branch e remote continuam em `1899ca6334576d859056d48a394e51d03758f313`.
+- O worktree preserva 97 caminhos modificados/não rastreados; nenhum foi
+  descartado.
+- Testes direcionados release/TUI 20x, frontend format, `git diff --check` e
+  presença dos artefatos de validação passaram. Não existe novo CI remoto.
+
+## 2026-09-06 — Installer documentation truthfulness
+
+- README pt-BR, inglês e espanhol agora deixam explícito que o exemplo baixa o
+  script da branch `main`, recomendam fixá-lo por commit e não anunciam a
+  verificação atual (SHA-256) como supply chain assinada.
+- `go test ./internal/release -count=20`, `bun run format:check` e
+  `git diff --check` passaram.
+
+## 2026-09-06 — Platform claims in public README
+
+- README pt-BR, inglês e espanhol deixaram de listar Linux/macOS/Windows como
+  runtime igualmente comprovado.
+- A redação agora distingue evidência local Linux de runtime nativo Windows/macOS
+  ainda pendente e aponta para a matriz de suporte.
+- `bun run format:check`, `go test ./internal/release -count=20` e
+  `git diff --check` passaram.
+
+## 2026-09-06 — Public platform matrix history boundary
+
+- A matriz pública ainda classificava Windows/macOS como `BROKEN` com base no
+  CI histórico do tree remoto.
+- Ajustada para `UNVERIFIED`, preservando a referência ao run falho como
+  evidência histórica e deixando explícito que o candidato dirty ainda precisa
+  de CI nativo próprio.
+
+## 2026-09-06 — Updater matrix trust wording
+
+- A coluna de updater da matriz agora distingue o serviço Ed25519 implementado
+  da publicação pendente do keyring público; não há claim de canal assinado.
+
+## 2026-09-06 — Architecture-specific public claims
+
+- As tabelas de plataforma nos READMEs foram separadas por arquitetura.
+- Linux/Windows/macOS amd64 e arm64 agora distinguem runtime nativo,
+  cross-compilation e smoke ainda pendente; nenhuma arquitetura herda
+  evidência de outra.
+
+## 2026-09-06 — Windows compatibility diagnostics (non-native)
+
+- Testes Windows cross-compiled foram executados sob Wine para separar falha
+  estrutural de ausência de runner nativo.
+- ConPTY reproduziu exatamente stream vazio e timeout; SessionHost não resolveu
+  `cmd.exe` no ambiente de processos Windows do Wine.
+- Esses resultados são diagnóstico auxiliar; Wine não é evidência nativa e
+  Windows continua sem PASS até execução em `windows-latest`/máquina Windows.
+
+## 2026-09-06 — CI metadata and diagnostics availability
+
+- GitHub job metadata confirmou: Frontend falhou em `Format Check`, Windows em
+  `Test` e macOS em `Test with Race Detector`; todos os passos posteriores
+  foram pulados.
+- As annotations remotas só continham exit code genérico e o run
+  `34012236345` não expôs artefatos diagnósticos para download. Nenhuma causa
+  remota mais específica foi inferida a partir disso.
+
+## 2026-09-06 — Community Preview documentation foundation
+
+- O alvo planejado de publicação foi documentado como `IAPro-Community/nexus`,
+  mantendo o repositório histórico como fonte dos links até o destino existir.
+- Criados `docs/README.md`, `docs/community-preview/PRODUCT_GUIDE.md`,
+  `TECHNICAL_OVERVIEW.md` e `RELEASE_PLAYBOOK.md` com documentação técnica e
+  não técnica, diagramas Mermaid, fluxo de atualização, limites de suporte,
+  trust chain, version skew e checklist de publicação.
+- Reutilizada a social card oficial do Nexus; nenhum claim de suporte nativo,
+  assinatura ou publicação foi inventado.
+- Acesso GitHub externo foi auditado: token local inválido e o repositório
+  público `IAPro-Community/nexus` ainda não existe. Nenhum push, transferência,
+  rename ou release foi executado.
+- `git diff --check` passou após a documentação; os gates funcionais continuam
+  dependentes do candidato dirty preservado e do CI no SHA publicado.
+
+## 2026-09-06 — Native project picker and 1366 laptop UX
+
+- O seletor de projetos agora prioriza o diálogo nativo do Wails (`OpenDirectoryDialog`)
+  no Desktop; o navegador HTML continua como fallback no Web e quando a capacidade não
+  está disponível.
+- A navegação HTML ficou mais leve: a listagem padrão não calcula `Info`, Git e stack
+  de cada filho; metadados completos continuam disponíveis com `details=full`.
+- O modal foi migrado para SCSS Module, ganhou cache de diretórios, proteção contra
+  respostas fora de ordem, estados de erro/retry, controles semânticos e layout maior.
+- O workspace recebeu compactação específica para notebooks 1366×768, preservando
+  alvos de interação de pelo menos 32px.
+- AGY foi consultado; sua recomendação de tratar 1366×768 como “Compact Desktop”,
+  reduzir chrome acumulado e manter quick switching orientou o ajuste.
+- Verificação: `gofmt`, `go test ./internal/desktop ./internal/control/web`,
+  `bun run format:check`, `bun run lint`, `bun run lint:styles`, `bun run typecheck`,
+  `bun run test` (59 arquivos/291 testes) e `bun run build` passaram. O lint mantém
+  37 avisos preexistentes, sem erros.
+
+## 2026-09-06 — Desktop bootstrap origin and installer launcher
+
+- Corrigida a autenticação inicial do Wails: o frontend não troca mais o origin
+  `wails://wails` por uma chamada cross-origin para a porta loopback; o token Bearer
+  continua sendo enviado em chamadas relativas ao handler do próprio AssetServer.
+- Adicionado teste de regressão em `web/src/api.test.ts` para o bootstrap Desktop
+  same-origin.
+- `install.sh` e `install.ps1` agora tentam instalar o artefato nativo `nexus-desktop`,
+  verificando `desktop-checksums.txt`; Linux cria `.desktop` em Applications e na
+  Área de Trabalho, Windows cria `.lnk` no Desktop.
+- O workflow de release passa a gerar os checksums dos artefatos nativos promovidos.
+  Releases antigas sem esse artefato continuam instalando o CLI e exibem aviso claro.
+- `--no-desktop` / `-NoDesktop` permite optar por uma instalação somente CLI.
+- Verificação: frontend `bun run verify`, `go test ./internal/control/web ./internal/desktop ./internal/app`,
+  `make build-desktop`, `bash -n install.sh` e `git diff --check` passaram.
+
+## 2026-09-06 — AGY model-family routing
+
+- O launcher deixou de depender do modelo implícito do AGY quando a configuração
+  está vazia. Ele lê somente a cota local confiável e envia explicitamente
+  `gemini-3.8-flash-medium` quando o pool Gemini tem capacidade.
+- Se Gemini estiver esgotado, usa `claude-sonnet-4-6` no pool Claude/GPT. Quota
+  desconhecida mantém Gemini como rota determinística; modelo configurado
+  explicitamente pelo usuário nunca é sobrescrito.
+- Adicionados testes para prioridade Gemini, fallback Claude e preservação de
+  modelo explícito. `go test ./internal/...`, `make build` e `make build-desktop-wails`
+  passaram; os binários foram reinstalados em `/home/desenvolvedor/.local/bin`.
+
+## 2026-09-06 — Workspace tab activation and xterm viewport safety
+
+- Corrigida a reativação indevida de “Visão geral”: o clique das abas de produto
+  agora atualiza workspace e URL pelo mesmo fluxo, evitando que o sincronizador
+  de rota reaplique `/overview` ao abrir “Terminal”.
+- AgentTerminal e TerminalPane agora adiam escrita, foco e resize do xterm quando
+  o painel está oculto; a saída é acumulada e descarregada após `data-active=true`.
+  Isso elimina o `Viewport._innerRefresh` com `dimensions` indefinido durante a
+  troca de abas.
+- Verificação: Prettier, TypeScript e 292 testes frontend passaram.
+
+## 2026-09-06 — CI diagnosis and Windows Go bootstrap
+
+- A revisão dos runs públicos mostrou que o CI está disparando, mas o último run
+  falhou em Format Check, Windows Go Test e macOS Race Test; os jobs dependentes
+  foram corretamente marcados como `skipped`. O `Format Check` foi reproduzido,
+  corrigido e o CI ganhou `workflow_dispatch` e logs de diagnóstico por artefato.
+- `install.ps1` agora instala o pacote oficial `GoLang.Go` via WinGet quando uma
+  compilação explícita do fonte (`-BuildFromSource`) não encontra Go. Sem WinGet,
+  a mensagem aponta para `https://go.dev/dl/`; instalações por release continuam
+  sem exigir Go.
+- Verificação local: Prettier, `go test ./...`, `go test -race ./...`, teste do
+  instalador e `git diff --check` passaram. Parser PowerShell precisa ser validado
+  no runner Windows (não há `pwsh` neste ambiente).
+
+## 2026-09-06 — Gate final após correção de abas
+
+- O primeiro `make web-verify` expôs que bindings Wails gerados eram analisados
+  pelo ESLint flat-config; `src/wailsjs/**` foi incluído na allowlist de código
+  gerado, sem excluir código de produto.
+- `make web-verify` passou 10/10 após o ajuste; o bundle foi reconstruído e o
+  executável Wails Linux já está instalado com a correção de navegação/xterm.
+
+## 2026-09-06 — AGY quota freshness and account routing
+
+- Cache AGY expirado deixou de ser aceito como quota atual; o adaptador tenta
+  consulta ao vivo e retorna `UNKNOWN` quando não consegue obter evidência.
+- Scheduler e `nexus explain agy` passaram a usar o snapshot por perfil da
+  seleção; quota conhecida positiva vence quota desconhecida, sem cair no
+  default por engano.
+- Evidência local: `kiver.omegasistemas@gmail.com` ficou `UNKNOWN` e
+  `kivervinicius@gmail.com` ficou com 28% Gemini/32% Claude-GPT; seleção apontou
+  para `kivervinicius-gmail`. Go completo e `make web-verify` 10/10 passaram.
+
+## 2026-09-06 — Generic quota refresh fallback
+
+- Falha transitória de qualquer CLI não apaga mais a última leitura persistida:
+  ela retorna como `ESTIMATED`, com diagnóstico e idade, sem ser considerada
+  evidência atual pelo scheduler.
+- O scheduler agora prioriza `LIVE`/`CACHED` sobre `ESTIMATED`; o dado antigo
+  permanece útil para diagnóstico e visualização, mas não vence uma conta atual.
+- Foi adicionada recuperação de `quota.json` legado quando uma versão anterior
+  deixou `usage.json` em `UNKNOWN`. `go test ./...` passou após a alteração.
+
+## 2026-09-07 — Cross-platform CI hardening
+
+- Consolidei identidade de filesystem para workspaces/worktrees e Codex
+  shared-host, com sequência persistida para recência determinística.
+- Corrigi o runtime Windows: environment UTF-16, ciclo de vida dos handles
+  ConPTY, `processAlive` por plataforma, fixture persistente, PATH e JSON.
+- Verificação local: Go normal/race/vet/lint, `bun run verify`, compilação
+  cruzada Windows/macOS, GoReleaser snapshot, Wails e `make quality` passaram.
+- Execução nativa Windows/macOS e reexecução do GitHub CI ainda são necessárias
+  para confirmar ConPTY, Named Pipes e a matriz remota.
+
+## 2026-09-07 — Quota alert deduplication
+
+- Causa: `ResetDesc` (countdown textual do reset) fazia parte da chave de
+  estado do monitor; cada atualização do AGY criava uma janela lógica nova e
+  repetia o alerta de 22%.
+- Correção: a identidade agora usa apenas provedor, perfil, grupo e tipo de
+  janela. Adicionei regressão cobrindo countdown alterado sem nova notificação.
+- Verificação: testes `QuotaDropMonitor` normal/race e `git diff --check` passaram.
+## 2026-09-06 — Autopilot global verification gate
+
+- Change: added persisted global Definition of Done verification to MissionRunner;
+  global failure reopens a verified package for bounded remediation and cannot become
+  `COMPLETED_VERIFIED` without a passing global command set. Added Nexus × Maestro gap
+  and architecture/validation reports.
+- Reason: package-level review alone was insufficient proof of integrated delivery.
+- Verification: `go test ./...`, `go test -race ./...`, `go vet ./...`, frontend
+  `bun run quality`, and focused runner/nexus tests all passed.
+- Next context: run authenticated provider and native platform/browser recovery
+  scenarios before making any complete-product claim.

@@ -2,7 +2,7 @@
   "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "IAPro Nexus",
   "outputfilename": "nexus-desktop",
-  "frontend:dir": "../web/dist",
+  "frontend:dir": "../../web/dist",
   "author": {
     "name": "IAPro",
     "email": "contact@iapro.dev"
@@ -14,7 +14,7 @@
     "copyright": "Copyright © 2026 IAPro",
     "comments": "Autonomous AI Orchestrator & Multi-Agent Workspace OS"
   },
-  "wailsjsdir": "../web/src/wailsjs",
+  "wailsjsdir": "../../web/src/wailsjs",
   "version": "2",
   "appargs": ""
 }

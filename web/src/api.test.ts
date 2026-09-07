@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { api } from './api';
+import { api, initSession } from './api';
+import { setPlatformBridge, type PlatformBridge, WebBridge } from './platform';
 
 describe('api request layer', () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
     vi.stubGlobal('fetch', vi.fn());
+    setPlatformBridge(new WebBridge());
   });
 
   it('throws on non-ok responses', async () => {
@@ -42,8 +44,6 @@ describe('api request layer', () => {
       json: () => Promise.resolve({ authenticated: true, csrf_token: 'tok-123' }),
     });
     vi.stubGlobal('fetch', sessionFetch);
-    const { initSession } = await import('./api');
-
     await initSession();
 
     const fetchMock = vi.fn().mockResolvedValue({
@@ -56,5 +56,44 @@ describe('api request layer', () => {
 
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers.get('X-CSRF-Token')).toBe('tok-123');
+  });
+
+  it('keeps desktop bootstrap API calls same-origin inside the Wails webview', async () => {
+    const desktopBridge: PlatformBridge = {
+      kind: 'desktop',
+      getCapabilities: () => ({
+        native: true,
+        filePicker: true,
+        folderPicker: true,
+        notifications: false,
+        tray: false,
+        nativeMenus: false,
+        deepLinks: false,
+        autoStart: false,
+        windowManagement: true,
+      }),
+      getBootstrapInfo: async () => ({
+        serverUrl: 'http://127.0.0.1:43123',
+        sessionToken: 'desktop-session',
+        csrfToken: 'desktop-csrf',
+      }),
+      selectDirectory: async () => null,
+      selectFile: async () => null,
+      showNotification: async () => undefined,
+      openExternal: async () => undefined,
+      getSystemTheme: async () => 'unknown',
+    };
+    setPlatformBridge(desktopBridge);
+    vi.stubGlobal('window', { go: {}, location: { protocol: 'wails:' } });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ authenticated: true, csrf_token: 'desktop-csrf' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(initSession()).resolves.toMatchObject({ authenticated: true });
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/session', {
+      headers: { Accept: 'application/json', Authorization: 'Bearer desktop-session' },
+    });
   });
 });

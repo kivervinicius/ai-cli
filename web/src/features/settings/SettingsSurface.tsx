@@ -69,6 +69,11 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<{
     nexus_version: string;
+    nexus_latest_version?: string;
+    nexus_update_available?: boolean;
+    nexus_update_error?: string;
+    nexus_update_instruction?: string;
+    nexus_allows_self_update?: boolean;
     channel?: string;
     installation_method?: string;
     allows_self_update?: boolean;
@@ -447,6 +452,20 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
                     <span>IAPro Nexus Core:</span>
                     <Badge tone="success">v{updateInfo.nexus_version}</Badge>
                   </div>
+                  {updateInfo.nexus_latest_version && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span>{t('settings.nexusLatestVersion')}:</span>
+                      <Badge tone={updateInfo.nexus_update_available ? 'warning' : 'success'}>
+                        v{updateInfo.nexus_latest_version}
+                      </Badge>
+                    </div>
+                  )}
                   {updateInfo.channel && (
                     <div
                       style={{
@@ -483,17 +502,32 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
                       v{updateInfo.maestro_version}
                     </Badge>
                   </div>
-                  {updateInfo.update_available ? (
-                    <InlineAlert tone="warning" title="Atualização disponível">
-                      Há uma nova versão do Orquestrador Maestro disponível (
-                      {updateInfo.maestro_latest_version
-                        ? `v${updateInfo.maestro_latest_version}`
-                        : 'nova build'}
-                      ).
+                  {updateInfo.nexus_update_error ? (
+                    <InlineAlert tone="warning" title={t('settings.nexusUpdateUnavailable')}>
+                      {updateInfo.nexus_update_error}
+                    </InlineAlert>
+                  ) : updateInfo.nexus_update_available || updateInfo.update_available ? (
+                    <InlineAlert tone="warning" title={t('settings.updateAvailable')}>
+                      {t('settings.updateAvailableDescription', {
+                        version:
+                          updateInfo.nexus_latest_version ||
+                          updateInfo.maestro_latest_version ||
+                          t('settings.newBuild'),
+                      })}
+                      {updateInfo.nexus_update_available && (
+                        <>
+                          {' '}
+                          {t('settings.nexusUpdateAction', {
+                            action:
+                              updateInfo.nexus_update_instruction ||
+                              (updateInfo.nexus_allows_self_update ? 'nexus update' : ''),
+                          })}
+                        </>
+                      )}
                     </InlineAlert>
                   ) : (
-                    <InlineAlert tone="success" title="Sistema em dia">
-                      Você está executando as versões mais recentes estáveis do Nexus e do Maestro.
+                    <InlineAlert tone="success" title={t('settings.upToDate')}>
+                      {t('settings.upToDateDescription')}
                     </InlineAlert>
                   )}
                 </div>

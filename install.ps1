@@ -1,17 +1,62 @@
-# AI CLI Installer for PowerShell (Windows & PowerShell Core)
-# Supports direct zero-clone installation via:
-# irm https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.ps1 | iex
+# IAPro Nexus Installer for PowerShell (Windows & PowerShell Core)
+# Usage after download: .\install.ps1 -Version v0.5.0-beta.23
 
 param(
-    [switch]$WithMaestro = $false
+    [switch]$WithMaestro = $false,
+    [switch]$NoDesktop = $false,
+    [string]$Version = $env:NEXUS_VERSION,
+    [switch]$BuildFromSource = $false,
+    [string]$SourceRef = $env:NEXUS_SOURCE_REF
 )
 
 $ErrorActionPreference = 'Stop'
+$InstallDesktop = -not $NoDesktop
+
+function Ensure-GoCompiler {
+    if (Get-Command go -ErrorAction SilentlyContinue) {
+        return
+    }
+
+    if (-not $IsWindowsOS) {
+        throw "Go >=1.25 is required for source builds. Install Go manually and run the installer again."
+    }
+
+    $Winget = Get-Command winget -ErrorAction SilentlyContinue
+    if (-not $Winget) {
+        throw "Go >=1.25 is required for source builds, but winget is unavailable. Install Go from https://go.dev/dl/ and run the installer again."
+    }
+
+    Write-Host "Go was not found. Installing the official Go package with WinGet..." -ForegroundColor Yellow
+    & $Winget.Source install --id GoLang.Go --exact --accept-source-agreements --accept-package-agreements
+    if ($LASTEXITCODE -ne 0) {
+        throw "WinGet could not install Go. Install Go from https://go.dev/dl/ and run the installer again."
+    }
+
+    # WinGet updates PATH for future processes only. Refresh this process so
+    # the source build can run immediately after the installation.
+    $MachinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $env:Path = "$UserPath;$MachinePath"
+    if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
+        throw "Go was installed but is not available in PATH yet. Restart PowerShell and run the installer again."
+    }
+    Write-Host "✓ Go compiler is available." -ForegroundColor Green
+}
 
 $Repo = "kivervinicius/ai-cli"
 $GithubUrl = "https://github.com/$Repo"
 
-Write-Host "=== AI CLI Installer (Zero-Clone for PowerShell) ===" -ForegroundColor Cyan
+Write-Host "=== IAPro Nexus Installer (Pinned Release) ===" -ForegroundColor Cyan
+
+if ([string]::IsNullOrWhiteSpace($Version) -and -not $BuildFromSource) {
+    throw "A version is required for verified installation. Use -Version vX.Y.Z or -BuildFromSource from a checkout."
+}
+if (-not [string]::IsNullOrWhiteSpace($Version)) {
+    if ($Version -notmatch '^v?[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$') {
+        throw "Invalid Nexus version: $Version"
+    }
+    $Version = $Version.TrimStart('v')
+}
 
 # 1. Determine platform and target directory
 $IsWindowsOS = ($IsWindows -or ($env:OS -like "*Windows*"))
@@ -19,13 +64,19 @@ $BinaryName = if ($IsWindowsOS) { "nexus.exe" } else { "nexus" }
 $AiAliasName = if ($IsWindowsOS) { "ai.exe" } else { "ai" }
 
 if ($IsWindowsOS) {
-    $TargetDir = Join-Path $env:LOCALAPPDATA "Programs\ai-cli"
+    $TargetDir = Join-Path $env:LOCALAPPDATA "Programs\IAPro Nexus"
+    $LegacyTargetDir = Join-Path $env:LOCALAPPDATA "Programs\ai-cli"
 } else {
     $TargetDir = Join-Path $HOME ".local/bin"
+    $LegacyTargetDir = ""
 }
 
 if (-not (Test-Path $TargetDir)) {
     New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
+}
+
+if ($IsWindowsOS -and (Test-Path $LegacyTargetDir)) {
+    Write-Host "Legacy ai-cli installation found at $LegacyTargetDir; leaving it untouched while installing IAPro Nexus to $TargetDir." -ForegroundColor Gray
 }
 
 $TargetPath = Join-Path $TargetDir $BinaryName
@@ -45,15 +96,25 @@ $Arch = if ([System.Environment]::Is64BitOperatingSystem) {
 $OsName = if ($IsWindowsOS) { "Windows" } elseif ($IsMacOS) { "Darwin" } else { "Linux" }
 $ArchiveExt = if ($IsWindowsOS) { "zip" } else { "tar.gz" }
 $ArchiveName = "nexus_${OsName}_${Arch}.${ArchiveExt}"
-$DownloadUrl = "$GithubUrl/releases/latest/download/$ArchiveName"
+$DownloadUrl = "$GithubUrl/releases/download/v$Version/$ArchiveName"
+$ChecksumsUrl = "$GithubUrl/releases/download/v$Version/checksums.txt"
 
 $TempDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
 
 try {
-    Write-Host "Attempting to download latest release: $ArchiveName..." -ForegroundColor Yellow
+    Write-Host "Attempting to download Nexus v${Version}: $ArchiveName..." -ForegroundColor Yellow
     $ZipPath = Join-Path $TempDir $ArchiveName
-    Invoke-WebRequest -Uri $DownloadUrl -OutFile $ZipPath -UseBasicParsing -ErrorAction SilentlyContinue
+    if (-not [string]::IsNullOrWhiteSpace($Version)) {
+        Invoke-WebRequest -Uri $DownloadUrl -OutFile $ZipPath -UseBasicParsing
+        $ChecksumsPath = Join-Path $TempDir "checksums.txt"
+        Invoke-WebRequest -Uri $ChecksumsUrl -OutFile $ChecksumsPath -UseBasicParsing
+        $Expected = ((Get-Content $ChecksumsPath | Where-Object { $_ -match [regex]::Escape($ArchiveName) } | Select-Object -First 1) -split '\s+')[0]
+        $Actual = (Get-FileHash -Path $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ([string]::IsNullOrWhiteSpace($Expected) -or $Expected.ToLowerInvariant() -ne $Actual) {
+            throw "Release checksum verification failed for $ArchiveName."
+        }
+    }
     
     if (Test-Path $ZipPath) {
         if ($IsWindowsOS) {
@@ -71,48 +132,39 @@ try {
         }
     }
 } catch {
-    # Release binary not reachable, will try source fallback
+    if (-not $BuildFromSource) {
+        throw
+    }
+    Write-Host "Verified release unavailable; explicit source build requested." -ForegroundColor Yellow
 }
 
-# 3. Fallback: Build from source if Go is installed
-if (-not $Installed) {
-    if (Get-Command go -ErrorAction SilentlyContinue) {
-        Write-Host "Building from source via Go..." -ForegroundColor Yellow
-        if (Test-Path "./cmd/nexus/main.go") {
+# 3. Explicit source build only; never resolve a mutable latest ref implicitly.
+if (-not $Installed -and $BuildFromSource) {
+    Ensure-GoCompiler
+    Write-Host "Building from source via Go..." -ForegroundColor Yellow
+    if ((Test-Path "./go.mod") -and (Test-Path "./cmd/nexus")) {
+        go build -ldflags="-s -w" -o $TargetPath ./cmd/nexus
+        $Installed = $true
+    } elseif (-not [string]::IsNullOrWhiteSpace($SourceRef)) {
+        if ($SourceRef -notmatch '^[A-Za-z0-9._/-]+$') { throw "Invalid source ref." }
+        Write-Host "Cloning explicitly requested source ref $SourceRef..." -ForegroundColor Yellow
+        $CloneDir = Join-Path $TempDir "repo"
+        git clone --depth 1 --branch $SourceRef "$GithubUrl.git" $CloneDir
+        Push-Location $CloneDir
+        try {
             go build -ldflags="-s -w" -o $TargetPath ./cmd/nexus
             $Installed = $true
-        } elseif (Test-Path "./cmd/ai/main.go") {
-            go build -ldflags="-s -w" -o $TargetPath ./cmd/ai
-            $Installed = $true
-        } else {
-            Write-Host "Fetching latest source code..." -ForegroundColor Yellow
-            $env:GOBIN = $TargetDir
-            go install "github.com/$Repo/cmd/nexus@latest" 2>$null
-            if ($LASTEXITCODE -eq 0) {
-                $Installed = $true
-            } else {
-                $CloneDir = Join-Path $TempDir "repo"
-                git clone --depth 1 "$GithubUrl.git" $CloneDir
-                Push-Location $CloneDir
-                try {
-                    if (Test-Path "./cmd/nexus") {
-                        go build -ldflags="-s -w" -o $TargetPath ./cmd/nexus
-                    } else {
-                        go build -ldflags="-s -w" -o $TargetPath ./cmd/ai
-                    }
-                    $Installed = $true
-                } finally {
-                    Pop-Location
-                }
-            }
+        } finally {
+            Pop-Location
         }
     } else {
-        Write-Error "Could not download pre-built binary and Go compiler is not installed.`nPlease install Go from https://golang.org or download from $GithubUrl/releases"
-        exit 1
+        throw "-BuildFromSource requires a Nexus checkout or -SourceRef=<tag-or-commit>."
     }
 }
 
-Remove-Item -Path $TempDir -Recurse -Force -ErrorAction SilentlyContinue
+if (-not $Installed) {
+    throw "Installation failed: no verified release artifact was installed."
+}
 
 # Create ai alias/copy for backward compatibility
 $AiAliasPath = Join-Path $TargetDir $AiAliasName
@@ -145,6 +197,47 @@ if ($MaestroCmd) {
 }
 
 Write-Host "✓ Successfully installed IAPro Nexus to $TargetPath" -ForegroundColor Green
+
+# Install the native Wails shell and create a normal Windows Desktop shortcut.
+# Older releases may not publish the separate desktop artifact yet; keep the
+# verified CLI install successful in that case.
+if ($InstallDesktop -and $IsWindowsOS -and -not [string]::IsNullOrWhiteSpace($Version)) {
+    $DesktopArchiveName = "nexus-desktop_Windows_${Arch}.zip"
+    $DesktopDownloadUrl = "$GithubUrl/releases/download/v$Version/$DesktopArchiveName"
+    $DesktopChecksumsUrl = "$GithubUrl/releases/download/v$Version/desktop-checksums.txt"
+    $DesktopZipPath = Join-Path $TempDir $DesktopArchiveName
+    $DesktopChecksumsPath = Join-Path $TempDir "desktop-checksums.txt"
+    try {
+        Write-Host "Attempting to install the native IAPro Nexus Desktop shell..." -ForegroundColor Yellow
+        Invoke-WebRequest -Uri $DesktopDownloadUrl -OutFile $DesktopZipPath -UseBasicParsing
+        Invoke-WebRequest -Uri $DesktopChecksumsUrl -OutFile $DesktopChecksumsPath -UseBasicParsing
+        $ExpectedDesktop = ((Get-Content $DesktopChecksumsPath | Where-Object { $_ -match [regex]::Escape($DesktopArchiveName) } | Select-Object -First 1) -split '\s+')[0]
+        $ActualDesktop = (Get-FileHash -Path $DesktopZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ([string]::IsNullOrWhiteSpace($ExpectedDesktop) -or $ExpectedDesktop.ToLowerInvariant() -ne $ActualDesktop) {
+            throw "Native Desktop checksum verification failed for $DesktopArchiveName."
+        }
+        $DesktopExtractDir = Join-Path $TempDir "desktop"
+        Expand-Archive -Path $DesktopZipPath -DestinationPath $DesktopExtractDir -Force
+        $DesktopBinary = Join-Path $DesktopExtractDir "nexus-desktop.exe"
+        if (-not (Test-Path $DesktopBinary)) { throw "Native Desktop executable missing from $DesktopArchiveName." }
+        $DesktopTargetPath = Join-Path $TargetDir "nexus-desktop.exe"
+        Copy-Item -Path $DesktopBinary -Destination $DesktopTargetPath -Force
+
+        $DesktopShortcutPath = Join-Path ([Environment]::GetFolderPath('Desktop')) "IAPro Nexus.lnk"
+        $Shell = New-Object -ComObject WScript.Shell
+        $Shortcut = $Shell.CreateShortcut($DesktopShortcutPath)
+        $Shortcut.TargetPath = $DesktopTargetPath
+        $Shortcut.WorkingDirectory = $TargetDir
+        $Shortcut.Description = "IAPro Nexus Workspace OS"
+        $Shortcut.Save()
+        Write-Host "✓ Native Desktop installed to $DesktopTargetPath" -ForegroundColor Green
+        Write-Host "✓ Shortcut created at $DesktopShortcutPath" -ForegroundColor Green
+    } catch {
+        Write-Host "⚠️  Native Desktop artifact unavailable or unverifiable; CLI installation is complete." -ForegroundColor Yellow
+    }
+}
+
+Remove-Item -Path $TempDir -Recurse -Force -ErrorAction SilentlyContinue
 
 # 4. Ensure TargetDir is in User PATH
 if ($IsWindowsOS) {

@@ -1,7 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
+  ArrowDown,
   MessageSquare,
+  Minus,
   Play,
+  Plus,
   RefreshCw,
   Send,
   ShieldAlert,
@@ -28,6 +32,15 @@ import {
   terminalReconnectDelay,
   type TerminalRole,
 } from './agentTerminalModel';
+import {
+  DEFAULT_TERMINAL_SCROLLBACK,
+  adjustTerminalFontSize,
+  getStoredTerminalFontSize,
+  resetTerminalFontSize,
+  shouldAutoScrollToBottom,
+  storeTerminalFontSize,
+  subscribeTerminalFontSize,
+} from './terminalSettings';
 import { isRequiredResourceError, recoverOrStartAgent } from './agentRecover';
 import { ResourcePicker } from './ResourcePicker';
 import { TerminalActionDialog } from './TerminalActionDialog';
@@ -72,6 +85,7 @@ export const AgentTerminal: React.FC<{
   onClose,
   onDelete,
 }) => {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -114,6 +128,27 @@ export const AgentTerminal: React.FC<{
   const liveChromeRef = useRef(liveChrome);
   liveChromeRef.current = liveChrome;
   const ptyChromeRef = useRef({ title: '', questionnaire: false });
+  const [fontSize, setFontSize] = useState<number>(() => getStoredTerminalFontSize());
+  const initialFontSizeRef = useRef(fontSize);
+  const [isScrolledUp, setIsScrolledUp] = useState(false);
+  const fitAddonRef = useRef<FitAddon | null>(null);
+
+  useEffect(() => {
+    return subscribeTerminalFontSize((newSize) => {
+      setFontSize(newSize);
+    });
+  }, []);
+
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    term.options.fontSize = fontSize;
+    try {
+      fitAddonRef.current?.fit();
+    } catch {
+      // Ignore fit measurement errors during transition
+    }
+  }, [fontSize]);
 
   useEffect(() => {
     setBoundRuntimeId((current) => nextBoundRuntimeId(current, runtimeId));
@@ -121,8 +156,9 @@ export const AgentTerminal: React.FC<{
 
   useEffect(() => {
     const key = liveTitleKey;
+    const chrome = liveChromeRef.current;
     return () => {
-      if (key) liveChromeRef.current?.clearLive(key);
+      if (key) chrome?.clearLive(key);
     };
   }, [liveTitleKey]);
 
@@ -187,15 +223,61 @@ export const AgentTerminal: React.FC<{
 
     const term = new Terminal({
       cursorBlink: true,
-      fontSize: 13,
+      fontSize: initialFontSizeRef.current,
       lineHeight: 1.25,
       fontFamily: 'var(--nx-font-mono)',
       theme: { background: '#090b10' },
-      scrollback: 5000,
+      scrollback: DEFAULT_TERMINAL_SCROLLBACK,
     });
     termInstance = term;
     termRef.current = term;
+
+    term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey) {
+        if (
+          event.key === '=' ||
+          event.key === '+' ||
+          event.code === 'Equal' ||
+          event.code === 'NumpadAdd'
+        ) {
+          if (event.type === 'keydown') {
+            const next = adjustTerminalFontSize(1);
+            storeTerminalFontSize(next);
+          }
+          return false;
+        }
+        if (
+          event.key === '-' ||
+          event.key === '_' ||
+          event.code === 'Minus' ||
+          event.code === 'NumpadSubtract'
+        ) {
+          if (event.type === 'keydown') {
+            const next = adjustTerminalFontSize(-1);
+            storeTerminalFontSize(next);
+          }
+          return false;
+        }
+        if (event.key === '0' || event.code === 'Digit0' || event.code === 'Numpad0') {
+          if (event.type === 'keydown') {
+            const next = resetTerminalFontSize();
+            storeTerminalFontSize(next);
+          }
+          return false;
+        }
+      }
+      return true;
+    });
+
+    const scrollListener = term.onScroll(() => {
+      if (disposed) return;
+      const buf = term.buffer.active;
+      const atBottom = shouldAutoScrollToBottom(buf.viewportY, buf.baseY);
+      setIsScrolledUp(!atBottom);
+    });
+
     const fit = new FitAddon();
+    fitAddonRef.current = fit;
     term.loadAddon(fit);
     term.open(container);
 
@@ -233,7 +315,9 @@ export const AgentTerminal: React.FC<{
       if (trimmed) publishChrome(trimmed);
     });
 
+    const panel = container.closest<HTMLElement>('.nx-workspace-panel');
     const fitAndResize = (force = false) => {
+      if (panel && panel.dataset.active !== 'true') return;
       if (
         !canFitTerminal({
           disposed,
@@ -256,6 +340,35 @@ export const AgentTerminal: React.FC<{
       if (!force && term.rows === lastSentSize.rows && term.cols === lastSentSize.cols) return;
       lastSentSize = { rows: term.rows, cols: term.cols };
       ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
+    };
+
+    // Do not let xterm render while its workspace panel is hidden. Its
+    // viewport dimensions are not guaranteed during that transition.
+    let pendingOutput = '';
+    const writeTerminalOutput = (data: string) => {
+      if (disposed) return;
+      if (panel && panel.dataset.active !== 'true') {
+        pendingOutput += data;
+        return;
+      }
+      const buf = term.buffer.active;
+      const wasTracking = shouldAutoScrollToBottom(buf.viewportY, buf.baseY);
+      try {
+        term.write(pendingOutput + data, () => {
+          if (wasTracking) {
+            term.scrollToBottom();
+          }
+        });
+        pendingOutput = '';
+      } catch {
+        pendingOutput += data;
+      }
+    };
+    const flushPendingOutput = () => {
+      if (!pendingOutput || (panel && panel.dataset.active !== 'true')) return;
+      const output = pendingOutput;
+      pendingOutput = '';
+      writeTerminalOutput(output);
     };
 
     const scheduleRedrawPulse = () => {
@@ -300,7 +413,7 @@ export const AgentTerminal: React.FC<{
         return;
       }
       if (openedOnce && reconnectAttempt >= TERMINAL_MAX_RECONNECT_ATTEMPTS) {
-        failPermanently(detail || 'Conexão com o terminal perdida.');
+        failPermanently(detail || t('terminal.connectionLost'));
         return;
       }
       const delay = terminalReconnectDelay(reconnectAttempt++);
@@ -411,8 +524,9 @@ export const AgentTerminal: React.FC<{
             return;
           }
           fitAndResize(true);
+          flushPendingOutput();
           if (disposed) return;
-          term.focus();
+          if (!panel || panel.dataset.active === 'true') term.focus();
           scheduleRedrawPulse();
         });
       };
@@ -425,7 +539,7 @@ export const AgentTerminal: React.FC<{
             const cleaned = scrubProtocolOutput(String(payload.data));
             if (cleaned) {
               ingestOutput(cleaned);
-              term.write(cleaned);
+              writeTerminalOutput(cleaned);
             }
           } else if (payload.type === 'lease') {
             const next = normalizeTerminalRole(payload.role);
@@ -433,12 +547,8 @@ export const AgentTerminal: React.FC<{
             reconnectAttempt = 0;
             roleRef.current = next;
             setRole(next);
-            setMessage(
-              next === 'CONTROL'
-                ? ''
-                : 'Somente leitura — outro acesso está digitando neste runtime.',
-            );
-            if (next === 'CONTROL') {
+            setMessage(next === 'CONTROL' ? '' : t('terminal.readOnlyNotice'));
+            if (next === 'CONTROL' && (!panel || panel.dataset.active === 'true')) {
               window.requestAnimationFrame(() => term.focus());
             }
             maybeSendKickoff();
@@ -471,7 +581,7 @@ export const AgentTerminal: React.FC<{
         } catch {
           const raw = String(event.data);
           ingestOutput(raw);
-          term.write(event.data);
+          writeTerminalOutput(raw);
         }
       };
 
@@ -497,6 +607,8 @@ export const AgentTerminal: React.FC<{
     };
 
     const dataDisposable = term.onData((data) => {
+      term.scrollToBottom();
+      setIsScrolledUp(false);
       const ws = wsRef.current;
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
       if (roleRef.current !== 'CONTROL') {
@@ -508,6 +620,20 @@ export const AgentTerminal: React.FC<{
       ws.send(JSON.stringify({ type: 'input', data }));
     });
 
+    let flushFrame: number | undefined;
+    const panelObserver = panel
+      ? new MutationObserver(() => {
+          if (panel.dataset.active !== 'true' || flushFrame !== undefined) return;
+          flushFrame = window.requestAnimationFrame(() => {
+            flushFrame = undefined;
+            fitAndResize(true);
+            flushPendingOutput();
+            term.scrollToBottom();
+          });
+        })
+      : null;
+    if (panel)
+      panelObserver?.observe(panel, { attributes: true, attributeFilter: ['data-active'] });
     const observer = new ResizeObserver(() => window.requestAnimationFrame(() => fitAndResize()));
     observer.observe(container);
     const visibility = () => {
@@ -522,9 +648,16 @@ export const AgentTerminal: React.FC<{
       stopReconnect = true;
       if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
       if (openFrame !== undefined) window.cancelAnimationFrame(openFrame);
+      if (flushFrame !== undefined) window.cancelAnimationFrame(flushFrame);
       redrawTimers.forEach((timer) => window.clearTimeout(timer));
       observer.disconnect();
+      panelObserver?.disconnect();
       document.removeEventListener('visibilitychange', visibility);
+      try {
+        scrollListener.dispose();
+      } catch {
+        // ignore
+      }
       try {
         titleListener.dispose();
       } catch {
@@ -559,7 +692,7 @@ export const AgentTerminal: React.FC<{
         // ignore
       }
     };
-  }, [agentId, boundRuntimeId, initialPrompt, connectNonce]);
+  }, [agentId, boundRuntimeId, initialPrompt, connectNonce, t]);
 
   const handleManualStartOrRecover = async () => {
     setRecovering(true);
@@ -684,17 +817,38 @@ export const AgentTerminal: React.FC<{
     const nextMode = pendingMode;
     setPendingMode(null);
     setModeAction('Applying');
-    setMessage('Salvando configuração…');
+    setMessage(t('terminal.savingConfig'));
     try {
       const nextRuntime = await onRestartWithMode(nextMode);
       setModeAction('Restarting');
-      setMessage('Reiniciando runtime…');
+      setMessage(t('terminal.restartingRuntime'));
       rebindTerminal(nextRuntime?.runtime_id);
       setSelectedMode(nextMode);
     } catch (error) {
       setModeAction('Error');
       setMessage(error instanceof Error ? error.message : String(error));
     }
+  };
+
+  const handleZoomIn = () => {
+    const next = adjustTerminalFontSize(1);
+    storeTerminalFontSize(next);
+  };
+
+  const handleZoomOut = () => {
+    const next = adjustTerminalFontSize(-1);
+    storeTerminalFontSize(next);
+  };
+
+  const handleResetZoom = () => {
+    const next = resetTerminalFontSize();
+    storeTerminalFontSize(next);
+  };
+
+  const handleScrollToBottom = () => {
+    termRef.current?.scrollToBottom();
+    termRef.current?.focus();
+    setIsScrolledUp(false);
   };
 
   const confirmClose = async (stopRuntime: boolean) => {
@@ -729,7 +883,7 @@ export const AgentTerminal: React.FC<{
   };
 
   const modeButtons = (
-    <div className="nx-agent-terminal__modes" role="group" aria-label="Modo de execução">
+    <div className="nx-agent-terminal__modes" role="group" aria-label={t('terminal.modeAriaLabel')}>
       {(['Safe', 'YOLO'] as const).map((m) => (
         <button
           key={m}
@@ -738,7 +892,7 @@ export const AgentTerminal: React.FC<{
           data-active={selectedMode === m ? 'true' : 'false'}
           onClick={() => requestModeChange(m)}
           disabled={!onRestartWithMode || modeAction === 'Applying' || modeAction === 'Restarting'}
-          title={`Alternar modo para ${m}`}
+          title={t('terminal.switchMode', { mode: m })}
         >
           {m}
         </button>
@@ -748,18 +902,49 @@ export const AgentTerminal: React.FC<{
 
   const terminalActions = (
     <div className="nx-agent-terminal__controls">
+      {/* Terminal Font Size Zoom Controls */}
+      <div className={styles.zoomGroup} role="group" aria-label="Terminal font size">
+        <button
+          type="button"
+          className={styles.zoomBtn}
+          onClick={handleZoomOut}
+          title={t('terminal.zoomOut')}
+          aria-label={t('terminal.zoomOut')}
+        >
+          <Minus size={11} />
+        </button>
+        <button
+          type="button"
+          className={styles.zoomLabel}
+          onClick={handleResetZoom}
+          title={t('terminal.resetZoom')}
+          aria-label={t('terminal.resetZoom')}
+        >
+          {fontSize}px
+        </button>
+        <button
+          type="button"
+          className={styles.zoomBtn}
+          onClick={handleZoomIn}
+          title={t('terminal.zoomIn')}
+          aria-label={t('terminal.zoomIn')}
+        >
+          <Plus size={11} />
+        </button>
+      </div>
+
       {role === 'CONTROL' ? (
         <span className="nx-agent-terminal__lease" data-role="CONTROL">
-          CONTROL
+          {t('agents.controlLabel')}
         </span>
       ) : (
         <>
           <span className="nx-agent-terminal__lease" data-role="VIEW_ONLY">
-            VIEW ONLY
+            {t('agents.viewOnlyLabel')}
           </span>
-          <Tooltip content="Assumir controle do teclado">
+          <Tooltip content={t('terminal.takeControlTooltip')}>
             <button type="button" className="nx-agent-terminal__ask-btn" onClick={takeControl}>
-              Assumir controle
+              {t('terminal.takeControl')}
             </button>
           </Tooltip>
         </>
@@ -775,7 +960,7 @@ export const AgentTerminal: React.FC<{
           {message}
         </span>
       )}
-      <Tooltip content="Perguntar ao Agente / Sugerir skills">
+      <Tooltip content={t('terminal.askAgentTooltip')}>
         <button
           type="button"
           className="nx-agent-terminal__ask-btn"
@@ -788,13 +973,13 @@ export const AgentTerminal: React.FC<{
           }}
         >
           <Sparkles size={13} />
-          <span>Perguntar</span>
+          <span>{t('terminal.ask')}</span>
         </button>
       </Tooltip>
       {onClose && !windowChrome && (
-        <Tooltip content="Escolher como fechar este terminal">
+        <Tooltip content={t('terminal.closeTerminalTooltip')}>
           <button type="button" onClick={() => setCloseConfirmOpen(true)}>
-            Fechar terminal
+            {t('terminal.closeTerminal')}
           </button>
         </Tooltip>
       )}
@@ -841,7 +1026,7 @@ export const AgentTerminal: React.FC<{
         <div className={`nx-agent-terminal__composer ${styles.composer}`}>
           <div className={styles.composerHeader}>
             <span className={styles.composerTitle}>
-              <MessageSquare size={13} /> Enviar instrução ao agente (One-shot)
+              <MessageSquare size={13} /> {t('terminal.sendInstructionTitle')}
             </span>
             <button type="button" onClick={() => setAskOpen(false)} className={styles.closeButton}>
               <X size={13} />
@@ -851,7 +1036,7 @@ export const AgentTerminal: React.FC<{
             <input
               type="text"
               className={`nx-input ${styles.composerInput}`}
-              placeholder="Digite o objetivo ou comando para o agente..."
+              placeholder={t('terminal.sendInstructionPlaceholder')}
               value={askPrompt}
               onChange={(e) => setAskPrompt(e.target.value)}
               onKeyDown={(e) => {
@@ -870,12 +1055,12 @@ export const AgentTerminal: React.FC<{
               onClick={() => void handleSendPrompt()}
             >
               <Send size={12} />
-              <span>{asking ? 'Enviando...' : 'Enviar'}</span>
+              <span>{asking ? t('terminal.sending') : t('terminal.send')}</span>
             </button>
           </div>
           {availableSkills.length > 0 && (
             <div className={styles.skillsRow}>
-              <span className={styles.skillsLabel}>Skills Maestro (até 3 no próximo prompt):</span>
+              <span className={styles.skillsLabel}>{t('terminal.maestroSkillsLabel')}</span>
               {availableSkills.slice(0, 8).map((s) => {
                 const active = selectedSkills.includes(s.id);
                 return (
@@ -928,20 +1113,33 @@ export const AgentTerminal: React.FC<{
         onPointerDown={() => termRef.current?.focus()}
       />
 
+      {isScrolledUp && (
+        <button
+          type="button"
+          className={styles.scrollToBottomBtn}
+          onClick={handleScrollToBottom}
+          title={t('terminal.scrollToBottom')}
+          aria-label={t('terminal.scrollToBottom')}
+        >
+          <ArrowDown size={12} />
+          <span>{t('terminal.scrollToBottom')}</span>
+        </button>
+      )}
+
       {showRecoverOverlay && (
         <div className={styles.recoverOverlay} data-window-chrome={windowChrome ? 'true' : 'false'}>
           <div className={styles.recoverHeader}>
             {recovering ? <RefreshCw size={18} className="nx-spin-slow" /> : <Unplug size={18} />}
             <strong className={styles.recoverTitle}>
               {recovering || connection === 'CONNECTING'
-                ? 'Recuperando o terminal do agente'
-                : 'Runtime do Agente desconectado'}
+                ? t('terminal.recoverTitleReconnecting')
+                : t('terminal.recoverTitleStopped')}
             </strong>
           </div>
           <p className={styles.recoverText}>
             {recovering || connection === 'CONNECTING'
-              ? 'O processo anterior não sobreviveu ao reinício da máquina ou do serviço. O Nexus está relançando o runtime para anexar de novo.'
-              : 'O processo do agente não está rodando no momento ou foi finalizado. Inicie o runtime para anexar o terminal e executar comandos.'}
+              ? t('terminal.recoverNoticeReconnecting')
+              : t('terminal.recoverNoticeStopped')}
           </p>
           {message && connection === 'ERROR' && <p className={styles.errorMessage}>{message}</p>}
           {needsResourceSelection && (
@@ -962,14 +1160,14 @@ export const AgentTerminal: React.FC<{
               onClick={() => void handleManualStartOrRecover()}
             >
               {recovering ? <RefreshCw size={13} className="nx-spin-slow" /> : <Play size={13} />}
-              <span>{recovering ? 'Iniciando…' : 'Iniciar / Recuperar Agente'}</span>
+              <span>{recovering ? t('terminal.starting') : t('terminal.startOrRecoverAgent')}</span>
             </button>
             <button
               type="button"
               className={`nx-button ${styles.actionButtonContent}`}
-              title="Reabre só o WebSocket; não relança o processo do agente"
+              title={t('terminal.reconnectWsTooltip')}
               onClick={() => {
-                setMessage('Reconectando transporte…');
+                setMessage(t('terminal.reconnectingTransport'));
                 setConnection('CONNECTING');
                 if (containerRef.current && (containerRef.current as any).__triggerReconnect) {
                   (containerRef.current as any).__triggerReconnect();
@@ -979,7 +1177,7 @@ export const AgentTerminal: React.FC<{
               }}
             >
               <RefreshCw size={13} />
-              <span>Reconectar WS</span>
+              <span>{t('terminal.reconnectWs')}</span>
             </button>
             {onDelete && (
               <button
@@ -990,7 +1188,7 @@ export const AgentTerminal: React.FC<{
                 onClick={() => void handleDeleteAgent()}
               >
                 <Trash2 size={13} />
-                <span>{deleting ? 'Removendo…' : 'Remover Agente'}</span>
+                <span>{deleting ? t('terminal.removing') : t('terminal.removeAgent')}</span>
               </button>
             )}
           </div>
@@ -998,8 +1196,8 @@ export const AgentTerminal: React.FC<{
       )}
       <ConfirmDialog
         open={deleteConfirmOpen}
-        title="Remover Agente"
-        description={`Remover o agente "${agentName || agentId}"? A identidade e o terminal serão excluídos.`}
+        title={t('agents.confirmRemoveTitle')}
+        description={t('agents.confirmRemove', { name: displayName })}
         onConfirm={() => void executeDeleteAgent()}
         onCancel={() => setDeleteConfirmOpen(false)}
       />

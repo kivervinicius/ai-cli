@@ -2,11 +2,12 @@ BINARY=nexus
 MODULE=github.com/kivervinicius/ai-cli
 LOCAL_BIN ?= $(HOME)/.local/bin
 DESKTOP_TAGS = production
+WAILS_VERSION ?= v2.15.0
 ifeq ($(shell go env GOOS),linux)
 DESKTOP_TAGS = production,webkit2_41
 endif
 
-.PHONY: all build build-desktop web web-verify test race vet install install-local release-local bump clean format format-check lint-frontend lint-styles lint-styles-fix lint-fix lint-go typecheck test-frontend test-go test-e2e security quality quality-full golangci-lint
+.PHONY: all build build-desktop build-desktop-wails web web-verify test race vet install install-local release-local bump clean format format-check lint-frontend lint-styles lint-styles-fix lint-fix lint-go typecheck test-frontend test-go test-e2e security quality quality-full golangci-lint
 
 all: build
 
@@ -74,7 +75,11 @@ vet:
 # ─── Security ───────────────────────────────────────────────────────
 
 security:
-	@GOTOOLCHAIN=go1.25.14 PATH="$(HOME)/go/bin:$(PATH)" govulncheck ./...
+	@if command -v govulncheck >/dev/null 2>&1; then \
+		GOTOOLCHAIN=go1.25.14 PATH="$(HOME)/go/bin:$(PATH)" govulncheck ./...; \
+	else \
+		GOTOOLCHAIN=auto go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...; \
+	fi
 
 # ─── Quality gates ──────────────────────────────────────────────────
 
@@ -110,6 +115,9 @@ build-desktop: web
 	LDFLAGS="-s -w -X $(MODULE)/internal/buildinfo.Version=$$VERSION -X $(MODULE)/internal/buildinfo.Commit=$$COMMIT -X $(MODULE)/internal/buildinfo.BuildDate=$$BUILDDATE"; \
 	echo "Building nexus-desktop v$$VERSION (commit: $$COMMIT)..."; \
 	go build -tags "$(DESKTOP_TAGS)" -ldflags="$$LDFLAGS" -o nexus-desktop ./cmd/nexus-desktop
+
+build-desktop-wails: web
+	@cd cmd/nexus-desktop && GOTOOLCHAIN=auto go run github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION) build -clean -s -m -tags "$(DESKTOP_TAGS)"
 
 release-local:
 	go run ./cmd/nexus release

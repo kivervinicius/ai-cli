@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,11 +36,20 @@ func main() {
 	version := flag.String("version", "", "release version")
 	keyID := flag.String("key-id", "", "trusted public-key identifier")
 	privateKey := flag.String("private-key", "", "base64 or hex Ed25519 private key")
+	baseURL := flag.String("base-url", "", "absolute release artifact base URL")
 	flag.Parse()
 	if *version == "" || *keyID == "" || *privateKey == "" {
 		fmt.Fprintln(os.Stderr, "version, key-id and private-key are required")
 		os.Exit(2)
 	}
+	if *baseURL == "" {
+		*baseURL = "https://github.com/kivervinicius/ai-cli/releases/download/v" + strings.TrimPrefix(*version, "v")
+	}
+	parsedBase, err := url.Parse(*baseURL)
+	if err != nil || parsedBase.Scheme != "https" || parsedBase.Host == "" {
+		panic("base-url must be an absolute https URL")
+	}
+	base := strings.TrimRight(*baseURL, "/")
 	key, err := decodePrivateKey(*privateKey)
 	if err != nil {
 		panic(err)
@@ -63,19 +73,26 @@ func main() {
 			panic(err)
 		}
 		keyName := strings.ToLower(strings.ReplaceAll(strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name())), "-", "_"))
-		m.Artifacts[keyName] = artifact{URL: entry.Name(), Size: info.Size(), SHA256: fmt.Sprintf("%x", sha256.Sum256(data))}
+		m.Artifacts[keyName] = artifact{URL: base + "/" + url.PathEscape(entry.Name()), Size: info.Size(), SHA256: fmt.Sprintf("%x", sha256.Sum256(data))}
 	}
 	bytes, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		panic(err)
 	}
-	sig := ed25519.Sign(key, bytes)
-	if err := os.WriteFile(filepath.Join(*dist, "update-manifest.json"), append(bytes, '\n'), 0644); err != nil {
+	if err := writeSignedManifest(*dist, bytes, key); err != nil {
 		panic(err)
 	}
-	if err := os.WriteFile(filepath.Join(*dist, "update-manifest.sig"), []byte(hex.EncodeToString(sig)+"\n"), 0644); err != nil {
-		panic(err)
+}
+
+func writeSignedManifest(dist string, jsonBytes []byte, key ed25519.PrivateKey) error {
+	// Sign exactly the bytes that are published. The trailing newline is part of
+	// the manifest body and must be covered by Ed25519 verification.
+	manifestBytes := append(append([]byte(nil), jsonBytes...), '\n')
+	sig := ed25519.Sign(key, manifestBytes)
+	if err := os.WriteFile(filepath.Join(dist, "update-manifest.json"), manifestBytes, 0644); err != nil {
+		return err
 	}
+	return os.WriteFile(filepath.Join(dist, "update-manifest.sig"), []byte(hex.EncodeToString(sig)+"\n"), 0644)
 }
 
 func decodePrivateKey(value string) (ed25519.PrivateKey, error) {

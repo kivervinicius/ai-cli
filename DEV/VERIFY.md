@@ -1,5 +1,140 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-06 — CI closure pass after remote failure reproduction
+
+- Remote run `34060911997` was inspected by job/step metadata. Frontend failed
+  on format; Windows and macOS failed on their full Go test/race step. Logs are
+  unavailable through the repository API without admin log permission.
+- Frontend: **PASS**, `cd web && bun run verify` (10/10 gates), 306 tests,
+  including build and embed synchronization.
+- Go: **PASS**, `go test -count=1 ./...`, `go test -race -count=1 ./...`, and
+  `go vet ./...`.
+- Lint: **PASS**, `golangci-lint v2.12.2 run --timeout=5m ./...` (`0 issues`).
+- Platforms: **PASS (compile evidence)**, Go test binaries and `cmd/nexus`
+  compile for Windows amd64 and Darwin arm64; native execution still belongs
+  to the GitHub Windows/macOS runners.
+- Desktop/release: **PASS**, Wails Linux package and GoReleaser v2.18.0
+  snapshot artifacts/checksums.
+- Repository hygiene: **PASS**, `gofmt` and `git diff --check`.
+- Generated Wails bindings: **PASS**, Prettier normalized the generated model
+  file and the aggregate `make quality` gate passed afterward.
+- Remote CI must be rerun on the resulting commit; no commit or push was made.
+
+## 2026-09-06 — Monitor residente de quotas
+
+- Go: `go test ./...` PASS; `go vet ./...` PASS; testes focados de Nexus,
+  eventos, Web e App PASS.
+- Web: `npm run typecheck` PASS; Vitest PASS (61 arquivos / 306 testes);
+  ESLint PASS com warnings preexistentes, Stylelint PASS, `check:styles` PASS,
+  build PASS.
+- `git diff --check` PASS.
+- Cobertura adicionada para Gemini 28% independente de Claude/GPT 100% e para
+  histórico global sem filtro de runtime.
+
+## 2026-09-06 — Workspace tabs and terminal viewport regression
+
+- Route synchronization now keys off the actual pathname/search and does not
+  reopen `/overview` on every workspace state update.
+- Product tab clicks route through the application opener, preserving the URL
+  and active surface together.
+- Hidden xterm panels defer output, focus, and resize until `data-active=true`;
+  activation flushes output and performs a guarded fit.
+- Frontend verification: Prettier, TypeScript, and 292 Vitest tests passed.
+- `bun run build`, `make build-desktop-wails`, installation of the Linux Wails
+  artifact, and `git diff --check` passed.
+
+## 2026-09-06 — Desktop input hardening
+
+- Deep links now enforce bounded length, one resource ID, no fragments/users,
+  and reject path/control/whitespace ambiguity.
+- Linux autostart quotes the executable path using Desktop Entry `Exec` rules.
+- `go test ./internal/desktop -run 'Test(AutoStart|DeepLink)'` passed.
+
+## 2026-09-06 — Desktop capability evidence
+
+- `DesktopBridge` now consumes the backend `GetCapabilities()` result instead
+  of equating generated Wails methods with available native functionality.
+- Pre-bootstrap state is conservative; capability evidence is cached after the
+  authenticated desktop bootstrap.
+- `cd web && bun run verify` passed all checks, including the regression test.
+
+## 2026-09-06 — Native notification input safety
+
+- AppleScript and PowerShell notification paths now pass title/body as
+  arguments to static scripts instead of interpolating user-controlled text.
+- `go test -race ./internal/control/notify -count=20` passed; Windows package
+  cross-compilation also passed.
+
+## 2026-09-06 — External URL fallback safety
+
+- Added shared structural URL validation to Web/Desktop bridges and all
+  browser-opening fallbacks.
+- Unsafe schemes (`javascript`, `data`, `file`, malformed URLs) are rejected;
+  the frontend regression and full `bun run verify` passed.
+
+## 2026-09-06 — Handoff secret hygiene
+
+- Redacted two persisted loopback bootstrap token URLs from `DEV/HANDOFF.md`
+  and removed machine-local installation paths.
+- Current-tree scan found no long hexadecimal bootstrap token URLs outside Git
+  metadata; history was not rewritten because local user work must be preserved.
+- `internal/core/security` and script tests passed.
+
+## 2026-09-06 — Same-SHA security gate
+
+- Added a dedicated CI `Security` job running pinned `govulncheck` with Go
+  1.25.14.
+- Added `Security` to the release workflow's required same-SHA job list.
+- `actionlint` and release package tests passed; remote CI execution remains
+  pending because no push was performed.
+
+## 2026-09-06 — Detached update signature consumption
+
+- Fixed the shared Update Service to consume `update-manifest.sig` beside a
+  static `update-manifest.json` when no signature header is present.
+- Missing, malformed, unavailable, or invalid signatures remain fail-closed.
+- RED/GREEN evidence: detached-signature unit test passes normally and under
+  `go test -race ./internal/update -count=5`.
+
+## 2026-09-06 — Explicit Maestro update boundary
+
+- Added the explicit CLI namespace `nexus maestro status|doctor|update`.
+- `nexus update` remains owned by the shared Nexus Update Service and no longer
+  claims to update Maestro in help/completion text.
+- Added a degraded-status test for an unavailable Maestro installation and
+  aligned Web settings copy with the explicit Maestro operation.
+
+## Current closure pass — 2026-09-06
+
+- Frontend: **PASS**, `make web-verify` 10/10 at `2026-09-06T05:20:55Z`.
+- Go: **PASS**, `gofmt`, `go vet ./...`, `go test ./...`, and
+  `go test -race ./...`.
+- Go lint: **PASS**, `golangci-lint v2.12.2 run ./...` (`0 issues`).
+- Aggregate quality: **PASS**, `PATH=/tmp/nexus-tools:$PATH make quality`.
+- Stress: **PASS**, Desktop/Update/SessionHost/Workspace at `-count=20`.
+- macOS fallback input handling: **PASS** by static review and Go lint; native
+  execution remains pending on a macOS runner.
+- Installers: **PARTIAL**, pinned release + SHA256 checks pass; signed
+  manifest/keyring publication is still unavailable.
+- Release workflow: **STATIC PASS**, YAML parses and publication is gated on
+  named same-SHA CI jobs; runtime execution remains unverified until a new
+  branch/tag CI run exists.
+- Update signer byte binding: **PASS**, published manifest bytes are covered by
+  the detached signature and regression-tested.
+- Wails Linux packaging: **PASS**, `make build-desktop-wails` generated and
+  packaged the native artifact; Windows/macOS execution remains pending.
+- Native release artifact promotion: **STATIC PASS**, CI workflow uploads and
+  release workflow promotes artifacts from the selected same-SHA run; runtime
+  evidence remains pending.
+- GoReleaser snapshot: **PASS locally** with v2.18.0; all six CLI archives,
+  checksums, and Linux DEB/RPM artifacts were generated. Deprecation warnings
+  remain non-blocking follow-up items.
+- Desktop Linux build: **PASS**, `make build-desktop`.
+- Security: **PASS**, `make security` reported `No vulnerabilities found`.
+- Native Windows/macOS: **NO-GO**, CI run `34012236345` failed those jobs;
+  browser/Desktop downstream jobs were skipped. See
+  [`FINAL_PLATFORM_RELEASE_DESKTOP_REPORT.md`](validation/FINAL_PLATFORM_RELEASE_DESKTOP_REPORT.md).
+
 ## 2026-09-05 — Implementação Completa Web + Desktop Multiplataforma
 
 - `go test ./...` — PASS (100% de sucesso nos pacotes `internal/app`, `internal/desktop`, `internal/update`, `internal/control/web`, `internal/doctor`, `internal/release`, etc.).
@@ -333,8 +468,76 @@ All business logic lives in `internal/nexus/` (service layer). Web and TUI consu
 
 Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CURRENT_CODE_REVIEW.md).
 
+## TUI Usage selection — 2026-09-06
+
+- `go test ./internal/tui -run 'TestUnifiedUsage(RestoresSelectionAfterEmptyFilter|ModeTogglingAndFlags|EscAndQQuit)$' -count=20` — PASS.
+- `go test -race ./internal/tui` — PASS.
+- `Enter` após filtro seleciona a linha destacada; cursor é restaurado após
+  resultado vazio; `Esc` mantém comportamento de apenas fechar o filtro.
+
+## Frontend embedded identity — 2026-09-06
+
+- `cd web && bun run verify` — PASS (10/10 gates, incluindo igualdade entre
+  `web/dist` e `internal/control/web/embedded`).
+- `.github/workflows/ci.yml` agora usa esse verificador no job Frontend, não um
+  teste de mera existência de arquivos.
+- `go test ./internal/release -run 'TestInstaller' -count=1` — PASS; a política
+  de caminho `IAPro Nexus` com preservação do diretório legado foi verificada.
+- Actionlint/YAML dos workflows — PASS; jobs Windows/macOS preservam logs de
+  falha em artifacts sem mascarar o resultado.
+- O gate Windows inclui parsing explícito do `install.ps1`; execução local não é
+  possível porque `pwsh` não está instalado neste runner Linux.
+- Cross-build CLI Linux amd64/Windows amd64/macOS arm64 e Desktop Windows
+  amd64 — PASS como compilação cruzada apenas; não substitui execução nativa.
+- Listener failure: teste Linux 20x PASS; pacote `internal/control/host`
+  compilou para Windows amd64 PASS; execução Windows ainda requer runner nativo.
+- ConPTY interactive fixture: pacote Linux e compilação Windows amd64 PASS;
+  execução nativa ainda pendente.
+- FSMkdir: testes FS focados 20x PASS e compilação Windows amd64 do pacote Web
+  PASS; execução nativa ainda pendente.
+- IPC readiness: Host/Protocol 20x PASS e race PASS sem sleeps de prontidão;
+  execução nativa Unix socket/Named Pipe continua dependente dos runners.
+- HTTP readiness: bootstrap/session/restart focados 3x PASS e race PASS sem
+  sleeps fixos.
+- Web E2E/API/túnel completos: PASS normal e com race após remover waits de
+  startup artificiais.
+- PTY Unix: 20x PASS e race PASS com leitura baseada em output observado, sem
+  sleep de readiness.
+- Pacotes terminal/host/protocol/web: testes normais, race e golangci-lint PASS;
+  `make quality PATH=/tmp/nexus-tools:$PATH` PASS.
+- Revalidação final: `go test -race ./...`, `make security`, GoReleaser v2.18.0
+  snapshot e `go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7`
+  passaram.
+- Browser E2E real: PASS após corrigir locator case-sensitive de Settings;
+  Playwright, Axe, deep-links, breakpoints e screenshots passaram em três
+  execuções consecutivas; o script passou pelo Prettier.
+- Fixtures Host/QA Windows não usam mais `cat`; usam `cmd.exe /D /Q /C more`.
+  Linux normal/race e cross-compilação Windows/macOS dos pacotes afetados
+  passaram. Wine/ConPTY permanece explicitamente não nativo.
+- Update Service: testes 20x e race PASS; `HOME` de teste isolado e nenhum
+  receipt gerado no checkout.
+- Doctor: probes read-only e estados `WARN`/`SKIPPED` para capacidades nativas
+  sem evidência; pacote passou 20x e race 5x.
+- Registry: invalidação cross-process agora usa `ModTime` + tamanho + fingerprint
+  SHA-256; teste de concorrência passou 50x, race 10x e `go test ./...` passou.
+
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-06T03:51:45Z
+## Frontend gate — 2026-09-07T03:17:46Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
 
+## Cross-platform CI hardening — 2026-09-07
+
+- `go test -count=1 ./...`: PASS
+- `go test -race -count=1 ./...`: PASS
+- `go vet ./...` e golangci-lint v2.12.2: PASS
+- `bun run verify`: 10/10 PASS
+- Compilação cruzada de testes Windows amd64 e macOS arm64: PASS
+- GoReleaser snapshot, Wails desktop e `make quality`: PASS
+- Execução nativa Windows/macOS e CI GitHub: pendentes de publicação do SHA.
+
+## Quota alert deduplication — 2026-09-07
+
+- `go test -count=1 ./internal/nexus -run 'QuotaDropMonitor'`: PASS
+- `go test -race -count=1 ./internal/nexus -run 'QuotaDropMonitor'`: PASS
+- Regressão: alteração do countdown de reset não repete o alerta da mesma janela.

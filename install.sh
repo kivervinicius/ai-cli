@@ -4,7 +4,34 @@ set -e
 REPO="kivervinicius/ai-cli"
 GITHUB_URL="https://github.com/${REPO}"
 
-echo "=== IAPro Nexus Installer (Zero-Clone) ==="
+VERSION="${NEXUS_VERSION:-}"
+BUILD_FROM_SOURCE=false
+SOURCE_REF="${NEXUS_SOURCE_REF:-}"
+INSTALL_DESKTOP=true
+for arg in "$@"; do
+    case "$arg" in
+        --version=*) VERSION="${arg#--version=}" ;;
+        --build-from-source) BUILD_FROM_SOURCE=true ;;
+        --source-ref=*) SOURCE_REF="${arg#--source-ref=}" ;;
+        --with-desktop) INSTALL_DESKTOP=true ;;
+        --no-desktop) INSTALL_DESKTOP=false ;;
+        --with-maestro) ;;
+        *) echo "Unknown option: $arg" >&2; exit 2 ;;
+    esac
+done
+
+if [ -z "$VERSION" ] && [ "$BUILD_FROM_SOURCE" != true ]; then
+    echo "A version is required for verified installation: use --version=vX.Y.Z or NEXUS_VERSION." >&2
+    echo "For an explicit source build, use --build-from-source from a checkout." >&2
+    exit 2
+fi
+
+if [ -n "$VERSION" ] && ! printf '%s' "$VERSION" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$'; then
+    echo "Invalid Nexus version: $VERSION" >&2
+    exit 2
+fi
+
+echo "=== IAPro Nexus Installer (Pinned Release) ==="
 
 # 1. Detect OS and Architecture
 OS="$(uname -s)"
@@ -41,16 +68,35 @@ mkdir -p "$TARGET_DIR"
 
 INSTALL_SUCCESS=0
 
-# 2. Try downloading pre-built release binary
+# 2. Download a versioned release binary and verify its published digest.
 ARCHIVE_NAME="nexus_${OS_NAME}_${ARCH_NAME}.tar.gz"
-DOWNLOAD_URL="${GITHUB_URL}/releases/latest/download/${ARCHIVE_NAME}"
+VERSION="${VERSION#v}"
+DOWNLOAD_URL="${GITHUB_URL}/releases/download/v${VERSION}/${ARCHIVE_NAME}"
+CHECKSUMS_URL="${GITHUB_URL}/releases/download/v${VERSION}/checksums.txt"
 
-echo "Attempting to download latest release: ${ARCHIVE_NAME}..."
+echo "Attempting to download Nexus v${VERSION}: ${ARCHIVE_NAME}..."
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-if command -v curl >/dev/null 2>&1; then
-    if curl -fsSL "$DOWNLOAD_URL" -o "${TMP_DIR}/${ARCHIVE_NAME}" 2>/dev/null; then
+sha256_file() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | awk '{print $1}'
+    else
+        echo "No SHA-256 utility found (need sha256sum or shasum)." >&2
+        return 1
+    fi
+}
+
+if [ -n "$VERSION" ] && command -v curl >/dev/null 2>&1; then
+    if curl -fsSL "$DOWNLOAD_URL" -o "${TMP_DIR}/${ARCHIVE_NAME}" && curl -fsSL "$CHECKSUMS_URL" -o "${TMP_DIR}/checksums.txt"; then
+        EXPECTED="$(awk -v name="$ARCHIVE_NAME" '$2 == name { print $1; exit }' "${TMP_DIR}/checksums.txt")"
+        ACTUAL="$(sha256_file "${TMP_DIR}/${ARCHIVE_NAME}")"
+        if [ -z "$EXPECTED" ] || [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "Release checksum verification failed for ${ARCHIVE_NAME}." >&2
+            exit 1
+        fi
         tar -xzf "${TMP_DIR}/${ARCHIVE_NAME}" -C "$TMP_DIR"
         if [ -f "${TMP_DIR}/nexus" ]; then
             cp "${TMP_DIR}/nexus" "${TARGET_DIR}/nexus"
@@ -64,8 +110,14 @@ if command -v curl >/dev/null 2>&1; then
             INSTALL_SUCCESS=1
         fi
     fi
-elif command -v wget >/dev/null 2>&1; then
-    if wget -q "$DOWNLOAD_URL" -O "${TMP_DIR}/${ARCHIVE_NAME}" 2>/dev/null; then
+elif [ -n "$VERSION" ] && command -v wget >/dev/null 2>&1; then
+    if wget -q "$DOWNLOAD_URL" -O "${TMP_DIR}/${ARCHIVE_NAME}" && wget -q "$CHECKSUMS_URL" -O "${TMP_DIR}/checksums.txt"; then
+        EXPECTED="$(awk -v name="$ARCHIVE_NAME" '$2 == name { print $1; exit }' "${TMP_DIR}/checksums.txt")"
+        ACTUAL="$(sha256_file "${TMP_DIR}/${ARCHIVE_NAME}")"
+        if [ -z "$EXPECTED" ] || [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "Release checksum verification failed for ${ARCHIVE_NAME}." >&2
+            exit 1
+        fi
         tar -xzf "${TMP_DIR}/${ARCHIVE_NAME}" -C "$TMP_DIR"
         if [ -f "${TMP_DIR}/nexus" ]; then
             cp "${TMP_DIR}/nexus" "${TARGET_DIR}/nexus"
@@ -81,45 +133,111 @@ elif command -v wget >/dev/null 2>&1; then
     fi
 fi
 
-# 3. Fallback: Build from source if Go is installed
-if [ "$INSTALL_SUCCESS" -eq 0 ]; then
+# 3. Explicit source build only; never resolve a mutable latest ref implicitly.
+if [ "$INSTALL_SUCCESS" -eq 0 ] && [ "$BUILD_FROM_SOURCE" = true ]; then
     if command -v go >/dev/null 2>&1; then
         echo "Building from source via Go..."
-        if [ -f "./cmd/nexus/main.go" ]; then
+        if [ -f "./go.mod" ] && [ -d "./cmd/nexus" ]; then
             go build -ldflags="-s -w" -o "${TARGET_DIR}/nexus" ./cmd/nexus
             chmod +x "${TARGET_DIR}/nexus"
             ln -sf "${TARGET_DIR}/nexus" "${TARGET_DIR}/ai"
             INSTALL_SUCCESS=1
-        elif [ -f "./cmd/ai/main.go" ]; then
-            go build -ldflags="-s -w" -o "${TARGET_DIR}/nexus" ./cmd/ai
+        elif [ -n "$SOURCE_REF" ] && command -v git >/dev/null 2>&1; then
+            case "$SOURCE_REF" in *[!A-Za-z0-9._/-]*) echo "Invalid source ref." >&2; exit 2 ;; esac
+            echo "Cloning explicitly requested source ref ${SOURCE_REF}..."
+            git clone --depth 1 --branch "$SOURCE_REF" "${GITHUB_URL}.git" "${TMP_DIR}/repo"
+            (cd "${TMP_DIR}/repo" && go build -ldflags="-s -w" -o "${TARGET_DIR}/nexus" ./cmd/nexus)
             chmod +x "${TARGET_DIR}/nexus"
             ln -sf "${TARGET_DIR}/nexus" "${TARGET_DIR}/ai"
             INSTALL_SUCCESS=1
         else
-            echo "Fetching latest source code..."
-            GOBIN="$TARGET_DIR" go install "github.com/${REPO}/cmd/nexus@latest" 2>/dev/null || {
-                git clone --depth 1 "${GITHUB_URL}.git" "${TMP_DIR}/repo"
-                if [ -d "${TMP_DIR}/repo/cmd/nexus" ]; then
-                    (cd "${TMP_DIR}/repo" && go build -ldflags="-s -w" -o "${TARGET_DIR}/nexus" ./cmd/nexus)
-                else
-                    (cd "${TMP_DIR}/repo" && go build -ldflags="-s -w" -o "${TARGET_DIR}/nexus" ./cmd/ai)
-                fi
-                chmod +x "${TARGET_DIR}/nexus"
-            }
-            if [ -f "${TARGET_DIR}/ai" ] && [ ! -f "${TARGET_DIR}/nexus" ]; then
-                mv "${TARGET_DIR}/ai" "${TARGET_DIR}/nexus"
-            fi
-            ln -sf "${TARGET_DIR}/nexus" "${TARGET_DIR}/ai"
-            INSTALL_SUCCESS=1
+            echo "--build-from-source requires a Nexus checkout or --source-ref=<tag-or-commit>." >&2
         fi
     else
-        echo "Could not download pre-built binary and Go compiler is not installed."
-        echo "Please install Go (>=1.25) from https://golang.org or download a binary from ${GITHUB_URL}/releases"
-        exit 1
+        echo "--build-from-source requires Go >=1.25." >&2
     fi
 fi
 
+if [ "$INSTALL_SUCCESS" -eq 0 ]; then
+    echo "Installation failed: no verified release artifact was installed." >&2
+    exit 1
+fi
+
 echo "✓ Successfully installed IAPro Nexus to ${TARGET_DIR}/nexus (with 'ai' alias)"
+
+install_linux_desktop() {
+    local source_binary="$1"
+    local desktop_target="${TARGET_DIR}/nexus-desktop"
+    cp "$source_binary" "$desktop_target"
+    chmod +x "$desktop_target"
+
+    local applications_dir="${HOME}/.local/share/applications"
+    mkdir -p "$applications_dir"
+    local desktop_entry="${applications_dir}/iapro-nexus.desktop"
+    cat > "$desktop_entry" <<EOF
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=IAPro Nexus
+Comment=IAPro Nexus Workspace OS
+Exec=${desktop_target}
+Icon=application-x-executable
+Terminal=false
+Categories=Development;
+EOF
+    chmod +x "$desktop_entry"
+
+    local desktop_dir
+    if command -v xdg-user-dir >/dev/null 2>&1; then
+        desktop_dir="$(xdg-user-dir DESKTOP 2>/dev/null || true)"
+    else
+        desktop_dir="${HOME}/Desktop"
+    fi
+    if [ -z "$desktop_dir" ] || [ "$desktop_dir" = "$HOME" ]; then
+        desktop_dir="${HOME}/Desktop"
+    fi
+    mkdir -p "$desktop_dir"
+    cp "$desktop_entry" "${desktop_dir}/IAPro Nexus.desktop"
+    chmod +x "${desktop_dir}/IAPro Nexus.desktop"
+    echo "✓ Native Desktop installed to ${desktop_target}"
+    echo "✓ Launcher created at ${desktop_dir}/IAPro Nexus.desktop"
+}
+
+# 3b. Install the native desktop shell when the release publishes it. The CLI
+# remains usable when a platform has no native desktop artifact or checksum.
+if [ "$INSTALL_DESKTOP" = true ]; then
+    DESKTOP_ARCHIVE_NAME="nexus-desktop_${OS_NAME}_${ARCH_NAME}.tar.gz"
+    DESKTOP_DOWNLOAD_URL="${GITHUB_URL}/releases/download/v${VERSION}/${DESKTOP_ARCHIVE_NAME}"
+    DESKTOP_CHECKSUMS_URL="${GITHUB_URL}/releases/download/v${VERSION}/desktop-checksums.txt"
+    DESKTOP_TMP="${TMP_DIR}/${DESKTOP_ARCHIVE_NAME}"
+    DESKTOP_CHECKSUMS="${TMP_DIR}/desktop-checksums.txt"
+
+    echo "Attempting to install the native IAPro Nexus Desktop shell..."
+    if command -v curl >/dev/null 2>&1 && \
+        curl -fsSL "$DESKTOP_DOWNLOAD_URL" -o "$DESKTOP_TMP" && \
+        curl -fsSL "$DESKTOP_CHECKSUMS_URL" -o "$DESKTOP_CHECKSUMS"; then
+        DESKTOP_EXPECTED="$(awk -v name="$DESKTOP_ARCHIVE_NAME" '$2 == name || $2 == "native-artifacts/" name { print $1; exit }' "$DESKTOP_CHECKSUMS")"
+        DESKTOP_ACTUAL="$(sha256_file "$DESKTOP_TMP")"
+        if [ -z "$DESKTOP_EXPECTED" ] || [ "$DESKTOP_EXPECTED" != "$DESKTOP_ACTUAL" ]; then
+            echo "⚠️  Native Desktop checksum verification failed; CLI installation is kept, Desktop was skipped." >&2
+        else
+            tar -xzf "$DESKTOP_TMP" -C "$TMP_DIR"
+            DESKTOP_BINARY="${TMP_DIR}/nexus-desktop"
+            if [ -x "$DESKTOP_BINARY" ]; then
+                install_linux_desktop "$DESKTOP_BINARY"
+            fi
+        fi
+    elif [ "$BUILD_FROM_SOURCE" = true ]; then
+        for source_desktop in "./nexus-desktop" "./cmd/nexus-desktop/build/bin/nexus-desktop"; do
+            if [ -x "$source_desktop" ]; then
+                install_linux_desktop "$source_desktop"
+                break
+            fi
+        done
+    else
+        echo "⚠️  Native Desktop artifact unavailable; CLI installation is complete."
+    fi
+fi
 
 # 4. Check and install Maestro dependency (OPT-IN ONLY)
 WITH_MAESTRO=false

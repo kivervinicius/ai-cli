@@ -194,6 +194,8 @@ func Run(args []string) error {
 		return issueReportCmd(args[1:])
 	case "update", "upgrade":
 		return updateCmd(args[1:])
+	case "maestro":
+		return maestroCmd(args[1:])
 	case "config":
 		return configCmd(args[1:])
 	case "control", "ui":
@@ -261,6 +263,9 @@ func interactiveTUI() error {
 }
 
 func executeProviderWithSmartSelection(provName, explicitProfile string, args []string) error {
+	// Keep quota monitoring alive for the lifetime of direct provider commands,
+	// including nexus agy/codex/cursor invocations.
+	nexus.Default().StartQuotaMonitor(context.Background())
 	reg := initRegistry()
 	pAdapter, ok := reg.Get(provName)
 	if !ok {
@@ -286,6 +291,9 @@ func executeProviderWithSmartSelection(provName, explicitProfile string, args []
 			candidates = append(candidates, p)
 			accounts[p.Name] = profile.GetAccountInfo(provName, p.Name)
 			snap := profile.GetUsageSnapshot(provName, p.Name)
+			account := accounts[p.Name]
+			account.Usage = snap
+			accounts[p.Name] = account
 			// Persist fresh snapshot so the scheduler reads current quota
 			// instead of potentially stale disk cache (especially for codex
 			// which always bypasses cache on read).
@@ -446,7 +454,8 @@ func usage() {
   %s history [--json]             View local session execution log
   %s stats [--json]               Aggregated statistics (sessions, fallbacks, rate limits)
   %s config <show|validate>       Manage control plane settings
-  %s update                       Update Nexus and Orquestrador Maestro to latest
+  %s update                       Update Nexus only (use 'maestro update' explicitly for Maestro)
+  %s maestro <status|doctor|update> Manage optional Maestro integration explicitly
   %s completion <bash|zsh|fish>   Generate shell completion scripts
   %s version [--json]             Display build and platform information
   %s release                      Interactively bump, build, install and validate Nexus
@@ -466,7 +475,7 @@ Merged Help:
 		p, p, p, p, p,
 		p, p, p, p, p, p, p, p, p,
 		p, p, p, p, p, p, p, p, p, p, p, p, p, p,
-		p,
+		p, p,
 	)
 	fmt.Print(localization.HumanizeHelp(body))
 	fmt.Println(localization.T("help.language"))
@@ -1118,7 +1127,10 @@ func explainCmd(args []string) error {
 		if p.Provider == prov {
 			candidates = append(candidates, p)
 			accounts[p.Name] = profile.GetAccountInfo(prov, p.Name)
-			_ = profile.GetUsageSnapshot(prov, p.Name)
+			snap := profile.GetUsageSnapshot(prov, p.Name)
+			account := accounts[p.Name]
+			account.Usage = snap
+			accounts[p.Name] = account
 		}
 	}
 
@@ -1480,7 +1492,7 @@ func completionCmd(args []string) error {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage inspect sessions workspaces bind unbind bindings explain doctor security history stats config update completion version release codex agy claude opencode gemini cursor"
+    opts="web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage inspect sessions workspaces bind unbind bindings explain doctor security history stats config update maestro completion version release codex agy claude opencode gemini cursor"
     COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
     return 0
 }
@@ -1514,15 +1526,16 @@ _nexus() {
         'sessions:Universal session index'
         'doctor:Diagnostics and health checks'
         'security:Security and isolation audit'
-        'update:Update Nexus and Orquestrador Maestro'
+        'update:Update Nexus only'
+        'maestro:Manage optional Maestro integration explicitly'
     )
     _describe 'command' commands
 }
 _nexus "$@"
 `)
 	case "fish":
-		fmt.Print(`complete -c nexus -f -a "web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage sessions workspaces bind unbind explain doctor security history stats update config version release"
-complete -c ai -f -a "web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage sessions workspaces bind unbind explain doctor security history stats update config version release"
+		fmt.Print(`complete -c nexus -f -a "web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage sessions workspaces bind unbind explain doctor security history stats update maestro config version release"
+complete -c ai -f -a "web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage sessions workspaces bind unbind explain doctor security history stats update maestro config version release"
 `)
 	case "powershell", "pwsh":
 		fmt.Print(`Register-ArgumentCompleter -Native -CommandName @('nexus', 'ai') -ScriptBlock {

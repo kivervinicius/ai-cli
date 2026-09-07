@@ -2,9 +2,9 @@ package host
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +12,15 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 )
+
+func waitForHostEndpoint(t *testing.T, runtimeID string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := protocol.WaitForEndpoint(ctx, runtimeID, time.Second); err != nil {
+		t.Fatalf("SessionHost endpoint did not become ready: %v", err)
+	}
+}
 
 func TestMain(m *testing.M) {
 	testDir, err := os.MkdirTemp("", "ai-control-host-test-*")
@@ -101,8 +110,8 @@ func TestSessionHostLifecycle(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  "cat",
-		Args:    []string{},
+		Binary:  testTerminalBinary,
+		Args:    testTerminalArgs(),
 		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
@@ -115,7 +124,7 @@ func TestSessionHostLifecycle(t *testing.T) {
 	}
 	defer sh.Stop()
 
-	time.Sleep(100 * time.Millisecond)
+	waitForHostEndpoint(t, runtimeID)
 
 	client, err := protocol.NewClient(runtimeID)
 	if err != nil {
@@ -154,8 +163,8 @@ func TestSessionHost_CmdInputNoDeadlock(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  "cat",
-		Args:    []string{},
+		Binary:  testTerminalBinary,
+		Args:    testTerminalArgs(),
 		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
@@ -168,7 +177,7 @@ func TestSessionHost_CmdInputNoDeadlock(t *testing.T) {
 	}
 	defer sh.Stop()
 
-	time.Sleep(100 * time.Millisecond)
+	waitForHostEndpoint(t, runtimeID)
 
 	client, err := protocol.NewClient(runtimeID)
 	if err != nil {
@@ -206,8 +215,8 @@ func TestSessionHost_SlowObserverDoesNotBlockWriter(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  "cat",
-		Args:    []string{},
+		Binary:  testTerminalBinary,
+		Args:    testTerminalArgs(),
 		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
@@ -220,7 +229,7 @@ func TestSessionHost_SlowObserverDoesNotBlockWriter(t *testing.T) {
 	}
 	defer sh.Stop()
 
-	time.Sleep(100 * time.Millisecond)
+	waitForHostEndpoint(t, runtimeID)
 
 	// Writer client
 	writer, err := protocol.NewClient(runtimeID)
@@ -263,11 +272,8 @@ func TestSessionHost_SlowObserverDoesNotBlockWriter(t *testing.T) {
 }
 
 func TestSessionHost_ListenerFailureTerminatesChild(t *testing.T) {
-	runtimeID := "rt-listen-fail-test"
-	sockPath := protocol.EndpointPath(runtimeID)
-	// Create a non-empty directory at sockPath so os.Remove(sockPath) fails in protocol.Listen
-	_ = os.MkdirAll(filepath.Join(sockPath, "blocking-child"), 0700)
-	defer os.RemoveAll(sockPath)
+	runtimeID, cleanup := prepareListenerFailureFixture(t)
+	defer cleanup()
 
 	sess := registry.RuntimeSession{
 		RuntimeID:    runtimeID,
@@ -280,8 +286,8 @@ func TestSessionHost_ListenerFailureTerminatesChild(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  "cat",
-		Args:    []string{},
+		Binary:  testTerminalBinary,
+		Args:    testTerminalArgs(),
 		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
@@ -323,8 +329,8 @@ func TestSessionHost_ExplicitLeaseAcquireRelease(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  "cat",
-		Args:    []string{},
+		Binary:  testTerminalBinary,
+		Args:    testTerminalArgs(),
 		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
@@ -337,7 +343,7 @@ func TestSessionHost_ExplicitLeaseAcquireRelease(t *testing.T) {
 	}
 	defer sh.Stop()
 
-	time.Sleep(50 * time.Millisecond)
+	waitForHostEndpoint(t, runtimeID)
 
 	clientA, err := protocol.NewClient(runtimeID)
 	if err != nil {
@@ -389,8 +395,8 @@ func TestSessionHost_RejectsIncompatibleProtocolVersion(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  "cat",
-		Args:    []string{},
+		Binary:  testTerminalBinary,
+		Args:    testTerminalArgs(),
 		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
@@ -402,7 +408,7 @@ func TestSessionHost_RejectsIncompatibleProtocolVersion(t *testing.T) {
 	}
 	defer sh.Stop()
 
-	time.Sleep(100 * time.Millisecond)
+	waitForHostEndpoint(t, runtimeID)
 
 	client, err := protocol.NewClient(runtimeID)
 	if err != nil {
@@ -438,7 +444,7 @@ func TestSessionHost_RejectsIncompatibleProtocolVersion(t *testing.T) {
 func TestSessionHost_SubmitPromptBypassesSlashRouterWithoutStealingWriterLease(t *testing.T) {
 	runtimeID := "rt-submit-prompt-test"
 	sess := registry.RuntimeSession{RuntimeID: runtimeID, ProviderID: "test", ProfileID: "default", Workspace: os.TempDir(), State: registry.StateStarting, ControlLevel: registry.ControlLevelTerminal}
-	sh, err := NewSessionHost(Config{Session: sess, Binary: "cat", Env: os.Environ(), Cwd: os.TempDir()})
+	sh, err := NewSessionHost(Config{Session: sess, Binary: testTerminalBinary, Args: testTerminalArgs(), Env: os.Environ(), Cwd: os.TempDir()})
 	if err != nil {
 		t.Fatalf("failed to create SessionHost: %v", err)
 	}
@@ -446,7 +452,7 @@ func TestSessionHost_SubmitPromptBypassesSlashRouterWithoutStealingWriterLease(t
 		t.Fatalf("failed to start SessionHost: %v", err)
 	}
 	defer sh.Stop()
-	time.Sleep(100 * time.Millisecond)
+	waitForHostEndpoint(t, runtimeID)
 
 	writer, err := protocol.NewClient(runtimeID)
 	if err != nil {
@@ -488,7 +494,7 @@ func TestSessionHost_AttachedLeaseAcquireDoesNotLeakToPTY(t *testing.T) {
 		State:        registry.StateStarting,
 		ControlLevel: registry.ControlLevelTerminal,
 	}
-	sh, err := NewSessionHost(Config{Session: sess, Binary: "cat", Env: os.Environ(), Cwd: os.TempDir()})
+	sh, err := NewSessionHost(Config{Session: sess, Binary: testTerminalBinary, Args: testTerminalArgs(), Env: os.Environ(), Cwd: os.TempDir()})
 	if err != nil {
 		t.Fatalf("create SessionHost: %v", err)
 	}
@@ -496,7 +502,7 @@ func TestSessionHost_AttachedLeaseAcquireDoesNotLeakToPTY(t *testing.T) {
 		t.Fatalf("start SessionHost: %v", err)
 	}
 	defer sh.Stop()
-	time.Sleep(80 * time.Millisecond)
+	waitForHostEndpoint(t, runtimeID)
 
 	client, err := protocol.NewClient(runtimeID)
 	if err != nil {

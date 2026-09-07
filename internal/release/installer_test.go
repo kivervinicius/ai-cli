@@ -120,3 +120,97 @@ func TestInstallerDoesNotSilentlyInstallMaestro(t *testing.T) {
 		t.Error("install.ps1 must only execute Maestro installation when $WithMaestro is true")
 	}
 }
+
+func TestInstallersRequirePinnedArtifactsOrExplicitSourceBuild(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatalf("failed to determine repository root: %v", err)
+	}
+
+	sh, err := os.ReadFile(filepath.Join(root, "install.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ps, err := os.ReadFile(filepath.Join(root, "install.ps1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	shText, psText := string(sh), string(ps)
+
+	for _, forbidden := range []string{"releases/latest", "@latest", "git clone --depth 1 \"${GITHUB_URL}.git\""} {
+		if strings.Contains(shText, forbidden) {
+			t.Errorf("install.sh must not use mutable source/artifact reference %q", forbidden)
+		}
+	}
+	for _, forbidden := range []string{"releases/latest", "@latest", "git clone --depth 1 \"$GithubUrl.git\""} {
+		if strings.Contains(psText, forbidden) {
+			t.Errorf("install.ps1 must not use mutable source/artifact reference %q", forbidden)
+		}
+	}
+
+	for _, required := range []string{"--version=", "--build-from-source", "checksums.txt", "sha256sum", "shasum -a 256"} {
+		if !strings.Contains(shText, required) {
+			t.Errorf("install.sh missing pinned/digest guard %q", required)
+		}
+	}
+	for _, required := range []string{"-Version", "-BuildFromSource", "checksums.txt", "Get-FileHash"} {
+		if !strings.Contains(psText, required) {
+			t.Errorf("install.ps1 missing pinned/digest guard %q", required)
+		}
+	}
+	for _, required := range []string{"Ensure-GoCompiler", "winget", "GoLang.Go", "go.dev/dl"} {
+		if !strings.Contains(psText, required) {
+			t.Errorf("install.ps1 must install or explain the Go source-build dependency: missing %q", required)
+		}
+	}
+}
+
+func TestPowerShellInstallerUsesNexusPathAndPreservesLegacyPath(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "install.ps1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, required := range []string{
+		`"Programs\IAPro Nexus"`,
+		`"Programs\ai-cli"`,
+		"leaving it untouched",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("install.ps1 must preserve legacy compatibility while using Nexus branding: missing %q", required)
+		}
+	}
+}
+
+func TestPublicLicenseMetadataMatchesLicenseFile(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	license, err := os.ReadFile(filepath.Join(root, "LICENSE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(license), "MIT License") {
+		t.Fatalf("expected the vigente LICENSE file to be MIT, got %q", strings.SplitN(string(license), "\n", 2)[0])
+	}
+
+	for _, name := range []string{"README.md", "README.en.md", "README.es.md"} {
+		data, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(data)
+		if strings.Contains(strings.ToLower(text), "apache") {
+			t.Errorf("%s still advertises Apache despite the MIT LICENSE", name)
+		}
+		if !strings.Contains(strings.ToLower(text), "mit") {
+			t.Errorf("%s does not advertise the vigente MIT license", name)
+		}
+	}
+}

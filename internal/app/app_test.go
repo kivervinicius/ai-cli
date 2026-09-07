@@ -100,7 +100,7 @@ exec "$@"`)
 	writeExe("gnome-keyring-daemon", `cat >/dev/null
 exit 0`)
 
-	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return binDir, testOut
 }
 
@@ -294,6 +294,19 @@ func TestPerformSystemUpdateDoesNotClaimNexusBinaryUpdated(t *testing.T) {
 	}
 	if !strings.Contains(result.Error, "Nexus binary update") {
 		t.Fatalf("missing honest Nexus update status: %+v", result)
+	}
+}
+
+func TestMaestroStatusIsExplicitAndDegradedWithoutMaestro(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	out, err := captureStdout(func() error {
+		return Run([]string{"maestro", "status"})
+	})
+	if err != nil {
+		t.Fatalf("maestro status failed: %v", err)
+	}
+	if !strings.Contains(out, "Maestro: unavailable") || !strings.Contains(out, "degraded mode") {
+		t.Fatalf("expected honest degraded Maestro status, got %q", out)
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/control/driver"
 	"github.com/kivervinicius/ai-cli/internal/control/events"
+	"github.com/kivervinicius/ai-cli/internal/control/ids"
 	"github.com/kivervinicius/ai-cli/internal/control/launcher"
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
@@ -64,6 +65,7 @@ type Nexus struct {
 	workersMu     sync.Mutex
 	workers       map[string]*missionWorker
 	schedulerOnce sync.Once
+	quotaMonitor  *QuotaMonitorService
 
 	// Runtime change observers (set by the web layer to avoid circular imports).
 	onRuntimeChanged func(agentID, oldRuntimeID, newRuntimeID, provider, profile, continuity string)
@@ -137,6 +139,7 @@ func Default() *Nexus {
 			st = nil
 		}
 		defaultNexus = &Nexus{st: st, launcher: &prodLauncher{l: launcher.Default()}, workers: map[string]*missionWorker{}}
+		defaultNexus.quotaMonitor = NewQuotaMonitorService(DefaultQuotaDropMonitor(), events.DefaultBus())
 		if st != nil {
 			events.DefaultBus().SetRecorder(func(e events.Event) {
 				projectID, _ := e.Data["project_id"].(string)
@@ -155,6 +158,27 @@ func Default() *Nexus {
 		}
 	})
 	return defaultNexus
+}
+
+// StartQuotaMonitor starts the process-resident quota service exactly once.
+func (n *Nexus) StartQuotaMonitor(ctx context.Context) {
+	n.mu.Lock()
+	if n.quotaMonitor == nil {
+		n.quotaMonitor = NewQuotaMonitorService(DefaultQuotaDropMonitor(), events.DefaultBus())
+	}
+	service := n.quotaMonitor
+	n.mu.Unlock()
+	service.Start(ctx)
+}
+
+// StopQuotaMonitor stops the resident service without affecting runtimes.
+func (n *Nexus) StopQuotaMonitor() {
+	n.mu.RLock()
+	service := n.quotaMonitor
+	n.mu.RUnlock()
+	if service != nil {
+		service.Stop()
+	}
 }
 
 // OpenStore opens the SQLite store at <DataDir>/nexus.db using the canonical
@@ -265,6 +289,7 @@ func (n *Nexus) AskAgent(ctx context.Context, agentID, prompt string, startIfNee
 // StartProjectShell launches an ordinary shell rooted at the Project canonical
 // path. It does not create an Agent, ConfigRevision, lineage or RuntimeGeneration.
 func (n *Nexus) StartProjectShell(ctx context.Context, projectID string) (*registry.RuntimeSession, error) {
+	n.StartQuotaMonitor(ctx)
 	st, err := n.OpenProject()
 	if err != nil {
 		return nil, err
@@ -291,6 +316,7 @@ func (n *Nexus) StartProjectShell(ctx context.Context, projectID string) (*regis
 // starts in the agent's project canonical path (P0-1). Empty provider is
 // rejected (P0-6 — no silent fake fallback in production).
 func (n *Nexus) StartAgent(ctx context.Context, agentID, provider, profile string) (*registry.RuntimeSession, error) {
+	n.StartQuotaMonitor(ctx)
 	st, err := n.OpenProject()
 	if err != nil {
 		return nil, err
@@ -350,6 +376,7 @@ func (n *Nexus) StartAgent(ctx context.Context, agentID, provider, profile strin
 	}
 	sess, err := n.launcher.Launch(ctx, launcher.LaunchOptions{
 		AgentID:           agentID,
+		RuntimeID:         "runtime_" + ids.NewRuntimeID(),
 		ProjectID:         proj.ID,
 		ProjectName:       proj.Name,
 		ProviderID:        provider,
@@ -636,14 +663,19 @@ func (n *Nexus) RecoverAgent(ctx context.Context, agentID string) (*registry.Run
 	}
 
 	var args []string
-	continuity := store.ContinuityNewSession // NEW SESSION unless native resume is possible
-	if sessionID != "" {
+	continuity := store.ContinuityNewSession
+	providerSessionID := ""
+
+	// When recovering after a process termination / host reboot, start a clean
+	// session unless the agent was explicitly configured with ContinuityPolicy == "native".
+	if strings.EqualFold(agentCfg.ContinuityPolicy, "native") && sessionID != "" {
 		if d, derr := driver.DefaultRegistry().Get(provider); derr == nil {
 			prof := model.Profile{Name: profile, Provider: provider}
 			if can, _ := d.CanResume(ctx, prof, sessionID); can {
 				if ra, rerr := d.BuildResumeArgs(ctx, prof, sessionID); rerr == nil {
 					args = ra
 					continuity = store.ContinuityNativeResumeUnverified
+					providerSessionID = sessionID
 				}
 			}
 		}
@@ -661,7 +693,7 @@ func (n *Nexus) RecoverAgent(ctx context.Context, agentID string) (*registry.Run
 		ProjectName:       proj.Name,
 		ProviderID:        provider,
 		ProfileID:         profile,
-		ProviderSessionID: sessionID,
+		ProviderSessionID: providerSessionID,
 		Args:              args,
 		Workspace:         executionWorkspace,
 		Model:             agentCfg.Model,

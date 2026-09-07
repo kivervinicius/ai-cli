@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"testing"
-	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/nexus"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
+	"github.com/kivervinicius/ai-cli/internal/update"
 )
 
 func newTestClient(t *testing.T) (*http.Client, *Server) {
@@ -21,7 +21,6 @@ func newTestClient(t *testing.T) (*http.Client, *Server) {
 	}
 	go func() { _ = srv.Start() }()
 	t.Cleanup(func() { _ = srv.Shutdown(context.Background()) })
-	time.Sleep(50 * time.Millisecond)
 
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar}
@@ -355,8 +354,9 @@ func TestNexusCSRFEnforcement(t *testing.T) {
 
 	// --- authMiddleware routes (projects list) ---
 	// Project list POST without CSRF.
-	assertNoCSRF(http.MethodPost, "/api/v1/projects", []byte(`{"name":"x","path":"`+projDir+`"}`))
-	assertBadCSRF(http.MethodPost, "/api/v1/projects", []byte(`{"name":"x","path":"`+projDir+`"}`))
+	projectBody, _ := json.Marshal(map[string]string{"name": "x", "path": projDir})
+	assertNoCSRF(http.MethodPost, "/api/v1/projects", projectBody)
+	assertBadCSRF(http.MethodPost, "/api/v1/projects", projectBody)
 
 	// --- GET requests must NOT require CSRF ---
 	getReq, _ := http.NewRequest(http.MethodGet, base+"/api/v1/projects/"+proj.ID, nil)
@@ -465,7 +465,7 @@ func TestSystemUpdateReturnsJSONNot501(t *testing.T) {
 	t.Cleanup(func() { performSystemUpdate = prev })
 
 	client, srv, csrf := csrfClient(t)
-	req, _ := http.NewRequest(http.MethodPost, srv.URL()+"/api/v1/system/update", bytes.NewBufferString(`{}`))
+	req, _ := http.NewRequest(http.MethodPost, srv.URL()+"/api/v1/maestro/update", bytes.NewBufferString(`{"product":"maestro","target_version":"latest","confirmed":true}`))
 	req.Header.Set("X-CSRF-Token", csrf)
 	resp, err := client.Do(req)
 	if err != nil {
@@ -487,6 +487,57 @@ func TestSystemUpdateReturnsJSONNot501(t *testing.T) {
 	}
 	if result.Error == "" {
 		t.Fatal("expected honest nexus binary note")
+	}
+}
+
+func TestMaestroUpdateRequiresExplicitContract(t *testing.T) {
+	client, srv, csrf := csrfClient(t)
+	for _, body := range []string{`{}`, `{"product":"nexus","target_version":"latest","confirmed":true}`, `{"product":"maestro","target_version":"latest","confirmed":false}`} {
+		req, _ := http.NewRequest(http.MethodPost, srv.URL()+"/api/v1/maestro/update", bytes.NewBufferString(body))
+		req.Header.Set("X-CSRF-Token", csrf)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("invalid Maestro update contract %s returned %d", body, resp.StatusCode)
+		}
+	}
+}
+
+func TestSystemUpdatesUsesSharedNexusUpdateService(t *testing.T) {
+	previous := checkNexusUpdate
+	checkNexusUpdate = func(ctx context.Context) (*update.CheckResult, error) {
+		return &update.CheckResult{
+			CurrentVersion:     "1.0.0",
+			LatestVersion:      "1.1.0",
+			UpdateAvailable:    true,
+			InstallationMethod: update.MethodStandalone,
+			AllowsSelfUpdate:   true,
+		}, nil
+	}
+	t.Cleanup(func() { checkNexusUpdate = previous })
+
+	client, srv, _ := csrfClient(t)
+	resp, err := client.Get(srv.URL() + "/api/v1/system/updates")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var payload struct {
+		LatestVersion   string `json:"nexus_latest_version"`
+		UpdateAvailable bool   `json:"nexus_update_available"`
+		UpdateError     string `json:"nexus_update_error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.LatestVersion != "1.1.0" || !payload.UpdateAvailable || payload.UpdateError != "" {
+		t.Fatalf("shared Nexus update result was not exposed: %+v", payload)
 	}
 }
 

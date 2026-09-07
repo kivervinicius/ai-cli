@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -116,5 +117,69 @@ func TestMissionRunnerUsesStepVerificationRequirementsBeforeGlobalCommands(t *te
 	}
 	if got := run.PackageRuns[0].Verifications; len(got) == 0 || got[0].Command != "echo step-ok" {
 		t.Fatalf("wrong verification evidence: %+v", got)
+	}
+}
+
+type quotaFailExecutor struct {
+	fakeExecutor
+	failFirst     bool
+	allocateCount int
+}
+
+func (q *quotaFailExecutor) Allocate(ctx context.Context, run *MissionRun, pkg *PackageRun) (AllocationResult, error) {
+	q.allocateCount++
+	return q.fakeExecutor.Allocate(ctx, run, pkg)
+}
+
+func (q *quotaFailExecutor) Execute(ctx context.Context, run *MissionRun, pkg *PackageRun, prompt string) (ExecutionResult, error) {
+	if q.failFirst {
+		q.failFirst = false
+		return ExecutionResult{}, fmt.Errorf("provider status 429: rate limit and quota exhausted")
+	}
+	return q.fakeExecutor.Execute(ctx, run, pkg, prompt)
+}
+
+func TestMissionRunner_QuotaErrorRoutesToAllocatingForFailover(t *testing.T) {
+	repo := NewMemoryRunRepository()
+	exec := &quotaFailExecutor{
+		fakeExecutor: fakeExecutor{reviewOK: true},
+		failFirst:    true,
+	}
+	r := NewMissionRunner(repo, exec)
+	contract := DefaultAutonomyContract()
+	contract.VerificationCommands = []string{"echo OK"}
+	plan := PlanSpec{ID: "flow", ProjectID: "p", Revision: 1, Packages: []PackageSpec{{ID: "step", Title: "Step", Goal: "Goal"}}}
+	run, err := r.StartMissionRun(context.Background(), plan, t.TempDir(), contract, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Ready -> Allocating
+	_, _, _ = r.ExecuteNextStep(context.Background(), run.ID)
+	// 2. Allocating -> Compiling (allocateCount = 1)
+	run, _, _ = r.ExecuteNextStep(context.Background(), run.ID)
+	// 3. Compiling -> Executing
+	run, _, _ = r.ExecuteNextStep(context.Background(), run.ID)
+	// 4. Executing -> 429 error! Must route to StateAllocating via StateRemediating
+	run, _, _ = r.ExecuteNextStep(context.Background(), run.ID)
+
+	pkg := run.PackageRuns[0]
+	if pkg.State != StateRemediating {
+		t.Fatalf("expected StateRemediating, got %s", pkg.State)
+	}
+	if pkg.RetryFrom != StateAllocating {
+		t.Fatalf("expected RetryFrom StateAllocating for 429 quota error, got %s", pkg.RetryFrom)
+	}
+
+	// 5. Remediating -> routes to StateAllocating
+	run, _, _ = r.ExecuteNextStep(context.Background(), run.ID)
+	if run.PackageRuns[0].State != StateAllocating {
+		t.Fatalf("expected package to return to StateAllocating for failover, got %s", run.PackageRuns[0].State)
+	}
+
+	// 6. Allocating re-runs! (allocateCount should now be 2)
+	_, _, _ = r.ExecuteNextStep(context.Background(), run.ID)
+	if exec.allocateCount != 2 {
+		t.Fatalf("expected 2 allocations due to failover, got %d", exec.allocateCount)
 	}
 }

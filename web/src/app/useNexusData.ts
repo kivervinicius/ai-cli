@@ -21,7 +21,7 @@ export function useNexusData() {
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const refreshInFlight = useRef<Promise<void> | null>(null);
+  const refreshInFlight = useRef<Promise<{ runtimes: RuntimeSession[] }> | null>(null);
 
   const refreshGlobal = useCallback(async () => {
     if (refreshInFlight.current) return refreshInFlight.current;
@@ -44,8 +44,10 @@ export function useNexusData() {
         setProfiles(Array.isArray(profileList) ? profileList : []);
         setEvents(Array.isArray(eventList) ? eventList : []);
         setError('');
+        return { runtimes: Array.isArray(runtimeList) ? runtimeList : [] };
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Unable to load Nexus data');
+        return { runtimes: [] };
       } finally {
         setLoading(false);
         refreshInFlight.current = null;

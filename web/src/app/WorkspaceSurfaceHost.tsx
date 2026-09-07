@@ -105,7 +105,7 @@ export const WorkspaceSurfaceHost: React.FC<{
   profiles: ProfileInfo[];
   events: EventRecord[];
   refreshAgents: () => Promise<void>;
-  refreshGlobal: () => Promise<void>;
+  refreshGlobal: () => Promise<{ runtimes: RuntimeSession[] }>;
   onSelectProject: (project: Project) => void;
   onProjectCreated: (project: Project) => void;
   onProjectUpdated: (project: Project) => void;
@@ -134,7 +134,9 @@ export const WorkspaceSurfaceHost: React.FC<{
   const { t } = useTranslation();
   const presentation = useWorkspacePresentation();
   const terminalChrome =
-    presentation.state.mode === 'DESKTOP' || presentation.state.mode === 'MOSAIC'
+    presentation.state.mode === 'DESKTOP' ||
+    presentation.state.mode === 'MOSAIC' ||
+    presentation.state.zenMode
       ? 'window'
       : 'full';
   const agent = useMemo(
@@ -252,7 +254,9 @@ export const WorkspaceSurfaceHost: React.FC<{
           runtimeId={surface.data.runtimeId}
           title={surface.title}
           liveTitleKey={surfaceViewId(surface)}
-          onRuntimeChanged={refreshGlobal}
+          onRuntimeChanged={async () => {
+            await refreshGlobal();
+          }}
           onRestart={async () => {
             const result = await nexus.startProjectShell(project.id);
             closeSurface(surface.id);
@@ -311,16 +315,19 @@ export const WorkspaceSurfaceHost: React.FC<{
               if (newMode === 'YOLO') extraArgs.push('--yolo');
               await nexus.applyAgentConfig(agent.id, {
                 ...currentCfg.config,
+                continuity_policy: 'new_session',
                 options: {
                   ...currentCfg.config.options,
                   mode: newMode,
                   extra_args: extraArgs,
                 },
               });
-              const result = await recoverOrStartAgent(agent.id);
               await refreshAgents();
-              await refreshGlobal();
-              return result.runtime;
+              const globalData = await refreshGlobal();
+              const latestRuntime = (globalData?.runtimes || []).find(
+                (item: RuntimeSession) => item.agent_id === agent.id && item.state === 'RUNNING',
+              );
+              return latestRuntime;
             }}
             onClose={async (stopRuntime) => {
               if (stopRuntime) {
@@ -425,6 +432,11 @@ export const WorkspaceSurfaceHost: React.FC<{
           title={runtime.title}
           provider={runtime.provider_id || runtime.provider || 'AI'}
           profile={runtime.profile_id || runtime.profile || 'default'}
+          hideHeader={
+            presentation.state.zenMode ||
+            presentation.state.mode === 'DESKTOP' ||
+            presentation.state.mode === 'MOSAIC'
+          }
           liveTitleKey={surfaceViewId(surface)}
           onUpdateTitle={async (id, title) => {
             await api.updateRuntimeTitle(id, title);

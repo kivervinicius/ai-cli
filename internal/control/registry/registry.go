@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,8 @@ type Registry struct {
 	filePath     string
 	sessions     map[string]RuntimeSession
 	lastModified time.Time
+	lastSize     int64
+	lastDigest   [sha256.Size]byte
 }
 
 var (
@@ -109,6 +112,10 @@ func (r *Registry) load() error {
 	r.sessions = m
 	if fi, err := os.Stat(r.filePath); err == nil {
 		r.lastModified = fi.ModTime()
+		r.lastSize = fi.Size()
+	}
+	if digest, err := registryFileDigest(r.filePath); err == nil {
+		r.lastDigest = digest
 	}
 	return nil
 }
@@ -121,9 +128,21 @@ func (r *Registry) syncIfNeededLocked() {
 	if err != nil {
 		return
 	}
-	if fi.ModTime().After(r.lastModified) {
+	digest, err := registryFileDigest(r.filePath)
+	if err != nil {
+		return
+	}
+	if fi.ModTime().After(r.lastModified) || fi.Size() != r.lastSize || digest != r.lastDigest {
 		_ = r.load()
 	}
+}
+
+func registryFileDigest(filePath string) ([sha256.Size]byte, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return [sha256.Size]byte{}, err
+	}
+	return sha256.Sum256(data), nil
 }
 
 func (r *Registry) saveLocked(mutators ...func(map[string]RuntimeSession)) error {
@@ -195,6 +214,10 @@ func (r *Registry) saveLocked(mutators ...func(map[string]RuntimeSession)) error
 	r.sessions = freshMap
 	if fi, err := os.Stat(r.filePath); err == nil {
 		r.lastModified = fi.ModTime()
+		r.lastSize = fi.Size()
+	}
+	if digest, err := registryFileDigest(r.filePath); err == nil {
+		r.lastDigest = digest
 	}
 	return nil
 }

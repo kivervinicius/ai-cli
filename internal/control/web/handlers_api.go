@@ -393,7 +393,8 @@ func (h *APIHandler) handleProfiles(w http.ResponseWriter, r *http.Request) {
 // Events Handler
 func (h *APIHandler) handleEvents(w http.ResponseWriter, r *http.Request) {
 	runtimeID := r.URL.Query().Get("runtime_id")
-	evs := events.DefaultBus().GetHistory(runtimeID, 50)
+	limit := 50
+	evs := events.DefaultBus().GetHistory(runtimeID, limit)
 	if evs == nil {
 		evs = []events.Event{}
 	}

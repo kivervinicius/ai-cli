@@ -55,6 +55,7 @@ import {
   agentConfigSurface,
   agentTerminalSurface,
   flowRunSurface,
+  isPtySurface,
   projectShellSurface,
   projectSurface,
   type ProjectSurfaceKind,
@@ -242,22 +243,33 @@ const NexusWorkspaceSession: React.FC<{
   const selected = resolveProjectSelection(data.projects, selectedId);
   const [layout, setLayout] = useState<string | undefined>();
   const [layoutRevision, setLayoutRevision] = useState<number | undefined>();
+  const [layoutReady, setLayoutReady] = useState(false);
 
   useEffect(() => {
     if (!selected) return;
+    let cancelled = false;
+    setLayoutReady(false);
     setSelectedId(selected.id);
     window.localStorage.setItem(selectedProjectKey, selected.id);
     void data.refreshAgents(selected.id);
     nexus
       .getProject(selected.id)
       .then((detail) => {
+        if (cancelled) return;
         setLayout(detail.layout || undefined);
         setLayoutRevision(detail.revision);
       })
       .catch(() => {
+        if (cancelled) return;
         setLayout(undefined);
         setLayoutRevision(undefined);
+      })
+      .finally(() => {
+        if (!cancelled) setLayoutReady(true);
       });
+    return () => {
+      cancelled = true;
+    };
   }, [selected?.id]);
 
   useEffect(() => {
@@ -297,6 +309,10 @@ const NexusWorkspaceSession: React.FC<{
         }}
       />
     );
+  }
+
+  if (!layoutReady && !popoutSurface) {
+    return <NexusSplashScreen stage="loading" />;
   }
 
   const initial = popoutSurface ? serializeWorkspace(createWorkspace(popoutSurface)) : layout;
@@ -340,6 +356,7 @@ const WorkspaceCoordinator: React.FC<{
 }> = ({ project, setProject, data, popout, parsedRoute }) => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const workspace = useWorkspace();
   const presentation = useWorkspacePresentation();
   const [railOpen, setRailOpen] = useState(false);
@@ -438,35 +455,24 @@ const WorkspaceCoordinator: React.FC<{
 
   const lastSyncedRouteRef = useRef<string>('');
   useEffect(() => {
-    const routeKey = `${parsedRoute.kind}:${parsedRoute.kind === 'project' ? parsedRoute.surface : ''}:${location.pathname}`;
-    const activeStack = listStacks(workspace.model.root).find((stack) => stack.activeId);
-    const activeSurface = activeStack
-      ? listSurfaces(workspace.model.root).find((surface) =>
-          isSurfaceMatch(surface, activeStack.activeId),
-        )
-      : undefined;
+    const routeKey = `${parsedRoute.kind}:${parsedRoute.kind === 'project' ? parsedRoute.surface : ''}:${location.pathname}:${location.search}`;
+    const routeChanged = lastSyncedRouteRef.current !== routeKey;
 
     if (parsedRoute.kind === 'project' && parsedRoute.projectId === project.id) {
       const targetSurface = routeToWorkspaceSurface(parsedRoute, { agents: data.agents });
-      if (
-        targetSurface &&
-        (lastSyncedRouteRef.current !== routeKey || activeSurface?.type !== targetSurface.type)
-      ) {
+      if (targetSurface && routeChanged) {
         lastSyncedRouteRef.current = routeKey;
         workspace.open(targetSurface);
       }
     } else if (parsedRoute.kind === 'global') {
       const projectSurfaceKind = globalSurfaceToProjectSurface(parsedRoute.surface);
-      if (
-        projectSurfaceKind &&
-        (lastSyncedRouteRef.current !== routeKey || activeSurface?.type !== projectSurfaceKind)
-      ) {
+      if (projectSurfaceKind && routeChanged) {
         lastSyncedRouteRef.current = routeKey;
         workspace.open(projectSurface(project.id, projectSurfaceKind));
       }
       if (parsedRoute.surface === 'welcome') setWelcomeOpen(true);
     }
-  }, [parsedRoute, project.id, data.agents, location.pathname, workspace]);
+  }, [parsedRoute, project.id, data.agents, location.pathname, location.search, workspace]);
   const shell = useCallback(async () => {
     if (shellInFlight.current) return;
     shellInFlight.current = true;
@@ -750,13 +756,76 @@ const WorkspaceCoordinator: React.FC<{
       preventDefault: true,
       action: () => openKind('projects'),
     });
+    const unregisterZen = registry.register({
+      id: 'toggle-zen',
+      key: 'f',
+      ctrlOrMeta: true,
+      shift: true,
+      scope: 'global',
+      description: 'Toggle Focus / Zen Mode',
+      preventDefault: true,
+      action: () => presentation.toggleZenMode(),
+    });
+    const unregisterF11 = registry.register({
+      id: 'toggle-zen-f11',
+      key: 'F11',
+      scope: 'global',
+      description: 'Toggle Focus / Zen Mode',
+      preventDefault: true,
+      action: () => presentation.toggleZenMode(),
+    });
+    const unregisterRail = registry.register({
+      id: 'toggle-rail',
+      key: 'b',
+      ctrlOrMeta: true,
+      shift: false,
+      scope: 'global',
+      description: 'Toggle Project Rail',
+      preventDefault: true,
+      action: () => setRailOpen((prev) => !prev),
+    });
+    const unregisterNewTerm = registry.register({
+      id: 'new-terminal-shortcut',
+      key: 't',
+      ctrlOrMeta: true,
+      shift: true,
+      scope: 'global',
+      description: 'New Terminal',
+      preventDefault: true,
+      action: () => {
+        void shell();
+      },
+    });
+    const unregisterAltTabs = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) =>
+      registry.register({
+        id: `switch-pty-${num}`,
+        key: String(num),
+        alt: true,
+        scope: 'global',
+        description: `Switch to Terminal ${num}`,
+        preventDefault: true,
+        action: () => {
+          const ptys = listSurfaces(workspace.model.root).filter(isPtySurface);
+          const target = ptys[num - 1];
+          if (target) {
+            presentation.setActivePty(surfaceViewId(target));
+            presentation.focus(surfaceViewId(target));
+          }
+        },
+      }),
+    );
 
     return () => {
       unregisterK();
       unregisterShiftP();
       unregisterP();
+      unregisterZen();
+      unregisterF11();
+      unregisterRail();
+      unregisterNewTerm();
+      unregisterAltTabs.forEach((unreg) => unreg());
     };
-  }, [project.id]);
+  }, [project.id, presentation, workspace.model.root]);
 
   const handleProjectUpdated = (updated: Project) => {
     data.setProjects((cur) => cur.map((p) => (p.id === updated.id ? updated : p)));
@@ -792,6 +861,7 @@ const WorkspaceCoordinator: React.FC<{
         />
       )}
       onRequestClose={requestCloseSurface}
+      onActivateSurface={open}
       createActions={{
         onNewAgent: () => setNewAgentOpen(true),
         onNewAISession: openNewAISession,
@@ -1077,7 +1147,10 @@ const WorkspaceCoordinator: React.FC<{
         project={project}
         agents={data.agents}
         runtimes={data.runtimes}
+        events={data.events}
         rail={rail}
+        zenMode={presentation.state.zenMode}
+        onToggleZenMode={presentation.toggleZenMode}
         onOpenRail={() => setRailOpen(true)}
         onOpenSurface={openKind}
         onCommand={() => setPalette(true)}

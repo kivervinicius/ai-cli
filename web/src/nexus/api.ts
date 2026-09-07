@@ -277,6 +277,12 @@ export const nexus = {
       nexus_version: string;
       nexus_commit?: string;
       nexus_build_date?: string;
+      nexus_latest_version?: string;
+      nexus_update_available?: boolean;
+      nexus_update_error?: string;
+      nexus_update_instruction?: string;
+      nexus_installation_method?: string;
+      nexus_allows_self_update?: boolean;
       channel?: string;
       installation_method?: string;
       allows_self_update?: boolean;
@@ -292,13 +298,21 @@ export const nexus = {
       maestro_updated: boolean;
       maestro_version: string;
       error?: string;
-    }>('/api/v1/system/update', { method: 'POST', body: '{}' }),
+    }>('/api/v1/maestro/update', {
+      method: 'POST',
+      body: JSON.stringify({ product: 'maestro', target_version: 'latest', confirmed: true }),
+    }),
 
   // OS Filesystem & Desktop Launchers
-  browseFS: (path?: string) =>
-    request<import('../types').FSBrowseResult>(
-      `/api/v1/fs/browse${path ? `?path=${encodeURIComponent(path)}` : ''}`,
-    ),
+  browseFS: (path?: string, includeEntryMetadata = false) => {
+    const params = new URLSearchParams();
+    if (path) params.set('path', path);
+    if (includeEntryMetadata) params.set('details', 'full');
+    const query = params.toString();
+    return request<import('../types').FSBrowseResult>(
+      `/api/v1/fs/browse${query ? `?${query}` : ''}`,
+    );
+  },
   scanFS: (root?: string) =>
     request<import('../types').FSScanResult[]>(
       `/api/v1/fs/scan${root ? `?root=${encodeURIComponent(root)}` : ''}`,

@@ -45,6 +45,7 @@ var (
 	ErrManifestCompatibility = errors.New("installed version is incompatible with update manifest")
 	ErrManifestTarget        = errors.New("update manifest has no artifact for target")
 	ErrManifestArtifact      = errors.New("update manifest artifact is invalid")
+	ErrManifestUnsigned      = errors.New("update manifest signature is missing")
 )
 
 // Validate applies local policy before an artifact can be downloaded or installed.

@@ -300,7 +300,8 @@ export const Dialog: React.FC<{
   onClose: () => void;
   children: React.ReactNode;
   wide?: boolean;
-}> = ({ open, title, onClose, children, wide }) => {
+  className?: string;
+}> = ({ open, title, onClose, children, wide, className }) => {
   const { t } = useTranslation();
   return (
     <RadixDialog.Root
@@ -311,7 +312,10 @@ export const Dialog: React.FC<{
     >
       <RadixDialog.Portal>
         <RadixDialog.Overlay className="nx-dialog-backdrop" />
-        <RadixDialog.Content className="nx-dialog" data-wide={wide ? 'true' : 'false'}>
+        <RadixDialog.Content
+          className={['nx-dialog', className].filter(Boolean).join(' ')}
+          data-wide={wide ? 'true' : 'false'}
+        >
           <header>
             <RadixDialog.Title asChild>
               <h2>{title}</h2>

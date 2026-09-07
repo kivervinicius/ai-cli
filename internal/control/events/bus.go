@@ -1,6 +1,7 @@
 package events
 
 import (
+	"sort"
 	"sync"
 )
 
@@ -106,6 +107,23 @@ func (b *Bus) Subscribe(runtimeID string) (<-chan Event, func()) {
 func (b *Bus) GetHistory(runtimeID string, limit int) []Event {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
+
+	if runtimeID == "" {
+		var all []Event
+		for _, hist := range b.history {
+			all = append(all, hist...)
+		}
+		sort.SliceStable(all, func(i, j int) bool { return all[i].Timestamp.Before(all[j].Timestamp) })
+		if limit <= 0 || limit > len(all) {
+			limit = len(all)
+		}
+		if limit == 0 {
+			return nil
+		}
+		out := make([]Event, limit)
+		copy(out, all[len(all)-limit:])
+		return out
+	}
 
 	hist, ok := b.history[runtimeID]
 	if !ok {

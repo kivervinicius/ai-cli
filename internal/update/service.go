@@ -2,13 +2,15 @@ package update
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -256,13 +258,59 @@ func (s *Service) fetchManifest(ctx context.Context) (*Manifest, error) {
 		sig = resp.Header.Get("X-Nexus-Signature")
 	}
 
-	if sig != "" {
-		return s.keyRing.VerifyManifest(body, sig)
+	if sig == "" {
+		// Release artifacts publish the manifest and its detached signature
+		// side-by-side. This fallback keeps the same trust chain usable by a
+		// static registry, while still rejecting the manifest if the sidecar
+		// is missing, malformed, or cannot be fetched.
+		signatureURL, err := detachedSignatureURL(s.registryURL)
+		if err != nil {
+			return nil, ErrManifestUnsigned
+		}
+		sig, err = s.fetchDetachedSignature(ctx, signatureURL)
+		if err != nil {
+			return nil, ErrManifestUnsigned
+		}
 	}
 
-	var m Manifest
-	if err := json.Unmarshal(body, &m); err != nil {
-		return nil, err
+	return s.keyRing.VerifyManifest(body, sig)
+}
+
+func detachedSignatureURL(manifestURL string) (string, error) {
+	u, err := url.Parse(manifestURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return "", fmt.Errorf("invalid manifest URL")
 	}
-	return &m, nil
+	name := path.Base(u.Path)
+	if name == "." || name == "/" || name == "" {
+		return "", fmt.Errorf("manifest URL has no file name")
+	}
+	ext := path.Ext(name)
+	if ext == "" {
+		name += ".sig"
+	} else {
+		name = strings.TrimSuffix(name, ext) + ".sig"
+	}
+	u.Path = path.Join(path.Dir(u.Path), name)
+	return u.String(), nil
+}
+
+func (s *Service) fetchDetachedSignature(ctx context.Context, signatureURL string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, signatureURL, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("signature registry returned HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(body)), nil
 }

@@ -129,3 +129,42 @@ func TestUnifiedUsageModeTogglingAndFlags(t *testing.T) {
 		t.Fatalf("unexpected args: %v", fm.chosenResult.Args)
 	}
 }
+
+func TestUnifiedUsageRestoresSelectionAfterEmptyFilter(t *testing.T) {
+	opts := UnifiedUsageOptions{
+		Rows: []UsageTableRow{
+			{Provider: "codex", Profile: "work"},
+			{Provider: "agy", Profile: "personal"},
+		},
+	}
+	m := newUnifiedUsageModel(opts)
+
+	// Enter filter mode and produce no matching rows. bubbles/table sets its
+	// cursor to -1 for an empty result set.
+	res, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = res.(usageTableModel)
+	for _, r := range "does-not-exist" {
+		res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = res.(usageTableModel)
+	}
+
+	// Replace the query with an empty value through the same update path used by
+	// textinput after the user deletes its contents.
+	m.filter.SetValue("")
+	m.filter.Focus()
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	m = res.(usageTableModel)
+
+	if m.accountTable.Cursor() < 0 {
+		t.Fatalf("expected a valid cursor after filtered rows return, got %d", m.accountTable.Cursor())
+	}
+	// Enter both confirms the filter and chooses the highlighted row.
+	res, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = res.(usageTableModel)
+	if cmd == nil || m.chosenResult == nil {
+		t.Fatalf("expected Enter to select the restored row, result=%#v cmd=%v", m.chosenResult, cmd)
+	}
+	if m.chosenResult.ProfileName != "work" {
+		t.Fatalf("expected first restored row to be selected, got %#v", m.chosenResult)
+	}
+}

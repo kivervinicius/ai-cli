@@ -31,7 +31,7 @@ func TestGetQuotaDetails(t *testing.T) {
 	}
 }
 
-func TestGetUsageSnapshotReturnsCachedWindowsWithoutRefresh(t *testing.T) {
+func TestGetUsageSnapshotPreservesStaleWindowsAsEstimatedAfterRefreshFailure(t *testing.T) {
 	tempData := t.TempDir()
 	t.Setenv("AI_CLI_DATA_DIR", tempData)
 	t.Setenv("AI_CLI_CONFIG_DIR", t.TempDir())
@@ -56,10 +56,13 @@ func TestGetUsageSnapshotReturnsCachedWindowsWithoutRefresh(t *testing.T) {
 	}
 
 	snap := GetUsageSnapshot("agy", "work")
-	if snap.Status != model.UsageCached && snap.Status != model.UsageLive {
-		t.Fatalf("status=%s", snap.Status)
+	if snap.Status != model.UsageEstimated {
+		t.Fatalf("status=%s, want ESTIMATED for stale cache fallback", snap.Status)
 	}
-	if len(snap.Windows) != 1 || snap.Windows[0].RemainingPercent == nil || *snap.Windows[0].RemainingPercent != 66 {
-		t.Fatalf("expected cached 66%% remaining, got %+v", snap.Windows)
+	if len(snap.Windows) != 1 {
+		t.Fatalf("expected last-known windows to be preserved, got %+v", snap.Windows)
+	}
+	if snap.Error == "" {
+		t.Fatal("expected diagnostic explaining the degraded snapshot")
 	}
 }

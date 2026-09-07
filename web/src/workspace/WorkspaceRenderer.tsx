@@ -390,8 +390,9 @@ function useCompactViewport(): boolean {
 export const WorkspaceRenderer: React.FC<{
   renderSurface: (surface: WorkspaceSurface) => React.ReactNode;
   onRequestClose?: (surface: WorkspaceSurface) => void;
+  onActivateSurface?: (surface: WorkspaceSurface) => void;
   createActions?: WorkspaceCreateActions;
-}> = ({ renderSurface, onRequestClose, createActions }) => {
+}> = ({ renderSurface, onRequestClose, onActivateSurface, createActions }) => {
   const workspace = useWorkspace();
   const presentation = useWorkspacePresentation();
   const compact = useCompactViewport();
@@ -417,6 +418,7 @@ export const WorkspaceRenderer: React.FC<{
           stack={activeStack}
           renderSurface={renderSurface}
           onRequestClose={onRequestClose}
+          onActivateSurface={onActivateSurface}
           createActions={createActions}
         />
       )}
@@ -428,8 +430,9 @@ const WorkspaceStackView: React.FC<{
   stack: WorkspaceStack;
   renderSurface: (surface: WorkspaceSurface) => React.ReactNode;
   onRequestClose?: (surface: WorkspaceSurface) => void;
+  onActivateSurface?: (surface: WorkspaceSurface) => void;
   createActions?: WorkspaceCreateActions;
-}> = ({ stack, renderSurface, onRequestClose, createActions }) => {
+}> = ({ stack, renderSurface, onRequestClose, onActivateSurface, createActions }) => {
   const { t } = useTranslation();
   const { activate, close, move } = useWorkspace();
   const [draggedSurface, setDraggedSurface] = useState<string | null>(null);
@@ -519,7 +522,9 @@ const WorkspaceStackView: React.FC<{
                   event.dataTransfer.setData('application/x-nexus-surface', surface.id);
                   event.dataTransfer.effectAllowed = 'move';
                 }}
-                onClick={() => activate(surface.id)}
+                onClick={() =>
+                  onActivateSurface ? onActivateSurface(surface) : activate(surface.id)
+                }
                 onContextMenu={(event) => {
                   if (surface.closable === false) return;
                   setTabMenu({ surface, point: contextMenuFromEvent(event) });
@@ -740,6 +745,20 @@ const TerminalsHost: React.FC<{
               onReset={workspace.reset}
             />
           )}
+          <button
+            type="button"
+            className="nx-presentation-zen-btn"
+            data-active={presentation.state.zenMode ? 'true' : 'false'}
+            onClick={() => presentation.toggleZenMode()}
+            title={
+              presentation.state.zenMode ? t('workspace.exitFocusMode') : t('workspace.focusMode')
+            }
+          >
+            {presentation.state.zenMode ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+            <span>
+              {presentation.state.zenMode ? t('workspace.exitFocus') : t('workspace.focusMode')}
+            </span>
+          </button>
         </div>
       </header>
       <div className="nx-terminals-host__body">

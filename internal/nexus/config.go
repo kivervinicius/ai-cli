@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/control/driver"
@@ -136,9 +137,29 @@ func AnalyzeImpact(current, proposed AgentConfig) ConfigImpact {
 	if current.ContinuityPolicy != proposed.ContinuityPolicy {
 		impact.ChangedFields = append(impact.ChangedFields, "continuity_policy")
 	}
+	if strings.EqualFold(proposed.ContinuityPolicy, "new_session") {
+		impact.RequiresNewSess = true
+		impact.RequiresRestart = true
+	}
 	if !reflect.DeepEqual(current.Options, proposed.Options) {
 		impact.ChangedFields = append(impact.ChangedFields, "options")
 		impact.RequiresRestart = true
+
+		currentMode := ""
+		if current.Options != nil {
+			if m, ok := current.Options["mode"].(string); ok {
+				currentMode = m
+			}
+		}
+		proposedMode := ""
+		if proposed.Options != nil {
+			if m, ok := proposed.Options["mode"].(string); ok {
+				proposedMode = m
+			}
+		}
+		if currentMode != proposedMode {
+			impact.RequiresNewSess = true
+		}
 	}
 	if !reflect.DeepEqual(current.Environment, proposed.Environment) {
 		impact.ChangedFields = append(impact.ChangedFields, "environment")
@@ -255,9 +276,12 @@ func (n *Nexus) SafeApply(ctx context.Context, agentID string, proposed AgentCon
 		copyGen := oldGen
 		previousGen = &copyGen
 	}
-	continuityLaunch, err := continuityForNextGeneration(ctx, proposed, previousGen)
+	launchDecision, err := continuityForNextGeneration(ctx, proposed, previousGen)
 	if err != nil {
 		return nil, fmt.Errorf("validate candidate continuity: %w", err)
+	}
+	if impact.RequiresNewSess || strings.EqualFold(proposed.ContinuityPolicy, "new_session") {
+		launchDecision = continuityLaunch{Status: store.ContinuityNewSession}
 	}
 
 	// Case 2: Restart required — execute ReconfigureTransaction (A5).
@@ -292,8 +316,8 @@ func (n *Nexus) SafeApply(ctx context.Context, agentID string, proposed AgentCon
 		ProjectName:       proj.Name,
 		ProviderID:        proposed.Provider,
 		ProfileID:         proposed.Profile,
-		ProviderSessionID: continuityLaunch.ProviderSessionID,
-		Args:              continuityLaunch.Args,
+		ProviderSessionID: launchDecision.ProviderSessionID,
+		Args:              launchDecision.Args,
 		Workspace:         executionWorkspace,
 		Model:             proposed.Model,
 		Environment:       proposed.Environment,
@@ -329,7 +353,7 @@ func (n *Nexus) SafeApply(ctx context.Context, agentID string, proposed AgentCon
 		Provider:        proposed.Provider,
 		Profile:         proposed.Profile,
 		ProviderSession: sess.ProviderSessionID,
-		Continuity:      continuityLaunch.Status,
+		Continuity:      launchDecision.Status,
 		StartedAt:       time.Now().UTC(),
 		State:           "RUNNING",
 	}
@@ -344,7 +368,7 @@ func (n *Nexus) SafeApply(ctx context.Context, agentID string, proposed AgentCon
 	// Step 6: Atomically switch Agent current revision and status to WORKING.
 	agent.Status = store.AgentWorking
 	agent.CurrentRevisionID = rev.ID
-	agent.ContinuityStatus = continuityLaunch.Status
+	agent.ContinuityStatus = launchDecision.Status
 	now := time.Now().UTC()
 	agent.LastStartedAt = &now
 	_ = st.UpdateAgent(agent)
@@ -367,9 +391,9 @@ func (n *Nexus) SafeApply(ctx context.Context, agentID string, proposed AgentCon
 	if wasAlive {
 		oldRuntimeID = oldGen.RuntimeID
 	}
-	n.notifyRuntimeChanged(agentID, oldRuntimeID, sess.RuntimeID, proposed.Provider, proposed.Profile, continuityLaunch.Status)
+	n.notifyRuntimeChanged(agentID, oldRuntimeID, sess.RuntimeID, proposed.Provider, proposed.Profile, launchDecision.Status)
 	n.notifyAgentState(agentID, "WORKING")
-	n.notifyContinuity(agentID, continuityLaunch.Status)
+	n.notifyContinuity(agentID, launchDecision.Status)
 
 	return &impact, nil
 }

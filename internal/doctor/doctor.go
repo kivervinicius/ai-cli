@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	stdruntime "runtime"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/core/config"
@@ -61,22 +63,27 @@ func BuildReport(version string, detections map[string]model.DetectionResult, ca
 	switch stdruntime.GOOS {
 	case "windows":
 		report.Checks = append(report.Checks,
-			Check{ID: "platform.conpty", Status: Pass, Summary: "ConPTY pseudo-console supported on Windows 10/11"},
-			Check{ID: "platform.webview2", Status: Pass, Summary: "WebView2 runtime supported for Wails Desktop"},
+			probeWindowsConPTY(),
+			probeWindowsWebView2(),
 		)
 	case "darwin":
 		report.Checks = append(report.Checks,
 			Check{ID: "platform.pty", Status: Pass, Summary: "Unix PTY supported on macOS"},
-			Check{ID: "platform.wkwebview", Status: Pass, Summary: "WKWebView supported for Wails Desktop"},
+			Check{ID: "platform.wkwebview", Status: Pass, Summary: "WKWebView is provided by macOS"},
 		)
 	case "linux":
 		report.Checks = append(report.Checks,
 			Check{ID: "platform.pty", Status: Pass, Summary: "Unix PTY supported on Linux"},
-			Check{ID: "platform.webkitgtk", Status: Pass, Summary: "WebKitGTK (4.0/4.1) supported for Wails Desktop"},
+			probeLinuxWebKitGTK(),
 		)
 	}
 
-	report.Checks = append(report.Checks, Check{ID: "desktop.shell", Status: Pass, Summary: "Wails v2 Desktop multiplatform shell supported"})
+	report.Checks = append(report.Checks, Check{
+		ID:          "desktop.shell",
+		Status:      Skipped,
+		Summary:     "Wails Desktop shell requires a native desktop launch to verify",
+		Remediation: "run the native desktop smoke test on the target operating system",
+	})
 
 	providerIDs := make([]string, 0, len(detections))
 	for id := range detections {
@@ -92,6 +99,42 @@ func BuildReport(version string, detections map[string]model.DetectionResult, ca
 		report.Checks = append(report.Checks, Check{ID: "provider." + id, Status: status, Summary: providerSummary(detection)})
 	}
 	return report
+}
+
+func probeWindowsConPTY() Check {
+	// ConPTY is an OS feature, but a CLI doctor cannot prove that the current
+	// desktop process successfully created a pseudo-console. Report the
+	// platform prerequisite rather than claiming a runtime smoke test passed.
+	return Check{
+		ID:          "platform.conpty",
+		Status:      Warn,
+		Summary:     "ConPTY platform prerequisite detected; native terminal smoke is not run by doctor",
+		Remediation: "run the native Windows Desktop/SessionHost smoke test",
+	}
+}
+
+func probeWindowsWebView2() Check {
+	if _, err := exec.LookPath("reg.exe"); err != nil {
+		return Check{ID: "platform.webview2", Status: Warn, Summary: "WebView2 registry probe is unavailable", Remediation: "install the Microsoft WebView2 Runtime or run doctor on Windows"}
+	}
+	out, err := exec.Command("reg.exe", "query", `HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients`, "/s", "/f", "pv").CombinedOutput()
+	if err == nil && strings.Contains(strings.ToLower(string(out)), "webview") {
+		return Check{ID: "platform.webview2", Status: Pass, Summary: "Microsoft WebView2 Runtime registration detected"}
+	}
+	return Check{ID: "platform.webview2", Status: Warn, Summary: "Microsoft WebView2 Runtime was not detected", Remediation: "install the Microsoft WebView2 Runtime before launching Desktop"}
+}
+
+func probeLinuxWebKitGTK() Check {
+	if _, err := exec.LookPath("pkg-config"); err != nil {
+		return Check{ID: "platform.webkitgtk", Status: Warn, Summary: "pkg-config is unavailable; WebKitGTK cannot be probed", Remediation: "install GTK/WebKitGTK development/runtime packages or run doctor on the target desktop host"}
+	}
+	for _, pkg := range []string{"webkit2gtk-4.1", "webkit2gtk-4.0"} {
+		if out, err := exec.Command("pkg-config", "--modversion", pkg).Output(); err == nil {
+			version := strings.TrimSpace(string(out))
+			return Check{ID: "platform.webkitgtk", Status: Pass, Summary: "WebKitGTK detected: " + pkg + " " + version}
+		}
+	}
+	return Check{ID: "platform.webkitgtk", Status: Warn, Summary: "WebKitGTK 4.0/4.1 was not detected", Remediation: "install the WebKitGTK runtime required by Wails Desktop"}
 }
 
 func checkDirectory(id string, resolver func() (string, error)) Check {

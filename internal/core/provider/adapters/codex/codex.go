@@ -340,7 +340,9 @@ func (a *Adapter) getUsageFromRollouts(ctx context.Context, p model.Profile) (mo
 	}
 
 	dirs := []string{}
+	profileHome := ""
 	if h, err := config.ProfileHome(string(a.ID()), p.Name); err == nil {
+		profileHome = h
 		dirs = append(dirs, filepath.Join(h, "sessions"), filepath.Join(h, ".codex", "sessions"))
 	}
 	if hostSessions != "" {
@@ -363,7 +365,7 @@ func (a *Adapter) getUsageFromRollouts(ctx context.Context, p model.Profile) (mo
 		if _, err := os.Stat(realDir); err != nil {
 			continue
 		}
-		sharedHost := hostSessions != "" && (realDir == hostSessions || strings.HasPrefix(realDir+string(filepath.Separator), hostSessions+string(filepath.Separator)))
+		sharedHost := hostSessions != "" && config.FilesystemPathWithin(hostSessions, realDir)
 		_ = filepath.Walk(realDir, func(path string, fi os.FileInfo, err error) error {
 			if err != nil || fi == nil || fi.IsDir() {
 				return nil
@@ -477,7 +479,7 @@ func (a *Adapter) getUsageFromRollouts(ctx context.Context, p model.Profile) (mo
 		// Account matching for shared ~/.codex/sessions (often symlinked from every
 		// profile home): modern rollouts rarely embed the email, so claim them only
 		// when this profile owns the current host Codex login.
-		isProfilePath := strings.Contains(rf.path, p.Name)
+		isProfilePath := profileHome != "" && config.FilesystemPathWithin(profileHome, rf.path)
 		belongs := matchedAccount || isProfilePath
 		if !belongs && rf.sharedHost {
 			belongs = targetEmail != "" && hostAuthEmail != "" && strings.EqualFold(targetEmail, hostAuthEmail)

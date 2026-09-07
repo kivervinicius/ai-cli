@@ -294,6 +294,10 @@ func (n *Nexus) strictAdmissionForPlan(_ context.Context, plan store.WorkPlan, r
 		report.Ready = false
 		report.Checks = append(report.Checks, FlowPreflightCheck{Key: "execution_contract", Label: "Contrato de Execução", Status: "FAIL", Summary: err.Error()})
 	}
+	for _, problem := range validatePlanReadiness(plan) {
+		report.Ready = false
+		report.Checks = append(report.Checks, FlowPreflightCheck{Key: "plan_readiness", Label: "Plan readiness", Status: "FAIL", Summary: problem})
+	}
 	project, err := n.OpenProject()
 	if err != nil {
 		return nil, err
@@ -335,4 +339,39 @@ func (n *Nexus) strictAdmissionForPlan(_ context.Context, plan store.WorkPlan, r
 		report.Checks = append(report.Checks, FlowPreflightCheck{Key: "maestro", Label: "Gates Maestro", Status: "FAIL", Summary: err.Error()})
 	}
 	return report, nil
+}
+
+// validatePlanReadiness is deterministic admission for data that an LLM may
+// omit. It runs after the compatibility façade has been loaded, so Flow
+// layout/order cannot substitute for executable task semantics.
+func validatePlanReadiness(plan store.WorkPlan) []string {
+	problems := make([]string, 0)
+	for _, phase := range plan.Phases {
+		for _, pkg := range phase.Packages {
+			prefix := fmt.Sprintf("flow step %s", pkg.ID)
+			if strings.TrimSpace(pkg.Title) == "" {
+				problems = append(problems, prefix+" is missing a title")
+			}
+			if strings.TrimSpace(pkg.Goal) == "" {
+				problems = append(problems, prefix+" is missing an executable goal")
+			}
+			if len(nonEmptyStrings(pkg.AcceptanceCriteria)) == 0 {
+				problems = append(problems, prefix+" is missing acceptance criteria / Definition of Done")
+			}
+			if len(nonEmptyStrings(pkg.VerificationRequirements)) == 0 {
+				problems = append(problems, prefix+" is missing verification requirements")
+			}
+		}
+	}
+	return problems
+}
+
+func nonEmptyStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }

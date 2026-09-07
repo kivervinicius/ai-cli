@@ -1,18 +1,26 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { AlertTriangle, CheckCircle2, Radio, Terminal, X, XCircle } from 'lucide-react';
-import type { RuntimeSession } from '../types';
+import type { EventRecord, RuntimeSession } from '../types';
+import { api } from '../api';
 import { sanitizeAttentionText } from '../components/attentionText';
-import { IconButton } from '../design-system';
+import { Button, IconButton } from '../design-system';
 import { ContextDrawer } from '../design-system/primitives/ContextDrawer';
 import { buildAttentionRadar, type RadarRuntimeItem } from '../app/attentionRadarModel';
-import { notificationFromRuntime, type InAppNotification } from './inAppNotificationModel';
+import {
+  notificationFromQuotaEvent,
+  notificationFromRuntime,
+  type InAppNotification,
+  type InAppNotificationAction,
+} from './inAppNotificationModel';
 import { loadNotificationPrefs } from './notificationPrefs';
 
 const DISMISS_AFTER_MS = 7_000;
 
 export const InAppNotificationCenter: React.FC<{
   runtimes: RuntimeSession[];
+  events?: EventRecord[];
   focusedProjectId?: string;
   drawerOpen?: boolean;
   onCloseDrawer?: () => void;
@@ -20,29 +28,74 @@ export const InAppNotificationCenter: React.FC<{
   onFocusAttention?: (item: RadarRuntimeItem) => void;
 }> = ({
   runtimes,
+  events,
   focusedProjectId,
   drawerOpen = false,
   onCloseDrawer,
   onFocusRuntime,
   onFocusAttention,
 }) => {
+  const { t } = useTranslation();
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
   const [history, setHistory] = useState<InAppNotification[]>([]);
   const [activeTab, setActiveTab] = useState<'radar' | 'notifications'>('radar');
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const observed = useRef(new Set<string>());
   const initialized = useRef(false);
+
+  const handleExecuteAction = async (action: InAppNotificationAction, notifId: string) => {
+    if (!action.sourceRuntimeId) {
+      dismiss(notifId);
+      return;
+    }
+    setActionLoadingId(notifId);
+    try {
+      let newSession: RuntimeSession;
+      if (action.type === 'account_handoff') {
+        newSession = await api.accountHandoff(
+          action.sourceRuntimeId,
+          `${action.targetProvider}:${action.targetProfile}`,
+        );
+      } else {
+        newSession = await api.contextContinue(
+          action.sourceRuntimeId,
+          action.targetProvider,
+          action.targetProfile,
+        );
+      }
+      dismiss(notifId);
+      if (newSession?.runtime_id) {
+        onFocusRuntime(newSession.runtime_id);
+      }
+    } catch (err) {
+      console.error('Failed to execute failover handoff:', err);
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
 
   useEffect(() => {
     if (!loadNotificationPrefs().notificationsEnabled) return;
     const scoped = focusedProjectId
       ? runtimes.filter((runtime) => runtime.project_id === focusedProjectId)
       : [];
-    const next = scoped
+    const runtimeNotifs = scoped
       .filter(
         (runtime) => (runtime.provider_id || runtime.provider || '').toLowerCase() !== 'shell',
       )
       .map(notificationFromRuntime)
       .filter((notification): notification is InAppNotification => notification !== null);
+
+    const quotaNotifs = (events || [])
+      .map((event) =>
+        notificationFromQuotaEvent(event, {
+          degradedTitle: t('attention.quotaMonitorDegraded'),
+          degradedMessage: (reason) => t('attention.quotaMonitorDegradedMessage', { reason }),
+        }),
+      )
+      .filter((notification): notification is InAppNotification => notification !== null);
+
+    const next = [...quotaNotifs, ...runtimeNotifs];
 
     if (!initialized.current) {
       next.forEach((notification) => observed.current.add(notification.id));
@@ -56,7 +109,7 @@ export const InAppNotificationCenter: React.FC<{
     fresh.forEach((notification) => observed.current.add(notification.id));
     setNotifications((current) => [...fresh, ...current].slice(0, 3));
     setHistory((current) => [...fresh, ...current].slice(0, 30));
-  }, [runtimes, focusedProjectId]);
+  }, [runtimes, events, focusedProjectId, t]);
 
   useEffect(() => {
     if (notifications.length === 0) return;
@@ -104,12 +157,26 @@ export const InAppNotificationCenter: React.FC<{
                     {sanitizeAttentionText(notification.message, 'Sem detalhes adicionais.')}
                   </span>
                 </div>
-                <IconButton
-                  label="Abrir terminal"
-                  onClick={() => onFocusRuntime(notification.runtimeId)}
-                >
-                  <Terminal size={15} />
-                </IconButton>
+                {notification.action && notification.action.sourceRuntimeId && (
+                  <Button
+                    size="sm"
+                    tone="brand"
+                    disabled={actionLoadingId === notification.id}
+                    onClick={() => void handleExecuteAction(notification.action!, notification.id)}
+                  >
+                    {actionLoadingId === notification.id
+                      ? t('legacy.executingHandoff', 'Realizando Handoff...')
+                      : notification.action.label}
+                  </Button>
+                )}
+                {notification.runtimeId && (
+                  <IconButton
+                    label="Abrir terminal"
+                    onClick={() => onFocusRuntime(notification.runtimeId!)}
+                  >
+                    <Terminal size={15} />
+                  </IconButton>
+                )}
                 <IconButton label="Fechar notificação" onClick={() => dismiss(notification.id)}>
                   <X size={15} />
                 </IconButton>
@@ -234,15 +301,32 @@ export const InAppNotificationCenter: React.FC<{
                         </div>
                         <p>{notif.message}</p>
                       </div>
-                      <IconButton
-                        label="Abrir terminal"
-                        onClick={() => {
-                          onCloseDrawer();
-                          onFocusRuntime(notif.runtimeId);
-                        }}
-                      >
-                        <Terminal size={14} />
-                      </IconButton>
+                      {notif.action && notif.action.sourceRuntimeId && (
+                        <Button
+                          size="sm"
+                          tone="brand"
+                          disabled={actionLoadingId === notif.id}
+                          onClick={() => {
+                            onCloseDrawer?.();
+                            void handleExecuteAction(notif.action!, notif.id);
+                          }}
+                        >
+                          {actionLoadingId === notif.id
+                            ? t('legacy.executingHandoff', 'Realizando Handoff...')
+                            : notif.action.label}
+                        </Button>
+                      )}
+                      {notif.runtimeId && (
+                        <IconButton
+                          label="Abrir terminal"
+                          onClick={() => {
+                            onCloseDrawer();
+                            onFocusRuntime(notif.runtimeId!);
+                          }}
+                        >
+                          <Terminal size={14} />
+                        </IconButton>
+                      )}
                     </article>
                   ))
                 )}

@@ -134,10 +134,11 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	// Missions (Gate 7 Beta)
 	mux.HandleFunc("/api/v1/missions/", s.routeMission(nexusHandler))
 
-	// System Updates (Auto-update for Nexus & Maestro)
+	// System status is shared; Nexus updates and Maestro maintenance remain
+	// separate explicit operations.
 	mux.HandleFunc("/api/v1/system/doctor", s.authMiddleware(nexusHandler.handleSystemDoctor))
 	mux.HandleFunc("/api/v1/system/updates", s.authMiddleware(nexusHandler.handleSystemUpdates))
-	mux.HandleFunc("/api/v1/system/update", s.authMiddleware(nexusHandler.handleSystemUpdate))
+	mux.HandleFunc("/api/v1/maestro/update", s.authMiddleware(nexusHandler.handleMaestroUpdate))
 
 	// OS Filesystem & Discovery Routes
 	mux.HandleFunc("/api/v1/fs/browse", s.authMiddleware(nexusHandler.handleFSBrowse))

@@ -549,6 +549,7 @@ export interface AutonomyContract {
   disallow_destructive_git: boolean;
   allowed_file_patterns?: string[];
   verification_commands?: string[];
+  global_verification_commands?: string[];
   escalate_on_failure: boolean;
   allow_tool_auto_approval: boolean;
   allow_git_push: boolean;
@@ -668,6 +669,7 @@ export interface MissionRun {
   started_at: string;
   updated_at: string;
   completed_at?: string;
+  global_verifications?: VerificationResult[];
 }
 
 export interface MissionSchedule {

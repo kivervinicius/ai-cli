@@ -93,6 +93,45 @@ func TestAnalyzeImpactMaestroModeChange(t *testing.T) {
 	}
 }
 
+func TestAnalyzeImpactModeChangeRequiresNewSession(t *testing.T) {
+	current := AgentConfig{
+		Provider: "claude",
+		Profile:  "default",
+		Options:  map[string]any{"mode": "Safe"},
+	}
+	proposed := AgentConfig{
+		Provider: "claude",
+		Profile:  "default",
+		Options:  map[string]any{"mode": "YOLO"},
+	}
+	impact := AnalyzeImpact(current, proposed)
+	if impact.Mode != ImpactNewSession {
+		t.Errorf("mode change should be NEW_SESSION, got %q", impact.Mode)
+	}
+	if !impact.RequiresNewSess {
+		t.Error("mode change should require new session")
+	}
+	if !impact.RequiresRestart {
+		t.Error("mode change should require restart")
+	}
+}
+
+func TestAnalyzeImpactContinuityPolicyNewSession(t *testing.T) {
+	current := AgentConfig{Provider: "claude", Profile: "default"}
+	proposed := AgentConfig{
+		Provider:         "claude",
+		Profile:          "default",
+		ContinuityPolicy: "new_session",
+	}
+	impact := AnalyzeImpact(current, proposed)
+	if impact.Mode != ImpactNewSession {
+		t.Errorf("continuity_policy new_session should be NEW_SESSION, got %q", impact.Mode)
+	}
+	if !impact.RequiresNewSess {
+		t.Error("continuity_policy new_session should require new session")
+	}
+}
+
 func TestSafeApplyCreatesRevision(t *testing.T) {
 	n := openTestNexus(t)
 	st, _ := n.OpenProject()

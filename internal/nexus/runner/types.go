@@ -26,6 +26,7 @@ const (
 	StateExecuting            State = "EXECUTING"
 	StateTesting              State = "TESTING"
 	StateReviewing            State = "REVIEWING"
+	StateVerifying            State = "VERIFYING"
 	StateRemediating          State = "REMEDIATING"
 	StateVerified             State = "VERIFIED"
 	StateCompletedVerified    State = "COMPLETED_VERIFIED"
@@ -191,26 +192,27 @@ type PackageRun struct {
 }
 
 type MissionRun struct {
-	ID                  string           `json:"id"`
-	PlanID              string           `json:"plan_id"`
-	PlanRevision        int              `json:"plan_revision"`
-	ExecutionSnapshotID string           `json:"execution_snapshot_id,omitempty"`
-	ProjectID           string           `json:"project_id"`
-	Autonomous          bool             `json:"autonomous,omitempty"`
-	Workspace           string           `json:"workspace"`
-	State               State            `json:"state"`
-	Contract            AutonomyContract `json:"contract"`
-	CurrentPkgIndex     int              `json:"current_pkg_index"` // compatibility/UI hint only
-	TotalIterations     int              `json:"total_iterations"`
-	PackageRuns         []PackageRun     `json:"package_runs"`
-	LeaseOwner          string           `json:"lease_owner,omitempty"`
-	LeaseToken          string           `json:"lease_token,omitempty"`
-	LeaseExpiresAt      *time.Time       `json:"lease_expires_at,omitempty"`
-	HeartbeatAt         *time.Time       `json:"heartbeat_at,omitempty"`
-	PausedReason        string           `json:"paused_reason,omitempty"`
-	StartedAt           time.Time        `json:"started_at"`
-	UpdatedAt           time.Time        `json:"updated_at"`
-	CompletedAt         *time.Time       `json:"completed_at,omitempty"`
+	ID                  string               `json:"id"`
+	PlanID              string               `json:"plan_id"`
+	PlanRevision        int                  `json:"plan_revision"`
+	ExecutionSnapshotID string               `json:"execution_snapshot_id,omitempty"`
+	ProjectID           string               `json:"project_id"`
+	Autonomous          bool                 `json:"autonomous,omitempty"`
+	Workspace           string               `json:"workspace"`
+	State               State                `json:"state"`
+	Contract            AutonomyContract     `json:"contract"`
+	CurrentPkgIndex     int                  `json:"current_pkg_index"` // compatibility/UI hint only
+	TotalIterations     int                  `json:"total_iterations"`
+	PackageRuns         []PackageRun         `json:"package_runs"`
+	LeaseOwner          string               `json:"lease_owner,omitempty"`
+	LeaseToken          string               `json:"lease_token,omitempty"`
+	LeaseExpiresAt      *time.Time           `json:"lease_expires_at,omitempty"`
+	HeartbeatAt         *time.Time           `json:"heartbeat_at,omitempty"`
+	PausedReason        string               `json:"paused_reason,omitempty"`
+	StartedAt           time.Time            `json:"started_at"`
+	UpdatedAt           time.Time            `json:"updated_at"`
+	CompletedAt         *time.Time           `json:"completed_at,omitempty"`
+	GlobalVerifications []VerificationResult `json:"global_verifications,omitempty"`
 }
 
 type AllocationResult struct {

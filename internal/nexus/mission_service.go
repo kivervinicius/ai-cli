@@ -151,6 +151,7 @@ func (n *Nexus) StartMissionRun(ctx context.Context, planID, defaultAgentID stri
 	if err != nil {
 		return nil, fmt.Errorf("resolve mission project: %w", err)
 	}
+	contract = normalizeAutonomyContract(contract, project.CanonicalPath)
 	revision, err := st.GetPlanRevision(plan.ID, plan.CurrentRevision)
 	if err != nil {
 		return nil, fmt.Errorf("resolve immutable plan revision %d: %w", plan.CurrentRevision, err)
@@ -173,7 +174,6 @@ func (n *Nexus) StartMissionRun(ctx context.Context, planID, defaultAgentID stri
 		}
 	}
 
-	contract = normalizeAutonomyContract(contract, project.CanonicalPath)
 	frozenPlan, err := freezePlanForExecution(n, *plan)
 	if err != nil {
 		return nil, err
@@ -281,6 +281,9 @@ func normalizeAutonomyContract(contract runner.AutonomyContract, workspace strin
 	}
 	if len(contract.VerificationCommands) == 0 && contract.RequireVerification {
 		contract.VerificationCommands = detectVerificationCommands(workspace)
+	}
+	if len(contract.GlobalVerificationCommands) == 0 && contract.RequireVerification {
+		contract.GlobalVerificationCommands = append([]string(nil), contract.VerificationCommands...)
 	}
 	return contract
 }

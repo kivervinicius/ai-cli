@@ -19,7 +19,7 @@ func TestFSBrowse(t *testing.T) {
 	auth, _, _ := NewAuthManager("127.0.0.1", "")
 	handler := NewNexusHandler(auth)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/fs/browse?path="+tempDir, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/fs/browse?path="+tempDir+"&details=full", nil)
 	w := httptest.NewRecorder()
 
 	handler.handleFSBrowse(w, req)
@@ -55,6 +55,38 @@ func TestFSBrowse(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("my-repo not found in browse results")
+	}
+}
+
+func TestFSBrowseDefaultsToLightweightDirectoryEntries(t *testing.T) {
+	tempDir := t.TempDir()
+	subDir := filepath.Join(tempDir, "my-repo")
+	if err := os.MkdirAll(filepath.Join(subDir, ".git"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(subDir, "go.mod"), []byte("module my-repo\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	auth, _, _ := NewAuthManager("127.0.0.1", "")
+	handler := NewNexusHandler(auth)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/fs/browse?path="+tempDir, nil)
+	w := httptest.NewRecorder()
+
+	handler.handleFSBrowse(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp FSBrowseResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(resp.Entries) != 1 || resp.Entries[0].Name != "my-repo" {
+		t.Fatalf("unexpected entries: %+v", resp.Entries)
+	}
+	if resp.Entries[0].IsGit || len(resp.Entries[0].Tech) != 0 || resp.Entries[0].ModTime != "" {
+		t.Fatalf("lightweight browse unexpectedly computed child metadata: %+v", resp.Entries[0])
 	}
 }
 
@@ -108,8 +140,11 @@ func TestFSMkdir(t *testing.T) {
 	auth, _, _ := NewAuthManager("127.0.0.1", "")
 	handler := NewNexusHandler(auth)
 
-	body := `{"path":"` + newFolder + `"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/fs/mkdir", strings.NewReader(body))
+	bodyBytes, err := json.Marshal(map[string]string{"path": newFolder})
+	if err != nil {
+		t.Fatalf("failed to encode mkdir request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/fs/mkdir", strings.NewReader(string(bodyBytes)))
 	w := httptest.NewRecorder()
 
 	handler.handleFSMkdir(w, req)

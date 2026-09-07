@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 )
@@ -40,8 +39,6 @@ func TestServer_BootstrapAndAuth(t *testing.T) {
 		_ = srv.Start()
 	}()
 	defer srv.Shutdown(context.Background())
-
-	time.Sleep(50 * time.Millisecond)
 
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar}
@@ -181,7 +178,6 @@ func TestServer_BootstrapPreservesDeepLinkPath(t *testing.T) {
 	}
 	go func() { _ = srv.Start() }()
 	defer srv.Shutdown(context.Background())
-	time.Sleep(50 * time.Millisecond)
 
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{

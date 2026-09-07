@@ -7,6 +7,8 @@ on:
       - master
       - 'feat/**'
       - 'fix/**'
+    tags:
+      - 'v*'
 
   pull_request:
     branches:
@@ -14,6 +16,8 @@ on:
       - master
       - 'feat/**'
       - 'fix/**'
+
+  workflow_dispatch:
 
 env:
   GOTOOLCHAIN: local
@@ -25,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -65,7 +69,24 @@ jobs:
         run: bun run build
 
       - name: Verify embedded bundle is synchronized
-        run: test -f internal/control/web/embedded/index.html && test -f internal/control/web/embedded/bundle.js && test -f internal/control/web/embedded/bundle.css
+        working-directory: web
+        run: bun run verify
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.14'
+          cache: true
+
+      - name: Run govulncheck
+        run: GOTOOLCHAIN=local go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 
   browser:
     name: Browser E2E, Axe & visual smoke
@@ -73,10 +94,10 @@ jobs:
     needs: frontend
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.25.14'
           cache: true
@@ -112,10 +133,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go }}
           cache: true
@@ -152,10 +173,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go }}
           cache: true
@@ -163,16 +184,48 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: PowerShell installer syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path install.ps1),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Error
+            exit 1
+          }
+          Write-Host 'install.ps1 syntax PASS'
+
       - name: Test
-        run: go test -v ./...
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP 'nexus-windows-go-test.log'
+          cmd /c "go test -v ./... > `"$log`" 2>&1"
+          $code = $LASTEXITCODE
+          Get-Content $log
+          exit $code
 
       - name: ConPTY & Named Pipe E2E
         shell: pwsh
-        run: go test -v -count=1 ./internal/control/terminal/... ./internal/control/protocol/...
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP 'nexus-windows-terminal-ipc.log'
+          cmd /c "go test -v -count=1 ./internal/control/terminal/... ./internal/control/protocol/... > `"$log`" 2>&1"
+          $code = $LASTEXITCODE
+          Get-Content $log
+          exit $code
 
       - name: Runtime & Web E2E
         shell: pwsh
-        run: go test -v -count=1 ./internal/control/host/... ./internal/control/web/...
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP 'nexus-windows-runtime-web.log'
+          cmd /c "go test -v -count=1 ./internal/control/host/... ./internal/control/web/... > `"$log`" 2>&1"
+          $code = $LASTEXITCODE
+          Get-Content $log
+          exit $code
 
       - name: Build Binary
         run: go build -v -o nexus.exe ./cmd/nexus
@@ -183,6 +236,14 @@ jobs:
           .\nexus.exe version
           .\nexus.exe control --help | Select-Object -First 5
 
+      - name: Upload Windows diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-diagnostics-${{ github.sha }}
+          path: ${{ runner.temp }}/nexus-windows-*.log
+          if-no-files-found: ignore
+
   test-macos:
     name: macOS E2E (PTY, Socket, Resize, Install)
     strategy:
@@ -191,10 +252,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go }}
           cache: true
@@ -203,13 +264,22 @@ jobs:
         run: go vet ./...
 
       - name: Test with Race Detector
-        run: go test -v -race ./...
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -v -race ./... 2>&1 | tee "$RUNNER_TEMP/nexus-macos-race.log"
 
       - name: PTY, Socket & Runtime E2E
-        run: go test -race -v -count=1 ./internal/control/terminal/... ./internal/control/protocol/... ./internal/control/host/...
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -race -v -count=1 ./internal/control/terminal/... ./internal/control/protocol/... ./internal/control/host/... 2>&1 | tee "$RUNNER_TEMP/nexus-macos-runtime-ipc.log"
 
       - name: Web E2E
-        run: go test -race -v -count=1 ./internal/control/web/...
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -race -v -count=1 ./internal/control/web/... 2>&1 | tee "$RUNNER_TEMP/nexus-macos-web.log"
 
       - name: Build Binary
         run: go build -v -o nexus ./cmd/nexus
@@ -220,19 +290,27 @@ jobs:
           # install.sh release-download path requires a GitHub release; build-from-source fallback is exercised by running from a source checkout
           bash -n install.sh
 
+      - name: Upload macOS diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-diagnostics-${{ github.sha }}
+          path: ${{ runner.temp }}/nexus-macos-*.log
+          if-no-files-found: ignore
+
   desktop-linux:
     name: Desktop Linux (Wails native build)
     runs-on: ubuntu-latest
     needs: frontend
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Wails Linux dependencies
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.25.14'
           cache: true
@@ -247,7 +325,19 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build Linux desktop
-        run: make build-desktop
+        run: |
+          make build-desktop-wails
+          test -f cmd/nexus-desktop/build/bin/nexus-desktop
+
+      - name: Package Linux desktop artifact
+        run: tar -C cmd/nexus-desktop/build/bin -czf "$RUNNER_TEMP/nexus-desktop_Linux_x86_64.tar.gz" nexus-desktop
+
+      - name: Upload Linux desktop artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux-${{ github.sha }}
+          path: ${{ runner.temp }}/nexus-desktop_Linux_x86_64.tar.gz
+          if-no-files-found: error
 
   desktop-windows:
     name: Desktop Windows (Wails native build)
@@ -255,10 +345,10 @@ jobs:
     needs: frontend
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.25.14'
           cache: true
@@ -272,9 +362,27 @@ jobs:
         working-directory: web
         run: bun install --frozen-lockfile
 
-      - name: Build Windows desktop
+      - name: Build frontend for Wails
+        working-directory: web
+        run: bun run build
+
+      - name: Build Windows desktop with Wails
         shell: pwsh
-        run: go build -tags production -o nexus-desktop.exe ./cmd/nexus-desktop
+        run: |
+          Set-Location cmd/nexus-desktop
+          go run github.com/wailsapp/wails/v2/cmd/wails@v2.15.0 build -clean -s -m -tags production
+          if (-not (Test-Path build/bin/nexus-desktop.exe)) { throw 'Wails Windows artifact missing' }
+
+      - name: Package Windows desktop artifact
+        shell: pwsh
+        run: Compress-Archive -Path cmd/nexus-desktop/build/bin/nexus-desktop.exe -DestinationPath "$env:RUNNER_TEMP\nexus-desktop_Windows_x86_64.zip"
+
+      - name: Upload Windows desktop artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows-${{ github.sha }}
+          path: ${{ runner.temp }}/nexus-desktop_Windows_x86_64.zip
+          if-no-files-found: error
 
   desktop-macos:
     name: Desktop macOS (Wails native build)
@@ -282,10 +390,10 @@ jobs:
     needs: frontend
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.25.14'
           cache: true
@@ -299,8 +407,30 @@ jobs:
         working-directory: web
         run: bun install --frozen-lockfile
 
-      - name: Build macOS desktop
-        run: go build -tags production -o nexus-desktop ./cmd/nexus-desktop
+      - name: Build frontend for Wails
+        working-directory: web
+        run: bun run build
+
+      - name: Build macOS desktop with Wails
+        run: |
+          cd cmd/nexus-desktop
+          go run github.com/wailsapp/wails/v2/cmd/wails@v2.15.0 build -clean -s -m -tags production
+          test -d build/bin/nexus-desktop.app || test -f build/bin/nexus-desktop
+
+      - name: Package macOS desktop artifact
+        run: |
+          if [ -d cmd/nexus-desktop/build/bin/nexus-desktop.app ]; then
+            ditto -c -k --sequesterRsrc --keepParent cmd/nexus-desktop/build/bin/nexus-desktop.app "$RUNNER_TEMP/nexus-desktop_Darwin_arm64.zip"
+          else
+            tar -C cmd/nexus-desktop/build/bin -czf "$RUNNER_TEMP/nexus-desktop_Darwin_arm64.tar.gz" nexus-desktop
+          fi
+
+      - name: Upload macOS desktop artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-${{ github.sha }}
+          path: ${{ runner.temp }}/nexus-desktop_Darwin_arm64.*
+          if-no-files-found: error
 
   snapshot:
     name: GoReleaser Snapshot Build
@@ -308,10 +438,10 @@ jobs:
     needs: [test-linux, test-windows, test-macos, frontend, desktop-linux, desktop-windows, desktop-macos]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.25.14'
           cache: true

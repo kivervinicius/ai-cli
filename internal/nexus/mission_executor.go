@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kivervinicius/ai-cli/internal/control/events"
 	"github.com/kivervinicius/ai-cli/internal/nexus/autonomyguard"
 	"github.com/kivervinicius/ai-cli/internal/nexus/runner"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
@@ -87,21 +88,53 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 	if err != nil {
 		return runner.AllocationResult{}, err
 	}
-	accounts = filterFlowResourceAccounts(accounts, pkg.Provider, pkg.Profile)
-	if len(accounts) == 0 {
-		return runner.AllocationResult{}, fmt.Errorf("no configured provider profiles satisfy Flow Step %s resource restrictions", pkg.PackageID)
-	}
 
 	current, _ := currentAgentConfig(st, agent)
-	selected, keepCurrent := selectCurrentResource(accounts, current, req, policy)
+	isFailover := pkg.Attempt > 1 && (pkg.RetryFrom == runner.StateAllocating || isQuotaOrRateLimitFailure(pkg.ErrorMessage))
+
+	candidateAccounts := accounts
+	if !isFailover {
+		candidateAccounts = filterFlowResourceAccounts(accounts, pkg.Provider, pkg.Profile)
+	} else if current.Provider != "" {
+		// Exclude the failing provider/profile to prevent looping failover
+		candidateAccounts = filterOutFailingResource(accounts, current.Provider, current.Profile)
+	}
+
+	if len(candidateAccounts) == 0 {
+		return runner.AllocationResult{}, fmt.Errorf("no eligible alternative provider profiles available for Flow Step %s after quota/rate limit failure", pkg.PackageID)
+	}
+
+	var selected ProviderAccount
+	var keepCurrent bool
+	if !isFailover {
+		selected, keepCurrent = selectCurrentResource(candidateAccounts, current, req, policy)
+	}
 	if !keepCurrent {
-		recommendation := RecommendResources(accounts, req, policy)
+		recommendation := RecommendResources(candidateAccounts, req, policy)
 		if recommendation.Recommended == nil {
 			return runner.AllocationResult{}, fmt.Errorf("no provider/profile satisfies Flow Step %s requirements: %s", pkg.PackageID, recommendation.Explanation)
 		}
 		selected = recommendation.Recommended.Account
 	}
+
 	current.Provider, current.Profile = selected.Provider, selected.Profile
+	pkg.Provider, pkg.Profile = selected.Provider, selected.Profile
+
+	if isFailover {
+		events.DefaultBus().Publish(events.NewEvent(
+			run.ID,
+			selected.Provider,
+			selected.Profile,
+			events.EventQuotaFailoverCompleted,
+			fmt.Sprintf("Auto-failover para %s:%s após esgotamento de quota/rate-limit.", selected.Provider, selected.Profile),
+			map[string]any{
+				"package_id": pkg.PackageID,
+				"provider":   selected.Provider,
+				"profile":    selected.Profile,
+				"attempt":    pkg.Attempt,
+			},
+		))
+	}
 	// Interactive and Flow agents run in the Project folder by default. Worktree
 	// isolation stays opt-in via agent config or project.default_isolation.
 	if !run.Autonomous && strings.TrimSpace(current.Workspace) == "" && strings.TrimSpace(current.Isolation) == "" {
@@ -225,6 +258,28 @@ func filterFlowResourceAccounts(accounts []ProviderAccount, provider, profile st
 		out = append(out, account)
 	}
 	return out
+}
+
+func filterOutFailingResource(accounts []ProviderAccount, failingProvider, failingProfile string) []ProviderAccount {
+	out := make([]ProviderAccount, 0, len(accounts))
+	for _, a := range accounts {
+		if strings.EqualFold(a.Provider, failingProvider) && strings.EqualFold(a.Profile, failingProfile) {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
+func isQuotaOrRateLimitFailure(msg string) bool {
+	msg = strings.ToLower(msg)
+	return strings.Contains(msg, "429") ||
+		strings.Contains(msg, "rate limit") ||
+		strings.Contains(msg, "rate_limit") ||
+		strings.Contains(msg, "quota") ||
+		strings.Contains(msg, "insufficient_quota") ||
+		strings.Contains(msg, "exhausted") ||
+		strings.Contains(msg, "credits")
 }
 
 func (e *nexusPackageExecutor) Compile(ctx context.Context, run *runner.MissionRun, pkg *runner.PackageRun) (runner.PromptArtifact, error) {

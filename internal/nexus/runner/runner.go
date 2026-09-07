@@ -151,7 +151,7 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 	}
 	refreshDependencyStates(run)
 	if allPackagesVerified(run) {
-		return r.completeRun(ctx, run)
+		return r.verifyGlobalDefinition(ctx, leaseCtx, run)
 	}
 
 	pkg := nextPackage(run)
@@ -221,7 +221,11 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 					_ = r.saveRun(ctx, run)
 					return run, false, err
 				}
-				if terminalErr := r.markRemediation(run, pkg, StateCompiling, err.Error()); terminalErr != nil {
+				retryFrom := StateCompiling
+				if isQuotaOrRateLimitError(err) {
+					retryFrom = StateAllocating
+				}
+				if terminalErr := r.markRemediation(run, pkg, retryFrom, err.Error()); terminalErr != nil {
 					run.UpdatedAt = time.Now().UTC()
 					_ = r.saveRun(ctx, run)
 					return run, false, terminalErr
@@ -308,7 +312,7 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 
 	refreshDependencyStates(run)
 	if allPackagesVerified(run) {
-		return r.completeRun(ctx, run)
+		return r.verifyGlobalDefinition(ctx, leaseCtx, run)
 	}
 	select {
 	case hbErr := <-heartbeatErr:
@@ -369,6 +373,53 @@ func (r *MissionRunner) completeRun(ctx context.Context, run *MissionRun) (*Miss
 		return run, false, err
 	}
 	return run, true, nil
+}
+
+// verifyGlobalDefinition is the final fail-closed gate. Package review is not
+// sufficient evidence that the integrated delivery satisfies the plan's
+// Definition of Done. Product-created autonomous runs populate the explicit
+// global command set during contract normalization.
+func (r *MissionRunner) verifyGlobalDefinition(ctx, operationCtx context.Context, run *MissionRun) (*MissionRun, bool, error) {
+	commands := run.Contract.GlobalVerificationCommands
+	if len(commands) == 0 {
+		// Keep direct legacy runner callers compatible; product admission still
+		// requires a real global command set for autonomous runs.
+		return r.completeRun(ctx, run)
+	}
+	run.State = StateVerifying
+	run.UpdatedAt = time.Now().UTC()
+	if err := r.saveRun(ctx, run); err != nil {
+		return run, false, err
+	}
+	results := r.verifier.RunVerification(operationCtx, run.Workspace, commands)
+	run.GlobalVerifications = append(run.GlobalVerifications, results...)
+	if verificationPassed(results, true) {
+		return r.completeRun(ctx, run)
+	}
+	var target *PackageRun
+	for i := range run.PackageRuns {
+		if run.PackageRuns[i].State == StateVerified {
+			target = &run.PackageRuns[i]
+		}
+	}
+	if target == nil {
+		run.State = StateBlockedNeedsUser
+		run.PausedReason = verificationFailureContext(results)
+		run.UpdatedAt = time.Now().UTC()
+		_ = r.saveRun(ctx, run)
+		return run, false, fmt.Errorf("global Definition of Done failed without a verified package to reopen")
+	}
+	if err := r.markRemediation(run, target, StateCompiling, "Global Definition of Done failed: "+verificationFailureContext(results)); err != nil {
+		run.UpdatedAt = time.Now().UTC()
+		_ = r.saveRun(ctx, run)
+		return run, false, err
+	}
+	run.State = StateExecuting
+	run.UpdatedAt = time.Now().UTC()
+	if err := r.saveRun(ctx, run); err != nil {
+		return run, false, err
+	}
+	return run, false, fmt.Errorf("global Definition of Done failed; package %s reopened for remediation", target.PackageID)
 }
 
 func (r *MissionRunner) PauseRun(ctx context.Context, runID, reason string) (*MissionRun, error) {
@@ -739,3 +790,17 @@ func IsTerminalState(s State) bool {
 }
 
 func isTerminalRunState(s State) bool { return IsTerminalState(s) }
+
+func isQuotaOrRateLimitError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "429") ||
+		strings.Contains(msg, "rate limit") ||
+		strings.Contains(msg, "rate_limit") ||
+		strings.Contains(msg, "quota") ||
+		strings.Contains(msg, "insufficient_quota") ||
+		strings.Contains(msg, "exhausted") ||
+		strings.Contains(msg, "credits")
+}

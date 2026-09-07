@@ -7,6 +7,7 @@ import {
   CircleHelp,
   Command,
   Menu,
+  Minimize2,
   MoonStar,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -18,7 +19,7 @@ import { AttentionIntermediationBanner } from '../components/AttentionIntermedia
 import { pushNotifications } from '../notifications/PushNotificationManager';
 import { InAppNotificationCenter } from '../notifications/InAppNotificationCenter';
 import { ProjectCreateMenu } from '../features/projects/ProjectCreateMenu';
-import type { Agent, Project, RuntimeSession } from '../types';
+import type { Agent, EventRecord, Project, RuntimeSession } from '../types';
 import type { RadarRuntimeItem } from './attentionRadarModel';
 import styles from './NexusShell.module.scss';
 
@@ -26,8 +27,11 @@ export const NexusShell: React.FC<{
   project: Project;
   agents: Agent[];
   runtimes?: RuntimeSession[];
+  events?: EventRecord[];
   rail: React.ReactNode;
   children: React.ReactNode;
+  zenMode?: boolean;
+  onToggleZenMode?: () => void;
   onOpenRail: () => void;
   onOpenSurface?: (kind: string) => void;
   onCommand: () => void;
@@ -44,8 +48,11 @@ export const NexusShell: React.FC<{
   project,
   agents,
   runtimes = [],
+  events,
   rail,
   children,
+  zenMode = false,
+  onToggleZenMode,
   onOpenRail,
   onOpenSurface,
   onCommand,
@@ -90,7 +97,21 @@ export const NexusShell: React.FC<{
   );
 
   return (
-    <div className="nx-os-shell">
+    <div className={zenMode ? 'nx-os-shell nx-os-shell--zen' : 'nx-os-shell'}>
+      {zenMode && onToggleZenMode && (
+        <aside className={styles.zenFloatingBar} aria-label={t('workspace.focusActive')}>
+          <button
+            type="button"
+            className={styles.zenExitBtn}
+            onClick={onToggleZenMode}
+            title={t('workspace.focusModeHint')}
+          >
+            <Minimize2 size={13} />
+            <span>{t('workspace.exitFocus')}</span>
+            <kbd>Ctrl+Shift+F</kbd>
+          </button>
+        </aside>
+      )}
       <a href="#nexus-workspace" className="nx-skip-link">
         {t('shell.skip')}
       </a>
@@ -222,6 +243,7 @@ export const NexusShell: React.FC<{
 
       <InAppNotificationCenter
         runtimes={runtimes}
+        events={events}
         focusedProjectId={project.id}
         drawerOpen={notificationDrawerOpen}
         onCloseDrawer={() => setNotificationDrawerOpen(false)}

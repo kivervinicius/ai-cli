@@ -107,10 +107,39 @@ async function main() {
 
     const context = await browser.newContext();
     const page = await context.newPage();
+    const pageErrors = [];
+    page.on('pageerror', (error) => pageErrors.push(String(error?.message || error)));
 
     console.log(`Navigating to ${bootstrapUrl}...`);
     await page.goto(bootstrapUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForSelector('.nx-os-shell', { timeout: 10000 });
+
+    console.log('3.1. Testing Overview → Terminal tab persistence...');
+    const overviewProductTab = page.locator('.nx-workspace-tab[data-kind="overview"]').first();
+    const terminalsProductTab = page.locator('.nx-workspace-tab[data-kind="terminals"]').first();
+    await overviewProductTab.waitFor({ state: 'visible', timeout: 10000 });
+    await terminalsProductTab.waitFor({ state: 'visible', timeout: 10000 });
+    await overviewProductTab.click();
+    await page.waitForFunction(
+      () => document.querySelector('.nx-workspace-tab[data-kind="overview"]')?.getAttribute('aria-selected') === 'true',
+    );
+    assert.match(new URL(page.url()).pathname, /\/overview$/, 'Overview tab must own the overview route');
+    await terminalsProductTab.click();
+    await page.waitForFunction(
+      () => document.querySelector('.nx-workspace-tab[data-kind="terminals"]')?.getAttribute('aria-selected') === 'true',
+    );
+    assert.match(new URL(page.url()).pathname, /\/terminals$/, 'Terminal tab must own the terminals route');
+    await page.waitForTimeout(750);
+    assert.equal(
+      await terminalsProductTab.getAttribute('aria-selected'),
+      'true',
+      'Terminal must remain active after persisted layout synchronization',
+    );
+    assert.equal(
+      pageErrors.some((message) => /dimensions|Viewport\._innerRefresh/i.test(message)),
+      false,
+      `Terminal tab must not raise xterm viewport errors: ${pageErrors.join(' | ')}`,
+    );
 
     const axeResults = await new AxeBuilder({ page }).analyze();
     const seriousViolations = axeResults.violations.filter((violation) =>
@@ -122,6 +151,21 @@ async function main() {
       0,
       `critical/serious accessibility violations: ${seriousViolations.map((item) => item.id).join(', ')}`,
     );
+    const minorViolations = axeResults.violations.filter(
+      (violation) => !['serious', 'critical'].includes(violation.impact),
+    );
+    if (minorViolations.length > 0) {
+      console.warn(
+        `  ⚠ Axe non-blocking findings: ${minorViolations
+          .map(
+            (item) =>
+              `${item.id} (${item.impact || 'unknown'}) ${item.nodes
+                .map((node) => node.target.join(' '))
+                .join(', ')}`,
+          )
+          .join(', ')}`,
+      );
+    }
     console.log(
       `  ✓ Axe accessibility scan passed (${axeResults.violations.length} minor violations)`,
     );
@@ -208,9 +252,7 @@ async function main() {
     console.log('6. Testing Settings Surface, Accordion WAI-ARIA and Density Delta...');
     await page.setViewportSize({ width: 1280, height: 800 });
     const settingsBtn = page
-      .locator(
-        'button[aria-label*="Aparência"], button[aria-label*="Appearance"], button[title*="Aparência"], button[title*="Appearance"], button:has-text("Settings")',
-      )
+      .getByRole('button', { name: /apar[eê]ncia|appearance|settings/i })
       .first();
     await settingsBtn.waitFor({ state: 'visible', timeout: 5000 });
     await settingsBtn.click();
@@ -219,7 +261,10 @@ async function main() {
     await settingsTab.waitFor({ state: 'visible', timeout: 5000 });
     await settingsTab.click();
     await page.waitForFunction(
-      () => document.querySelector('.nx-workspace-tab[data-kind="settings"]')?.getAttribute('aria-selected') === 'true',
+      () =>
+        document
+          .querySelector('.nx-workspace-tab[data-kind="settings"]')
+          ?.getAttribute('aria-selected') === 'true',
     );
 
     const settingsTabs = page.locator('.nx-settings-tabs [role="tab"]');
@@ -243,7 +288,9 @@ async function main() {
     );
     await settingsTabs.first().click();
     await page.waitForFunction(
-      () => document.querySelector('.nx-settings-tabs [role="tab"]')?.getAttribute('aria-selected') === 'true',
+      () =>
+        document.querySelector('.nx-settings-tabs [role="tab"]')?.getAttribute('aria-selected') ===
+        'true',
     );
 
     // Validação do Accordion

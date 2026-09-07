@@ -17,3 +17,60 @@
   box-shadow: 0 0 6px var(--nx-warning);
   pointer-events: none;
 }
+
+.zenFloatingBar {
+  position: fixed;
+  top: 8px;
+  right: 14px;
+  z-index: var(--nx-z-modal);
+  opacity: 0.75;
+  transition:
+    opacity 0.2s ease-in-out,
+    transform 0.2s ease-in-out;
+
+  &:hover,
+  &:focus-within {
+    opacity: 1;
+    transform: translateY(2px);
+  }
+}
+
+.zenExitBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: var(--nx-font-size-xs);
+  font-family: inherit;
+  color: var(--nx-text);
+  background: color-mix(in srgb, var(--nx-bg-elevated) 90%, var(--nx-accent) 10%);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-full);
+  box-shadow: var(--nx-shadow-lg);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+
+  &:hover {
+    background: var(--nx-bg-elevated);
+    border-color: var(--nx-accent);
+    color: var(--nx-accent-text);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--nx-focus-ring);
+    outline-offset: 2px;
+  }
+
+  kbd {
+    display: inline-block;
+    padding: 1px 5px;
+    font-size: 10px;
+    font-family: var(--nx-font-mono);
+    color: var(--nx-text-muted);
+    background: color-mix(in srgb, var(--nx-bg) 80%, transparent);
+    border: 1px solid var(--nx-border);
+    border-radius: var(--nx-radius-sm);
+  }
+}

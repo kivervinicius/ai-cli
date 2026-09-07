@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://github.com/IAPro-Community"><img src="https://img.shields.io/badge/Organization-IAPro--Community-blueviolet?style=for-the-badge&logo=github" alt="IAPro Community"></a>
   <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?style=for-the-badge&logo=go" alt="Go Version"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-green.svg?style=for-the-badge" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge" alt="License"></a>
   <a href="https://kernel.org"><img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Platform"></a>
   <img src="https://img.shields.io/badge/Providers-Codex%20%7C%20AGY%20%7C%20Claude%20%7C%20OpenCode%20%7C%20Gemini%20%7C%20Cursor-7C3AED?style=for-the-badge" alt="Supported Providers">
 </p>
@@ -68,7 +68,9 @@ knowledge.
 
 ### Requirements
 
-- **OS:** Linux, macOS or Windows (runtime, not just compilation).
+- **OS:** Linux has local runtime evidence in this campaign; Windows and macOS
+  have code/build coverage in progress, but native runtime evidence for the
+  candidate is still pending CI. See the [support matrix](docs/platform/PLATFORM_SUPPORT_MATRIX.md).
 - **Go 1.25+** only if building from source.
 - **Providers:** official CLIs (`codex`, `claude`, `gemini`, `opencode`, `agy`,
   `cursor`) are auto-detected on `PATH`.
@@ -77,16 +79,32 @@ knowledge.
 
 ```bash
 # Linux / macOS (amd64 or arm64)
-curl -fsSL https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.sh | bash -s -- --version=v0.5.0-beta.23
 ```
 
 ```powershell
 # Windows (PowerShell)
-irm https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.ps1 | iex
+$installer = (Invoke-WebRequest https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.ps1).Content
+& ([scriptblock]::Create($installer)) -Version v0.5.0-beta.23
 ```
 
-The installer downloads the latest release binary and falls back to building from
-source if needed.
+The installer downloads the pinned release binary and verifies its SHA-256 entry
+from the matching `checksums.txt`. Source builds require the explicit
+`--build-from-source` / `-BuildFromSource` option.
+
+On Windows, if Go is missing during a source build, the installer attempts to
+install the official `GoLang.Go` package through WinGet. If WinGet is unavailable,
+it prints the official download URL for manual installation.
+
+When the release includes the native shell, the installer also installs
+`nexus-desktop` and creates a Desktop launcher. Use `--no-desktop` or
+`-NoDesktop` to install only the CLI.
+
+> **Community Preview security note:** these examples fetch the installer from
+> the `main` branch. Review and pin the script to a commit before using it in
+> automation. Current artifact verification is SHA-256 only; the public key and
+> Ed25519 manifest verification are not published yet, so this flow must not be
+> described as a signed supply chain.
 
 ### Option B — Build from source
 
@@ -455,9 +473,12 @@ runs after all three jobs succeed.
 
 | Target platform | Runtime covered by CI | Release artifact | Evidence in this local copy |
 |---|---|---|---|
-| Linux amd64/arm64 | PTY, socket, SessionHost and Web | `tar.gz` | Frontend + available offline Go units; full Go 1.25 suite requires CI |
-| Windows amd64/arm64 | ConPTY, Named Pipe, SessionHost and Web | `.zip` | requires `windows-latest` job |
-| macOS amd64/arm64 | PTY, socket, SessionHost and Web | `tar.gz` | requires `macos-latest` job |
+| Linux amd64 | PTY, socket, SessionHost and Web | `tar.gz` | local/Linux CI evidence available; native Desktop smoke still pending |
+| Linux arm64 | cross-compilation | `tar.gz` | native runtime unverified |
+| Windows amd64 | ConPTY, Named Pipe, SessionHost and Web | `.zip` | requires native `windows-latest` job |
+| Windows arm64 | cross-compilation | `.zip` | native runtime unverified |
+| macOS amd64 | cross-compilation | `tar.gz` | native runtime unverified |
+| macOS arm64 | PTY, socket, SessionHost and Web | `.app`/`tar.gz` | requires native `macos-latest` job |
 
 **Release rule:** only advertise a platform as validated for a version after its
 native job is green. Cross-compilation alone is not runtime evidence.
@@ -535,7 +556,7 @@ goreleaser release --snapshot --clean
 
 ## 17. License
 
-Apache-2.0. A project of the **IAPro Community**.
+MIT. A project of the **IAPro Community**.
 
 ---
 

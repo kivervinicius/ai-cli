@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
+
+var mockRuntimeSeq uint64
 
 // mockLauncher satisfies the Launcher interface for unit tests without spawning
 // real processes. It registers runtimes in the DefaultRegistry so runtimeAlive()
@@ -40,7 +43,8 @@ func (m *mockLauncher) Launch(_ context.Context, opts launcher.LaunchOptions) (*
 		Transport:         "mock",
 	}
 	if sess.RuntimeID == "" {
-		sess.RuntimeID = fmt.Sprintf("mock-%s", opts.ProviderID)
+		seq := atomic.AddUint64(&mockRuntimeSeq, 1)
+		sess.RuntimeID = fmt.Sprintf("mock-%s-%d", opts.ProviderID, seq)
 	}
 	if err := registry.DefaultRegistry().Register(sess); err != nil {
 		return nil, fmt.Errorf("mock register: %w", err)

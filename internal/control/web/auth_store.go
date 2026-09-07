@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"syscall"
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/core/config"
@@ -203,17 +202,6 @@ func listenHealthOK(baseURL string) bool {
 	}
 	defer resp.Body.Close()
 	return resp.StatusCode == http.StatusOK
-}
-
-func processAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	return proc.Signal(syscall.Signal(0)) == nil
 }
 
 func atomicWriteFile(path string, data []byte, mode os.FileMode) error {

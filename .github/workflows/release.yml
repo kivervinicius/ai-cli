@@ -11,26 +11,101 @@ on:
         type: string
 
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
+  checks: read
+  actions: read
 
 env:
   GOTOOLCHAIN: local
   GOFLAGS: -mod=readonly
 
 jobs:
+  same-sha-gate:
+    name: Same-SHA CI gate
+    runs-on: ubuntu-latest
+    outputs:
+      ci-run-id: ${{ steps.verify.outputs.ci-run-id }}
+    steps:
+      - name: Wait for required CI checks on this SHA
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          required=(
+            'Frontend (Format, Lint, Styles, Typecheck, Unit & Build)'
+            'Security'
+            'Browser E2E, Axe & visual smoke'
+            'Linux E2E (Go 1.25.14)'
+            'Windows E2E (ConPTY, Named Pipe, PowerShell)'
+            'macOS E2E (PTY, Socket, Resize, Install)'
+            'Desktop Linux (Wails native build)'
+            'Desktop Windows (Wails native build)'
+            'Desktop macOS (Wails native build)'
+            'GoReleaser Snapshot Build'
+          )
+          run_id=''
+          for attempt in $(seq 1 60); do
+            run_json="$(gh run list --workflow ci.yml --commit "$SHA" --limit 1 --json databaseId,status,conclusion,headSha)"
+            run_id="$(jq -r '.[0].databaseId // empty' <<<"$run_json")"
+            run_status="$(jq -r '.[0].status // empty' <<<"$run_json")"
+            run_conclusion="$(jq -r '.[0].conclusion // empty' <<<"$run_json")"
+            if [ -z "$run_id" ]; then
+              echo "No CI run found for $SHA (attempt $attempt/60)."
+              sleep 30
+              continue
+            fi
+            if [ "$run_status" = "completed" ]; then
+              break
+            fi
+            echo "Waiting for CI run $run_id for $SHA to complete (attempt $attempt/60; status=$run_status)..."
+            sleep 30
+          done
+          test -n "$run_id" || { echo "No completed CI run found for $SHA" >&2; exit 1; }
+          test "$run_status" = completed || { echo "CI run $run_id did not complete" >&2; exit 1; }
+          test "$run_conclusion" = success || {
+            echo "CI run $run_id for $SHA concluded $run_conclusion; required checks are not green." >&2
+            gh run view "$run_id" --json jobs --jq '.jobs[] | [.name, .conclusion] | @tsv' >&2
+            exit 1
+          }
+          mapfile -t failed < <(gh run view "$run_id" --json jobs --jq '.jobs[] | select(.conclusion != "success") | .name')
+          if [ "${#failed[@]}" -ne 0 ]; then
+            printf 'CI run %s has failed/skipped jobs:\n%s\n' "$run_id" "${failed[*]}" >&2
+            exit 1
+          fi
+          jobs_json="$(gh run view "$run_id" --json jobs)"
+          for expected in "${required[@]}"; do
+            # Matrix jobs append the Go patch version to their display name.
+            # Match the functional job prefix but require exactly one success;
+            # this remains strict while avoiding patch-version drift.
+            jq -e --arg prefix "$expected" \
+              '[.jobs[] | select(.conclusion == "success" and (.name == $prefix or (.name | startswith($prefix + " ("))))] | length == 1' \
+              <<<"$jobs_json" >/dev/null || {
+              echo "Required same-SHA successful job missing or ambiguous: $expected" >&2
+              exit 1
+            }
+          done
+          echo "ci-run-id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "Same-SHA CI run $run_id passed all required jobs for $SHA."
+
   release:
+    needs: same-sha-gate
     runs-on: ubuntu-latest
     environment: beta-signing
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+      attestations: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.25.14'
           cache: true
@@ -69,7 +144,24 @@ jobs:
         run: |
           test -n "$NEXUS_UPDATE_PRIVATE_KEY"
           test -n "$NEXUS_UPDATE_KEY_ID"
-          go run ./scripts/sign-update-manifest --dist dist --version "$RELEASE_VERSION" --key-id "$NEXUS_UPDATE_KEY_ID" --private-key "$NEXUS_UPDATE_PRIVATE_KEY"
+          go run ./scripts/sign-update-manifest --dist dist --version "$RELEASE_VERSION" --key-id "$NEXUS_UPDATE_KEY_ID" --private-key "$NEXUS_UPDATE_PRIVATE_KEY" --base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_VERSION}"
+
+      - name: Promote native Desktop artifacts from same-SHA CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_RUN_ID: ${{ needs.same-sha-gate.outputs.ci-run-id }}
+        run: |
+          set -euo pipefail
+          mkdir -p native-artifacts
+          gh run download "$CI_RUN_ID" --name "desktop-linux-${GITHUB_SHA}" --dir native-artifacts
+          gh run download "$CI_RUN_ID" --name "desktop-windows-${GITHUB_SHA}" --dir native-artifacts
+          gh run download "$CI_RUN_ID" --name "desktop-macos-${GITHUB_SHA}" --dir native-artifacts
+          find native-artifacts -type f -maxdepth 2 -print
+
+      - name: Generate native Desktop checksums
+        run: |
+          set -euo pipefail
+          (cd native-artifacts && sha256sum nexus-desktop_* > desktop-checksums.txt)
 
       - name: Attest release artifacts
         uses: actions/attest-build-provenance@v2
@@ -79,5 +171,7 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: |
+            dist/*
+            native-artifacts/*
           generate_release_notes: true

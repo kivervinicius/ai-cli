@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://github.com/IAPro-Community"><img src="https://img.shields.io/badge/Organization-IAPro--Community-blueviolet?style=for-the-badge&logo=github" alt="IAPro Community"></a>
   <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?style=for-the-badge&logo=go" alt="Versão Go"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-green.svg?style=for-the-badge" alt="Licença"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge" alt="Licença MIT"></a>
   <a href="https://kernel.org"><img src="https://img.shields.io/badge/Plataforma-Linux%20%7C%20macOS%20%7C%20Windows-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Plataforma"></a>
   <img src="https://img.shields.io/badge/Providers-Codex%20%7C%20AGY%20%7C%20Claude%20%7C%20OpenCode%20%7C%20Gemini%20%7C%20Cursor-7C3AED?style=for-the-badge" alt="Provedores Suportados">
 </p>
@@ -30,6 +30,11 @@
 ---
 
 # Manual do IAPro Nexus
+
+> **Mapa de lançamento:** [documentação técnica e de produto](docs/README.md) ·
+> [guia do produto](docs/community-preview/PRODUCT_GUIDE.md) ·
+> [visão técnica](docs/community-preview/TECHNICAL_OVERVIEW.md) ·
+> [playbook de publicação](docs/community-preview/RELEASE_PLAYBOOK.md)
 
 Este manual cobre **do básico ao avançado**, em linguagem clara para quem está
 começando e com profundidade técnica para quem já vive de terminal.
@@ -71,7 +76,9 @@ conhecimento do Maestro.
 
 ### Requisitos
 
-- **Sistema:** Linux, macOS ou Windows (runtime, não só compilação).
+- **Sistema:** Linux tem evidência de runtime local nesta campanha; Windows e
+  macOS têm código/build em evolução, mas o runtime nativo do candidato ainda
+  aguarda CI verificável. Consulte a [matriz de suporte](docs/platform/PLATFORM_SUPPORT_MATRIX.md).
 - **Go 1.25+** apenas se for compilar do código-fonte.
 - **Provedores:** os CLIs oficiais (`codex`, `claude`, `gemini`, `opencode`,
   `agy`, `cursor`) são detectados no `PATH`.
@@ -80,16 +87,32 @@ conhecimento do Maestro.
 
 ```bash
 # Linux / macOS (amd64 ou arm64)
-curl -fsSL https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.sh | bash -s -- --version=v0.5.0-beta.23
 ```
 
 ```powershell
 # Windows (PowerShell)
-irm https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.ps1 | iex
+$installer = (Invoke-WebRequest https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.ps1).Content
+& ([scriptblock]::Create($installer)) -Version v0.5.0-beta.23
 ```
 
-O instalador baixa o binário do release mais recente e, se não conseguir, tenta
-compilar do fonte.
+O instalador baixa o binário da versão fixada e verifica seu SHA-256 contra o
+`checksums.txt` correspondente. A compilação do fonte exige explicitamente
+`--build-from-source` / `-BuildFromSource`.
+
+No Windows, se o Go não estiver instalado durante uma compilação do fonte, o
+instalador tenta instalar o pacote oficial `GoLang.Go` pelo WinGet. Se o WinGet
+não estiver disponível, ele informa o download oficial para instalação manual.
+
+Quando a release inclui o shell nativo, o instalador também instala
+`nexus-desktop` e cria um lançador na Área de Trabalho. Use `--no-desktop` ou
+`-NoDesktop` para instalar apenas o CLI.
+
+> **Nota de segurança do Community Preview:** estes exemplos obtêm o script
+> instalador da branch `main`. Revise e fixe o script por commit antes de usá-lo
+> em automação. A verificação atual do artefato é SHA-256; a chave pública e a
+> verificação Ed25519 do manifest ainda não estão publicadas, portanto este
+> fluxo não deve ser descrito como supply chain assinada.
 
 ### Opção B — Compilar do código-fonte
 
@@ -471,9 +494,12 @@ roda depois dos três jobs.
 
 | Plataforma alvo | Runtime coberto pela CI | Artefato de release | Evidência nesta cópia local |
 |---|---|---|---|
-| Linux amd64/arm64 | PTY, socket, SessionHost e Web | `tar.gz` | Frontend + unidades Go offline disponíveis; suíte Go 1.25 completa requer CI |
-| Windows amd64/arm64 | ConPTY, Named Pipe, SessionHost e Web | `.zip` | requer job `windows-latest` |
-| macOS amd64/arm64 | PTY, socket, SessionHost e Web | `tar.gz` | requer job `macos-latest` |
+| Linux amd64 | PTY, socket, SessionHost e Web | `tar.gz` | evidência local/CI Linux disponível; Desktop nativo ainda requer smoke |
+| Linux arm64 | compilação cruzada | `tar.gz` | runtime nativo não verificado |
+| Windows amd64 | ConPTY, Named Pipe, SessionHost e Web | `.zip` | requer job nativo `windows-latest` |
+| Windows arm64 | compilação cruzada | `.zip` | runtime nativo não verificado |
+| macOS amd64 | compilação cruzada | `tar.gz` | runtime nativo não verificado |
+| macOS arm64 | PTY, socket, SessionHost e Web | `.app`/`tar.gz` | requer job nativo `macos-latest` |
 
 **Regra de release:** uma plataforma só deve ser anunciada como validada para a
 versão quando o job nativo correspondente estiver verde. Build cruzado, sozinho,
@@ -552,7 +578,7 @@ goreleaser release --snapshot --clean
 
 ## 17. Licença
 
-Apache-2.0. Projeto da comunidade **IAPro Community**.
+MIT. Projeto da comunidade **IAPro Community**.
 
 ---
 

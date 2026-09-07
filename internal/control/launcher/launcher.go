@@ -14,6 +14,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
+	"github.com/kivervinicius/ai-cli/internal/core/quota"
 	"github.com/kivervinicius/ai-cli/internal/runtime"
 )
 
@@ -84,7 +85,16 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 		Name:     opts.ProfileID,
 	}
 
-	configuredArgs, err := driver.ApplyLaunchConfiguration(opts.ProviderID, opts.Model, opts.Options, opts.Args)
+	launchModel := opts.Model
+	if strings.EqualFold(strings.TrimSpace(opts.ProviderID), "agy") && strings.TrimSpace(launchModel) == "" {
+		quotaEngine := quota.NewEngine(quota.DefaultTTL)
+		cachedUsage, _ := quotaEngine.GetCachedUsage(opts.ProviderID, opts.ProfileID)
+		if !quotaEngine.Trustworthy(cachedUsage) {
+			cachedUsage.Windows = nil
+		}
+		launchModel = driver.ResolveLaunchModel(opts.ProviderID, launchModel, cachedUsage)
+	}
+	configuredArgs, err := driver.ApplyLaunchConfiguration(opts.ProviderID, launchModel, opts.Options, opts.Args)
 	if err != nil {
 		return nil, fmt.Errorf("invalid launch configuration for %s:%s: %w", opts.ProviderID, opts.ProfileID, err)
 	}
@@ -128,7 +138,7 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 		ProviderID:        opts.ProviderID,
 		ProfileID:         opts.ProfileID,
 		ProviderSessionID: opts.ProviderSessionID,
-		Model:             opts.Model,
+		Model:             launchModel,
 		Workspace:         opts.Workspace,
 		Binary:            bin,
 		Args:              registryArgs,

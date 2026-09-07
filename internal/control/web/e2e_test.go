@@ -59,8 +59,6 @@ func TestWeb_FullE2E(t *testing.T) {
 	}()
 	defer srv.Shutdown(context.Background())
 
-	time.Sleep(50 * time.Millisecond)
-
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar}
 

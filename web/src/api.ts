@@ -12,11 +12,9 @@ export type BrowserSession = {
   idle_timeout?: number;
 };
 
-export function setDesktopAuth(token: string, baseUrl?: string) {
+export function setDesktopAuth(token: string, baseUrl = '') {
   desktopAuthToken = token;
-  if (baseUrl) {
-    desktopBaseUrl = baseUrl.replace(/\/+$/, '');
-  }
+  desktopBaseUrl = baseUrl.replace(/\/+$/, '');
 }
 
 export function getDesktopAuthToken(): string {
@@ -66,13 +64,15 @@ export async function initSession(): Promise<BrowserSession> {
         if (bridge.getBootstrapInfo) {
           const bootstrap = await bridge.getBootstrapInfo();
           if (bootstrap && bootstrap.sessionToken) {
-            setDesktopAuth(bootstrap.sessionToken, bootstrap.serverUrl);
+            // Wails serves the Core handler under the same origin as the webview.
+            // Keep API calls relative; using the loopback URL here turns every
+            // request into a cross-origin fetch from wails://wails and fails
+            // without CORS headers before auth can even be evaluated.
+            setDesktopAuth(bootstrap.sessionToken);
             if (bootstrap.csrfToken) {
               csrfToken = bootstrap.csrfToken;
             }
-            const targetUrl = bootstrap.serverUrl
-              ? `${bootstrap.serverUrl}/api/v1/session`
-              : '/api/v1/session';
+            const targetUrl = '/api/v1/session';
             try {
               const res = await fetch(targetUrl, {
                 headers: {
@@ -122,7 +122,7 @@ export async function initSession(): Promise<BrowserSession> {
       try {
         const b = await getPlatformBridge().getBootstrapInfo?.();
         if (b && b.sessionToken) {
-          setDesktopAuth(b.sessionToken, b.serverUrl);
+          setDesktopAuth(b.sessionToken);
         }
       } catch {}
     }

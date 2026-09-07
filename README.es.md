@@ -23,10 +23,14 @@ IAPro Nexus es un espacio de control local para agentes de programación con IA.
 
 ## Instalación
 
+Linux tiene evidencia de runtime local en esta campaña. Windows y macOS tienen
+código y builds en progreso, pero la evidencia nativa del candidato todavía
+depende de CI; consulte la [matriz de soporte](docs/platform/PLATFORM_SUPPORT_MATRIX.md).
+
 Linux y macOS:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.sh | bash -s -- --version=v0.5.0-beta.23
 nexus doctor
 nexus web
 ```
@@ -34,10 +38,22 @@ nexus web
 Windows PowerShell:
 
 ```powershell
-iwr https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.ps1 -UseBasicParsing | iex
+$installer = (Invoke-WebRequest https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.ps1).Content
+& ([scriptblock]::Create($installer)) -Version v0.5.0-beta.23
 nexus doctor
 nexus web
 ```
+
+Cuando la versión incluye el shell nativo, el instalador también instala
+`nexus-desktop` y crea un lanzador en el Escritorio. Usa `--no-desktop` o
+`-NoDesktop` para instalar solo el CLI.
+
+> **Nota de seguridad de Community Preview:** estos ejemplos obtienen el
+> instalador desde la rama `main`. Revise y fije el script a un commit antes de
+> usarlo en automatización. La verificación actual del artefacto solo usa
+> SHA-256; la clave pública y la verificación Ed25519 del manifest todavía no
+> están publicadas, por lo que este flujo no debe describirse como una cadena
+> de suministro firmada.
 
 ## Idioma
 
@@ -113,4 +129,4 @@ El build web genera los archivos estáticos embebidos por el servidor Go. Consul
 - Los handoffs aplican redacción de secretos.
 - Las salidas `--json` son contratos estables e independientes del idioma.
 
-Licencia: [Apache 2.0](LICENSE).
+Licencia: [MIT](LICENSE).

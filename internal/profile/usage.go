@@ -50,11 +50,12 @@ func RefreshUsageSnapshot(providerName, name string) model.UsageSnapshot {
 
 func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnapshot {
 	qEng := quota.NewEngine(5 * time.Minute)
+	lastKnown, hasLastKnown := qEng.GetLastKnownUsage(providerName, name)
 	snap, found := qEng.GetCachedUsage(providerName, name)
 	// Codex rollouts are local filesystem reads (not a blocking CLI). Always
 	// prefer the adapter so stale quota.json with phantom fields cannot hide
 	// the live primary/secondary used_percent from recent sessions.
-	useCache := !refresh && found && len(snap.Windows) > 0 && snap.Status != model.UsageUnknown
+	useCache := !refresh && found && len(snap.Windows) > 0 && snap.Status != model.UsageUnknown && qEng.Trustworthy(snap)
 	if useCache && providerName == "codex" {
 		useCache = false
 	}
@@ -90,20 +91,32 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 	}
 
 	// Reject stale snapshots from adapters: a quota file older than the
-	// trust window is not evidence of live capacity. Downgrading to
-	// UNKNOWN prevents the scheduler and usage tables from displaying
-	// phantom 100% remaining data from disk caches written days ago.
+	// trust window is not evidence of live capacity. Keep processing below so
+	// the last-known fallback can preserve context without treating it as live.
 	if snap.Status != model.UsageUnknown && snap.Status != model.UsageError && len(snap.Windows) > 0 {
 		if !qEng.Trustworthy(snap) {
 			snap.Status = model.UsageUnknown
 			snap.Source = model.SourceNone
 			snap.Windows = nil
+		} else {
+			// Persist only trustworthy data so the scheduler and other
+			// consumers read current quota instead of stale cache files.
+			eng := quota.NewEngine(5 * time.Minute)
+			_ = eng.SaveUsage(snap)
 			return snap
 		}
-		// Persist only trustworthy data so the scheduler and other
-		// consumers read current quota instead of stale cache files.
-		eng := quota.NewEngine(5 * time.Minute)
-		_ = eng.SaveUsage(snap)
+	}
+
+	// A failed refresh must not destroy the last successful observation. Keep
+	// it visible as ESTIMATED, with an explicit diagnostic, while ensuring it
+	// cannot pass the normal freshness check or masquerade as live quota.
+	if hasLastKnown && len(lastKnown.Windows) > 0 {
+		lastKnown.ProviderID = providerName
+		lastKnown.ProfileID = name
+		lastKnown.Status = model.UsageEstimated
+		lastKnown.Error = fmt.Sprintf("live usage refresh failed; showing last known observation from %s", quota.FormatFreshness(lastKnown.FetchedAt))
+		_ = qEng.SaveUsage(lastKnown)
+		return lastKnown
 	}
 
 	return snap

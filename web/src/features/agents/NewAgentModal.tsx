@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Bot,
   Database,
@@ -14,6 +15,7 @@ import {
 import { Button, Card, Dialog, Input, Select } from '../../design-system';
 import { nexus } from '../../nexus/api';
 import type { Agent, Project } from '../../types';
+import styles from './NewAgentModal.module.scss';
 
 export interface AgentTypePreset {
   id: string;
@@ -123,6 +125,7 @@ export const NewAgentModal: React.FC<{
   project: Project;
   onCreated: (agent: Agent) => void;
 }> = ({ open, onClose, project, onCreated }) => {
+  const { t } = useTranslation();
   const [selectedType, setSelectedType] = useState<AgentTypePreset>(CANONICAL_AGENT_TYPES[1]);
   const [name, setName] = useState(CANONICAL_AGENT_TYPES[1].name);
   const [origin, setOrigin] = useState<'native' | 'custom'>('native');
@@ -193,38 +196,14 @@ export const NewAgentModal: React.FC<{
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title="Novo Agente Especialista" wide>
-      <div
-        style={{
-          display: 'grid',
-          gap: '16px',
-          maxHeight: '72vh',
-          overflowY: 'auto',
-          paddingRight: '4px',
-        }}
-      >
+    <Dialog open={open} onClose={onClose} title={t('agents.newSpecialistAgent')} wide>
+      <div className={styles.modalBody}>
         {error && <Card className="nx-inline-error">{error}</Card>}
 
         {/* 1. Escolha da Especialidade */}
         <div>
-          <label
-            style={{
-              display: 'block',
-              fontSize: '12px',
-              fontWeight: 700,
-              marginBottom: '8px',
-              color: 'var(--nx-text-soft)',
-            }}
-          >
-            1. Selecione a especialidade do agente
-          </label>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-              gap: '8px',
-            }}
-          >
+          <label className={styles.sectionLabel}>{t('agents.selectSpecialty')}</label>
+          <div className={styles.presetsGrid}>
             {CANONICAL_AGENT_TYPES.map((preset) => {
               const Icon = preset.icon;
               const isSelected = selectedType.id === preset.id;
@@ -233,47 +212,15 @@ export const NewAgentModal: React.FC<{
                   type="button"
                   key={preset.id}
                   onClick={() => handleSelectType(preset)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '10px',
-                    padding: '10px',
-                    border: '1px solid',
-                    borderColor: isSelected ? 'var(--nx-accent)' : 'var(--nx-border)',
-                    borderRadius: '8px',
-                    background: isSelected ? 'var(--nx-accent-soft)' : 'var(--nx-surface-2)',
-                    color: isSelected ? 'var(--nx-text)' : 'var(--nx-text-soft)',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'all 0.12s',
-                  }}
+                  className={styles.presetButton}
+                  data-selected={isSelected ? 'true' : 'false'}
                 >
-                  <span
-                    style={{
-                      width: '28px',
-                      height: '28px',
-                      borderRadius: '6px',
-                      display: 'grid',
-                      placeItems: 'center',
-                      background: isSelected ? 'var(--nx-accent)' : 'var(--nx-surface-3)',
-                      color: isSelected ? 'white' : 'var(--nx-accent-text)',
-                      flexShrink: 0,
-                    }}
-                  >
+                  <span className={styles.presetIconWrap}>
                     <Icon size={15} />
                   </span>
-                  <div style={{ minWidth: 0 }}>
-                    <strong style={{ fontSize: '12.5px', display: 'block' }}>{preset.name}</strong>
-                    <small
-                      style={{
-                        fontSize: '11px',
-                        color: 'var(--nx-muted)',
-                        lineHeight: '1.3',
-                        display: 'block',
-                      }}
-                    >
-                      {preset.description}
-                    </small>
+                  <div className={styles.presetContent}>
+                    <strong className={styles.presetTitle}>{preset.name}</strong>
+                    <small className={styles.presetDesc}>{preset.description}</small>
                   </div>
                 </button>
               );
@@ -282,19 +229,15 @@ export const NewAgentModal: React.FC<{
         </div>
 
         {/* 2. Nome do Agente */}
-        <div style={{ display: 'grid', gap: '6px' }}>
-          <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--nx-text-soft)' }}>
-            2. Nome de exibição
-          </label>
-          <Input value={name} onChange={setName} placeholder="Nome do agente..." />
+        <div className={styles.fieldGroup}>
+          <label className={styles.sectionLabel}>{t('agents.displayNameField')}</label>
+          <Input value={name} onChange={setName} placeholder={t('agents.namePlaceholder')} />
         </div>
 
         {/* 3. Origem e Adaptador de Execução */}
-        <div style={{ display: 'grid', gap: '8px' }}>
-          <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--nx-text-soft)' }}>
-            3. Origem de execução
-          </label>
-          <div style={{ display: 'flex', gap: '8px' }}>
+        <div className={styles.fieldGroup}>
+          <label className={styles.sectionLabel}>{t('agents.executionOrigin')}</label>
+          <div className={styles.buttonRow}>
             <button
               type="button"
               className="nx-button"
@@ -302,7 +245,7 @@ export const NewAgentModal: React.FC<{
               data-size="sm"
               onClick={() => setOrigin('native')}
             >
-              Nativo (Alias Nexus supervisionado)
+              {t('agents.originNative')}
             </button>
             <button
               type="button"
@@ -311,15 +254,13 @@ export const NewAgentModal: React.FC<{
               data-size="sm"
               onClick={() => setOrigin('custom')}
             >
-              Customizado (Adaptador / Docker Template)
+              {t('agents.originCustom')}
             </button>
           </div>
 
           {origin === 'native' ? (
-            <div style={{ display: 'grid', gap: '6px', marginTop: '4px' }}>
-              <label style={{ fontSize: '11.5px', color: 'var(--nx-muted)' }}>
-                Provedor e Alias Nexus
-              </label>
+            <div className={styles.fieldGroup}>
+              <label className={styles.fieldSublabel}>{t('agents.providerAndAlias')}</label>
               <Select
                 value={provider}
                 onChange={(val) => setProvider(val)}
@@ -330,33 +271,23 @@ export const NewAgentModal: React.FC<{
               />
             </div>
           ) : (
-            <div style={{ display: 'grid', gap: '6px', marginTop: '4px' }}>
-              <label style={{ fontSize: '11.5px', color: 'var(--nx-muted)' }}>
-                Template de comando com placeholders (<code>{'{cwd}'}</code>,{' '}
-                <code>{'{args}'}</code>)
-              </label>
+            <div className={styles.fieldGroup}>
+              <label className={styles.fieldSublabel}>{t('agents.commandTemplateLabel')}</label>
               <Input
                 value={commandTemplate}
                 onChange={setCommandTemplate}
                 data-mono="true"
                 placeholder='docker exec -it -w "{cwd}" vpn-dev-workspace-terminal-1 opencode {args}'
               />
-              <small style={{ fontSize: '11px', color: 'var(--nx-subtle)' }}>
-                Use <code>{'{args}'}</code> como argumento separado. O Nexus não executa shell:
-                operadores como <code>|</code> e <code>;</code> são bloqueados. Para OpenCode no
-                Docker, a autenticação deve existir dentro do mesmo container (
-                <code>opencode auth login &lt;provider&gt;</code>).
-              </small>
+              <small className={styles.hintText}>{t('agents.commandTemplateHint')}</small>
             </div>
           )}
         </div>
 
         {/* 4. Modo Inicial */}
-        <div style={{ display: 'grid', gap: '6px' }}>
-          <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--nx-text-soft)' }}>
-            4. Modo operacional
-          </label>
-          <div style={{ display: 'flex', gap: '8px' }}>
+        <div className={styles.fieldGroup}>
+          <label className={styles.sectionLabel}>{t('agents.operationalMode')}</label>
+          <div className={styles.buttonRow}>
             {(['Safe', 'YOLO'] as const).map((m) => (
               <button
                 key={m}
@@ -366,56 +297,28 @@ export const NewAgentModal: React.FC<{
                 data-tone={mode === m ? (m === 'YOLO' ? 'warning' : 'brand') : 'default'}
                 onClick={() => setMode(m)}
               >
-                {m === 'YOLO' ? '⚡ YOLO (Autonomia contínua)' : '🛡️ Safe (Padrão interativo)'}
+                {m === 'YOLO' ? t('agents.modeYolo') : t('agents.modeSafe')}
               </button>
             ))}
           </div>
         </div>
 
         {/* 5. Preview do Comando Resolvido */}
-        <div
-          style={{
-            padding: '10px',
-            background: 'var(--nx-surface-3)',
-            borderRadius: '8px',
-            border: '1px solid var(--nx-border)',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              marginBottom: '4px',
-              fontSize: '11.5px',
-              color: 'var(--nx-subtle)',
-            }}
-          >
+        <div className={styles.previewBox}>
+          <div className={styles.previewHeader}>
             <Terminal size={12} />
-            <span>Comando supervisionado final:</span>
+            <span>{t('agents.finalCommand')}</span>
           </div>
-          <code
-            style={{ fontSize: '12px', color: 'var(--nx-accent-text)', wordBreak: 'break-all' }}
-          >
-            {resolvedPreview}
-          </code>
+          <code className={styles.previewCode}>{resolvedPreview}</code>
         </div>
 
         {/* Ações */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: '8px',
-            paddingTop: '8px',
-            borderTop: '1px solid var(--nx-border)',
-          }}
-        >
+        <div className={styles.actionsRow}>
           <Button onClick={onClose} disabled={busy}>
-            Cancelar
+            {t('common.cancel')}
           </Button>
           <Button tone="brand" onClick={handleCreate} disabled={busy || !name.trim()}>
-            <Play size={13} /> {busy ? 'Criando...' : 'Criar e Abrir Terminal'}
+            <Play size={13} /> {busy ? t('agents.creating') : t('agents.createAndOpenTerminal')}
           </Button>
         </div>
       </div>

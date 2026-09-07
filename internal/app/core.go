@@ -10,6 +10,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/web"
 	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/localization"
+	"github.com/kivervinicius/ai-cli/internal/nexus"
 )
 
 // CoreConfig encapsulates runtime options for the reusable Nexus Core.
@@ -55,6 +56,7 @@ func NewCore(cfg CoreConfig) (*Core, error) {
 
 // Start launches the Nexus Control API server and signals Ready() when listening.
 func (c *Core) Start(ctx context.Context) error {
+	nexus.Default().StartQuotaMonitor(ctx)
 	c.mu.Lock()
 	srv, err := web.NewServer(web.ServerOptions{
 		Host:   c.cfg.Host,
@@ -137,6 +139,7 @@ func (c *Core) Stop(ctx context.Context) error {
 	}
 	c.stopped = true
 	close(c.stopChan)
+	nexus.Default().StopQuotaMonitor()
 
 	if c.server != nil {
 		shutdownCtx, cancel := context.WithTimeout(ctx, 3*time.Second)

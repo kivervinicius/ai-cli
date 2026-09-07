@@ -78,7 +78,7 @@ export const ProductTour: React.FC<{ open: boolean; onClose: () => void }> = ({
         </header>
         <strong>{t(step.title)}</strong>
         <p>{t(step.body)}</p>
-        <footer>
+        <div className="nx-tour-footer">
           <Button
             size="sm"
             tone="ghost"
@@ -100,7 +100,7 @@ export const ProductTour: React.FC<{ open: boolean; onClose: () => void }> = ({
               {t('tour.next')} <ArrowRight size={13} />
             </Button>
           )}
-        </footer>
+        </div>
       </div>
     </div>
   );

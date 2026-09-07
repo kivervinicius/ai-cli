@@ -329,19 +329,25 @@ func (m usageTableModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if k == "enter" {
 				m.filter.Blur()
-				return m, nil
-			}
-			var cmd tea.Cmd
-			m.filter, cmd = m.filter.Update(msg)
-			q := m.filter.Value()
-			if m.activeTab == TabAccounts {
-				m.filteredAccounts = filterUsageRows(m.allAccounts, q)
-				m.accountTable.SetRows(toUsageTableRows(m.filteredAccounts))
 			} else {
-				m.filteredSessions = filterSessionRows(m.allSessions, q)
-				m.sessionTable.SetRows(toSessionTableRows(m.filteredSessions))
+				var cmd tea.Cmd
+				m.filter, cmd = m.filter.Update(msg)
+				q := m.filter.Value()
+				if m.activeTab == TabAccounts {
+					m.filteredAccounts = filterUsageRows(m.allAccounts, q)
+					m.accountTable.SetRows(toUsageTableRows(m.filteredAccounts))
+					if len(m.filteredAccounts) > 0 && m.accountTable.Cursor() < 0 {
+						m.accountTable.SetCursor(0)
+					}
+				} else {
+					m.filteredSessions = filterSessionRows(m.allSessions, q)
+					m.sessionTable.SetRows(toSessionTableRows(m.filteredSessions))
+					if len(m.filteredSessions) > 0 && m.sessionTable.Cursor() < 0 {
+						m.sessionTable.SetCursor(0)
+					}
+				}
+				return m, cmd
 			}
-			return m, cmd
 		}
 
 		// Main screen keys: esc or q exits immediately!

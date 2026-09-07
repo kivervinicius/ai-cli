@@ -115,7 +115,23 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 	// 4b. Resolve model for target provider
 	targetModel := ResolveTargetModel(source.Model, source.ProviderID, targetProvider)
 
-	// 5. Launch Target Supervised Runtime FIRST via unified launcher (persistent host)
+	// 5. Quiesce and gracefully stop source runtime before launching target
+	// to prevent concurrent writers on the same workspace.
+	client, err := protocol.NewClient(sourceRuntimeID)
+	if err == nil {
+		_ = client.Stop()
+		_ = client.Close()
+	}
+	stopDeadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(stopDeadline) {
+		if !registry.IsProcessAlive(source.PID) {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	_ = reg.UpdateState(sourceRuntimeID, registry.StateHandoff)
+
+	// 6. Launch Target Supervised Runtime via unified launcher (persistent host)
 	newRuntimeID := fmt.Sprintf("%s-continue-%s", targetProvider, ids.NewRuntimeID())
 	lineageID := fmt.Sprintf("lin-ctx-%s", ids.NewRuntimeID())
 
@@ -129,16 +145,10 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 		Standalone: false,
 	})
 	if err != nil {
+		// Rollback source state on target launch failure
+		_ = reg.UpdateState(sourceRuntimeID, registry.StateRunning)
 		return nil, fmt.Errorf("failed to start context handoff target runtime: %w", err)
 	}
-
-	// 6. Target started successfully. Now gracefully stop source runtime.
-	client, err := protocol.NewClient(sourceRuntimeID)
-	if err == nil {
-		_ = client.Stop()
-		_ = client.Close()
-	}
-	_ = reg.UpdateState(sourceRuntimeID, registry.StateHandoff)
 
 	newSession.ParentRuntimeID = source.RuntimeID
 	newSession.HandoffType = "context"

@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"testing"
-	"time"
 )
 
 func authenticatedTestClient(t *testing.T, srv *Server) (*http.Client, string) {
@@ -45,7 +44,6 @@ func newStartedTestServer(t *testing.T) *Server {
 	}
 	go func() { _ = srv.Start() }()
 	t.Cleanup(func() { _ = srv.Shutdown(context.Background()) })
-	time.Sleep(20 * time.Millisecond)
 	return srv
 }
 
@@ -81,7 +79,6 @@ func TestServer_LoopbackCookieSurvivesRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	go func() { _ = first.Start() }()
-	time.Sleep(20 * time.Millisecond)
 	client, _ := authenticatedTestClient(t, first)
 	port := first.listener.Addr().(*net.TCPAddr).Port
 	if err := first.Shutdown(context.Background()); err != nil {
@@ -94,7 +91,6 @@ func TestServer_LoopbackCookieSurvivesRestart(t *testing.T) {
 	}
 	go func() { _ = second.Start() }()
 	t.Cleanup(func() { _ = second.Shutdown(context.Background()) })
-	time.Sleep(20 * time.Millisecond)
 
 	sessResp, err := client.Get(second.URL() + "/api/v1/session")
 	if err != nil {

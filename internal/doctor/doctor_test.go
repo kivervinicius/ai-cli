@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	stdruntime "runtime"
 	"testing"
 
 	"github.com/kivervinicius/ai-cli/internal/core/model"
@@ -25,6 +26,40 @@ func TestBuildReportIsReadOnlyAndContainsStableChecks(t *testing.T) {
 	}
 	if len(before) != len(after) || len(report.Checks) == 0 {
 		t.Fatalf("doctor mutated state or returned no checks: before=%d after=%d", len(before), len(after))
+	}
+}
+
+func TestBuildReportDoesNotClaimDesktopShellRuntimeWasVerified(t *testing.T) {
+	report := BuildReport("test", nil, nexusruntime.CredentialCapability{
+		Status:    nexusruntime.CredentialUnsupported,
+		Mechanism: "test",
+	})
+	for _, check := range report.Checks {
+		if check.ID == "desktop.shell" {
+			if check.Status != Skipped {
+				t.Fatalf("desktop shell must remain unverified without native smoke, got %s", check.Status)
+			}
+			return
+		}
+	}
+	t.Fatal("desktop.shell check missing")
+}
+
+func TestBuildReportPlatformChecksAreEvidenceBound(t *testing.T) {
+	report := BuildReport("test", nil, nexusruntime.CredentialCapability{
+		Status:    nexusruntime.CredentialUnsupported,
+		Mechanism: "test",
+	})
+	for _, check := range report.Checks {
+		if check.ID == "platform.conpty" && stdruntime.GOOS != "windows" {
+			t.Fatalf("ConPTY check must not be emitted on %s", stdruntime.GOOS)
+		}
+		if check.ID == "platform.webview2" && stdruntime.GOOS != "windows" {
+			t.Fatalf("WebView2 check must not be emitted on %s", stdruntime.GOOS)
+		}
+		if check.ID == "platform.webkitgtk" && stdruntime.GOOS != "linux" {
+			t.Fatalf("WebKitGTK check must not be emitted on %s", stdruntime.GOOS)
+		}
 	}
 }
 

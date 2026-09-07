@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	stdruntime "runtime"
 	"strings"
@@ -35,6 +36,18 @@ type NexusHandler struct {
 	auth                  *AuthManager
 	nexus                 *nexus.Nexus
 	hostFilesystemEnabled bool
+}
+
+// checkNexusUpdate is injectable so Web API tests never depend on the remote
+// update registry. Production uses the same signed-manifest Update Service as
+// the CLI and Desktop surfaces.
+var checkNexusUpdate = func(ctx context.Context) (*update.CheckResult, error) {
+	execPath, _ := os.Executable()
+	service := update.NewService(update.ServiceConfig{
+		CurrentVer: buildinfo.Version,
+		ExecPath:   execPath,
+	})
+	return service.Check(ctx)
 }
 
 // handleSystemDoctor exposes the same read-only diagnostic report used by the
@@ -820,7 +833,9 @@ func (h *NexusHandler) handleMaestroAdvice(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// handleSystemUpdates GET /api/v1/system/updates — returns status of Nexus & Maestro versions.
+// handleSystemUpdates GET /api/v1/system/updates — returns signed Nexus Update
+// Service status plus explicit Maestro maintenance status. The POST endpoint
+// below remains Maestro-only and never replaces the Nexus binary.
 func (h *NexusHandler) handleSystemUpdates(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -846,30 +861,65 @@ func (h *NexusHandler) handleSystemUpdates(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	execP, _ := exec.LookPath("nexus")
-	installMethod := update.DetectInstallationMethod(execP)
+	nexusUpdateCtx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	nexusCheck, nexusErr := checkNexusUpdate(nexusUpdateCtx)
+	nexusLatestVersion := buildinfo.Version
+	nexusUpdateAvailable := false
+	nexusInstallationMethod := update.MethodUnknown
+	nexusAllowsSelfUpdate := false
+	var nexusUpdateInstruction string
+	var nexusUpdateError string
+	if nexusCheck != nil {
+		nexusLatestVersion = nexusCheck.LatestVersion
+		nexusUpdateAvailable = nexusCheck.UpdateAvailable
+		nexusInstallationMethod = nexusCheck.InstallationMethod
+		nexusAllowsSelfUpdate = nexusCheck.AllowsSelfUpdate
+		nexusUpdateInstruction = nexusCheck.Instruction
+	}
+	if nexusErr != nil {
+		nexusUpdateError = nexusErr.Error()
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"nexus_version":          buildinfo.Version,
-		"nexus_commit":           buildinfo.Commit,
-		"nexus_build_date":       buildinfo.BuildDate,
-		"channel":                "stable",
-		"installation_method":    installMethod,
-		"allows_self_update":     installMethod.AllowsSelfUpdate(),
-		"maestro_version":        maestroVer,
-		"maestro_latest_version": latestMaestroVer,
-		"maestro_available":      mStatus.Available,
-		"update_available":       updateAvailable,
+		"nexus_version":             buildinfo.Version,
+		"nexus_commit":              buildinfo.Commit,
+		"nexus_build_date":          buildinfo.BuildDate,
+		"nexus_latest_version":      nexusLatestVersion,
+		"nexus_update_available":    nexusUpdateAvailable,
+		"nexus_update_error":        nexusUpdateError,
+		"nexus_update_instruction":  nexusUpdateInstruction,
+		"channel":                   "stable",
+		"installation_method":       nexusInstallationMethod,
+		"allows_self_update":        nexusAllowsSelfUpdate,
+		"nexus_installation_method": nexusInstallationMethod,
+		"nexus_allows_self_update":  nexusAllowsSelfUpdate,
+		"maestro_version":           maestroVer,
+		"maestro_latest_version":    latestMaestroVer,
+		"maestro_available":         mStatus.Available,
+		"update_available":          updateAvailable,
 	})
 }
 
-// performSystemUpdate is the Maestro library updater. Tests stub this to avoid npm.
+// performSystemUpdate is the explicit Maestro library updater. Tests stub this
+// to avoid npm.
 var performSystemUpdate = nexus.PerformSystemUpdate
 
-// handleSystemUpdate POST /api/v1/system/update — updates the Maestro library.
-func (h *NexusHandler) handleSystemUpdate(w http.ResponseWriter, r *http.Request) {
+// handleMaestroUpdate POST /api/v1/maestro/update — updates Maestro only after
+// an explicit product, target and confirmation contract.
+func (h *NexusHandler) handleMaestroUpdate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var request struct {
+		Product       string `json:"product"`
+		TargetVersion string `json:"target_version"`
+		Confirmed     bool   `json:"confirmed"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil ||
+		request.Product != "maestro" || request.TargetVersion != "latest" || !request.Confirmed {
+		writeError(w, http.StatusBadRequest, "explicit Maestro update requires product=maestro, target_version=latest, and confirmed=true")
 		return
 	}
 	writeJSON(w, http.StatusOK, performSystemUpdate())

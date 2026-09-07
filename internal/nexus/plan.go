@@ -518,6 +518,20 @@ func packagesFromOutlines(goal string, outlines []intelligence.WorkPackageOutlin
 
 func (n *Nexus) createPlanFromOutlines(ctx context.Context, projectID, goal string, intent *intelligence.IntentAnalysis, outlines []intelligence.WorkPackageOutline, facts map[string]string) (*store.WorkPlan, error) {
 	pkgs := packagesFromOutlines(goal, outlines)
+	st, err := n.OpenProject()
+	if err != nil {
+		return nil, err
+	}
+	project, err := st.GetProject(projectID)
+	if err != nil {
+		return nil, err
+	}
+	verification := detectVerificationCommands(project.CanonicalPath)
+	for i := range pkgs {
+		if len(pkgs[i].VerificationRequirements) == 0 {
+			pkgs[i].VerificationRequirements = append([]string(nil), verification...)
+		}
+	}
 	phase := store.PlanPhase{ID: "phase_" + ids.NewRuntimeID(), Title: "Execution Phase", Order: 1, Packages: pkgs}
 	mergedFacts := map[string]string{}
 	for k, v := range facts {

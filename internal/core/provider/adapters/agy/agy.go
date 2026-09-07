@@ -277,7 +277,9 @@ func (a *Adapter) InspectAuth(ctx context.Context, p model.Profile) model.Accoun
 
 func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnapshot {
 	if fileSnap, ok := a.readCachedQuotaFiles(p); ok {
-		return fileSnap
+		if quota.NewEngine(quota.DefaultTTL).Trustworthy(fileSnap) {
+			return fileSnap
+		}
 	}
 	if live, ok := a.fetchLiveQuota(ctx, p); ok {
 		_ = quota.NewEngine(quota.DefaultTTL).SaveUsage(live)

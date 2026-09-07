@@ -174,6 +174,47 @@ func TestMultiQuotaBottleneckSelection(t *testing.T) {
 	}
 }
 
+func TestKnownQuotaOutranksUnknownQuota(t *testing.T) {
+	dataDir := t.TempDir()
+	cfgDir := t.TempDir()
+	stateDir := t.TempDir()
+	t.Setenv("AI_CLI_DATA_DIR", dataDir)
+	t.Setenv("AI_CLI_CONFIG_DIR", cfgDir)
+	t.Setenv("AI_CLI_STATE_DIR", stateDir)
+
+	selector := NewSelector(config.NewDefaultConfig(), quota.NewEngine(5*time.Minute), cooldown.NewTracker())
+	remaining := 28.0
+	if err := selector.quotaEng.SaveUsage(model.UsageSnapshot{
+		ProviderID: "agy",
+		ProfileID:  "known",
+		Status:     model.UsageLive,
+		Source:     model.SourceCLIOutput,
+		FetchedAt:  time.Now(),
+		Windows: []model.UsageWindow{
+			{Kind: "weekly", Group: "gemini", RemainingPercent: &remaining},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	candidates := []model.Profile{
+		{Provider: "agy", Name: "unknown"},
+		{Provider: "agy", Name: "known"},
+	}
+	accounts := map[string]model.AccountInfo{
+		"unknown": {Authenticated: true, Health: model.HealthHealthy},
+		"known":   {Authenticated: true, Health: model.HealthHealthy},
+	}
+
+	result, err := selector.SelectBestProfile(context.Background(), "agy", t.TempDir(), candidates, accounts, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SelectedProfile == nil || result.SelectedProfile.Name != "known" {
+		t.Fatalf("expected known quota profile, got %#v", result.SelectedProfile)
+	}
+}
+
 func TestDefaultProfileTieBreaker(t *testing.T) {
 	dataDir := t.TempDir()
 	cfgDir := t.TempDir()

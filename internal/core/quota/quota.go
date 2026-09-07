@@ -17,6 +17,10 @@ import (
 
 const (
 	DefaultTTL = 5 * time.Minute
+	// LastKnownTTL is intentionally much longer than DefaultTTL. It is used
+	// only to recover the last successful observation after a transient CLI or
+	// network failure; it must never make an old snapshot trustworthy.
+	LastKnownTTL = 3650 * 24 * time.Hour
 )
 
 var (
@@ -84,20 +88,27 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 
 	var snap model.UsageSnapshot
 	_ = json.Unmarshal(data, &snap)
-
-	// Codex quota from local files is unreliable: the live rate limits come
-	// from session rollouts, not from quota.json / usage.json. Treat any
-	// codex cached snapshot as UNKNOWN so the scheduler scores it honestly
-	// instead of trusting potentially stale file data.
-	if provider == "codex" && (snap.Status == model.UsageCached || snap.Status == model.UsageLive) {
-		// Only invalidate if the file is older than our trust window.
-		// Freshly-written files (from loadUsageSnapshot) are still valid.
-		if !e.Trustworthy(snap) {
-			snap.Status = model.UsageUnknown
-			snap.Source = model.SourceNone
-			snap.Windows = nil
-			return snap, false
+	// A previous Nexus version could have persisted an UNKNOWN result after a
+	// failed refresh. If the profile still has a legacy quota.json, use it as
+	// the last-known source instead of losing the only usable observation.
+	if sourceFile == quotaFile && (snap.Status == model.UsageUnknown || snap.Status == "" || len(snap.Windows) == 0) {
+		legacyFile := filepath.Join(root, "quota.json")
+		if legacyData, legacyErr := os.ReadFile(legacyFile); legacyErr == nil {
+			data = legacyData
+			sourceFile = legacyFile
+			snap = model.UsageSnapshot{}
+			_ = json.Unmarshal(data, &snap)
 		}
+	}
+
+	// A cache file is not evidence of current capacity after the trust window.
+	// This applies to every provider, especially AGY where selecting a stale
+	// default profile can launch against the wrong Google account.
+	if (snap.Status == model.UsageCached || snap.Status == model.UsageLive || snap.Status == model.UsageEstimated) && !e.Trustworthy(snap) {
+		snap.Status = model.UsageUnknown
+		snap.Source = model.SourceNone
+		snap.Windows = nil
+		return snap, false
 	}
 
 	if snap.Status == "" || len(snap.Windows) == 0 {
@@ -212,6 +223,12 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 				FetchedAt:  fileFetchedAt(sourceFile),
 				Windows:    windows,
 			}
+			if !e.Trustworthy(snap) {
+				snap.Status = model.UsageUnknown
+				snap.Source = model.SourceNone
+				snap.Windows = nil
+				return snap, false
+			}
 			return snap, true
 		}
 		return model.UsageSnapshot{
@@ -228,6 +245,15 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 	}
 
 	return snap, true
+}
+
+// GetLastKnownUsage returns the most recent snapshot that was persisted with
+// windows, even when it is older than the normal trust window. Callers must
+// mark the returned snapshot as degraded/estimated before displaying or using
+// it. This prevents a transient refresh failure from erasing useful context
+// while keeping freshness guarantees explicit.
+func (e *Engine) GetLastKnownUsage(provider, profileName string) (model.UsageSnapshot, bool) {
+	return NewEngine(LastKnownTTL).GetCachedUsage(provider, profileName)
 }
 
 func clampPercent(v float64) float64 {

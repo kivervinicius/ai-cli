@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"testing"
-	"time"
 )
 
 func TestProtocolSerialization(t *testing.T) {
@@ -81,8 +80,6 @@ func TestClientServerCommunication(t *testing.T) {
 			_, _ = conn.Write(append(data, '\n'))
 		}
 	}()
-
-	time.Sleep(50 * time.Millisecond)
 
 	client, err := NewClient(runtimeID)
 	if err != nil {

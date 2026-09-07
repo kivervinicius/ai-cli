@@ -262,6 +262,7 @@ func (h *NexusHandler) handleFSBrowse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var results []FSEntry
+	includeEntryMetadata := r.URL.Query().Get("details") == "full"
 	for _, entry := range entries {
 		// Skip hidden files/dirs unless needed (skip .git internal directory itself, but keep flag)
 		if strings.HasPrefix(entry.Name(), ".") && entry.Name() != ".git" {
@@ -269,16 +270,19 @@ func (h *NexusHandler) handleFSBrowse(w http.ResponseWriter, r *http.Request) {
 		}
 
 		fullPath := filepath.Join(absPath, entry.Name())
-		entryInfo, err := entry.Info()
-		if err != nil {
-			continue
-		}
-
 		isDir := entry.IsDir()
 		isGit := false
 		var tech []string
+		var entryInfo os.FileInfo
 
-		if isDir {
+		if includeEntryMetadata {
+			entryInfo, err = entry.Info()
+			if err != nil {
+				continue
+			}
+		}
+
+		if isDir && includeEntryMetadata {
 			// Check if child is a Git repo
 			if _, gErr := os.Stat(filepath.Join(fullPath, ".git")); gErr == nil {
 				isGit = true
@@ -287,15 +291,17 @@ func (h *NexusHandler) handleFSBrowse(w http.ResponseWriter, r *http.Request) {
 		}
 
 		results = append(results, FSEntry{
-			Name:        entry.Name(),
-			Path:        fullPath,
-			IsDir:       isDir,
-			IsGit:       isGit,
-			Tech:        tech,
-			ModTime:     entryInfo.ModTime().Format(time.RFC3339),
-			SizeBytes:   entryInfo.Size(),
-			Permissions: entryInfo.Mode().String(),
+			Name:  entry.Name(),
+			Path:  fullPath,
+			IsDir: isDir,
+			IsGit: isGit,
+			Tech:  tech,
 		})
+		if entryInfo != nil {
+			results[len(results)-1].ModTime = entryInfo.ModTime().Format(time.RFC3339)
+			results[len(results)-1].SizeBytes = entryInfo.Size()
+			results[len(results)-1].Permissions = entryInfo.Mode().String()
+		}
 	}
 
 	// Sort: Directories first, then alphabetical

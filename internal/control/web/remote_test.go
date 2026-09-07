@@ -9,7 +9,6 @@ import (
 	"net/http/cookiejar"
 	"strconv"
 	"testing"
-	"time"
 )
 
 // TestRemote_SSHTunnel simulates an SSH Port-Forwarding Tunnel (local forward):
@@ -30,8 +29,6 @@ func TestRemote_SSHTunnel(t *testing.T) {
 		_ = srv.Start()
 	}()
 	defer srv.Shutdown(context.Background())
-
-	time.Sleep(50 * time.Millisecond)
 
 	remoteAddr := srv.listener.Addr().String()
 

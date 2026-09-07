@@ -24,8 +24,8 @@ func TestQA_RapidAttachDetachSpam(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  "cat",
-		Args:    []string{},
+		Binary:  testTerminalBinary,
+		Args:    testTerminalArgs(),
 		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
@@ -87,8 +87,8 @@ func TestQA_TwoWritersLeaseHandover(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  "cat",
-		Args:    []string{},
+		Binary:  testTerminalBinary,
+		Args:    testTerminalArgs(),
 		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
@@ -158,8 +158,8 @@ func TestQA_LargeThroughputStreaming(t *testing.T) {
 
 	sh, err := NewSessionHost(Config{
 		Session: sess,
-		Binary:  "cat",
-		Args:    []string{},
+		Binary:  testTerminalBinary,
+		Args:    testTerminalArgs(),
 		Env:     os.Environ(),
 		Cwd:     os.TempDir(),
 	})
