@@ -3080,6 +3080,17 @@ build` PASS e Web reiniciado em HTTP 200.
   chegam ao Overview, portanto P0-01 segue CONDITIONAL até E2E same-SHA.
 - O Browser E2E agora exige também a presença do painel Resume-first no Overview;
   a execução atual passou novamente nos seis breakpoints e nas asserções Axe.
+
+## 2026-09-07 — CI pós-push audit
+
+- O push publicado corresponde ao SHA `059bb5c`; o run `34164359845` confirmou
+  Linux E2E/Security PASS, mas falhou no `Format Check` do Frontend e nos
+  agregadores de diagnóstico Windows/macOS.
+- A falha de formato foi reproduzida localmente no comando exato da CI:
+  `bunx prettier --check 'src/**/*.{ts,tsx,json}'` apontou
+  `ComposerSurface.tsx`; `bunx prettier --write` corrigiu e a checagem passou.
+- Os artefatos de diagnóstico foram listados pela API, mas o download retornou
+  HTTP 401; não é possível atribuir causa aos agregadores sem logs.
 # 2026-09-07 — Composer destination permissions
 
 - Composer context gate foi separado em composição/finalização, materialização

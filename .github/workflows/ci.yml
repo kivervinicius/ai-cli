@@ -263,6 +263,7 @@ jobs:
             '${{ steps.windows-build.outcome }}',
             '${{ steps.windows-smoke.outcome }}'
           )
+          Write-Host "Windows diagnostic outcomes: $($outcomes -join ', ')"
           if ($outcomes -contains 'failure') { throw "One or more Windows diagnostics failed: $($outcomes -join ', ')" }
 
       - name: Upload Windows diagnostics
@@ -343,6 +344,7 @@ jobs:
             '${{ steps.macos-build.outcome }}'
             '${{ steps.macos-installer.outcome }}'
           )
+          printf 'macOS diagnostic outcomes: %s\n' "${outcomes[*]}"
           for outcome in "${outcomes[@]}"; do
             if [[ "$outcome" == failure ]]; then
               printf 'One or more macOS diagnostics failed: %s\n' "${outcomes[*]}" >&2

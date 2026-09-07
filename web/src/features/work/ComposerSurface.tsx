@@ -431,9 +431,7 @@ export const ComposerSurface: React.FC<{
             )}
           </div>
           {view.session.state !== 'FINALIZED' && (
-            <div
-              className={`nx-composer-goal-bar__row ${styles.flexRowGap8mt}`}
-            >
+            <div className={`nx-composer-goal-bar__row ${styles.flexRowGap8mt}`}>
               <textarea
                 className={`nx-textarea ${styles.composerTextarea}`}
                 value={message}
@@ -499,9 +497,7 @@ export const ComposerSurface: React.FC<{
                   <div className={styles.readinessCheckContent}>
                     <span className={styles.readinessCheckLabel}>{check.label || check.key}</span>
                     {check.summary && (
-                      <small className={styles.readinessCheckSummary}>
-                        {check.summary}
-                      </small>
+                      <small className={styles.readinessCheckSummary}>{check.summary}</small>
                     )}
                   </div>
                   <span
@@ -654,12 +650,8 @@ export const ComposerSurface: React.FC<{
             <strong>Prompt canônico · v{artifact.version}</strong>
             <Badge tone="success">Versão imutável #{artifact.version}</Badge>
           </div>
-          <pre className={`nx-flow-step-compare ${styles.preWrap}`}>
-            {artifact.content}
-          </pre>
-          <div
-            className={`nx-composer-header-actions ${styles.artifactActions}`}
-          >
+          <pre className={`nx-flow-step-compare ${styles.preWrap}`}>{artifact.content}</pre>
+          <div className={`nx-composer-header-actions ${styles.artifactActions}`}>
             <Button onClick={() => void copy()}>
               <ClipboardCopy size={14} /> Copiar
             </Button>

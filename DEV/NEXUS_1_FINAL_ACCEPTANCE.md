@@ -109,6 +109,26 @@ responsibility.
 The release gate now also compares the CI API's `headSha` with the requested
 candidate SHA before accepting the run; mismatches are ignored and retried.
 
+## Fresh remote evidence — pushed SHA `059bb5c` (run `34164359845`)
+
+- `headSha` confirmado pela API: `059bb5cc3ca0f36e8e430182d2e66c51d5993897`.
+- Linux E2E e Security passaram.
+- Frontend falhou no passo `Format Check` antes de typecheck/test/build.
+- Windows E2E executou testes, ConPTY, runtime, build e smoke com sucesso, mas
+  o `Assert Windows diagnostics` falhou.
+- macOS E2E executou vet, race, PTY, socket, Web, build e installer com sucesso,
+  mas o `Assert macOS diagnostics` falhou.
+- Desktop, Browser E2E e GoReleaser foram pulados após os gates anteriores.
+- Logs detalhados não estão acessíveis por `gh run view --log-failed` (HTTP 403,
+  endpoint exige admin); os passos e conclusões foram confirmados pela API.
+- O checkout local está em `772bd2e`, um commit à frente do SHA publicado, e
+  contém alterações adicionais ainda não publicadas. PASS local posterior não
+  pode ser atribuído ao run `34164359845`.
+- A falha de formato do SHA publicado foi reproduzida e corrigida localmente em
+  `web/src/features/work/ComposerSurface.tsx`; a checagem Prettier usada pela
+  CI passa no checkout atual. O workflow também passou a imprimir explicitamente
+  os outcomes individuais dos diagnósticos Windows/macOS antes do agregado.
+
 ## Exact blockers and reproduction
 
 1. Run the authenticated provider-backed overnight scenario and save mission
