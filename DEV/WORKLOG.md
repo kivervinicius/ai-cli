@@ -1,5 +1,11 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-07 — Otimização incremental adicional do Flow
+
+- `FlowTaskNode` agora usa `React.memo`, reduzindo renderizações de nodes que
+  não mudaram durante seleção e drag.
+- `npm --prefix web run verify` — PASS, 10/10 gates após a alteração.
+
 ## 2026-09-07 — Correções iniciais de desempenho Web/Desktop
 
 - Flow Canvas separa seleção da reconstrução do grafo e usa `applyNodeChanges`,
@@ -2746,3 +2752,28 @@ build` PASS e Web reiniciado em HTTP 200.
   em px quando apropriado.
 - Busca final de fontes em px, format check, typecheck, Stylelint, testes,
   build e visual QA passaram.
+
+## 2026-09-07 — Continuidade de terminais entre Web e Desktop
+
+- Causa confirmada: o Desktop sempre iniciava um Core próprio, enquanto a Web
+  mantinha outro processo, registro de runtimes e hosts PTY; por isso os agentes
+  apareciam, mas os terminais ficavam desconectados ao abrir pelo Desktop.
+- Correção: `cmd/nexus-desktop` agora reutiliza automaticamente o Core Web
+  loopback ativo, troca o bootstrap por uma sessão autenticada e encaminha API e
+  WebSocket pelo AssetServer Wails, reescrevendo a origem `wails://wails`.
+- Fallback preservado: sem Web ativa, o Desktop inicia seu Core embutido como
+  antes. URLs externas não são aceitas; somente backend HTTP loopback validado.
+- Regressões adicionadas para anexação de sessão e proxy autenticado.
+- Verificação: `go test ./...`, `go vet ./...`, race focado Web/terminal/host,
+  `npm run verify`, `make build-desktop-wails` e `git diff --check` passaram.
+
+## 2026-09-07 — Navegação SPA no Desktop
+
+- Causa provável isolada: o handler de backend do Wails também recebia rotas
+  SPA ausentes no asset local e encaminhava essas navegações ao documento Web
+  remoto, podendo desmontar o estado da WebView ao alternar telas.
+- Correção: o Desktop agora serve `index.html` local para rotas de tela e
+  encaminha somente `/api/*` e WebSocket ao Core Web compartilhado.
+- Regressão adicionada para garantir fallback local de `/p/:project/terminals`.
+- `go test ./internal/control/web ./cmd/nexus-desktop`, `go vet ./...`, build
+  Wails Linux e health `status: ok` passaram.

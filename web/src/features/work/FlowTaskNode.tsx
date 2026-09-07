@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { Bot, CircleCheck, CircleDot } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -8,7 +9,7 @@ import { asArray } from '../../lib/safeArray';
 
 export type FlowTaskNodeData = { step: FlowStepModel; selected: boolean };
 
-export const FlowTaskNode = ({ data }: NodeProps<Node<FlowTaskNodeData, 'task'>>) => {
+export const FlowTaskNode = memo(({ data }: NodeProps<Node<FlowTaskNodeData, 'task'>>) => {
   const { t } = useTranslation();
   const { step, selected } = data;
   return (
@@ -44,4 +45,4 @@ export const FlowTaskNode = ({ data }: NodeProps<Node<FlowTaskNodeData, 'task'>>
       />
     </article>
   );
-};
+});

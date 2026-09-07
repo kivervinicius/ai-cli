@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -270,14 +271,33 @@ func (a *Adapter) InspectAuth(ctx context.Context, p model.Profile) model.Accoun
 }
 
 func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnapshot {
+	debug := os.Getenv("NEXUS_AGY_DEBUG") == "1" || os.Getenv("NEXUS_DEBUG") == "1"
+	if debug {
+		slog.Debug("AGY GetUsage: checking cached files", "profile", p.Name)
+	}
 	if fileSnap, ok := a.readCachedQuotaFiles(p); ok {
 		if quota.NewEngine(quota.DefaultTTL).Trustworthy(fileSnap) {
+			if debug {
+				slog.Debug("AGY GetUsage: returning trustworthy cached snapshot", "profile", p.Name, "status", fileSnap.Status, "fetchedAt", fileSnap.FetchedAt)
+			}
 			return fileSnap
 		}
+		if debug {
+			slog.Debug("AGY GetUsage: cached snapshot not trustworthy", "profile", p.Name, "fetchedAt", fileSnap.FetchedAt, "age", time.Since(fileSnap.FetchedAt))
+		}
+	}
+	if debug {
+		slog.Debug("AGY GetUsage: trying live fetch", "profile", p.Name)
 	}
 	if live, ok := a.fetchLiveQuota(ctx, p); ok {
 		_ = quota.NewEngine(quota.DefaultTTL).SaveUsage(live)
+		if debug {
+			slog.Debug("AGY GetUsage: returning live snapshot", "profile", p.Name, "status", live.Status, "windows", len(live.Windows))
+		}
 		return live
+	}
+	if debug {
+		slog.Debug("AGY GetUsage: returning unknown (no cached or live data)", "profile", p.Name)
 	}
 	return model.UsageSnapshot{
 		ProviderID: string(a.ID()),
@@ -289,12 +309,28 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 }
 
 func (a *Adapter) RefreshUsage(ctx context.Context, p model.Profile) model.UsageSnapshot {
+	debug := os.Getenv("NEXUS_AGY_DEBUG") == "1" || os.Getenv("NEXUS_DEBUG") == "1"
+	if debug {
+		slog.Debug("AGY RefreshUsage: trying live fetch first", "profile", p.Name)
+	}
 	if live, ok := a.fetchLiveQuota(ctx, p); ok {
 		_ = quota.NewEngine(quota.DefaultTTL).SaveUsage(live)
+		if debug {
+			slog.Debug("AGY RefreshUsage: returning live snapshot", "profile", p.Name, "status", live.Status, "windows", len(live.Windows))
+		}
 		return live
 	}
+	if debug {
+		slog.Debug("AGY RefreshUsage: live fetch failed, trying cached", "profile", p.Name)
+	}
 	if fileSnap, ok := a.readCachedQuotaFiles(p); ok {
+		if debug {
+			slog.Debug("AGY RefreshUsage: returning cached snapshot", "profile", p.Name, "status", fileSnap.Status, "fetchedAt", fileSnap.FetchedAt)
+		}
 		return fileSnap
+	}
+	if debug {
+		slog.Debug("AGY RefreshUsage: returning unknown (no cached or live data)", "profile", p.Name)
 	}
 	return model.UsageSnapshot{
 		ProviderID: string(a.ID()),
@@ -306,6 +342,7 @@ func (a *Adapter) RefreshUsage(ctx context.Context, p model.Profile) model.Usage
 }
 
 func (a *Adapter) readCachedQuotaFiles(p model.Profile) (model.UsageSnapshot, bool) {
+	debug := os.Getenv("NEXUS_AGY_DEBUG") == "1" || os.Getenv("NEXUS_DEBUG") == "1"
 	root, _ := config.ProfileRoot(string(a.ID()), p.Name)
 	home, _ := config.ProfileHome(string(a.ID()), p.Name)
 
@@ -317,14 +354,28 @@ func (a *Adapter) readCachedQuotaFiles(p model.Profile) (model.UsageSnapshot, bo
 		candidates = append(candidates, filepath.Join(home, "usage.json"), filepath.Join(home, "quota.json"))
 	}
 
+	if debug {
+		slog.Debug("AGY readCachedQuotaFiles: checking candidates", "profile", p.Name, "candidates", candidates)
+	}
+
 	for _, file := range candidates {
 		data, err := os.ReadFile(file)
 		if err != nil {
+			if debug {
+				slog.Debug("AGY readCachedQuotaFiles: file read error", "profile", p.Name, "file", file, "err", err)
+			}
 			continue
 		}
 
 		var s model.UsageSnapshot
 		if json.Unmarshal(data, &s) == nil && s.Status != "" && len(s.Windows) > 0 {
+			// Mark status as CACHED if it was originally LIVE (consistent with GetCachedUsage)
+			if s.Status == model.UsageLive {
+				s.Status = model.UsageCached
+			}
+			if debug {
+				slog.Debug("AGY readCachedQuotaFiles: found UsageSnapshot", "profile", p.Name, "file", file, "status", s.Status, "fetchedAt", s.FetchedAt, "windows", len(s.Windows), "account", s.Account)
+			}
 			return s, true
 		}
 
@@ -350,6 +401,9 @@ func (a *Adapter) readCachedQuotaFiles(p model.Profile) (model.UsageSnapshot, bo
 			} `json:"claude_weekly"`
 		}
 		if json.Unmarshal(data, &leg) == nil && (leg.FiveHour.PercentLeft > 0 || leg.Weekly.PercentLeft > 0 || leg.FiveHour.ResetsIn != "" || leg.ClaudeFiveHour.PercentLeft != nil || leg.ClaudeWeekly.PercentLeft != nil || leg.ClaudeFiveHour.ResetsIn != "" || leg.ClaudeWeekly.ResetsIn != "") {
+			if debug {
+				slog.Debug("AGY readCachedQuotaFiles: found legacy format", "profile", p.Name, "file", file, "account", firstNonEmpty(leg.Account, leg.Email), "gemini5h", leg.FiveHour.PercentLeft, "geminiWeekly", leg.Weekly.PercentLeft)
+			}
 			p5h := agyClampPercent(leg.FiveHour.PercentLeft)
 			u5h := 100 - p5h
 			pWk := agyClampPercent(leg.Weekly.PercentLeft)
@@ -404,7 +458,7 @@ func (a *Adapter) readCachedQuotaFiles(p model.Profile) (model.UsageSnapshot, bo
 				})
 			}
 
-			return model.UsageSnapshot{
+			snap := model.UsageSnapshot{
 				ProviderID: string(a.ID()),
 				ProfileID:  p.Name,
 				Account:    firstNonEmpty(leg.Account, leg.Email),
@@ -413,10 +467,20 @@ func (a *Adapter) readCachedQuotaFiles(p model.Profile) (model.UsageSnapshot, bo
 				ModelName:  leg.ModelName,
 				FetchedAt:  fileModTime(file),
 				Windows:    windows,
-			}, true
+			}
+			if debug {
+				slog.Debug("AGY readCachedQuotaFiles: returning legacy snapshot", "profile", p.Name, "fetchedAt", snap.FetchedAt, "age", time.Since(snap.FetchedAt))
+			}
+			return snap, true
+		}
+		if debug {
+			slog.Debug("AGY readCachedQuotaFiles: file not recognized", "profile", p.Name, "file", file)
 		}
 	}
 
+	if debug {
+		slog.Debug("AGY readCachedQuotaFiles: no valid cache found", "profile", p.Name)
+	}
 	return model.UsageSnapshot{}, false
 }
 
@@ -447,23 +511,43 @@ func agyClampPercent(v float64) float64 {
 }
 
 func (a *Adapter) fetchLiveQuota(ctx context.Context, p model.Profile) (model.UsageSnapshot, bool) {
+	debug := os.Getenv("NEXUS_AGY_DEBUG") == "1" || os.Getenv("NEXUS_DEBUG") == "1"
+	if debug {
+		slog.Debug("AGY fetchLiveQuota: starting", "profile", p.Name)
+	}
+
 	if !a.InspectAuth(ctx, p).Authenticated {
+		if debug {
+			slog.Debug("AGY fetchLiveQuota: not authenticated", "profile", p.Name)
+		}
 		return model.UsageSnapshot{}, false
 	}
 	if err := a.Prepare(ctx, p); err != nil {
+		if debug {
+			slog.Debug("AGY fetchLiveQuota: prepare failed", "profile", p.Name, "err", err)
+		}
 		return model.UsageSnapshot{}, false
 	}
 	bin, err := runtime.LookPath("agy")
 	if err != nil {
+		if debug {
+			slog.Debug("AGY fetchLiveQuota: agy binary not found", "profile", p.Name)
+		}
 		return model.UsageSnapshot{}, false
 	}
 	root, err := config.ProfileRoot(string(a.ID()), p.Name)
 	if err != nil {
+		if debug {
+			slog.Debug("AGY fetchLiveQuota: profile root failed", "profile", p.Name, "err", err)
+		}
 		return model.UsageSnapshot{}, false
 	}
 	home := filepath.Join(root, "home")
 	internalBin, err := runtime.InternalBinDir()
 	if err != nil {
+		if debug {
+			slog.Debug("AGY fetchLiveQuota: internal bin dir failed", "profile", p.Name, "err", err)
+		}
 		return model.UsageSnapshot{}, false
 	}
 	envOverrides := map[string]string{
@@ -487,6 +571,10 @@ func (a *Adapter) fetchLiveQuota(ctx context.Context, p model.Profile) (model.Us
 	// storage; if that is unavailable the probe fails closed and the caller
 	// exposes UNKNOWN/last-known data instead of blocking the user.
 
+	if debug {
+		slog.Debug("AGY fetchLiveQuota: running agy CLI", "profile", p.Name, "home", home, "bin", bin)
+	}
+
 	fetchCtx := ctx
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
@@ -495,13 +583,25 @@ func (a *Adapter) fetchLiveQuota(ctx context.Context, p model.Profile) (model.Us
 	}
 	out, err := runtime.RunCommandCapture(fetchCtx, bin, args, env, home)
 	if err != nil {
+		if debug {
+			slog.Debug("AGY fetchLiveQuota: agy CLI failed", "profile", p.Name, "err", err, "output", out)
+		}
 		return model.UsageSnapshot{}, false
+	}
+	if debug {
+		slog.Debug("AGY fetchLiveQuota: agy CLI output", "profile", p.Name, "output", out)
 	}
 	windows, ok := parseAgyQuotaOutput(out)
 	if !ok {
+		if debug {
+			slog.Debug("AGY fetchLiveQuota: parseAgyQuotaOutput failed", "profile", p.Name, "output", out)
+		}
 		return model.UsageSnapshot{}, false
 	}
 	info := a.InspectAuth(ctx, p)
+	if debug {
+		slog.Debug("AGY fetchLiveQuota: success", "profile", p.Name, "email", info.Email, "windows", len(windows))
+	}
 	return model.UsageSnapshot{
 		ProviderID: string(a.ID()),
 		ProfileID:  p.Name,

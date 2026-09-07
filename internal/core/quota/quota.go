@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -43,14 +44,25 @@ func NewEngine(ttl time.Duration) *Engine {
 // Trustworthy reports whether a cached snapshot has an attributable,
 // sufficiently recent observation. A cache file alone is not evidence.
 func (e *Engine) Trustworthy(snap model.UsageSnapshot) bool {
+	debug := os.Getenv("NEXUS_AGY_DEBUG") == "1" || os.Getenv("NEXUS_DEBUG") == "1"
 	if snap.Source == "" || snap.Source == model.SourceNone || snap.FetchedAt.IsZero() || len(snap.Windows) == 0 {
+		if debug {
+			slog.Debug("Trustworthy: false (missing fields)", "source", snap.Source, "fetchedAt", snap.FetchedAt, "windows", len(snap.Windows))
+		}
 		return false
 	}
 	if snap.Status != model.UsageLive && snap.Status != model.UsageCached && snap.Status != model.UsageEstimated {
+		if debug {
+			slog.Debug("Trustworthy: false (bad status)", "status", snap.Status)
+		}
 		return false
 	}
 	age := time.Since(snap.FetchedAt)
-	return age >= -time.Minute && age <= e.ttl
+	trustworthy := age >= -time.Minute && age <= e.ttl
+	if debug {
+		slog.Debug("Trustworthy: checking age", "source", snap.Source, "status", snap.Status, "fetchedAt", snap.FetchedAt, "age", age, "ttl", e.ttl, "trustworthy", trustworthy)
+	}
+	return trustworthy
 }
 
 // GetCachedUsage returns the cached snapshot for a profile without triggering external requests.
@@ -58,8 +70,16 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 	cacheMu.RLock()
 	defer cacheMu.RUnlock()
 
+	debug := os.Getenv("NEXUS_AGY_DEBUG") == "1" || os.Getenv("NEXUS_DEBUG") == "1"
+	if debug {
+		slog.Debug("GetCachedUsage: starting", "provider", provider, "profile", profileName)
+	}
+
 	root, err := config.ProfileRoot(provider, profileName)
 	if err != nil {
+		if debug {
+			slog.Debug("GetCachedUsage: profile root failed", "provider", provider, "profile", profileName, "err", err)
+		}
 		return model.UsageSnapshot{
 			ProviderID: provider,
 			ProfileID:  profileName,
@@ -77,6 +97,9 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 		data, err = os.ReadFile(legacyFile)
 		sourceFile = legacyFile
 		if err != nil {
+			if debug {
+				slog.Debug("GetCachedUsage: no quota files found", "provider", provider, "profile", profileName)
+			}
 			return model.UsageSnapshot{
 				ProviderID: provider,
 				ProfileID:  profileName,
@@ -84,6 +107,10 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 				Source:     model.SourceNone,
 			}, false
 		}
+	}
+
+	if debug {
+		slog.Debug("GetCachedUsage: reading file", "provider", provider, "profile", profileName, "file", sourceFile)
 	}
 
 	var snap model.UsageSnapshot
@@ -105,6 +132,9 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 	// This applies to every provider, especially AGY where selecting a stale
 	// default profile can launch against the wrong Google account.
 	if (snap.Status == model.UsageCached || snap.Status == model.UsageLive || snap.Status == model.UsageEstimated) && !e.Trustworthy(snap) {
+		if debug {
+			slog.Debug("GetCachedUsage: cache not trustworthy", "provider", provider, "profile", profileName, "status", snap.Status, "fetchedAt", snap.FetchedAt, "age", time.Since(snap.FetchedAt))
+		}
 		snap.Status = model.UsageUnknown
 		snap.Source = model.SourceNone
 		snap.Windows = nil
@@ -139,6 +169,9 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 			} `json:"claude_weekly"`
 		}
 		if json.Unmarshal(data, &leg) == nil && (leg.FiveHour.PercentLeft > 0 || leg.Weekly.PercentLeft > 0 || leg.FiveHour.ResetTime != "" || leg.Weekly.ResetTime != "" || leg.FiveHour.ResetsIn != "" || leg.Weekly.ResetsIn != "" || leg.ClaudeFiveHour.PercentLeft != nil || leg.ClaudeWeekly.PercentLeft != nil || leg.ClaudeFiveHour.ResetsIn != "" || leg.ClaudeWeekly.ResetsIn != "" || leg.ClaudeFiveHour.ResetTime != "" || leg.ClaudeWeekly.ResetTime != "") {
+			if debug {
+				slog.Debug("GetCachedUsage: parsing legacy format", "provider", provider, "profile", profileName, "account", firstNonEmpty(leg.Account, leg.Email))
+			}
 			// AGY and Codex legacy files both store remaining capacity in percent_left
 			// (AGY UI label is "Limit Remaining"; a full bar is 100% remaining).
 			p5h := clampPercent(leg.FiveHour.PercentLeft)
@@ -224,12 +257,21 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 				Windows:    windows,
 			}
 			if !e.Trustworthy(snap) {
+				if debug {
+					slog.Debug("GetCachedUsage: legacy snapshot not trustworthy", "provider", provider, "profile", profileName, "fetchedAt", snap.FetchedAt, "age", time.Since(snap.FetchedAt))
+				}
 				snap.Status = model.UsageUnknown
 				snap.Source = model.SourceNone
 				snap.Windows = nil
 				return snap, false
 			}
+			if debug {
+				slog.Debug("GetCachedUsage: returning legacy snapshot", "provider", provider, "profile", profileName, "status", snap.Status, "fetchedAt", snap.FetchedAt)
+			}
 			return snap, true
+		}
+		if debug {
+			slog.Debug("GetCachedUsage: no valid legacy format", "provider", provider, "profile", profileName)
 		}
 		return model.UsageSnapshot{
 			ProviderID: provider,
@@ -244,6 +286,9 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 		snap.Status = model.UsageCached
 	}
 
+	if debug {
+		slog.Debug("GetCachedUsage: returning cached snapshot", "provider", provider, "profile", profileName, "status", snap.Status, "fetchedAt", snap.FetchedAt, "windows", len(snap.Windows))
+	}
 	return snap, true
 }
 
@@ -253,7 +298,15 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 // it. This prevents a transient refresh failure from erasing useful context
 // while keeping freshness guarantees explicit.
 func (e *Engine) GetLastKnownUsage(provider, profileName string) (model.UsageSnapshot, bool) {
-	return NewEngine(LastKnownTTL).GetCachedUsage(provider, profileName)
+	debug := os.Getenv("NEXUS_AGY_DEBUG") == "1" || os.Getenv("NEXUS_DEBUG") == "1"
+	if debug {
+		slog.Debug("GetLastKnownUsage: starting", "provider", provider, "profile", profileName)
+	}
+	snap, found := NewEngine(LastKnownTTL).GetCachedUsage(provider, profileName)
+	if debug {
+		slog.Debug("GetLastKnownUsage: result", "provider", provider, "profile", profileName, "found", found, "status", snap.Status, "fetchedAt", snap.FetchedAt, "windows", len(snap.Windows))
+	}
+	return snap, found
 }
 
 func clampPercent(v float64) float64 {

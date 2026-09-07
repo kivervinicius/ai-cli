@@ -609,6 +609,19 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
   px permanece em `web/src`; o servidor recompilado respondeu `status: ok`.
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-07T15:00:47Z
+## Frontend gate — 2026-09-07T15:28:41Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
+
+## Desktop/Web terminal continuity — 2026-09-07
+
+- `go test ./internal/control/web ./cmd/nexus-desktop` — PASS, incluindo
+  anexação de sessão loopback e proxy com origem Wails.
+- `go test ./...` — PASS.
+- `go vet ./...` — PASS.
+- `go test -race ./internal/control/web ./internal/control/terminal/... ./internal/control/host/...` — PASS.
+- `cd web && npm run verify` — PASS em todos os gates.
+- `make build-desktop-wails` — PASS; binário Linux production gerado.
+- `git diff --check` — PASS após restauração dos bindings Wails regenerados.
+
+Limitação: não foi executado smoke visual nativo Windows/macOS neste ambiente.

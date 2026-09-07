@@ -3,6 +3,8 @@ package profile
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -49,9 +51,22 @@ func RefreshUsageSnapshot(providerName, name string) model.UsageSnapshot {
 }
 
 func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnapshot {
+	debug := os.Getenv("NEXUS_AGY_DEBUG") == "1" || os.Getenv("NEXUS_DEBUG") == "1"
+	if debug {
+		slog.Debug("loadUsageSnapshot: starting", "provider", providerName, "profile", name, "refresh", refresh)
+	}
+
 	qEng := quota.NewEngine(5 * time.Minute)
 	lastKnown, hasLastKnown := qEng.GetLastKnownUsage(providerName, name)
+	if debug {
+		slog.Debug("loadUsageSnapshot: GetLastKnownUsage", "provider", providerName, "profile", name, "hasLastKnown", hasLastKnown, "lastKnownStatus", lastKnown.Status, "lastKnownFetchedAt", lastKnown.FetchedAt, "lastKnownWindows", len(lastKnown.Windows))
+	}
+
 	snap, found := qEng.GetCachedUsage(providerName, name)
+	if debug {
+		slog.Debug("loadUsageSnapshot: GetCachedUsage", "provider", providerName, "profile", name, "found", found, "snapStatus", snap.Status, "snapFetchedAt", snap.FetchedAt, "snapWindows", len(snap.Windows), "snapAccount", snap.Account)
+	}
+
 	// Codex rollouts are local filesystem reads (not a blocking CLI). Always
 	// prefer the adapter so stale quota.json with phantom fields cannot hide
 	// the live primary/secondary used_percent from recent sessions.
@@ -59,6 +74,10 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 	if useCache && providerName == "codex" {
 		useCache = false
 	}
+	if debug {
+		slog.Debug("loadUsageSnapshot: cache decision", "provider", providerName, "profile", name, "useCache", useCache, "trustworthy", qEng.Trustworthy(snap))
+	}
+
 	if useCache {
 		return snap
 	}
@@ -90,11 +109,18 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 		}
 	}
 
+	if debug {
+		slog.Debug("loadUsageSnapshot: after adapter", "provider", providerName, "profile", name, "status", snap.Status, "source", snap.Source, "fetchedAt", snap.FetchedAt, "windows", len(snap.Windows), "account", snap.Account)
+	}
+
 	// Reject stale snapshots from adapters: a quota file older than the
 	// trust window is not evidence of live capacity. Keep processing below so
 	// the last-known fallback can preserve context without treating it as live.
 	if snap.Status != model.UsageUnknown && snap.Status != model.UsageError && len(snap.Windows) > 0 {
 		if !qEng.Trustworthy(snap) {
+			if debug {
+				slog.Debug("loadUsageSnapshot: rejecting stale adapter snapshot", "provider", providerName, "profile", name, "fetchedAt", snap.FetchedAt, "age", time.Since(snap.FetchedAt))
+			}
 			snap.Status = model.UsageUnknown
 			snap.Source = model.SourceNone
 			snap.Windows = nil
@@ -103,6 +129,9 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 			// consumers read current quota instead of stale cache files.
 			eng := quota.NewEngine(5 * time.Minute)
 			_ = eng.SaveUsage(snap)
+			if debug {
+				slog.Debug("loadUsageSnapshot: returning trustworthy adapter snapshot", "provider", providerName, "profile", name, "status", snap.Status)
+			}
 			return snap
 		}
 	}
@@ -116,9 +145,15 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 		lastKnown.Status = model.UsageEstimated
 		lastKnown.Error = fmt.Sprintf("live usage refresh failed; showing last known observation from %s", quota.FormatFreshness(lastKnown.FetchedAt))
 		_ = qEng.SaveUsage(lastKnown)
+		if debug {
+			slog.Debug("loadUsageSnapshot: returning lastKnown as ESTIMATED", "provider", providerName, "profile", name, "lastKnownFetchedAt", lastKnown.FetchedAt, "lastKnownAccount", lastKnown.Account)
+		}
 		return lastKnown
 	}
 
+	if debug {
+		slog.Debug("loadUsageSnapshot: returning final snap", "provider", providerName, "profile", name, "status", snap.Status)
+	}
 	return snap
 }
 
@@ -198,10 +233,22 @@ func GetQuotaDetails(providerName, name, plan, email string) QuotaDetails {
 // GetQuotaView returns the omnibus QuotaView for any consumer (TUI, Web, CLI, Scheduler).
 // This is the preferred entry point for quota display and scoring.
 func GetQuotaView(providerName, name, plan, email string) quota.QuotaView {
+	debug := os.Getenv("NEXUS_AGY_DEBUG") == "1" || os.Getenv("NEXUS_DEBUG") == "1"
+	if debug {
+		slog.Debug("GetQuotaView: starting", "provider", providerName, "profile", name, "email", email)
+	}
+
 	snap := GetUsageSnapshot(providerName, name)
+	if debug {
+		slog.Debug("GetQuotaView: after GetUsageSnapshot", "provider", providerName, "profile", name, "status", snap.Status, "account", snap.Account, "windows", len(snap.Windows))
+	}
+
 	// A cached quota can outlive an account switch. Do not show or score data
 	// whose recorded identity differs from the profile's authenticated email.
 	if snapshotAccount := strings.TrimSpace(snap.Account); snapshotAccount != "" && strings.TrimSpace(email) != "" && !strings.EqualFold(snapshotAccount, strings.TrimSpace(email)) {
+		if debug {
+			slog.Debug("GetQuotaView: account mismatch detected", "provider", providerName, "profile", name, "snapshotAccount", snapshotAccount, "profileEmail", email)
+		}
 		snap.Status = model.UsageUnknown
 		snap.Source = model.SourceNone
 		snap.Windows = nil
@@ -211,6 +258,9 @@ func GetQuotaView(providerName, name, plan, email string) quota.QuotaView {
 	// Stale local files must not score as fresh CACHED (e.g. August quota.json).
 	qEng := quota.NewEngine(quota.DefaultTTL)
 	if len(snap.Windows) > 0 && snap.Status != model.UsageUnknown && !qEng.Trustworthy(snap) {
+		if debug {
+			slog.Debug("GetQuotaView: marking stale as ESTIMATED", "provider", providerName, "profile", name, "fetchedAt", snap.FetchedAt, "age", time.Since(snap.FetchedAt))
+		}
 		if snap.Status == model.UsageCached || snap.Status == model.UsageLive {
 			snap.Status = model.UsageEstimated
 		}

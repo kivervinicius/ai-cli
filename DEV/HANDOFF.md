@@ -1,5 +1,11 @@
 # Handoff
 
+## Atualização 2026-09-07 — Memoização do Flow
+
+`FlowTaskNode` foi memoizado após a revisão final do caminho de renderização.
+O frontend foi revalidado com `verify` 10/10. O próximo passo continua sendo
+benchmark nativo; não há evidência suficiente para afirmar FPS ou GPU.
+
 ## Atualização 2026-09-07 — Primeiras correções de desempenho
 
 Foram aplicadas três correções: Flow Canvas não reconstrói o grafo ao mudar
@@ -502,3 +508,31 @@ Local runtime smoke confirmed 53/53 skills (the previous profile-only view was
 48). Cards expose and copy the complete `SKILL.md` usage context, with a
 generated fallback only when the source file is unavailable. Preserve merge by
 stable skill ID and prompt provenance when changing discovery.
+
+## Desktop/Web terminal continuity — 2026-09-07
+
+O Desktop agora tenta anexar ao Core Web loopback já em execução antes de criar
+um Core próprio. O fluxo reutiliza o bootstrap autenticado persistido pela Web,
+cria uma sessão Desktop válida e usa um reverse proxy no AssetServer Wails para
+REST e WebSocket. Isso mantém o mesmo registry, runtime e host PTY usados pelo
+navegador. Se a Web não estiver ativa ou o estado não puder ser validado, o
+fallback continua sendo o Core embutido do Desktop.
+
+Evidência local: testes de anexação/proxy passaram; `go test ./...`, `go vet
+./...`, race focado e `npm run verify` passaram; `make build-desktop-wails`
+gerou `cmd/nexus-desktop/build/bin/nexus-desktop`. Para validação operacional,
+reinicie a Web, abra primeiro um terminal no navegador, abra o binário Desktop e
+confirme que o mesmo terminal aparece e continua emitindo saída. Windows/macOS
+seguem sem smoke nativo neste ambiente.
+
+## Desktop navigation continuity — 2026-09-07
+
+O handler do Desktop foi refinado: rotas SPA como `/p/<project>/terminals`
+agora recebem o `index.html` embutido localmente; o proxy para o Core Web fica
+restrito às rotas `/api/*` e WebSocket. Isso evita que uma troca de tela faça a
+WebView carregar um documento remoto e perca o estado do workspace.
+
+O novo binário foi gerado em `cmd/nexus-desktop/build/bin/nexus-desktop`, a
+instância antiga foi encerrada e a nova está ativa junto da Web em `127.0.0.1:3000`.
+O teste E2E confirmou a troca Overview → Terminais; o roteiro completo ainda
+reporta uma falha responsiva independente no menu de criação em viewport 320px.
