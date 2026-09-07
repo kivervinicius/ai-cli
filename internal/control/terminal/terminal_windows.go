@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -20,10 +21,13 @@ import (
 //
 //	CreatePseudoConsole / ResizePseudoConsole / ClosePseudoConsole
 //
-// and launches the child via CreateProcessW with the
+// and can launch the child via CreateProcessW with the
 // PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE attribute. If ConPTY is unavailable
 // (e.g. Windows < 10.0.17763), Start falls back to standard pipes and reports
 // the backend truthfully as "standard pipes" (no resize / no raw mode).
+// Standard pipes are the default until ConPTY is explicitly enabled with
+// AI_CLI_ENABLE_CONPTY=1, because some Windows environments report a usable
+// ConPTY API while returning no bytes from the output channel.
 
 const (
 	procThreadAttributePseudoConsole = 0x00020016
@@ -104,7 +108,7 @@ func newPlatformBackend() Backend {
 }
 
 // BackendMechanism reports the platform's primary terminal backend.
-func BackendMechanism() string { return "ConPTY (CreatePseudoConsole)" }
+func BackendMechanism() string { return "Windows standard pipes (ConPTY opt-in)" }
 
 func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) error {
 	b.mu.Lock()
@@ -144,36 +148,49 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 	var hPC uintptr
 	r, _, e = procCreatePseudoConsole.Call(
 		uintptr(sizeVal), uintptr(hInRead), uintptr(hOutWrite), 0, uintptr(unsafe.Pointer(&hPC)))
-	if r != 0 {
+	if r != 0 || os.Getenv("AI_CLI_ENABLE_CONPTY") != "1" {
 		// ConPTY unavailable: fall back to standard pipes, reported truthfully.
 		childIn := os.NewFile(hInRead, "conpty-fallback-child-in")
 		inFile := os.NewFile(hInWrite, "conpty-fallback-in")
 		outFile := os.NewFile(hOutRead, "conpty-fallback-out")
+		childOut := os.NewFile(hOutWrite, "conpty-fallback-child-out")
 		b.inPipe = inFile
 		b.rPipe = outFile
 		b.pid = 0
 		b.isConPTY = false
 		b.mechanism = "standard pipes (ConPTY unavailable)"
-		_ = closeHandle(hOutWrite)
 		cmd.Stdin = childIn
-		cmd.Stdout = outFile
-		cmd.Stderr = outFile
+		cmd.Stdout = childOut
+		cmd.Stderr = childOut
 		if err := cmd.Start(); err != nil {
 			_ = closeHandle(hInWrite)
 			_ = closeHandle(hOutRead)
+			_ = closeHandle(hOutWrite)
 			if childIn != nil {
 				_ = childIn.Close()
 			}
+			if childOut != nil {
+				_ = childOut.Close()
+			}
 			return fmt.Errorf("failed to start process (pipe fallback): %w", err)
 		}
+		// The child-side handles are owned by the spawned process now. Closing
+		// the parent copies is required so EOF is observable when the child exits.
+		_ = childIn.Close()
+		_ = childOut.Close()
 		b.pid = cmd.Process.Pid
 		b.cmd = cmd
 		return nil
 	}
 
-	// 3. Parent retains the client ends; ConPTY owns the server ends.
-	_ = closeHandle(hInRead)
-	_ = closeHandle(hOutWrite)
+	// Keep the server-side handles alive until CreateProcessW completes. The
+	// ConPTY contract requires these handles to remain valid through child
+	// creation; closing them earlier can yield a live process with no output.
+	defer closeHandle(hInRead)
+	defer closeHandle(hOutWrite)
+
+	// 3. Parent retains the client ends; ConPTY owns the server ends after the
+	// child has been attached.
 
 	// 4. Build the PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE attribute list.
 	var attrSize uintptr
@@ -210,14 +227,15 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 	}
 
 	// 5. Launch the child attached to the pseudo console.
-	appName, err := syscall.UTF16PtrFromString(cmd.Path)
+	appPath, commandLineText := createProcessSpec(cmd)
+	_, err := syscall.UTF16PtrFromString(appPath)
 	if err != nil {
 		_ = closeHandle(hInWrite)
 		_ = closeHandle(hOutRead)
 		_ = closePseudoConsole(hPC)
 		return fmt.Errorf("invalid binary path %q: %w", cmd.Path, err)
 	}
-	commandLine, err := syscall.UTF16FromString(buildCommandLine(cmd.Args))
+	commandLine, err := syscall.UTF16FromString(commandLineText)
 	if err != nil {
 		_ = closeHandle(hInWrite)
 		_ = closeHandle(hOutRead)
@@ -242,7 +260,7 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 
 	var pi processInformation
 	r, _, e = procCreateProcessW.Call(
-		uintptr(unsafe.Pointer(appName)),
+		0,
 		uintptr(unsafe.Pointer(&commandLine[0])),
 		0, 0, 0,
 		extendedStartupInfoPresent|createUnicodeEnvironment,
@@ -456,6 +474,38 @@ func buildCommandLine(args []string) string {
 	return sb.String()
 }
 
+// createProcessSpec returns an application path and command line suitable for
+// CreateProcessW. Windows shell shims (.cmd/.bat) are not Win32 executables,
+// so they must be launched through ComSpec instead of being passed as the
+// application name directly.
+func createProcessSpec(cmd *exec.Cmd) (string, string) {
+	if cmd == nil {
+		return "", ""
+	}
+	if len(cmd.Args) == 0 {
+		return cmd.Path, escapeArg(cmd.Path)
+	}
+	if !isWindowsShellShim(cmd.Path) {
+		args := append([]string{cmd.Path}, cmd.Args[1:]...)
+		return cmd.Path, buildCommandLine(args)
+	}
+
+	comspec := os.Getenv("ComSpec")
+	if comspec == "" {
+		comspec = filepath.Join(os.Getenv("SystemRoot"), "System32", "cmd.exe")
+	}
+
+	// The doubled quote after /c is intentional: it preserves a quoted
+	// script path while using cmd.exe's /s /c parsing rules.
+	payload := buildCommandLine(cmd.Args)
+	return comspec, escapeArg(comspec) + " /d /s /c \"" + payload + "\""
+}
+
+func isWindowsShellShim(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".cmd" || ext == ".bat"
+}
+
 // escapeArg quotes an argument following Windows CreateProcess conventions.
 func escapeArg(s string) string {
 	if len(s) == 0 {
@@ -508,8 +558,10 @@ func escapeArg(s string) string {
 func utf16EnvBlock(env []string) []uint16 {
 	var block []uint16
 	for _, e := range env {
+		// StringToUTF16 already includes the NUL terminator for each
+		// environment entry. Appending another NUL here would make Windows
+		// interpret the block as terminated after the first variable.
 		block = append(block, syscall.StringToUTF16(e)...)
-		block = append(block, 0)
 	}
 	block = append(block, 0)
 	if len(block) == 0 {
