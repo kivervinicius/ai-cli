@@ -1,5 +1,28 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-07 — Correções iniciais de desempenho Web/Desktop
+
+- Flow Canvas separa seleção da reconstrução do grafo e usa `applyNodeChanges`,
+  removendo a busca O(n²) durante drag.
+- `DesktopBridge` coalesce chamadas simultâneas de bootstrap em uma promise.
+- AgentTerminal agrupa saída WebSocket por `requestAnimationFrame`, mantendo
+  fila para painéis ocultos e preservando ordem/scroll.
+- Validação: frontend 10/10, `go test ./...`, race dos pacotes afetados,
+  `go vet ./...`, build Wails Linux de produção e `git diff --check` passaram.
+- Benchmark comparativo e smoke nativo de FPS/GPU/latência/soak continuam
+  pendentes; a paridade total ainda não foi declarada.
+
+## 2026-09-07 — Plano de paridade de desempenho Web/Desktop
+
+- Criado `.omx/plans/desktop-web-performance-parity.md`, sem alteração de
+  código de produto. O plano cobre baseline comparável, instrumentação de
+  startup, benchmark Web/Desktop, árvore de decisão por causa, correções
+  incrementais, soak e validação nativa por plataforma.
+- As hipóteses permanecem não confirmadas até medição: Core/readiness,
+  bootstrap Wails, WebView/GPU, React/workspace, terminal/xterm, Flow e polling.
+- Meta proposta: Desktop dentro de 1,20x da Web nos fluxos críticos, com
+  limites absolutos para startup, terminal, Flow, CPU e memória.
+
 ## 2026-09-07 — Execução Luna P0/P1 + início de continuidade
 
 - Baseline revalidado após limpar somente o cache Go: `go test ./...`, `go vet

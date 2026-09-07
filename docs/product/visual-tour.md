@@ -11,6 +11,8 @@ registra o commit, a superfície e o cenário de cada evidência.
 
 ![Agentes do Nexus](../assets/screenshots/agents.png)
 
+[Baixar demonstração real do caminho Direct (WebM)](../assets/demos/direct-workflow.webm)
+
 Quando novas superfícies forem capturadas, elas serão adicionadas aqui com
 alt-text específico e uma referência ao manifesto. Mockups, diagramas e
 imagens de marca não substituem captura do produto.

@@ -4,6 +4,7 @@ import {
   Controls,
   MiniMap,
   ReactFlow,
+  applyNodeChanges,
   type Connection,
   type Edge,
   type Node,
@@ -63,7 +64,7 @@ export const FlowCanvas = ({
           id: step.id,
           type: 'task',
           position: positions[step.id] || { x: 0, y: 0 },
-          data: { step, selected: selectedId === step.id },
+          data: { step, selected: false },
         })),
       );
       setEdges(
@@ -83,17 +84,19 @@ export const FlowCanvas = ({
       setNodes([]);
       setEdges([]);
     }
-  }, [flow, selectedId]);
+  }, [flow.steps]);
+
+  useEffect(() => {
+    setNodes((current) =>
+      current.map((node) => ({
+        ...node,
+        data: { ...node.data, selected: node.id === selectedId },
+      })),
+    );
+  }, [selectedId]);
 
   const onNodesChange: OnNodesChange<FlowNode> = (changes) => {
-    setNodes((current) =>
-      current.map((node) => {
-        const change = changes.find((item) => 'id' in item && item.id === node.id);
-        return change?.type === 'position' && change.position
-          ? { ...node, position: change.position }
-          : node;
-      }),
-    );
+    setNodes((current) => applyNodeChanges(changes, current) as FlowNode[]);
   };
   const handleConnect = (connection: Connection) => {
     if (!connection.source || !connection.target || connection.source === connection.target) return;

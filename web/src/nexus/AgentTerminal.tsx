@@ -360,30 +360,41 @@ export const AgentTerminal: React.FC<{
     // Do not let xterm render while its workspace panel is hidden. Its
     // viewport dimensions are not guaranteed during that transition.
     let pendingOutput = '';
-    const writeTerminalOutput = (data: string) => {
-      if (disposed) return;
-      if (panel && panel.dataset.active !== 'true') {
-        pendingOutput += data;
-        return;
-      }
+    let outputFrame: number | undefined;
+    const flushTerminalOutput = () => {
+      outputFrame = undefined;
+      if (disposed || (panel && panel.dataset.active !== 'true') || !pendingOutput) return;
+
+      const output = pendingOutput;
+      pendingOutput = '';
       const buf = term.buffer.active;
       const wasTracking = shouldAutoScrollToBottom(buf.viewportY, buf.baseY);
       try {
-        term.write(pendingOutput + data, () => {
+        term.write(output, () => {
           if (wasTracking) {
             term.scrollToBottom();
           }
         });
-        pendingOutput = '';
       } catch {
-        pendingOutput += data;
+        pendingOutput = output + pendingOutput;
+        if (outputFrame === undefined) {
+          outputFrame = window.requestAnimationFrame(flushTerminalOutput);
+        }
+      }
+    };
+    const writeTerminalOutput = (data: string) => {
+      if (disposed || !data) return;
+      pendingOutput += data;
+      if (panel && panel.dataset.active !== 'true') return;
+      if (outputFrame === undefined) {
+        outputFrame = window.requestAnimationFrame(flushTerminalOutput);
       }
     };
     const flushPendingOutput = () => {
-      if (!pendingOutput || (panel && panel.dataset.active !== 'true')) return;
-      const output = pendingOutput;
-      pendingOutput = '';
-      writeTerminalOutput(output);
+      if (disposed || !pendingOutput || (panel && panel.dataset.active !== 'true')) return;
+      if (outputFrame === undefined) {
+        outputFrame = window.requestAnimationFrame(flushTerminalOutput);
+      }
     };
 
     const scheduleRedrawPulse = () => {
@@ -664,6 +675,7 @@ export const AgentTerminal: React.FC<{
       if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
       if (openFrame !== undefined) window.cancelAnimationFrame(openFrame);
       if (flushFrame !== undefined) window.cancelAnimationFrame(flushFrame);
+      if (outputFrame !== undefined) window.cancelAnimationFrame(outputFrame);
       redrawTimers.forEach((timer) => window.clearTimeout(timer));
       observer.disconnect();
       panelObserver?.disconnect();

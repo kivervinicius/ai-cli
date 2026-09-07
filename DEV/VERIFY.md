@@ -1,5 +1,25 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-07 — Correções iniciais de desempenho Web/Desktop
+
+- `npm --prefix web run verify` — PASS, 10/10 gates.
+- `go test ./...` — PASS.
+- `go test -race` dos pacotes Desktop/Web/Terminal/Host — PASS.
+- `go vet ./...` — PASS.
+- `make build-desktop-wails` — PASS em produção com `webkit2_41`.
+- `git diff --check` — PASS após restaurar bindings gerados automaticamente.
+- Benchmark comparativo e smoke nativo de performance — PENDENTES.
+
+## 2026-09-07 — Plano de paridade de desempenho Web/Desktop
+
+- Artefato `.omx/plans/desktop-web-performance-parity.md` criado e inspecionado.
+- Referências principais conferidas em `cmd/nexus-desktop/main.go`,
+  `web/src/platform/desktopBridge.ts`, `web/src/api.ts`,
+  `web/src/app/NexusWorkspaceApp.tsx`, `web/src/nexus/AgentTerminal.tsx` e
+  `web/src/features/work/FlowCanvas.tsx`.
+- `git diff --check -- .omx/plans/desktop-web-performance-parity.md` — PASS.
+- Nenhum benchmark foi executado e nenhuma causa foi declarada confirmada.
+
 ## 2026-09-07 — Execução Luna P0/P1 e fundação de continuidade
 
 - `go test -count=1 ./...` — PASS.
@@ -589,6 +609,6 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
   px permanece em `web/src`; o servidor recompilado respondeu `status: ok`.
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-07T13:20:49Z
+## Frontend gate — 2026-09-07T15:00:47Z
 
-Verdict: **FAIL**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
+Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).

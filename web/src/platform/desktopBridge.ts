@@ -41,6 +41,7 @@ export class DesktopBridge implements PlatformBridge {
   readonly kind = 'desktop' as const;
 
   private cachedBootstrap: DesktopBootstrapInfo | null = null;
+  private bootstrapRequest: Promise<DesktopBootstrapInfo | null> | null = null;
   private cachedCapabilities: PlatformCapabilities | null = null;
   private capabilitiesRequest: Promise<PlatformCapabilities | null> | null = null;
 
@@ -72,6 +73,17 @@ export class DesktopBridge implements PlatformBridge {
       return this.cachedBootstrap;
     }
 
+    if (this.bootstrapRequest) {
+      return this.bootstrapRequest;
+    }
+
+    this.bootstrapRequest = this.loadBootstrapInfo().finally(() => {
+      this.bootstrapRequest = null;
+    });
+    return this.bootstrapRequest;
+  }
+
+  private async loadBootstrapInfo(): Promise<DesktopBootstrapInfo | null> {
     // 1. Check for Wails Go binding (with retry for async binding injection)
     for (let i = 0; i < 20; i++) {
       if (window.go?.desktop?.App?.GetBootstrapInfo) {

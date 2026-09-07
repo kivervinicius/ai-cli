@@ -1,5 +1,28 @@
 # Handoff
 
+## Atualização 2026-09-07 — Primeiras correções de desempenho
+
+Foram aplicadas três correções: Flow Canvas não reconstrói o grafo ao mudar
+somente a seleção e usa `applyNodeChanges`; DesktopBridge coalesce bootstrap
+concorrente; AgentTerminal agrupa saída WebSocket por frame antes de escrever
+no xterm. Frontend, Go, race/vet e build Wails de produção passaram.
+
+Próxima ação exata: implementar/executar o benchmark comparativo do plano
+`.omx/plans/desktop-web-performance-parity.md` e confirmar se WebView/GPU,
+startup ou outra superfície ainda excede a meta de 1,20x da Web.
+
+## Atualização 2026-09-07 — Plano de paridade Web/Desktop
+
+O plano executável para diagnosticar e corrigir a lentidão percebida do Desktop
+está em `.omx/plans/desktop-web-performance-parity.md`. Ele exige baseline na
+mesma máquina/SHA, instrumentação do caminho crítico e benchmark comparativo
+antes de otimizar. A primeira execução deve realizar as Fases 0–2; somente
+depois escolher as duas trilhas de causa com maior contribuição ao p95.
+
+Não houve alteração de código nem confirmação de causa nesta etapa. A meta
+proposta é Desktop <= 1,20x Web nos fluxos críticos; Linux requer smoke nativo,
+e Windows/macOS continuam sem afirmação de correção até execução nativa.
+
 ## Atualização 2026-09-07 — AGY sem keyring no monitor de quota
 
 O probe de quota do AGY não inicia mais Secret Service nem keyring privado. O

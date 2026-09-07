@@ -88,6 +88,34 @@ describe('PlatformBridge', () => {
     });
   });
 
+  it('coalesces concurrent desktop bootstrap requests', async () => {
+    let calls = 0;
+    (globalThis as any).window.go = {
+      desktop: {
+        App: {
+          GetBootstrapInfo: async () => {
+            calls += 1;
+            await Promise.resolve();
+            return {
+              serverUrl: 'http://127.0.0.1:45678',
+              sessionToken: 'sess_12345',
+              csrfToken: 'csrf_67890',
+            };
+          },
+        },
+      },
+    };
+    const bridge = new DesktopBridge();
+
+    const [first, second] = await Promise.all([
+      bridge.getBootstrapInfo(),
+      bridge.getBootstrapInfo(),
+    ]);
+
+    expect(calls).toBe(1);
+    expect(first).toEqual(second);
+  });
+
   it('uses backend capability evidence instead of Wails method presence', async () => {
     (globalThis as any).window.go = {
       desktop: {
