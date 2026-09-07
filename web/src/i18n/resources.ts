@@ -195,6 +195,7 @@ export const en = {
     recover: 'Recover',
     start: 'Start',
     remove: 'Remove',
+    prepareTask: 'Prepare task',
     confirmRemove:
       'Remove agent "{{name}}"? The identity and its terminal will be deleted. Project files stay untouched.',
     cannotRecoverRuntime:
@@ -266,6 +267,16 @@ export const en = {
     createMenuTooltip: 'Create in project (Agent, AI Session or Terminal)',
     degraded: 'Degraded',
     createInProject: 'Create in project',
+    resumeEyebrow: 'Resume-first control plane',
+    continueWorking: 'Continue working',
+    continue: 'Continue',
+    needsYou: 'Needs your input',
+    activeWork: 'Active work',
+    recentWork: 'Recent work',
+    flowRun: 'Flow Run · {{id}}',
+    noAttention: 'No pending decisions',
+    noRecentWork: 'Nothing active yet',
+    noRecentWorkHint: 'Start a session or open the project terminal to begin.',
   },
   work: {
     eyebrow: 'Composer',
@@ -1241,6 +1252,7 @@ export const ptBR = {
     recover: 'Recuperar',
     start: 'Iniciar',
     remove: 'Remover',
+    prepareTask: 'Preparar tarefa',
     confirmRemove:
       'Remover o agente "{{name}}"? A identidade e o terminal serão excluídos. Os arquivos do projeto não são afetados.',
     cannotRecoverRuntime:
@@ -1312,6 +1324,16 @@ export const ptBR = {
     createMenuTooltip: 'Criar no projeto (Agente, Sessão IA ou Terminal)',
     degraded: 'Degradado',
     createInProject: 'Criar no projeto',
+    resumeEyebrow: 'Retomada do trabalho',
+    continueWorking: 'Continuar trabalhando',
+    continue: 'Continuar',
+    needsYou: 'Precisa da sua decisão',
+    activeWork: 'Trabalho ativo',
+    recentWork: 'Trabalho recente',
+    flowRun: 'Flow Run · {{id}}',
+    noAttention: 'Nenhuma decisão pendente',
+    noRecentWork: 'Nada ativo ainda',
+    noRecentWorkHint: 'Inicie uma sessão ou abra o terminal do projeto para começar.',
   },
   work: {
     eyebrow: 'Composer',
@@ -2292,6 +2314,7 @@ export const es = {
     recover: 'Recuperar',
     start: 'Iniciar',
     remove: 'Eliminar',
+    prepareTask: 'Preparar tarea',
     confirmRemove:
       '¿Eliminar el agente "{{name}}"? Se borrará la identidad y su terminal. Los archivos del proyecto no se tocan.',
     cannotRecoverRuntime:
@@ -2363,6 +2386,16 @@ export const es = {
     createMenuTooltip: 'Crear en el proyecto (Agente, Sesión IA o Terminal)',
     degraded: 'Degradado',
     createInProject: 'Crear en el proyecto',
+    resumeEyebrow: 'Retomar el trabajo',
+    continueWorking: 'Continuar trabajando',
+    continue: 'Continuar',
+    needsYou: 'Necesita su decisión',
+    activeWork: 'Trabajo activo',
+    recentWork: 'Trabajo reciente',
+    flowRun: 'Flow Run · {{id}}',
+    noAttention: 'No hay decisiones pendientes',
+    noRecentWork: 'Nada activo todavía',
+    noRecentWorkHint: 'Inicie una sesión o abra el terminal del proyecto para comenzar.',
   },
   work: {
     eyebrow: 'Composer',

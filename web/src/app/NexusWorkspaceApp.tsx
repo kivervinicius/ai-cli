@@ -325,6 +325,7 @@ const WorkspaceCoordinator: React.FC<{
   const [tour, setTour] = useState(false);
   const [shellError, setShellError] = useState('');
   const [flowRuns, setFlowRuns] = useState<MissionRun[]>([]);
+  const [allFlowRuns, setAllFlowRuns] = useState<MissionRun[]>([]);
   const [closeTarget, setCloseTarget] = useState<WorkspaceSurface | null>(null);
   const shellInFlight = useRef(false);
 
@@ -334,6 +335,7 @@ const WorkspaceCoordinator: React.FC<{
       .getRuns()
       .then((runs) => {
         if (!mounted) return;
+        setAllFlowRuns(runs);
         const active = runs.filter(
           (run) =>
             !['COMPLETED_VERIFIED', 'CANCELED_BY_USER', 'FAILED_BUDGET_EXCEEDED'].includes(
@@ -824,6 +826,7 @@ const WorkspaceCoordinator: React.FC<{
           agents={data.agents}
           workspaces={data.workspaces}
           runtimes={data.runtimes}
+          flowRuns={allFlowRuns.filter((run) => !run.project_id || run.project_id === project.id)}
           providers={data.providers}
           profiles={data.profiles}
           events={data.events}

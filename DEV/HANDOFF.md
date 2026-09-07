@@ -652,6 +652,18 @@ determinístico com falha injetada e DoD global. Gates locais Linux/Web/Go passa
 Frontend está em 61 arquivos/311 testes, Go/race/vet/quality/security passam;
 o veredito permanece `NO_GO` por ausência de dogfooding real, crash/provider E2E
 autenticado, matriz same-SHA e execução nativa Windows/macOS.
+
+# Atualização 2026-09-07 — Correções de E2E e macOS CI
+
+O Browser E2E foi reproduzido localmente e corrigido para resolver o bootstrap
+via `nexus web url`, além de aceitar hit-test no ancestral posicionado sem
+permitir overlays irmãos. O cenário passou nos seis breakpoints, Axe, Settings
+ARIA e density. O harness Go Direct Work também aceita o novo bootstrap em
+fragmento e mantém a rejeição de URLs sem token.
+
+O workflow Desktop macOS deixou de usar `mapfile`, incompatível com Bash 3.2;
+YAML foi validado localmente. Essas correções ainda precisam de um novo commit
+e de uma execução CI same-SHA antes de alterar o veredito de release.
 # Atualização 2026-09-07 — Diálogo único de preparação
 
 O fluxo “Preparar tarefa” agora usa `web/src/components/TaskPreparationDialog.tsx`
@@ -669,3 +681,18 @@ Validação visual/Axe concluída: `node web/scripts/task-preparation-visual-ver
 passou nos cinco breakpoints, sem overflow horizontal, sem violações Axe
 serious/critical e com foco de teclado na prévia rolável. Evidências estão em
 `.tempmediaStorage/task-preparation/`.
+
+## Atualização 2026-09-07 — Gate documental same-SHA
+
+`scripts/docs-verify.mjs` passou a rejeitar também mudanças visuais staged e
+unstaged. Portanto, `make docs-verify` só pode passar depois de capturas e
+manifesto serem regenerados no candidate SHA imutável; no worktree atual o
+resultado CONDITIONAL é intencional. Não atualizar `source_sha` manualmente.
+
+## Atualização 2026-09-07 — Resume-first
+
+O Overview agora apresenta retomada operacional baseada nos runtimes/agentes do
+projeto, com prioridade Needs You, Continue/Recover, Terminal e Recent Work.
+O modelo é puro e coberto por testes. A integração de histórico de missões e o
+E2E de reabertura após reinício continuam pendentes e mantêm o P0-01 como
+CONDITIONAL.

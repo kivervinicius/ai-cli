@@ -5,11 +5,21 @@ Candidate SHA: `5f51d03985f6ca48186f0cb12b3e97a5294600e3` (working tree dirty)
 Branch: `feat/nexus-maximum-delivery`  
 Remote: `origin` → `https://github.com/kivervinicius/ai-cli.git`
 
-Fresh remote evidence: CI run [34155789469](https://github.com/kivervinicius/ai-cli/actions/runs/34155789469)
-completed for this exact SHA with conclusion `failure` (2026-09-07). The
-available GitHub token is invalid, so raw failed logs cannot be downloaded from
-this environment; job conclusions remain authoritative and are not treated as
-release PASS evidence.
+Fresh remote evidence: CI run [34159526843](https://github.com/kivervinicius/ai-cli/actions/runs/34159526843)
+completed for the current SHA with Frontend, Linux, Security, Desktop Linux and
+Desktop Windows passing. macOS E2E, Browser E2E and Desktop macOS failed; the
+GoReleaser Snapshot was skipped. The available GitHub token is invalid/rate
+limited for raw logs, so job conclusions are recorded without inventing root
+causes.
+
+Root cause confirmed for the Frontend failure: running Prettier against the
+exact SHA checkout flags five generated files (`web/src/nexus/api.ts`,
+`web/src/wailsjs/wailsjs/go/desktop/App.d.ts`, `models.ts`,
+`runtime/package.json`, and `runtime/runtime.d.ts`). The current dirty worktree
+contains their formatting correction and local `bun run format:check` passes;
+the correction still needs to land in a new immutable commit before CI can
+re-run. Windows/macOS failures remain untriaged because GitHub logs require
+re-authentication.
 
 This is an evidence ledger, not a feature inventory. `PASS` requires a fresh
 executable result in this checkout. Historical reports are marked as context,
@@ -19,7 +29,7 @@ not reused as same-SHA proof.
 
 | P0 | Status | Evidence |
 | --- | --- | --- |
-| Resume-first UX | CONDITIONAL | Existing browser/Axe evidence is historical; no fresh same-SHA return-session run |
+| Resume-first UX | CONDITIONAL | Overview now derives Needs You/Continue/Recent lanes from project runtimes and receives project Flow Runs; focused model tests and frontend verify pass, but fresh return-session E2E remains unproven |
 | Needs You contract | PASS (local) | Structured `runner.HumanIntervention`; runner tests and durable state paths |
 | Terminal continuity | CONDITIONAL | Linux continuity tests pass; native Windows/macOS execution unavailable |
 
@@ -54,19 +64,20 @@ not reused as same-SHA proof.
 | Frontend typecheck | PASS | `cd web && bun run typecheck` |
 | Frontend tests | PASS | `cd web && bun run test` (61 files / 311 tests) |
 | Frontend lint/style | PASS | `bun run lint && bun run lint:styles && bun run check:styles` (pre-existing warning only) |
-| Frontend build/embed | PASS | `node web/scripts/build.mjs` |
+| Frontend build/embed | PASS | `node web/scripts/build.mjs` and `cd web && bun run verify` (10/10 gates, 2026-09-07T20:49:46Z) |
 | Backend tests | PASS | `go test ./...` and `make quality` |
 | Backend vet | PASS | `go vet ./...` |
 | Runner/store race | PASS | `go test -race ./internal/nexus/runner ./internal/nexus/store` |
-| Browser E2E/Axe/visual | CONDITIONAL | Historical reports exist; no fresh same-SHA run recorded |
+| Browser E2E/Axe/visual | PASS (local current checkout) | Hardening E2E plus `node web/scripts/task-preparation-visual-verify.mjs` passed on `ec6badc` + dirty fixes; six breakpoints, Axe, settings and task-preparation screenshots |
 | Security | PASS (local) | `make security` — No vulnerabilities found |
+| Documentation evidence | CONDITIONAL | `make docs-verify` correctly rejects visual manifest anchored at historical SHA while visual files are dirty; regenerate/commit manifest on candidate SHA |
 | Packaging | CONDITIONAL | Existing Linux/package evidence; no same-SHA native installer matrix |
 
 ## Release
 
 | Gate | Status | Reason |
 | --- | --- | --- |
-| Same-SHA matrix | FAIL | Exact-SHA CI run 34155789469 failed: Frontend, Windows and macOS failed; Browser/Desktop/Snapshot jobs were skipped |
+| Same-SHA matrix | FAIL | Exact-SHA CI run 34159526843: Frontend/Linux/Security/Desktop Linux+Windows PASS; macOS E2E, Browser E2E and Desktop macOS FAIL; Snapshot skipped |
 | Clean install | CONDITIONAL | Linux evidence exists; native install smoke unavailable |
 | Upgrade path | CONDITIONAL | Existing tests cover policy; no full three-platform install/upgrade run |
 | Release artifacts | CONDITIONAL | Local artifacts exist historically; candidate SHA publication not performed |
@@ -79,8 +90,24 @@ The local control-plane implementation is buildable and the deterministic safety
 paths pass, including a new unattended sandbox with injected failure and global
 DoD verification. Release Candidate promotion is still blocked by missing
 real-world proof: Nexus dogfooding, authenticated crash/provider recovery,
-same-SHA CI, and native Windows/macOS validation remain outstanding. These cannot
-be honestly converted to `PASS` from this Linux checkout.
+same-SHA CI completion, and native Windows/macOS validation remain outstanding.
+The browser result is locally green after fixing bootstrap-state handoff and a
+brittle ancestor hit-test assertion, but that fix is uncommitted and therefore
+cannot be treated as same-SHA CI proof yet.
+
+The exact-SHA CI run also exposed a workflow portability bug: Desktop macOS
+used Bash-4-only `mapfile` and failed with exit code 127. The workflow now uses
+Bash-3.2-compatible array reads locally; a new CI run is required to prove the
+fix. Windows/macOS diagnostic steps now continue after individual failures and
+finish with an explicit aggregate assertion, so the next run will preserve
+failure semantics while exposing all platform logs.
+
+The workflow snippets were parsed as YAML and every macOS Bash run block passed
+`bash -n` locally. This validates syntax only; native execution remains a CI
+responsibility.
+
+The release gate now also compares the CI API's `headSha` with the requested
+candidate SHA before accepting the run; mismatches are ignored and retried.
 
 ## Exact blockers and reproduction
 
@@ -91,6 +118,16 @@ be honestly converted to `PASS` from this Linux checkout.
    artifacts, remediation and global verification on one immutable SHA.
 3. Execute the native Windows and macOS jobs (ConPTY/PTY, desktop and installer)
    and attach logs/screenshots to this SHA.
-4. Re-authenticate `gh` (current token returns HTTP 403 for logs), inspect run
-   34155789469 failure logs, fix the smallest root causes, and rerun all release
+4. Re-authenticate `gh` (current token returns HTTP 403/rate-limit for logs), inspect run
+   34159526843 failure logs, fix the smallest root causes, and rerun all release
    gates on the resulting immutable SHA.
+
+5. The local direct-work harness now resolves bootstrap through persisted
+   `nexus web url`; run it with authenticated provider variables to produce the
+   missing provider-backed evidence.
+
+6. Fresh local attempt on 2026-09-07: `go run ./scripts/nexus-e2e-local.go
+   -start -port 3101 -browser` started the real server, then returned
+   `bootstrap did not establish an authenticated session`; browser smoke also
+   reported `NEXUS_BROWSER_SMOKE_NOT_RUN` because no Playwright executable is
+   installed. This is recorded as `BLOCKED_EXTERNAL`, not a passing test.

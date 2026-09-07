@@ -12,6 +12,7 @@
 | V1 | reviewers | functional, security, code review | Q1 | yes | three approvals or findings |
 | V2 | release lane | same-SHA CI, native Win/mac, packaging/install | V1 | yes | immutable SHA matrix |
 | R1 | lead | dogfood real Nexus mission and finalize ledger | V2 | no | mission timeline, artifacts, verification, verdict |
+| C1 | CI owner | land formatting fix, browser E2E fix and Bash-3.2 macOS workflow fix; inspect macOS race/Windows test failures | auth + E2/E5 | no | new SHA: Frontend/browser/Desktop macOS PASS, native test failures triaged, all required jobs successful |
 
 ## Gate policy
 

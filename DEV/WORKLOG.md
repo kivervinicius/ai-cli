@@ -10,6 +10,24 @@
 - Auditoria remota confirmou o CI run `34155789469` no SHA candidato; Frontend,
   Windows e macOS falharam e Browser/Desktop/Snapshot foram pulados. Logs brutos
   exigem reautenticação do GitHub (`HTTP 403` com token inválido).
+- CI do commit `ec6badc` corrigiu Frontend, Linux e Desktop Windows/Linux, mas
+  ainda falhou em Browser, macOS race e Desktop macOS. Localmente, o Browser E2E
+  foi reproduzido e corrigido: bootstrap via `nexus web url` e hit-test responsivo;
+  `e2e-hardening-verify.mjs` passou em 320/390/768/1024/1280/1440, Axe e density.
+- O workflow macOS foi ajustado para remover `mapfile` (incompatível com Bash
+  3.2); YAML de `ci.yml`/`release.yml` foi parseado com sucesso. Esse ajuste
+  aguarda novo commit/CI para evidência remota.
+- `make quality` foi reexecutado no worktree atual e concluiu com frontend,
+  testes Go e golangci-lint verdes; permanece apenas o warning conhecido de
+  dependência React em `NexusWorkspaceApp.tsx`.
+- CI Windows/macOS agora executa todos os passos diagnósticos após uma falha e
+  aplica uma asserção agregada no final; isso não mascara erro e evita que os
+  logs de ConPTY/PTY/Web sejam pulados.
+- O gate `same-sha-gate` agora valida explicitamente o `headSha` retornado pela
+  API do GitHub antes de aceitar qualquer CI run.
+- `make docs-verify` detectou manifesto visual stale por alterações não
+  commitadas; a falha foi registrada como `CONDITIONAL`, preservando a regra de
+  não transformar screenshot histórico em evidência same-SHA.
 
 ## 2026-09-07 — Spacing, Padding & Surface Architecture Refactor (Maestro, Overview & Settings)
 
@@ -3007,6 +3025,39 @@ build` PASS e Web reiniciado em HTTP 200.
 - `nexus web open/url` reutiliza o BootstrapURL persistido e reconstrói o
   fragmento para estados antigos.
 - Testes unitários Web/Go, typecheck, build e validação real com `curl` passaram.
+
+## 2026-09-07 — Evidência visual same-SHA protegida contra worktree sujo
+
+- `scripts/docs-verify.mjs` agora verifica alterações visuais staged e unstaged,
+  além do diff entre o `source_sha` do manifesto e `HEAD`.
+- O gate falha explicitamente quando screenshots estão ancorados em SHA antigo
+  ou quando há mudanças visuais não commitadas; isso impede promover evidência
+  local como se fosse um candidato imutável.
+- Verificação: `make docs-verify` falhou de forma esperada e acionável,
+  identificando o manifesto em `23586183...` e os paths visuais dirty; `go test
+  ./... -count=1`, `go vet ./...` e `git diff --check` passaram.
+- Regressão adicional: `cd web && bun run verify` (10/10) e
+  `node web/scripts/e2e-hardening-verify.mjs` passaram novamente no checkout
+  atual, cobrindo os seis breakpoints, deep-links, Axe e density.
+- Tentativa do acceptance harness real: `go run ./scripts/nexus-e2e-local.go
+  -start -port 3101 -browser` iniciou e encerrou o Nexus corretamente, mas
+  retornou `bootstrap did not establish an authenticated session` e registrou
+  `NEXUS_BROWSER_SMOKE_NOT_RUN` por executável Playwright ausente. Isso confirma
+  o bloqueio externo de provider/browser; não foi convertido em PASS.
+
+## 2026-09-07 — Resume-first local slice
+
+- O Overview passou a exibir um painel compacto de retomada, derivado apenas de
+  runtimes/agentes já carregados: Needs You, trabalho ativo/recuperável e
+  trabalho recente, com Continue/Recover e Terminal.
+- Adicionado `overviewResumeModel.ts`, com filtragem por projeto, prioridade
+  determinística e associação ao agente proprietário.
+- Verificação: 62 arquivos Vitest / 313 testes PASS, typecheck, stylelint,
+  Prettier e build Web PASS; Browser E2E passou nos seis breakpoints.
+- Ainda não é PASS global: histórico de missões e retorno após reinício não
+  chegam ao Overview, portanto P0-01 segue CONDITIONAL até E2E same-SHA.
+- O Browser E2E agora exige também a presença do painel Resume-first no Overview;
+  a execução atual passou novamente nos seis breakpoints e nas asserções Axe.
 # 2026-09-07 — Composer destination permissions
 
 - Composer context gate foi separado em composição/finalização, materialização

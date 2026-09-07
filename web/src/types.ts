@@ -339,7 +339,7 @@ export interface ContextReadiness {
   updated_at?: string;
 }
 
-export interface CatalogSkill {
+export interface MaestroSkill {
   id: string;
   name?: string;
   description?: string;
@@ -348,6 +348,9 @@ export interface CatalogSkill {
   triggers?: string[];
   aliases?: string[];
   prompt?: string;
+}
+
+export interface CatalogSkill extends MaestroSkill {
   source: string;
   availability: string;
   activation_mode?: string;

@@ -16,6 +16,16 @@ func TestFindBootstrapRequiresTokenAndRedactsNothingInReturnedValue(t *testing.T
 	}
 }
 
+func TestParseBootstrapURLAcceptsPersistedFragmentToken(t *testing.T) {
+	got := parseBootstrapURL("http://127.0.0.1:3000/#nexus_bootstrap=abc123")
+	if got == "" || !strings.Contains(got, "#nexus_bootstrap=abc123") {
+		t.Fatalf("persisted bootstrap URL was not accepted: %q", got)
+	}
+	if got := parseBootstrapURL("http://127.0.0.1:3000/"); got != "" {
+		t.Fatalf("accepted tokenless URL: %q", got)
+	}
+}
+
 func TestNotAuthenticatedIsMachineClassifiable(t *testing.T) {
 	err := errors.Join(errNotAuthenticated, errors.New("provider unavailable"))
 	if !errors.Is(err, errNotAuthenticated) {

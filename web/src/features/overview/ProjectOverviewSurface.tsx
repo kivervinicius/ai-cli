@@ -4,10 +4,11 @@ import { Badge, Button, Card, Dialog, EmptyState } from '../../design-system';
 import { nexus } from '../../nexus/api';
 import { ResourcePicker } from '../../nexus/ResourcePicker';
 import { ProjectCreateActions } from '../projects/ProjectCreateActions';
-import type { Agent, Project, RuntimeSession } from '../../types';
+import type { Agent, MissionRun, Project, RuntimeSession } from '../../types';
 import { translateStatus } from '../../i18n';
 import { useTranslation } from 'react-i18next';
 import styles from './ProjectOverviewSurface.module.scss';
+import { buildOverviewResume } from './overviewResumeModel';
 
 const tone = (status: string) =>
   status === 'WORKING'
@@ -21,6 +22,8 @@ const tone = (status: string) =>
 export const ProjectOverviewSurface: React.FC<{
   project: Project;
   agents: Agent[];
+  runtimes?: RuntimeSession[];
+  flowRuns?: MissionRun[];
   onOpenAgent: (agent: Agent, runtimeId?: string) => void;
   onNewAISession: () => void;
   onProjectShell: () => void;
@@ -35,6 +38,8 @@ export const ProjectOverviewSurface: React.FC<{
 }> = ({
   project,
   agents,
+  runtimes = [],
+  flowRuns = [],
   onOpenAgent,
   onNewAISession,
   onProjectShell,
@@ -73,6 +78,13 @@ export const ProjectOverviewSurface: React.FC<{
   }, []);
 
   const agentList = Array.isArray(agents) ? agents : [];
+  const resumeItems = buildOverviewResume(project.id, runtimes, agentList);
+  const needsYou = resumeItems.filter((item) => item.lane === 'needsYou');
+  const continueItems = resumeItems.filter(
+    (item) => item.lane === 'active' || item.lane === 'recoverable',
+  );
+  const recentItems = resumeItems.filter((item) => item.lane === 'recent').slice(0, 3);
+  const recentRuns = (Array.isArray(flowRuns) ? flowRuns : []).slice(0, 3);
   const working = agentList.filter((agent) => agent.status === 'WORKING').length;
   const degraded = agentList.filter((agent) =>
     ['FAILED', 'STALE', 'RECOVERABLE', 'RATE_LIMITED'].includes(agent.status),
@@ -165,6 +177,76 @@ export const ProjectOverviewSurface: React.FC<{
           ) : null}
         </div>
       </div>
+
+      <section className={styles.resumePanel} aria-labelledby="overview-resume-title">
+        <div className={styles.resumeHeader}>
+          <div>
+            <span className="nx-eyebrow">{t('overview.resumeEyebrow')}</span>
+            <h2 id="overview-resume-title">{t('overview.continueWorking')}</h2>
+          </div>
+          <Badge tone={needsYou.length > 0 ? 'warning' : 'success'}>
+            {needsYou.length > 0
+              ? t('overview.needsAttention', { count: needsYou.length })
+              : t('overview.noAttention')}
+          </Badge>
+        </div>
+        <div className={styles.resumeGrid}>
+          {(needsYou.length > 0 ? needsYou : continueItems).slice(0, 3).map((item) => {
+            const target = item.agent;
+            const title =
+              target?.name ||
+              item.runtime.dynamic_title ||
+              item.runtime.title ||
+              item.runtime.runtime_id;
+            return (
+              <Card key={item.runtime.runtime_id} className={styles.resumeCard}>
+                <div className={styles.resumeCardBody}>
+                  <strong>{title}</strong>
+                  <span>
+                    {item.lane === 'needsYou'
+                      ? item.runtime.attention_context || t('overview.needsYou')
+                      : item.runtime.last_task_summary || t('overview.activeWork')}
+                  </span>
+                </div>
+                <div className={styles.resumeActions}>
+                  {target ? (
+                    <Button
+                      size="sm"
+                      tone="brand"
+                      onClick={() => onOpenAgent(target, item.runtime.runtime_id)}
+                    >
+                      {item.lane === 'recoverable' ? t('overview.recover') : t('overview.continue')}
+                    </Button>
+                  ) : null}
+                  <Button size="sm" tone="ghost" onClick={onProjectShell}>
+                    {t('overview.openTerminal')}
+                  </Button>
+                </div>
+              </Card>
+            );
+          })}
+          {needsYou.length === 0 && continueItems.length === 0 ? (
+            <EmptyState
+              title={t('overview.noRecentWork')}
+              hint={t('overview.noRecentWorkHint')}
+              action={<Button onClick={onNewAISession}>{t('overview.newAISession')}</Button>}
+            />
+          ) : null}
+        </div>
+        {recentItems.length > 0 || recentRuns.length > 0 ? (
+          <div className={styles.recentWork} aria-label={t('overview.recentWork')}>
+            <strong>{t('overview.recentWork')}</strong>
+            {recentItems.map((item) => (
+              <span key={item.runtime.runtime_id}>
+                {item.runtime.title || item.runtime.runtime_id}
+              </span>
+            ))}
+            {recentRuns.map((run) => (
+              <span key={run.id}>{t('overview.flowRun', { id: run.id.slice(-6) })}</span>
+            ))}
+          </div>
+        ) : null}
+      </section>
 
       {updateInfo?.update_available && (
         <Card className={`nx-inline-alert ${styles.updateAlert}`} data-tone="warning">

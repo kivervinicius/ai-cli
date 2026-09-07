@@ -27,6 +27,8 @@ import { composerNeedsGapConfirmation } from './composerModel';
 import type { ComposerGate } from './composerModel';
 import { asArray, asStringArray } from '../../lib/safeArray';
 import { TaskPreparationDialog } from '../../components/TaskPreparationDialog';
+import { askActionForStatus } from '../agents/askAgentModel';
+import styles from './ComposerSurface.module.scss';
 
 const ARCHETYPE_LABELS: Record<string, string> = {
   SOFTWARE_FEATURE: 'Feature',
@@ -256,27 +258,17 @@ export const ComposerSurface: React.FC<{
   };
 
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
-  const startAgentIfNeeded = !new Set([
-    'WORKING',
-    'WAITING',
-    'APPROVAL',
-    'HANDOFF',
-    'STARTING',
-    'RECOVERING',
-  ]).has(String(selectedAgent?.status || '').toUpperCase());
+  const startAgentIfNeeded = !askActionForStatus(selectedAgent?.status || 'STOPPED').startIfNeeded;
 
   if (!view) {
     return (
       <Card className="nx-composer-goal-bar">
-        <div
-          className="nx-composer-goal-bar__label"
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div className={`nx-composer-goal-bar__label ${styles.flexRowBetween}`}>
+          <div className={styles.flexRowGap6}>
             <Sparkles size={16} />
             <span>Comece uma elaboração</span>
           </div>
-          <div style={{ display: 'flex', gap: 4 }}>
+          <div className={styles.flexRowGap4}>
             <Button
               size="sm"
               tone={inputMode === 'IDEA' ? 'brand' : 'default'}
@@ -296,7 +288,7 @@ export const ComposerSurface: React.FC<{
           </div>
         </div>
 
-        <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+        <div className={styles.flexColGap8}>
           <Input
             value={draft}
             onChange={setDraft}
@@ -310,26 +302,15 @@ export const ComposerSurface: React.FC<{
           />
           {inputMode === 'EXISTING_PROMPT' && (
             <textarea
-              className="nx-textarea"
+              className={styles.sourceTextarea}
               value={sourcePrompt}
               onChange={(e) => setSourcePrompt(e.target.value)}
               placeholder="Cole aqui o prompt original para análise de gaps, completude e estruturação…"
               rows={4}
-              style={{
-                width: '100%',
-                padding: 10,
-                borderRadius: 8,
-                background: 'var(--nx-surface)',
-                color: 'var(--nx-text)',
-                border: '1px solid var(--nx-border)',
-                resize: 'vertical',
-                fontFamily: 'inherit',
-                fontSize: '0.929rem',
-              }}
               disabled={busy}
             />
           )}
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div className={styles.flexRowEnd}>
             <Button
               tone="brand"
               disabled={
@@ -348,18 +329,8 @@ export const ComposerSurface: React.FC<{
         </div>
 
         {sessions.length > 0 && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              flexWrap: 'wrap',
-              marginTop: 8,
-              paddingTop: 8,
-              borderTop: '1px solid var(--nx-border)',
-            }}
-          >
-            <small style={{ color: 'var(--nx-muted)' }}>Elaborações anteriores:</small>
+          <div className={styles.flexRowWrapGap8}>
+            <small className={styles.mutedLabel}>Elaborações anteriores:</small>
             <Select
               placeholder="Retomar uma sessão salva…"
               value=""
@@ -397,7 +368,7 @@ export const ComposerSurface: React.FC<{
         <div>
           <h2>{view.session.title || 'Elaboração'}</h2>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className={styles.flexRowGap8Center}>
           {archetypeLabel && <Badge tone="default">Arquétipo: {archetypeLabel}</Badge>}
           {sessions.length > 1 && (
             <Select
@@ -461,11 +432,10 @@ export const ComposerSurface: React.FC<{
           </div>
           {view.session.state !== 'FINALIZED' && (
             <div
-              className="nx-composer-goal-bar__row"
-              style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginTop: 12 }}
+              className={`nx-composer-goal-bar__row ${styles.flexRowGap8mt}`}
             >
               <textarea
-                className="nx-textarea"
+                className={`nx-textarea ${styles.composerTextarea}`}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={(e) => {
@@ -476,27 +446,13 @@ export const ComposerSurface: React.FC<{
                 }}
                 placeholder="Adicione requisito, decisão ou resposta a uma lacuna… (Enter envia, Shift+Enter pula linha)"
                 rows={2}
-                style={{
-                  flex: 1,
-                  minHeight: 48,
-                  maxHeight: 180,
-                  resize: 'vertical',
-                  padding: '8px 12px',
-                  borderRadius: 8,
-                  background: 'var(--nx-bg-elevated)',
-                  border: '1px solid var(--nx-border)',
-                  color: 'var(--nx-text)',
-                  fontSize: '0.929rem',
-                  lineHeight: 1.45,
-                  fontFamily: 'inherit',
-                }}
                 disabled={busy}
               />
               <Button
                 tone="brand"
                 disabled={!message.trim() || busy}
                 onClick={() => void send()}
-                style={{ height: 48, alignSelf: 'stretch' }}
+                className={styles.sendButton}
               >
                 <Send size={14} /> {busy ? 'Enviando…' : 'Enviar'}
               </Button>
@@ -506,22 +462,22 @@ export const ComposerSurface: React.FC<{
 
         <Card>
           <strong>Briefing vivo</strong>
-          <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
+          <div className={styles.flexColGap10}>
             {briefItems.length > 0 ? (
               briefItems.map(([label, value]) => (
                 <div key={label}>
-                  <small style={{ color: 'var(--nx-muted)' }}>{label}</small>
-                  <p style={{ margin: '2px 0 0' }}>{value}</p>
+                  <small className={styles.mutedLabel}>{label}</small>
+                  <p className={styles.briefValue}>{value}</p>
                 </div>
               ))
             ) : (
-              <p className="nx-muted-copy" style={{ margin: '6px 0 0' }}>
+              <p className={`nx-muted-copy ${styles.briefEmptyHint}`}>
                 O briefing vivo sintetiza objetivo, contexto, critérios e decisões conforme a
                 conversa avança.
               </p>
             )}
           </div>
-          <div style={{ marginTop: 16 }}>
+          <div className={styles.badgeSpacer}>
             <Badge tone="default">Maestro: sugestões reais ao refinar</Badge>
           </div>
         </Card>
@@ -536,36 +492,24 @@ export const ComposerSurface: React.FC<{
           </Badge>
 
           {asArray<PromptReadinessCheck>(view.brief.readiness?.checks).length > 0 && (
-            <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
-              <small style={{ color: 'var(--nx-muted)', fontWeight: 600 }}>
-                Dimensões avaliadas
-              </small>
+            <div className={`${styles.flexColGap6} ${styles.readinessSection}`}>
+              <small className={styles.mutedLabelBold}>Dimensões avaliadas</small>
               {asArray<PromptReadinessCheck>(view.brief.readiness?.checks).map((check) => (
-                <div
-                  key={check.key}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '4px 8px',
-                    borderRadius: 6,
-                    background: 'var(--nx-surface)',
-                    fontSize: '0.857rem',
-                  }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontWeight: 500 }}>{check.label || check.key}</span>
+                <div key={check.key} className={styles.readinessCheckItem}>
+                  <div className={styles.readinessCheckContent}>
+                    <span className={styles.readinessCheckLabel}>{check.label || check.key}</span>
                     {check.summary && (
-                      <small style={{ display: 'block', color: 'var(--nx-muted)' }}>
+                      <small className={styles.readinessCheckSummary}>
                         {check.summary}
                       </small>
                     )}
                   </div>
                   <span
-                    style={{
-                      fontWeight: 600,
-                      color: check.score >= 80 ? 'var(--nx-accent)' : 'var(--nx-muted)',
-                    }}
+                    className={
+                      check.score >= 80
+                        ? styles.readinessCheckScoreHigh
+                        : styles.readinessCheckScore
+                    }
                   >
                     {check.score}%
                   </span>
@@ -575,10 +519,10 @@ export const ComposerSurface: React.FC<{
           )}
 
           {(view.brief.assumptions || []).length > 0 && (
-            <div style={{ marginTop: 12 }}>
-              <small style={{ color: 'var(--nx-muted)', fontWeight: 600 }}>Premissas ativas</small>
+            <div className={styles.readinessSection}>
+              <small className={styles.mutedLabelBold}>Premissas ativas</small>
               {view.brief.assumptions?.map((item, index) => (
-                <p key={index} className="nx-muted-copy" style={{ margin: '3px 0' }}>
+                <p key={index} className={`nx-muted-copy ${styles.assumptionItem}`}>
                   • {typeof item === 'string' ? item : item.value}{' '}
                   {typeof item !== 'string' && item.status ? `(${item.status})` : ''}
                 </p>
@@ -598,25 +542,9 @@ export const ComposerSurface: React.FC<{
                 unknown.status === 'CONFIRMED' ||
                 unknown.status === 'DISMISSED';
               return (
-                <div
-                  key={unknown.id}
-                  style={{
-                    marginTop: 10,
-                    padding: 8,
-                    borderRadius: 8,
-                    background: 'var(--nx-surface)',
-                    border: '1px solid var(--nx-border)',
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'flex-start',
-                      gap: 8,
-                    }}
-                  >
-                    <p style={{ margin: 0, fontWeight: 500, fontSize: 13 }}>{unknown.question}</p>
+                <div key={unknown.id} className={styles.unknownCard}>
+                  <div className={styles.unknownHeader}>
+                    <p className={styles.unknownQuestion}>{unknown.question}</p>
                     <Badge
                       tone={
                         unknown.status === 'ANSWERED'
@@ -630,23 +558,20 @@ export const ComposerSurface: React.FC<{
                     </Badge>
                   </div>
                   {unknown.answer && (
-                    <small style={{ display: 'block', marginTop: 4, color: 'var(--nx-accent)' }}>
-                      Resposta: {unknown.answer}
-                    </small>
+                    <small className={styles.unknownAnswer}>Resposta: {unknown.answer}</small>
                   )}
                   {!isResolved && (
-                    <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+                    <div className={styles.unknownResolveArea}>
                       <input
-                        className="nx-input"
+                        className={`nx-input ${styles.unknownAnswerInput}`}
                         placeholder="Sua resposta para esta lacuna…"
                         value={unknownAnswers[unknown.id] || ''}
                         onChange={(e) =>
                           setUnknownAnswers({ ...unknownAnswers, [unknown.id]: e.target.value })
                         }
-                        style={{ fontSize: '0.857rem', padding: '4px 8px' }}
                         disabled={busy}
                       />
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <div className={styles.unknownAnswerButtons}>
                         <Button
                           size="sm"
                           tone="brand"
@@ -673,16 +598,13 @@ export const ComposerSurface: React.FC<{
       </div>
 
       {(view.skills || []).length > 0 && (
-        <Card style={{ marginTop: 12 }}>
+        <Card className={styles.artifactCard}>
           <strong>Maestro skills</strong>
           {(view.skills || []).map((skill) => (
-            <div
-              key={skill.skill_id}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}
-            >
-              <div style={{ flex: 1 }}>
+            <div key={skill.skill_id} className={styles.skillRow}>
+              <div className={styles.skillInfo}>
                 <strong>{skill.skill_id}</strong>
-                <small style={{ display: 'block' }}>{skill.reason || skill.applicability}</small>
+                <small className={styles.skillReason}>{skill.reason || skill.applicability}</small>
               </div>
               <Badge tone={skill.state === 'UNAVAILABLE' ? 'danger' : 'default'}>
                 {skill.state}
@@ -727,17 +649,16 @@ export const ComposerSurface: React.FC<{
       )}
 
       {artifact && (
-        <Card style={{ marginTop: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Card className={styles.artifactCard}>
+          <div className={styles.artifactHeader}>
             <strong>Prompt canônico · v{artifact.version}</strong>
             <Badge tone="success">Versão imutável #{artifact.version}</Badge>
           </div>
-          <pre className="nx-flow-step-compare" style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>
+          <pre className={`nx-flow-step-compare ${styles.preWrap}`}>
             {artifact.content}
           </pre>
           <div
-            className="nx-composer-header-actions"
-            style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}
+            className={`nx-composer-header-actions ${styles.artifactActions}`}
           >
             <Button onClick={() => void copy()}>
               <ClipboardCopy size={14} /> Copiar
@@ -780,18 +701,8 @@ export const ComposerSurface: React.FC<{
           )}
 
           {showRefineInput && (
-            <div
-              style={{
-                marginTop: 10,
-                display: 'grid',
-                gap: 6,
-                padding: 10,
-                borderRadius: 8,
-                background: 'var(--nx-surface)',
-                border: '1px solid var(--nx-border)',
-              }}
-            >
-              <small style={{ color: 'var(--nx-muted)', fontWeight: 600 }}>
+            <div className={styles.refinementPanel}>
+              <small className={styles.refinementLabel}>
                 Instrução adicional de refinamento (opcional):
               </small>
               <Input
@@ -800,7 +711,7 @@ export const ComposerSurface: React.FC<{
                 placeholder="Ex: 'Adicione suporte a PostgreSQL', 'Foque apenas na API REST'…"
                 disabled={busy}
               />
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <div className={styles.refinementActions}>
                 <Button size="sm" disabled={busy} onClick={() => setShowRefineInput(false)}>
                   Cancelar
                 </Button>

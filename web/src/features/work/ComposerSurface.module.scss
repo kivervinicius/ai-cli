@@ -1,0 +1,287 @@
+.flexRow {
+  display: flex;
+  align-items: center;
+}
+
+.flexRowBetween {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flexRowEnd {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.flexRowGap6 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.flexRowGap8 {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.flexRowGap8Center {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.flexRowGap4 {
+  display: flex;
+  gap: 4px;
+}
+
+.flexColGap8 {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.flexColGap6 {
+  display: grid;
+  gap: 6px;
+}
+
+.flexColGap10 {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.flexRowWrapGap8 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--nx-border);
+}
+
+.flexRowWrapGap8mt {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mutedLabel {
+  color: var(--nx-muted);
+}
+
+.mutedLabelBold {
+  color: var(--nx-muted);
+  font-weight: 600;
+}
+
+.mutedCopy {
+  margin: 6px 0 0;
+}
+
+.readinessCheckItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--nx-surface);
+  font-size: 0.857rem;
+}
+
+.readinessCheckLabel {
+  font-weight: 500;
+}
+
+.readinessCheckScore {
+  font-weight: 600;
+  color: var(--nx-muted);
+}
+
+.readinessCheckScoreHigh {
+  font-weight: 600;
+  color: var(--nx-accent);
+}
+
+.unknownCard {
+  margin-top: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--nx-surface);
+  border: 1px solid var(--nx-border);
+}
+
+.unknownHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.unknownQuestion {
+  margin: 0;
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.unknownAnswer {
+  display: block;
+  margin-top: 4px;
+  color: var(--nx-accent);
+}
+
+.skillRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.skillInfo {
+  flex: 1;
+}
+
+.skillActions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Migrated from inline styles in ComposerSurface.tsx */
+
+.sourceTextarea {
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--nx-surface);
+  color: var(--nx-text);
+  border: 1px solid var(--nx-border);
+  resize: vertical;
+  font-family: inherit;
+  font-size: 0.929rem;
+}
+
+.composerTextarea {
+  flex: 1;
+  min-height: 48px;
+  max-height: 180px;
+  resize: vertical;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--nx-bg-elevated);
+  border: 1px solid var(--nx-border);
+  color: var(--nx-text);
+  font-size: 0.929rem;
+  line-height: 1.45;
+  font-family: inherit;
+}
+
+.sendButton {
+  height: 48px;
+  align-self: stretch;
+}
+
+.artifactHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.artifactActions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.refinementPanel {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--nx-surface);
+  border: 1px solid var(--nx-border);
+}
+
+.refinementLabel {
+  color: var(--nx-muted);
+  font-weight: 600;
+}
+
+.refinementActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.unknownResolveArea {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.unknownAnswerInput {
+  font-size: 0.857rem;
+  padding: 4px 8px;
+}
+
+.unknownAnswerButtons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.preWrap {
+  white-space: pre-wrap;
+  margin-top: 8px;
+}
+
+.readinessSection {
+  margin-top: 12px;
+}
+
+.readinessCheckContent {
+  flex: 1;
+}
+
+.readinessCheckSummary {
+  display: block;
+  color: var(--nx-muted);
+}
+
+.assumptionItem {
+  margin: 3px 0;
+}
+
+.artifactCard {
+  margin-top: 12px;
+}
+
+.artifactTitle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.briefValue {
+  margin: 2px 0 0;
+}
+
+.briefEmptyHint {
+  margin: 6px 0 0;
+}
+
+.badgeSpacer {
+  margin-top: 16px;
+}
+
+.skillReason {
+  display: block;
+}

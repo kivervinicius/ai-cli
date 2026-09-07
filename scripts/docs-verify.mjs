@@ -103,6 +103,26 @@ if (existsSync(manifestPath)) {
     if (diff.status === 0 && (diff.stdout || '').trim()) {
       errors.push(`visual manifest is stale after visual changes since ${manifest.source_sha}: ${(diff.stdout || '').trim().replace(/\n/g, ', ')}`);
     }
+    // A manifest is evidence for an immutable candidate.  Comparing only
+    // against HEAD would incorrectly pass while visual files are dirty in
+    // the worktree, so include both staged and unstaged changes as well.
+    const dirty = spawnSync('git', ['diff', '--name-only', '--', ...visualPaths], {
+      cwd: root,
+      encoding: 'utf8',
+    });
+    const staged = spawnSync('git', ['diff', '--cached', '--name-only', '--', ...visualPaths], {
+      cwd: root,
+      encoding: 'utf8',
+    });
+    const dirtyPaths = [...new Set(
+      `${dirty.stdout || ''}\n${staged.stdout || ''}`
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+    )];
+    if (dirty.status === 0 && staged.status === 0 && dirtyPaths.length) {
+      errors.push(`visual manifest cannot certify uncommitted visual changes for ${manifest.source_sha}: ${dirtyPaths.join(', ')}`);
+    }
   }
 }
 for (const file of ['README.md', 'README.en.md', 'README.es.md']) {

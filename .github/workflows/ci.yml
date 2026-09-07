@@ -182,9 +182,13 @@ jobs:
           cache: true
 
       - name: Vet
+        id: windows-vet
+        continue-on-error: true
         run: go vet ./...
 
       - name: PowerShell installer syntax
+        id: windows-installer
+        continue-on-error: true
         shell: pwsh
         run: |
           $tokens = $null
@@ -201,6 +205,8 @@ jobs:
           Write-Host 'install.ps1 syntax PASS'
 
       - name: Test
+        id: windows-tests
+        continue-on-error: true
         shell: pwsh
         run: |
           $log = Join-Path $env:RUNNER_TEMP 'nexus-windows-go-test.log'
@@ -210,6 +216,8 @@ jobs:
           exit $code
 
       - name: ConPTY & Named Pipe E2E
+        id: windows-terminal-e2e
+        continue-on-error: true
         shell: pwsh
         run: |
           $log = Join-Path $env:RUNNER_TEMP 'nexus-windows-terminal-ipc.log'
@@ -219,6 +227,8 @@ jobs:
           exit $code
 
       - name: Runtime & Web E2E
+        id: windows-runtime-e2e
+        continue-on-error: true
         shell: pwsh
         run: |
           $log = Join-Path $env:RUNNER_TEMP 'nexus-windows-runtime-web.log'
@@ -228,13 +238,32 @@ jobs:
           exit $code
 
       - name: Build Binary
+        id: windows-build
+        continue-on-error: true
         run: go build -v -o nexus.exe ./cmd/nexus
 
       - name: PowerShell Smoke Test
+        id: windows-smoke
+        continue-on-error: true
         shell: pwsh
         run: |
           .\nexus.exe version
           .\nexus.exe control --help | Select-Object -First 5
+
+      - name: Assert Windows diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          $outcomes = @(
+            '${{ steps.windows-vet.outcome }}',
+            '${{ steps.windows-installer.outcome }}',
+            '${{ steps.windows-tests.outcome }}',
+            '${{ steps.windows-terminal-e2e.outcome }}',
+            '${{ steps.windows-runtime-e2e.outcome }}',
+            '${{ steps.windows-build.outcome }}',
+            '${{ steps.windows-smoke.outcome }}'
+          )
+          if ($outcomes -contains 'failure') { throw "One or more Windows diagnostics failed: $($outcomes -join ', ')" }
 
       - name: Upload Windows diagnostics
         if: always()
@@ -261,34 +290,65 @@ jobs:
           cache: true
 
       - name: Vet
+        id: macos-vet
+        continue-on-error: true
         run: go vet ./...
 
       - name: Test with Race Detector
+        id: macos-race
+        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           go test -v -race ./... 2>&1 | tee "$RUNNER_TEMP/nexus-macos-race.log"
 
       - name: PTY, Socket & Runtime E2E
+        id: macos-runtime-e2e
+        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           go test -race -v -count=1 ./internal/control/terminal/... ./internal/control/protocol/... ./internal/control/host/... 2>&1 | tee "$RUNNER_TEMP/nexus-macos-runtime-ipc.log"
 
       - name: Web E2E
+        id: macos-web-e2e
+        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           go test -race -v -count=1 ./internal/control/web/... 2>&1 | tee "$RUNNER_TEMP/nexus-macos-web.log"
 
       - name: Build Binary
+        id: macos-build
+        continue-on-error: true
         run: go build -v -o nexus ./cmd/nexus
 
       - name: Installer Smoke Test (local install.sh)
+        id: macos-installer
+        continue-on-error: true
         run: |
           ./nexus version
           # install.sh release-download path requires a GitHub release; build-from-source fallback is exercised by running from a source checkout
           bash -n install.sh
+
+      - name: Assert macOS diagnostics
+        if: always()
+        shell: bash
+        run: |
+          outcomes=(
+            '${{ steps.macos-vet.outcome }}'
+            '${{ steps.macos-race.outcome }}'
+            '${{ steps.macos-runtime-e2e.outcome }}'
+            '${{ steps.macos-web-e2e.outcome }}'
+            '${{ steps.macos-build.outcome }}'
+            '${{ steps.macos-installer.outcome }}'
+          )
+          for outcome in "${outcomes[@]}"; do
+            if [[ "$outcome" == failure ]]; then
+              printf 'One or more macOS diagnostics failed: %s\n' "${outcomes[*]}" >&2
+              exit 1
+            fi
+          done
 
       - name: Upload macOS diagnostics
         if: always()
@@ -416,7 +476,8 @@ jobs:
           set -euo pipefail
           cd cmd/nexus-desktop
           go run github.com/wailsapp/wails/v2/cmd/wails@v2.15.0 build -clean -s -m -tags production
-          mapfile -t apps < <(find build/bin -maxdepth 1 -type d -name '*.app' -print)
+          apps=()
+          while IFS= read -r app; do apps+=("$app"); done < <(find build/bin -maxdepth 1 -type d -name '*.app' -print)
           test "${#apps[@]}" -eq 1 || {
             printf 'Expected exactly one macOS app bundle, found %s\n' "${#apps[@]}" >&2
             printf '%s\n' "${apps[@]}" >&2
@@ -424,7 +485,8 @@ jobs:
           }
           app="${apps[0]}"
           test -f "$app/Contents/Info.plist"
-          mapfile -t executables < <(find "$app/Contents/MacOS" -maxdepth 1 -type f -perm -111 -print)
+          executables=()
+          while IFS= read -r executable; do executables+=("$executable"); done < <(find "$app/Contents/MacOS" -maxdepth 1 -type f -perm -111 -print)
           test "${#executables[@]}" -eq 1 || {
             printf 'Expected exactly one executable in %s, found %s\n' "$app/Contents/MacOS" "${#executables[@]}" >&2
             printf '%s\n' "${executables[@]}" >&2
@@ -436,7 +498,8 @@ jobs:
       - name: Package macOS desktop artifact
         run: |
           set -euo pipefail
-          mapfile -t apps < <(find cmd/nexus-desktop/build/bin -maxdepth 1 -type d -name '*.app' -print)
+          apps=()
+          while IFS= read -r app; do apps+=("$app"); done < <(find cmd/nexus-desktop/build/bin -maxdepth 1 -type d -name '*.app' -print)
           test "${#apps[@]}" -eq 1
           ditto -c -k --sequesterRsrc --keepParent "${apps[0]}" "$RUNNER_TEMP/nexus-desktop_Darwin_arm64.zip"
 

@@ -16,7 +16,8 @@ import { ResourcePicker } from '../../nexus/ResourcePicker';
 import type { Agent, Project } from '../../types';
 import { translateStatus } from '../../i18n';
 import { useTranslation } from 'react-i18next';
-import { AskAgentDialog } from './AskAgentDialog';
+import { TaskPreparationDialog } from '../../components/TaskPreparationDialog';
+import { askActionForStatus } from './askAgentModel';
 
 const tone = (status: string) =>
   status === 'WORKING'
@@ -163,7 +164,7 @@ export const AgentsSurface: React.FC<{
                   <TerminalSquare size={13} /> {t('agents.terminal')}
                 </Button>
                 <Button size="sm" onClick={() => setAskAgent(agent)}>
-                  <MessageSquareText size={13} /> Preparar tarefa
+                  <MessageSquareText size={13} /> {t('agents.prepareTask', 'Preparar tarefa')}
                 </Button>
                 <Button size="sm" onClick={() => onConfigure(agent)}>
                   <Settings2 size={13} /> {t('agents.configure')}
@@ -209,12 +210,21 @@ export const AgentsSurface: React.FC<{
           ))}
         </div>
       )}
-      <AskAgentDialog
-        agent={askAgent}
+      <TaskPreparationDialog
+        open={Boolean(askAgent)}
+        agentId={askAgent?.id || ''}
+        agentName={askAgent?.name}
+        projectId={askAgent?.project_id}
+        startIfNeeded={askActionForStatus(askAgent?.status || 'STOPPED').startIfNeeded}
         onClose={() => setAskAgent(null)}
-        onSent={async (target) => {
+        onSubmit={async (prompt, skills, startIfNeeded, contextFingerprintId) => {
+          if (!askAgent) return;
+          await nexus.askAgent(askAgent.id, prompt, startIfNeeded, skills, {
+            projectId: askAgent.project_id,
+            contextFingerprintId: contextFingerprintId || '',
+          });
           await refresh();
-          onTerminal(target);
+          onTerminal(askAgent);
         }}
       />
       <Dialog

@@ -51,8 +51,15 @@ jobs:
             run_id="$(jq -r '.[0].databaseId // empty' <<<"$run_json")"
             run_status="$(jq -r '.[0].status // empty' <<<"$run_json")"
             run_conclusion="$(jq -r '.[0].conclusion // empty' <<<"$run_json")"
+            run_sha="$(jq -r '.[0].headSha // empty' <<<"$run_json")"
             if [ -z "$run_id" ]; then
               echo "No CI run found for $SHA (attempt $attempt/60)."
+              sleep 30
+              continue
+            fi
+            if [ "$run_sha" != "$SHA" ]; then
+              echo "Ignoring CI run $run_id with unexpected head SHA $run_sha (expected $SHA)." >&2
+              run_id=''
               sleep 30
               continue
             fi

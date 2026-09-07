@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestRemediationPersistsStrategyChangeBeforeRetry(t *testing.T) {
@@ -38,6 +39,9 @@ func TestNeedsHumanContractIsStructuredAndDurable(t *testing.T) {
 	}
 	if len(run.NeedsHuman.RecommendedActions) != 1 || run.NeedsHuman.Context == "" || run.NeedsHuman.Timestamp.IsZero() {
 		t.Fatalf("human blocker is not actionable: %+v", run.NeedsHuman)
+	}
+	if !run.NeedsHuman.Timestamp.After(time.Now().Add(-time.Minute)) {
+		t.Fatalf("human blocker timestamp is too old: %v", run.NeedsHuman.Timestamp)
 	}
 }
 

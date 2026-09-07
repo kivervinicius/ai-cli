@@ -15,6 +15,40 @@
 - PASS — ausência de overflow horizontal, navegação por teclado e Axe sem
   violações `serious`/`critical`.
 
+## 2026-09-07 — Browser hardening e bootstrap persistido
+
+- PASS — `timeout 180 node web/scripts/e2e-hardening-verify.mjs`; seis
+  breakpoints, deep-links, Axe, Settings/ARIA e density.
+- PASS — harness atualizado para resolver o bootstrap por `nexus web url`, sem
+  exigir token impresso pelo servidor.
+
+`make docs-verify` permanece **CONDITIONAL** neste worktree: o verificador
+rejeita corretamente o manifesto visual ancorado em `2358618` enquanto há
+alterações visuais não commitadas. A âncora só deve ser atualizada junto com um
+novo SHA e screenshots correspondentes.
+
+## 2026-09-07 — Verificação same-SHA de evidência visual
+
+- `scripts/docs-verify.mjs` também inspeciona alterações staged e unstaged nos
+  caminhos visuais; não é permitido certificar screenshots de um candidato
+  imutável enquanto o worktree contém mudanças locais.
+- `make docs-verify` falha de forma esperada no checkout atual, identificando
+  o manifesto em `23586183...` e os paths dirty. Isso é um bloqueio honesto,
+  não uma falha de teste a ser mascarada.
+
+## 2026-09-07 — Resume-first local slice
+
+- PASS — `overviewResumeModel.test.ts`: prioridade Needs You → ativo →
+  recuperável → recente, filtragem por projeto e associação ao agente.
+- PASS — `bun run test` (62 arquivos / 313 testes), `bun run typecheck`,
+  `bun run lint:styles`, Prettier e build Web.
+- PASS — `node web/scripts/e2e-hardening-verify.mjs` após a mudança; os seis
+  breakpoints e Axe continuam verdes.
+- CONDITIONAL — o painel usa runtimes/agentes já carregados; runs históricos de
+  missão ainda não são propagados ao Overview e precisam de E2E de retorno.
+- PASS — o hardening E2E passou a verificar explicitamente
+  `[aria-labelledby="overview-resume-title"]` no Overview.
+
 ## 2026-09-07 — Composer permissões por destino
 
 - `cd web && bun run typecheck` — PASS.
@@ -699,9 +733,6 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
   no Makefile.
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-07T20:07:37Z
+## Frontend gate — 2026-09-07T21:24:48Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
-
-O relatório foi regenerado após a correção do handoff: `node web/scripts/verify-report.mjs`
-concluiu 10/10 gates no SHA candidato local.

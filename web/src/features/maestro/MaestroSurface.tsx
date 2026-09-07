@@ -16,42 +16,8 @@ import {
   X,
 } from 'lucide-react';
 import { nexus } from '../../nexus/api';
+import type { MaestroSkill, MaestroCatalog } from '../../types';
 import styles from './MaestroSurface.module.scss';
-
-export interface MaestroSkill {
-  id: string;
-  name?: string;
-  description?: string;
-  category?: string;
-  risk?: string;
-  triggers?: string[];
-  aliases?: string[];
-  prompt?: string;
-}
-
-export interface CatalogSkill extends MaestroSkill {
-  source: 'canonical' | 'community' | 'codex' | string;
-  availability: 'AVAILABLE' | 'SYNCHRONIZABLE' | 'TASK_ONLY' | string;
-  activation_mode?: string;
-  copies: number;
-  contract?: string;
-}
-
-export interface MaestroCatalog {
-  operational: CatalogSkill[];
-  library: CatalogSkill[];
-  counts: { operational: number; library: number; copies: number };
-}
-
-export interface SkillSyncPreview {
-  id: string;
-  dry_run: boolean;
-  tool: string;
-  roots: string[];
-  skills: string[];
-  command: string;
-  output?: string;
-}
 
 export interface MaestroStatusData {
   available: boolean;

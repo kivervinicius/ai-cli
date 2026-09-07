@@ -11,6 +11,7 @@ import type {
   Project,
   ProviderInfo,
   RuntimeSession,
+  MissionRun,
   Workspace,
 } from '../types';
 import type { WorkspaceSurface } from '../workspace/model';
@@ -104,6 +105,7 @@ export const WorkspaceSurfaceHost: React.FC<{
   agents: Agent[];
   workspaces: Workspace[];
   runtimes: RuntimeSession[];
+  flowRuns?: MissionRun[];
   providers: ProviderInfo[];
   profiles: ProfileInfo[];
   events: EventRecord[];
@@ -122,6 +124,7 @@ export const WorkspaceSurfaceHost: React.FC<{
   agents,
   workspaces,
   runtimes,
+  flowRuns = [],
   providers,
   profiles,
   events,
@@ -195,6 +198,8 @@ export const WorkspaceSurfaceHost: React.FC<{
         <ProjectOverviewSurface
           project={project}
           agents={agents}
+          runtimes={runtimes}
+          flowRuns={flowRuns}
           onOpenAgent={(agent, runtimeId) => terminal(agent, '', runtimeId || '')}
           refreshAgents={refreshAgents}
           onNewAgent={() => window.dispatchEvent(new CustomEvent('nexus:new-agent'))}

@@ -101,6 +101,9 @@ type boundedOutput struct {
 	max int
 }
 
+// Write returns error when the accumulated output exceeds the configured
+// limit; exec.Cmd.Run() failure is expected in this case and the caller
+// should inspect the bounded buffer for whatever partial output succeeded.
 func (b *boundedOutput) Write(p []byte) (int, error) {
 	if len(p) > b.max-b.buf.Len() {
 		return 0, fmt.Errorf("sync output exceeds %d bytes", b.max)
@@ -191,7 +194,7 @@ func (c *MaestroClient) SyncPreview() (*SkillSyncPreview, error) {
 				skills = append(skills, skill.ID)
 			}
 		}
-		preview := &SkillSyncPreview{ID: fmt.Sprintf("%x", sha256.Sum256([]byte(candidate+strings.Join(skills, "\n")))), DryRun: true, Tool: candidate, Roots: dirs, Skills: skills, Command: base + " --dry-run"}
+		preview := &SkillSyncPreview{ID: fmt.Sprintf("%x", sha256.Sum256([]byte(candidate+fmt.Sprintf("%d", info.ModTime().Unix())+strings.Join(skills, "\n")))), DryRun: true, Tool: candidate, Roots: dirs, Skills: skills, Command: base + " --dry-run"}
 		if base == "sync-skills.sh" {
 			var output boundedOutput
 			output.max = maxSkillSyncOutput

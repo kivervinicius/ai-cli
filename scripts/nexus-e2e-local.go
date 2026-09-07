@@ -519,6 +519,19 @@ func startLocalNexus(ctx context.Context, port int, keep bool, browser bool) (fu
 					ready <- u
 					return
 				}
+				// The web command intentionally prints only the public URL. Resolve
+				// the one-time token through the persisted `web url` command instead
+				// of requiring the server to echo credentials to stdout.
+				if strings.Contains(all.String(), "URL:") {
+					probe := exec.CommandContext(ctx, bin, "web", "url")
+					probe.Env = cmd.Env
+					if out, probeErr := probe.Output(); probeErr == nil {
+						if u := parseBootstrapURL(strings.TrimSpace(string(out))); u != "" {
+							ready <- u
+							return
+						}
+					}
+				}
 			}
 			if e != nil {
 				return
@@ -634,11 +647,22 @@ func findBootstrap(s string) string {
 			continue
 		}
 		u := strings.TrimSpace(strings.TrimPrefix(line, "Bootstrap:"))
-		if parsed, err := url.Parse(u); err == nil && parsed.Scheme == "http" && parsed.Host != "" && parsed.Query().Get("token") != "" {
-			return u
+		if parsed := parseBootstrapURL(u); parsed != "" {
+			return parsed
 		}
 	}
 	return ""
+}
+
+func parseBootstrapURL(u string) string {
+	parsed, err := url.Parse(strings.TrimSpace(u))
+	if err != nil || parsed.Scheme != "http" || parsed.Host == "" {
+		return ""
+	}
+	if parsed.Query().Get("token") == "" && !strings.HasPrefix(parsed.Fragment, "nexus_bootstrap=") {
+		return ""
+	}
+	return parsed.String()
 }
 
 type redactWriter struct{ dst io.Writer }

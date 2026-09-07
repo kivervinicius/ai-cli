@@ -70,3 +70,62 @@
   padding-top: 8px;
   border-top: 1px solid var(--nx-border);
 }
+
+.resumePanel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-md);
+  background: var(--nx-surface-raised);
+}
+
+.resumeHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.resumeHeader h2 {
+  margin: 2px 0 0;
+}
+
+.resumeGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.resumeCard {
+  display: grid;
+  gap: 12px;
+}
+
+.resumeCardBody {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.resumeCardBody span,
+.recentWork span {
+  color: var(--nx-muted);
+  font-size: 0.857rem;
+}
+
+.resumeActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.recentWork {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+  border-top: 1px solid var(--nx-border);
+  padding-top: 10px;
+}

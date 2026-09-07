@@ -62,8 +62,31 @@ async function main() {
   let bootstrapUrl = '';
   const portPromise = new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(new Error('Timed out waiting for server bootstrap URL in stdout (12s)'));
+      clearInterval(poll);
+      reject(new Error('Timed out waiting for server bootstrap URL (12s)'));
     }, 12000);
+
+    // The CLI intentionally prints only the public URL. The one-time bootstrap
+    // token is persisted in the local listen state and exposed through the
+    // authenticated `nexus web url` command, so tests must resolve it there
+    // instead of requiring the server to echo secrets to stdout.
+    const resolveFromListenState = () => {
+      const result = spawnSync(binPath, ['web', 'url'], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        timeout: 1000,
+      });
+      const candidate = String(result.stdout || '').trim();
+      if (!/#nexus_bootstrap=[a-f0-9]+$/i.test(candidate)) return false;
+      clearTimeout(timer);
+      bootstrapUrl = candidate;
+      resolve(candidate);
+      return true;
+    };
+
+    const poll = setInterval(() => {
+      if (resolveFromListenState()) clearInterval(poll);
+    }, 100);
 
     let output = '';
     server.stdout.on('data', (chunk) => {
@@ -72,6 +95,7 @@ async function main() {
       const match = output.match(/Bootstrap:\s*(http:\/\/127\.0\.0\.1:\d+\/\?token=[a-f0-9]+)/i);
       if (match) {
         clearTimeout(timer);
+        clearInterval(poll);
         bootstrapUrl = match[1];
         resolve(bootstrapUrl);
       }
@@ -84,6 +108,7 @@ async function main() {
 
     server.on('exit', (code) => {
       clearTimeout(timer);
+      clearInterval(poll);
       reject(new Error(`Server exited prematurely with code ${code}. Output:\n${output}`));
     });
   });
@@ -155,6 +180,11 @@ async function main() {
         document
           .querySelector('.nx-workspace-tab[data-kind="overview"]')
           ?.getAttribute('aria-selected') === 'true',
+    );
+    await page.waitForSelector('[aria-labelledby="overview-resume-title"]', { timeout: 10000 });
+    assert.ok(
+      await page.locator('#overview-resume-title').isVisible(),
+      'Overview must expose the Resume-first panel',
     );
     assert.match(
       new URL(page.url()).pathname,
@@ -262,6 +292,8 @@ async function main() {
     console.log('5. Testing Breakpoints and Create Menu Button...');
     for (const vp of viewports) {
       await page.setViewportSize({ width: vp.width, height: vp.height });
+      // Allow responsive layout/portal positioning to settle before hit testing.
+      await page.waitForTimeout(100);
 
       const createBtn = page.locator('[data-testid="topbar-create-menu-btn"]').first();
       await createBtn.waitFor({ state: 'visible', timeout: 5000 });
@@ -302,10 +334,39 @@ async function main() {
                   position: getComputedStyle(node).position,
                 }
               : null;
+          const button = document.querySelector('[data-testid="topbar-create-menu-btn"]');
+          const layers = document.elementsFromPoint(x, y);
           return {
-            matches: Boolean(el && el.closest('[data-testid="topbar-create-menu-btn"]')),
+            // Chromium may report a positioned ancestor as the hit-test target
+            // for a static descendant. Reject only unrelated overlay siblings.
+            matches: Boolean(
+              button &&
+                layers.every(
+                  (layer) => layer === button || layer.contains(button) || button.contains(layer),
+                ),
+            ),
+            button: describe(document.querySelector('[data-testid="topbar-create-menu-btn"]')),
+            ancestors: (() => {
+              const out = [];
+              let node = document.querySelector('[data-testid="topbar-create-menu-btn"]');
+              while (node && out.length < 6) {
+                const style = getComputedStyle(node);
+                const rect = node.getBoundingClientRect();
+                out.push({
+                  tag: node.tagName,
+                  className: typeof node.className === 'string' ? node.className : null,
+                  rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                  pointerEvents: style.pointerEvents,
+                  transform: style.transform,
+                  opacity: style.opacity,
+                  visibility: style.visibility,
+                });
+                node = node.parentElement;
+              }
+              return out;
+            })(),
             topmost: describe(el),
-            layers: document.elementsFromPoint(x, y).slice(0, 8).map(describe),
+            layers: layers.slice(0, 8).map(describe),
             point: { x, y },
             scroll: { x: window.scrollX, y: window.scrollY },
           };
