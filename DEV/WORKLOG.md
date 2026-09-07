@@ -1,5 +1,31 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-07 — Fix: AGY quota stale cache and partial CLI output
+
+### Root cause
+The AGY quota system had two bugs causing stale/wrong quota display:
+
+1. **`agyQuotaComplete` too strict**: Required all 4 windows (gemini 5h, weekly + claude 5h, weekly). When the AGY CLI returns only weekly windows (e.g. when 5h windows are exhausted/omitted), `parseAgyQuotaOutput` rejected valid partial data, causing `fetchLiveQuota` to fail silently and fall back to stale cache.
+
+2. **`readCachedQuotaFiles` status mismatch**: The adapter's `readCachedQuotaFiles` returned snapshots with `Status: LIVE` from disk files, while `GetCachedUsage` in `quota.go` converts LIVE→CACHED. This inconsistency meant stale data could be served with incorrect status.
+
+### Changes
+- `agy.go`: Relaxed `agyQuotaComplete` to require at least 1 window per group (gemini and claude_gpt) instead of all 4 windows. The AGY CLI may omit 5h windows when the account is exhausted.
+- `agy.go`: Added LIVE→CACHED status conversion in `readCachedQuotaFiles` (consistent with `GetCachedUsage`).
+- `agy.go`: Added `slog.Debug` logging gated by `NEXUS_AGY_DEBUG=1` or `NEXUS_DEBUG=1` for diagnostic tracing.
+- `quota.go`: Added debug logging to `Trustworthy`, `GetCachedUsage`, `GetLastKnownUsage`.
+- `usage.go`: Added debug logging to `loadUsageSnapshot`, `GetQuotaView`.
+- `cmd/nexus/main.go`: Added slog level configuration when `NEXUS_DEBUG=1` or `NEXUS_AGY_DEBUG=1`.
+
+### Verification
+- `go test ./internal/core/provider/adapters/agy/...` — PASS (6/6)
+- `go test ./internal/core/quota/...` — PASS (16/16)
+- `go test ./internal/profile/...` — PASS (6/6)
+- `go test ./internal/app/...` — PASS (8/8)
+- Live test: `nexus usage --refresh --json` now returns different, fresh quota per AGY profile:
+  - `kiveromegasistemas`: gemini weekly=0%, claude weekly=0% (exhausted)
+  - `kivervinicius-gmail`: gemini 5h=100%/weekly=18%, claude 5h=100%/weekly=32%
+
 ## 2026-09-07 — Otimização incremental adicional do Flow
 
 - `FlowTaskNode` agora usa `React.memo`, reduzindo renderizações de nodes que
@@ -2777,3 +2803,12 @@ build` PASS e Web reiniciado em HTTP 200.
 - Regressão adicionada para garantir fallback local de `/p/:project/terminals`.
 - `go test ./internal/control/web ./cmd/nexus-desktop`, `go vet ./...`, build
   Wails Linux e health `status: ok` passaram.
+
+## 2026-09-07 — Deduplicação de superfícies ao navegar
+
+- Causa: layouts acumulados com a mesma `logicalKey` eram apenas focados na
+  primeira cópia; cada navegação podia preservar e exibir duplicatas antigas.
+- Correção: `openSurface` e `ensureSurface` agora deduplicam o workspace inteiro
+  antes de ativar ou inserir uma superfície.
+- Regressão: teste do modelo cobre cópias da mesma aba e preserva a superfície
+  original ativa. Frontend verify passou em todos os gates.

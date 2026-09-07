@@ -670,27 +670,24 @@ func parseAgyQuotaOutput(output string) ([]model.UsageWindow, bool) {
 	return windows, true
 }
 
-// agyQuotaComplete requires both independent families with their 5h and weekly
-// windows. A partial TSV must not score as a full account snapshot.
+// agyQuotaComplete requires at least one window from each independent family
+// (gemini and claude_gpt). The AGY CLI may omit 5h windows when the account
+// is exhausted or the CLI version doesn't report them, so requiring all 4
+// windows would cause valid partial data to be rejected and stale cache to be
+// served instead.
 func agyQuotaComplete(windows []model.UsageWindow) bool {
-	need := map[string]map[string]bool{
-		"gemini":     {"5h": false, "weekly": false},
-		"claude_gpt": {"claude_5h": false, "claude_weekly": false},
+	groups := map[string]bool{
+		"gemini":     false,
+		"claude_gpt": false,
 	}
 	for _, w := range windows {
-		kinds, ok := need[w.Group]
-		if !ok {
-			continue
-		}
-		if _, known := kinds[w.Kind]; known {
-			kinds[w.Kind] = true
+		if _, ok := groups[w.Group]; ok {
+			groups[w.Group] = true
 		}
 	}
-	for _, kinds := range need {
-		for _, present := range kinds {
-			if !present {
-				return false
-			}
+	for _, present := range groups {
+		if !present {
+			return false
 		}
 	}
 	return true

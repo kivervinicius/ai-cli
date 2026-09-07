@@ -144,6 +144,37 @@ function replaceStack(node: WorkspaceNode, stackId: string, next: WorkspaceNode)
   };
 }
 
+function deduplicateNode(node: WorkspaceNode, seen: Set<string>): WorkspaceNode {
+  if (node.kind === 'split') {
+    return {
+      ...node,
+      first: deduplicateNode(node.first, seen),
+      second: deduplicateNode(node.second, seen),
+    };
+  }
+
+  const tabs = node.tabs.filter((tab) => {
+    const key = surfaceLogicalKey(tab);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const active = tabs.find((tab) => tab.id === node.activeId);
+  return {
+    ...node,
+    tabs,
+    activeId: active?.id || tabs[0]?.id || '',
+  };
+}
+
+/** Remove duplicate logical tabs left by older navigation/layout versions. */
+export function deduplicateWorkspaceSurfaces(model: WorkspaceModel): WorkspaceModel {
+  return {
+    ...model,
+    root: deduplicateNode(model.root, new Set<string>()),
+  };
+}
+
 export function setActiveSurface(model: WorkspaceModel, surfaceId: string): WorkspaceModel {
   const root = updateNode(model.root, (node) => {
     if (node.kind !== 'stack') return node;
@@ -159,6 +190,7 @@ export function openSurface(
   surface: WorkspaceSurface,
   targetStackId?: string,
 ): WorkspaceModel {
+  model = deduplicateWorkspaceSurfaces(model);
   const normalized = normalizeSurface(surface);
   const existing = listSurfaces(model.root).find(
     (candidate) =>
@@ -183,6 +215,7 @@ export function ensureSurface(
   surface: WorkspaceSurface,
   targetStackId?: string,
 ): WorkspaceModel {
+  model = deduplicateWorkspaceSurfaces(model);
   const normalized = normalizeSurface(surface);
   const existing = listSurfaces(model.root).find(
     (candidate) =>

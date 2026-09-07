@@ -28,6 +28,29 @@ describe('workspace model', () => {
     expect(stack?.activeId).toBe('terminal:a');
   });
 
+  it('removes duplicate logical tabs before activating a surface', () => {
+    const duplicate = {
+      ...surface('project:p1:settings-copy'),
+      logicalKey: 'project:p1:settings',
+      type: 'settings',
+    };
+    let ws = createWorkspace({
+      ...surface('project:p1:overview'),
+      logicalKey: 'project:p1:overview',
+      type: 'overview',
+    });
+    ws = openSurface(ws, duplicate);
+    ws = openSurface(ws, { ...duplicate, id: 'project:p1:settings' });
+
+    expect(ws.root.kind).toBe('stack');
+    if (ws.root.kind === 'stack') {
+      expect(ws.root.tabs.filter((tab) => tab.logicalKey === 'project:p1:settings')).toHaveLength(
+        1,
+      );
+      expect(ws.root.activeId).toBe('project:p1:settings-copy');
+    }
+  });
+
   it('splits an existing stack with a new surface', () => {
     const ws = splitWithSurface(
       createWorkspace(surface('home')),
