@@ -340,6 +340,7 @@ const NexusWorkspaceSession: React.FC<{
             data={data}
             popout={Boolean(popoutSurface)}
             parsedRoute={parsedRoute}
+            layoutReady={layoutReady}
           />
         </PtyLiveChromeProvider>
       </WorkspacePresentationProvider>
@@ -353,7 +354,8 @@ const WorkspaceCoordinator: React.FC<{
   data: ReturnType<typeof useNexusData>;
   popout: boolean;
   parsedRoute: ParsedRoute;
-}> = ({ project, setProject, data, popout, parsedRoute }) => {
+  layoutReady: boolean;
+}> = ({ project, setProject, data, popout, parsedRoute, layoutReady }) => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
@@ -455,24 +457,36 @@ const WorkspaceCoordinator: React.FC<{
 
   const lastSyncedRouteRef = useRef<string>('');
   useEffect(() => {
-    const routeKey = `${parsedRoute.kind}:${parsedRoute.kind === 'project' ? parsedRoute.surface : ''}:${location.pathname}:${location.search}`;
-    const routeChanged = lastSyncedRouteRef.current !== routeKey;
+    if (!layoutReady) return;
+    const timer = window.setTimeout(() => {
+      const routeKey = `${parsedRoute.kind}:${parsedRoute.kind === 'project' ? parsedRoute.surface : ''}:${location.pathname}:${location.search}`;
+      const routeChanged = lastSyncedRouteRef.current !== routeKey;
 
-    if (parsedRoute.kind === 'project' && parsedRoute.projectId === project.id) {
-      const targetSurface = routeToWorkspaceSurface(parsedRoute, { agents: data.agents });
-      if (targetSurface && routeChanged) {
-        lastSyncedRouteRef.current = routeKey;
-        workspace.open(targetSurface);
+      if (parsedRoute.kind === 'project' && parsedRoute.projectId === project.id) {
+        const targetSurface = routeToWorkspaceSurface(parsedRoute, { agents: data.agents });
+        if (targetSurface && routeChanged) {
+          lastSyncedRouteRef.current = routeKey;
+          workspace.open(targetSurface);
+        }
+      } else if (parsedRoute.kind === 'global') {
+        const projectSurfaceKind = globalSurfaceToProjectSurface(parsedRoute.surface);
+        if (projectSurfaceKind && routeChanged) {
+          lastSyncedRouteRef.current = routeKey;
+          workspace.open(projectSurface(project.id, projectSurfaceKind));
+        }
+        if (parsedRoute.surface === 'welcome') setWelcomeOpen(true);
       }
-    } else if (parsedRoute.kind === 'global') {
-      const projectSurfaceKind = globalSurfaceToProjectSurface(parsedRoute.surface);
-      if (projectSurfaceKind && routeChanged) {
-        lastSyncedRouteRef.current = routeKey;
-        workspace.open(projectSurface(project.id, projectSurfaceKind));
-      }
-      if (parsedRoute.surface === 'welcome') setWelcomeOpen(true);
-    }
-  }, [parsedRoute, project.id, data.agents, location.pathname, location.search, workspace]);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [
+    parsedRoute,
+    project.id,
+    data.agents,
+    location.pathname,
+    location.search,
+    workspace,
+    layoutReady,
+  ]);
   const shell = useCallback(async () => {
     if (shellInFlight.current) return;
     shellInFlight.current = true;

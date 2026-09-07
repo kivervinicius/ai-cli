@@ -7,33 +7,36 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/telemetry"
 )
 
 // TaskRequirements specifies what an intelligence or execution task demands (§Gate 5, Phase B).
 type TaskRequirements struct {
-	TaskKind             string   `json:"task_kind"` // "coding" | "planning" | "review" | "verify" | "refactor" | "security"
-	Role                 string   `json:"role"`      // "implementer" | "reviewer" | "architect" | "tester"
-	RequiredCapabilities []string `json:"required_capabilities,omitempty"`
-	EstimatedTokens      int      `json:"estimated_tokens,omitempty"`
-	CurrentProvider      string   `json:"current_provider,omitempty"`
-	CurrentProfile       string   `json:"current_profile,omitempty"`
-	PreferProvider       string   `json:"prefer_provider,omitempty"`
-	ProjectPolicy        string   `json:"project_policy,omitempty"`
-	AgentPreference      string   `json:"agent_preference,omitempty"`
+	TaskKind             string         `json:"task_kind"` // "coding" | "planning" | "review" | "verify" | "refactor" | "security"
+	Role                 string         `json:"role"`      // "implementer" | "reviewer" | "architect" | "tester"
+	RequiredCapabilities []string       `json:"required_capabilities,omitempty"`
+	EstimatedTokens      int            `json:"estimated_tokens,omitempty"`
+	CurrentProvider      string         `json:"current_provider,omitempty"`
+	CurrentProfile       string         `json:"current_profile,omitempty"`
+	PreferProvider       string         `json:"prefer_provider,omitempty"`
+	ProjectPolicy        string         `json:"project_policy,omitempty"`
+	AgentPreference      string         `json:"agent_preference,omitempty"`
+	ProviderPriorities   map[string]int `json:"provider_priorities,omitempty"`
 }
 
 // ResourceCandidate represents an evaluated provider account scored for a specific task.
 type ResourceCandidate struct {
-	Account         ProviderAccount    `json:"account"`
-	Rank            int                `json:"rank"`
-	TotalScore      float64            `json:"total_score"`
-	Confidence      string             `json:"confidence"` // "LIVE" | "CACHED" | "ESTIMATED" | "UNKNOWN"
-	ScoreBreakdown  map[string]float64 `json:"score_breakdown"`
-	Pros            []string           `json:"pros"`
-	Cons            []string           `json:"cons"`
-	Eligible        bool               `json:"eligible"`
-	RejectionReason string             `json:"rejection_reason,omitempty"`
+	Account          ProviderAccount    `json:"account"`
+	Rank             int                `json:"rank"`
+	TotalScore       float64            `json:"total_score"`
+	Confidence       string             `json:"confidence"` // "LIVE" | "CACHED" | "ESTIMATED" | "UNKNOWN"
+	ScoreBreakdown   map[string]float64 `json:"score_breakdown"`
+	Pros             []string           `json:"pros"`
+	Cons             []string           `json:"cons"`
+	Eligible         bool               `json:"eligible"`
+	RejectionReason  string             `json:"rejection_reason,omitempty"`
+	ProviderPriority int                `json:"provider_priority,omitempty"`
 }
 
 // RecommendationResult holds the ranked candidates and top selection with explainable reasoning.
@@ -47,6 +50,10 @@ type RecommendationResult struct {
 
 // RecommendResources evaluates available accounts against task requirements under the chosen policy.
 func RecommendResources(accounts []ProviderAccount, req TaskRequirements, policy SchedulerPolicy) RecommendationResult {
+	if len(req.ProviderPriorities) == 0 {
+		cfg, _ := config.LoadConfig()
+		req.ProviderPriorities = cfg.ProviderPriorities
+	}
 	if policy == "" {
 		if req.ProjectPolicy != "" {
 			policy = SchedulerPolicy(strings.ToUpper(req.ProjectPolicy))
@@ -80,8 +87,13 @@ func RecommendResources(accounts []ProviderAccount, req TaskRequirements, policy
 	if allUnknown && len(eligibleIdx) > 0 {
 		lastUsed := profileSelectedAt()
 		sort.SliceStable(eligibleIdx, func(i, j int) bool {
-			left := result.Candidates[eligibleIdx[i]].Account
-			right := result.Candidates[eligibleIdx[j]].Account
+			leftCandidate := result.Candidates[eligibleIdx[i]]
+			rightCandidate := result.Candidates[eligibleIdx[j]]
+			if leftCandidate.ProviderPriority > 0 && rightCandidate.ProviderPriority > 0 && leftCandidate.ProviderPriority != rightCandidate.ProviderPriority {
+				return leftCandidate.ProviderPriority < rightCandidate.ProviderPriority
+			}
+			left := leftCandidate.Account
+			right := rightCandidate.Account
 			leftKey := left.Provider + "/" + left.Profile
 			rightKey := right.Provider + "/" + right.Profile
 			return lastUsed[leftKey].Before(lastUsed[rightKey])
@@ -103,6 +115,11 @@ func RecommendResources(accounts []ProviderAccount, req TaskRequirements, policy
 	sort.Slice(result.Candidates, func(i, j int) bool {
 		if result.Candidates[i].Eligible != result.Candidates[j].Eligible {
 			return result.Candidates[i].Eligible
+		}
+		leftPriority := result.Candidates[i].ProviderPriority
+		rightPriority := result.Candidates[j].ProviderPriority
+		if leftPriority > 0 && rightPriority > 0 && leftPriority != rightPriority {
+			return leftPriority < rightPriority
 		}
 		if math.Abs(result.Candidates[i].TotalScore-result.Candidates[j].TotalScore) > 0.001 {
 			return result.Candidates[i].TotalScore > result.Candidates[j].TotalScore
@@ -156,6 +173,9 @@ func evaluateCandidate(acc ProviderAccount, req TaskRequirements, policy Schedul
 		Eligible:       true,
 		Confidence:     "UNKNOWN",
 	}
+	if req.ProviderPriorities != nil {
+		c.ProviderPriority = req.ProviderPriorities[acc.Provider]
+	}
 
 	// Hard Gate 1: Must be authenticated
 	if !acc.Authenticated {
@@ -205,6 +225,10 @@ func evaluateCandidate(acc ProviderAccount, req TaskRequirements, policy Schedul
 	c.Confidence = quotaConfidence(acc)
 
 	var score = 50.0 // Baseline
+	if c.ProviderPriority > 0 {
+		c.ScoreBreakdown["provider_priority"] = float64(c.ProviderPriority)
+		c.Pros = append(c.Pros, fmt.Sprintf("Prioridade de fallback do provider: %d", c.ProviderPriority))
+	}
 
 	// 1. Quota & Capacity Scoring (0 to 30 pts)
 	quotaScore := 0.0

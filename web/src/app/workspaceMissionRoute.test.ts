@@ -15,8 +15,8 @@ describe('Workspace OS mission surface wiring', () => {
     expect(source).toMatch(/surface\.type === 'work'[\s\S]*?<WorkSurface/);
   });
 
-  it('does not mount MaestroPage on leftover maestro tabs', () => {
+  it('does not mount legacy MaestroPage on maestro tabs, uses MaestroSurface', () => {
     expect(source).not.toContain('MaestroPage');
-    expect(source).toContain('maestroControl.legacySurface');
+    expect(source).toContain('MaestroSurface');
   });
 });

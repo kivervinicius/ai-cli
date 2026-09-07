@@ -114,12 +114,6 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 		return model.Failure{Kind: model.FailureCommand, Message: err.Error()}, err
 	}
 
-	// Ensure keyring password file
-	pwFile := filepath.Join(root, "keyring.pass")
-	if _, err := os.Stat(pwFile); err != nil {
-		_ = os.WriteFile(pwFile, []byte("agy-keyring-secret\n"), 0600)
-	}
-
 	// Set isolated environment
 	envOverrides := map[string]string{
 		"HOME":                             home,
@@ -472,11 +466,6 @@ func (a *Adapter) fetchLiveQuota(ctx context.Context, p model.Profile) (model.Us
 	if err != nil {
 		return model.UsageSnapshot{}, false
 	}
-	pwFile := filepath.Join(root, "keyring.pass")
-	if _, err := os.Stat(pwFile); err != nil {
-		_ = os.WriteFile(pwFile, []byte("agy-keyring-secret\n"), 0600)
-	}
-
 	envOverrides := map[string]string{
 		"HOME":                             home,
 		"XDG_CONFIG_HOME":                  filepath.Join(home, ".config"),
@@ -490,7 +479,13 @@ func (a *Adapter) fetchLiveQuota(ctx context.Context, p model.Profile) (model.Us
 	}
 	env := runtime.EnvSet(os.Environ(), envOverrides, "DBUS_SESSION_BUS_ADDRESS", "GNOME_KEYRING_CONTROL", "GNOME_KEYRING_PID")
 	args := []string{"--output-format", "text", "--print-timeout", "12s", "--print=/quota"}
-	wrappedBin, wrappedArgs := runtime.WrapWithIsolatedSecretService(bin, args)
+	// Quota probes are deliberately non-interactive and must never initialize
+	// Secret Service. AGY's interactive/login path still uses the isolated
+	// keyring in Run above, but a background quota refresh must not prompt for
+	// a password or create a new keyring daemon. With the session bus and
+	// keyring variables removed from env, AGY can use its profile token/file
+	// storage; if that is unavailable the probe fails closed and the caller
+	// exposes UNKNOWN/last-known data instead of blocking the user.
 
 	fetchCtx := ctx
 	if _, ok := ctx.Deadline(); !ok {
@@ -498,7 +493,7 @@ func (a *Adapter) fetchLiveQuota(ctx context.Context, p model.Profile) (model.Us
 		fetchCtx, cancel = context.WithTimeout(ctx, 12*time.Second)
 		defer cancel()
 	}
-	out, err := runtime.RunCommandCapture(fetchCtx, wrappedBin, wrappedArgs, env, home)
+	out, err := runtime.RunCommandCapture(fetchCtx, bin, args, env, home)
 	if err != nil {
 		return model.UsageSnapshot{}, false
 	}

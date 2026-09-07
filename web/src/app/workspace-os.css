@@ -171,7 +171,12 @@ button {
   outline: 2px solid var(--nx-accent);
   outline-offset: 2px;
 }
-:root[data-reduced-motion="true"] *,
+:root[data-reduced-motion="true"] * {
+  scroll-behavior: auto !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
 @media (prefers-reduced-motion: reduce) {
   * {
     scroll-behavior: auto !important;
@@ -4588,7 +4593,7 @@ button {
 }
 .nx-minimized-chips__label {
   flex: 0 0 auto;
-  color: var(--nx-subtle);
+  color: var(--nx-muted);
   font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -5193,7 +5198,7 @@ button {
   border: 0;
   border-right: 1px solid var(--nx-border);
   background: transparent;
-  color: var(--nx-subtle);
+  color: var(--nx-muted);
   font-size: 10.5px;
   cursor: pointer;
 }
@@ -5213,7 +5218,7 @@ button {
   border: 1px solid var(--nx-border);
   border-radius: 6px;
   background: transparent;
-  color: var(--nx-subtle);
+  color: var(--nx-muted);
   font-size: 10.5px;
   font-family: inherit;
   cursor: pointer;
@@ -5229,10 +5234,7 @@ button {
   color: var(--nx-accent-text);
   border-color: var(--nx-accent);
 }
-/* Focus / Zen Mode (Immersive Fullscreen Terminal) */
-.nx-os-shell--zen .nx-topbar {
-  display: none;
-}
+/* Focus / Zen Mode (Immersive Workspace with Header Focus Toggle) */
 .nx-os-shell--zen .nx-workspace-statusbar {
   display: none;
 }
@@ -5264,9 +5266,16 @@ button {
 .nx-os-shell--zen .nx-os-main {
   width: 100%;
   height: 100vh;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
 }
 .nx-os-shell--zen .nx-workspace-host {
-  height: 100vh;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 .nx-agent-terminal[data-chrome="window"] {
   grid-template-rows: auto minmax(0, 1fr);

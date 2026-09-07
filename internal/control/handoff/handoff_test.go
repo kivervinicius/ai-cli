@@ -3,6 +3,7 @@ package handoff
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -67,6 +68,32 @@ func TestWorkCheckpointAndRedaction(t *testing.T) {
 		t.Fatalf("failed to save checkpoint: %v", err)
 	}
 	_ = os.Remove(path)
+}
+
+func TestCheckpointCapturesMaestroContextAndKickoffRequiresRehydration(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workspace, "DEV", "SPECS"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, relative := range []string{"DEV/INDEX.md", "DEV/HANDOFF.md", "DEV/CONTEXT.md", "DEV/SPECS/ACTIVE.md", "DEV/VERIFY.md"} {
+		path := filepath.Join(workspace, filepath.FromSlash(relative))
+		if err := os.WriteFile(path, []byte("durable context: "+relative), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cp := CaptureWorkCheckpoint(workspace, "rt-source", "codex", "work", "", "", "continue task")
+	if cp.SchemaVersion < 4 || len(cp.MaestroContext.ReadOrder) != 5 || len(cp.MaestroContext.Files) != 5 {
+		t.Fatalf("unexpected Maestro context pack: %+v", cp.MaestroContext)
+	}
+	for _, file := range cp.MaestroContext.Files {
+		if file.Status != "PRESENT" || file.SHA256 == "" || file.Bytes == 0 {
+			t.Fatalf("context file lacks evidence: %+v", file)
+		}
+	}
+	prompt := FormatKickoffPrompt(cp)
+	if !strings.Contains(prompt, "Maestro continuity contract") || !strings.Contains(prompt, "DEV/SPECS/ACTIVE.md [PRESENT]") {
+		t.Fatalf("kickoff did not require durable context rehydration: %s", prompt)
+	}
 }
 
 func TestAccountHandoffStateTransitionsAndRollback(t *testing.T) {
@@ -279,8 +306,8 @@ func TestResolveTargetModel(t *testing.T) {
 
 func TestWorkCheckpointModelPersistenceAndPrompt(t *testing.T) {
 	cp := CaptureWorkCheckpoint(os.TempDir(), "rt-src", "agy", "work", "sess-123", "claude-sonnet-4-20250514", "Complete feature")
-	if cp.SchemaVersion != 3 {
-		t.Errorf("expected SchemaVersion 3, got %d", cp.SchemaVersion)
+	if cp.SchemaVersion != 4 {
+		t.Errorf("expected SchemaVersion 4, got %d", cp.SchemaVersion)
 	}
 	if cp.SourceModel != "claude-sonnet-4-20250514" {
 		t.Errorf("expected SourceModel 'claude-sonnet-4-20250514', got %q", cp.SourceModel)

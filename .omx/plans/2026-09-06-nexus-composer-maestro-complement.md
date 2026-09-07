@@ -1,5 +1,10 @@
 # Plano — Nexus Composer como complemento do Orquestrador Maestro
 
+> **SUPERSEDIDO:** este plano foi substituído por
+> `2026-09-06-nexus-composer-best-prompt-product.md`, que corrige o escopo:
+> reescrever o Composer, preservar o Flow existente e manter Copy/Agent/Flow
+> como destinos independentes.
+
 ## Objetivo
 
 Fazer o Composer produzir um plano de trabalho realmente bom para o Flow,
@@ -350,4 +355,3 @@ aprovado em Flow por um adapter fino.
 - decidir se `ApprovedPlanCandidate` viverá no store do Composer ou como revisão
   do WorkPlan, sem criar nova autoridade concorrente;
 - executar a matriz de contract tests antes da implementação visual ampla.
-

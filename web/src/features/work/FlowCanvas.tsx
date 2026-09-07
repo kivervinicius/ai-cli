@@ -16,6 +16,7 @@ import { Network } from 'lucide-react';
 import { executionWaves, type FlowDraftModel } from './flowModel';
 import { FlowTaskNode, type FlowTaskNodeData } from './FlowTaskNode';
 import styles from './FlowCanvas.module.scss';
+import { asArray } from '../../lib/safeArray';
 
 const NODE_WIDTH = 190;
 const NODE_HEIGHT = 122;
@@ -147,7 +148,7 @@ export const FlowCanvas = ({
       </div>
       <span className={styles.visuallyHidden}>
         {Array.from(stepById.values())
-          .map((step) => `${step.title}: ${step.dependencies.join(', ')}`)
+          .map((step) => `${step.title}: ${asArray<string>(step.dependencies).join(', ')}`)
           .join('. ')}
       </span>
     </section>

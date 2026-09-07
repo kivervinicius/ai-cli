@@ -41,38 +41,40 @@ var (
 
 // Config represents persistent application settings and user preferences.
 type Config struct {
-	ConfigVersion     int                            `json:"config_version"`
-	Defaults          map[string]string              `json:"defaults"`             // provider -> profile
-	Priorities        map[string]map[string]int      `json:"priorities,omitempty"` // provider -> profile -> priority
-	Disabled          map[string]map[string]bool     `json:"disabled,omitempty"`   // provider -> profile -> true
-	Labels            map[string]map[string][]string `json:"labels,omitempty"`     // provider -> profile -> tags
-	Strategy          string                         `json:"strategy"`             // best-capacity, least-used, round-robin, sticky
-	StickyTTL         string                         `json:"sticky_ttl,omitempty"` // e.g. "30m"
-	IsolationPreset   model.IsolationPreset          `json:"isolation_preset"`     // developer, strict, compat
-	Bindings          map[string]map[string]string   `json:"bindings,omitempty"`   // workspace -> provider -> profile
-	AutomaticFallback bool                           `json:"automatic_fallback"`
-	MaxConcurrency    int                            `json:"max_concurrency"`
-	Language          string                         `json:"language,omitempty"`
-	Intelligence      IntelligenceConfig             `json:"intelligence,omitempty"`
-	FlagAliases       map[string]map[string][]string `json:"flag_aliases,omitempty"` // alias -> provider -> flags
+	ConfigVersion      int                            `json:"config_version"`
+	Defaults           map[string]string              `json:"defaults"`                      // provider -> profile
+	Priorities         map[string]map[string]int      `json:"priorities,omitempty"`          // provider -> profile -> priority
+	ProviderPriorities map[string]int                 `json:"provider_priorities,omitempty"` // provider -> lower-is-first fallback priority
+	Disabled           map[string]map[string]bool     `json:"disabled,omitempty"`            // provider -> profile -> true
+	Labels             map[string]map[string][]string `json:"labels,omitempty"`              // provider -> profile -> tags
+	Strategy           string                         `json:"strategy"`                      // best-capacity, least-used, round-robin, sticky
+	StickyTTL          string                         `json:"sticky_ttl,omitempty"`          // e.g. "30m"
+	IsolationPreset    model.IsolationPreset          `json:"isolation_preset"`              // developer, strict, compat
+	Bindings           map[string]map[string]string   `json:"bindings,omitempty"`            // workspace -> provider -> profile
+	AutomaticFallback  bool                           `json:"automatic_fallback"`
+	MaxConcurrency     int                            `json:"max_concurrency"`
+	Language           string                         `json:"language,omitempty"`
+	Intelligence       IntelligenceConfig             `json:"intelligence,omitempty"`
+	FlagAliases        map[string]map[string][]string `json:"flag_aliases,omitempty"` // alias -> provider -> flags
 }
 
 // NewDefaultConfig returns a well-configured default Configuration.
 func NewDefaultConfig() Config {
 	return Config{
-		ConfigVersion:     CurrentConfigVersion,
-		Defaults:          make(map[string]string),
-		Priorities:        make(map[string]map[string]int),
-		Disabled:          make(map[string]map[string]bool),
-		Labels:            make(map[string]map[string][]string),
-		Strategy:          "best-capacity",
-		StickyTTL:         "30m",
-		IsolationPreset:   model.IsolationDeveloper,
-		Bindings:          make(map[string]map[string]string),
-		AutomaticFallback: true,
-		MaxConcurrency:    4,
-		Language:          "auto",
-		Intelligence:      IntelligenceConfig{Mode: IntelligenceOff},
+		ConfigVersion:      CurrentConfigVersion,
+		Defaults:           make(map[string]string),
+		Priorities:         make(map[string]map[string]int),
+		ProviderPriorities: map[string]int{"codex": 1, "agy": 2, "opencode": 3},
+		Disabled:           make(map[string]map[string]bool),
+		Labels:             make(map[string]map[string][]string),
+		Strategy:           "best-capacity",
+		StickyTTL:          "30m",
+		IsolationPreset:    model.IsolationDeveloper,
+		Bindings:           make(map[string]map[string]string),
+		AutomaticFallback:  true,
+		MaxConcurrency:     4,
+		Language:           "auto",
+		Intelligence:       IntelligenceConfig{Mode: IntelligenceOff},
 	}
 }
 
@@ -348,6 +350,9 @@ func LoadConfig() (Config, error) {
 	}
 	if cfg.Priorities == nil {
 		cfg.Priorities = make(map[string]map[string]int)
+	}
+	if cfg.ProviderPriorities == nil {
+		cfg.ProviderPriorities = map[string]int{"codex": 1, "agy": 2, "opencode": 3}
 	}
 	if cfg.Disabled == nil {
 		cfg.Disabled = make(map[string]map[string]bool)

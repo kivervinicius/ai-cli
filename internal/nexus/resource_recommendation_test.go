@@ -68,6 +68,17 @@ func TestResourceRecommendation_Balanced(t *testing.T) {
 	}
 }
 
+func TestResourceRecommendation_ProviderPriorityControlsFallbackOrder(t *testing.T) {
+	accounts := []ProviderAccount{
+		{ID: "agy", Provider: "agy", Profile: "one", DisplayName: "AGY", Authenticated: true, Available: true, Health: "healthy", QuotaView: &quota.QuotaView{Status: "LIVE"}, QuotaRemaining: 0.95},
+		{ID: "codex", Provider: "codex", Profile: "one", DisplayName: "Codex", Authenticated: true, Available: true, Health: "healthy", QuotaView: &quota.QuotaView{Status: "LIVE"}, QuotaRemaining: 0.20},
+	}
+	res := RecommendResources(accounts, TaskRequirements{ProviderPriorities: map[string]int{"codex": 1, "agy": 2}}, PolicyBalanced)
+	if res.Recommended == nil || res.Recommended.Account.Provider != "codex" {
+		t.Fatalf("expected configured provider priority to win fallback order, got %+v", res.Recommended)
+	}
+}
+
 func TestResourceRecommendation_PreserveQuota(t *testing.T) {
 	accounts := []ProviderAccount{
 		{

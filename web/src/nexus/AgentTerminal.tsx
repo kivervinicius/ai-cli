@@ -1,12 +1,16 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowDown,
+  Check,
+  Copy,
+  CornerDownLeft,
   MessageSquare,
   Minus,
   Play,
   Plus,
   RefreshCw,
+  Search,
   Send,
   ShieldAlert,
   Sparkles,
@@ -45,12 +49,22 @@ import { isRequiredResourceError, recoverOrStartAgent } from './agentRecover';
 import { ResourcePicker } from './ResourcePicker';
 import { TerminalActionDialog } from './TerminalActionDialog';
 import { scrubProtocolOutput } from './terminalProtocol';
-import { ConfirmDialog, Tooltip } from '../design-system';
+import { ConfirmDialog, ContextDrawer, Tooltip } from '../design-system';
 import type { RuntimeSession } from '../types';
 import { consumePtyOutputForChrome, extractOscTitle } from '../workspace/ptyLiveChrome';
 import { usePtyLiveChromeOptional } from '../workspace/PtyLiveChromeContext';
 import { canFitTerminal, canRunTerminalFrame } from './terminalFitModel';
 import styles from './AgentTerminal.module.scss';
+
+export interface AgentTerminalSkill {
+  id: string;
+  name?: string;
+  description?: string;
+  category?: string;
+  risk?: string;
+  triggers?: string[];
+  aliases?: string[];
+}
 
 export const AgentTerminal: React.FC<{
   agentId: string;
@@ -100,10 +114,11 @@ export const AgentTerminal: React.FC<{
   const [boundRuntimeId, setBoundRuntimeId] = useState(runtimeId || '');
   const [connectNonce, setConnectNonce] = useState(0);
   const [askOpen, setAskOpen] = useState(false);
+  const [skillsSearch, setSkillsSearch] = useState('');
+  const [selectedSkillCategory, setSelectedSkillCategory] = useState('all');
+  const [copiedSkillId, setCopiedSkillId] = useState<string | null>(null);
   const [askPrompt, setAskPrompt] = useState('');
-  const [availableSkills, setAvailableSkills] = useState<
-    Array<{ id: string; name?: string; description?: string }>
-  >([]);
+  const [availableSkills, setAvailableSkills] = useState<AgentTerminalSkill[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [asking, setAsking] = useState(false);
   const [askFeedback, setAskFeedback] = useState('');
@@ -773,6 +788,46 @@ export const AgentTerminal: React.FC<{
     );
   };
 
+  const handleInsertSkillToTerminal = (skill: AgentTerminalSkill) => {
+    const trigger = skill.triggers?.[0] ? `${skill.triggers[0]} ` : `/${skill.id} `;
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'input', data: trigger }));
+      setAskOpen(false);
+      termRef.current?.focus();
+    }
+  };
+
+  const handleCopySkill = (skill: AgentTerminalSkill) => {
+    const text = skill.triggers?.[0] || `/${skill.id}`;
+    void navigator.clipboard.writeText(text);
+    setCopiedSkillId(skill.id);
+    setTimeout(() => setCopiedSkillId(null), 1500);
+  };
+
+  const skillCategories = useMemo(() => {
+    const cats = new Set<string>();
+    availableSkills.forEach((s) => {
+      if (s.category) cats.add(s.category);
+    });
+    return ['all', ...Array.from(cats)];
+  }, [availableSkills]);
+
+  const filteredSkills = useMemo(() => {
+    const q = skillsSearch.trim().toLowerCase();
+    return availableSkills.filter((s) => {
+      const matchCat =
+        selectedSkillCategory === 'all' ||
+        (s.category && s.category.toLowerCase() === selectedSkillCategory.toLowerCase());
+      if (!matchCat) return false;
+      if (!q) return true;
+      const name = (s.name || s.id).toLowerCase();
+      const desc = (s.description || '').toLowerCase();
+      const trigs = (s.triggers || []).join(' ').toLowerCase();
+      return name.includes(q) || desc.includes(q) || trigs.includes(q);
+    });
+  }, [availableSkills, skillsSearch, selectedSkillCategory]);
+
   const handleSendPrompt = async () => {
     if (!askPrompt.trim() || asking) return;
     setAsking(true);
@@ -933,11 +988,7 @@ export const AgentTerminal: React.FC<{
         </button>
       </div>
 
-      {role === 'CONTROL' ? (
-        <span className="nx-agent-terminal__lease" data-role="CONTROL">
-          {t('agents.controlLabel')}
-        </span>
-      ) : (
+      {role === 'CONTROL' ? null : (
         <>
           <span className="nx-agent-terminal__lease" data-role="VIEW_ONLY">
             {t('agents.viewOnlyLabel')}
@@ -960,7 +1011,7 @@ export const AgentTerminal: React.FC<{
           {message}
         </span>
       )}
-      <Tooltip content={t('terminal.askAgentTooltip')}>
+      <Tooltip content={t('terminal.skillsTooltip')}>
         <button
           type="button"
           className="nx-agent-terminal__ask-btn"
@@ -974,6 +1025,9 @@ export const AgentTerminal: React.FC<{
         >
           <Sparkles size={13} />
           <span>{t('terminal.ask')}</span>
+          {availableSkills.length > 0 && (
+            <span className={styles.skillsCountBadge}>{availableSkills.length}</span>
+          )}
         </button>
       </Tooltip>
       {onClose && !windowChrome && (
@@ -1022,76 +1076,190 @@ export const AgentTerminal: React.FC<{
           {terminalActions}
         </div>
       )}
-      {askOpen && (
-        <div className={`nx-agent-terminal__composer ${styles.composer}`}>
-          <div className={styles.composerHeader}>
-            <span className={styles.composerTitle}>
-              <MessageSquare size={13} /> {t('terminal.sendInstructionTitle')}
-            </span>
-            <button type="button" onClick={() => setAskOpen(false)} className={styles.closeButton}>
-              <X size={13} />
-            </button>
-          </div>
-          <div className={styles.composerRow}>
+      <ContextDrawer
+        open={askOpen}
+        onClose={() => setAskOpen(false)}
+        title={t('terminal.skillsDrawerTitle', 'Skills do Maestro')}
+        description={t(
+          'terminal.skillsDrawerDesc',
+          'Catálogo de capacidades e automações integradas',
+        )}
+        width={420}
+      >
+        <div className={styles.skillsDrawerBody}>
+          <div className={styles.skillsSearchBar}>
+            <Search size={14} className="nx-text-muted" />
             <input
               type="text"
-              className={`nx-input ${styles.composerInput}`}
-              placeholder={t('terminal.sendInstructionPlaceholder')}
-              value={askPrompt}
-              onChange={(e) => setAskPrompt(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  void handleSendPrompt();
-                }
-              }}
+              placeholder={t(
+                'terminal.skillsSearchPlaceholder',
+                'Buscar por nome, comando ou descrição...',
+              )}
+              value={skillsSearch}
+              onChange={(e) => setSkillsSearch(e.target.value)}
             />
-            <button
-              type="button"
-              className="nx-button"
-              data-tone="brand"
-              data-size="sm"
-              disabled={asking || !askPrompt.trim()}
-              onClick={() => void handleSendPrompt()}
-            >
-              <Send size={12} />
-              <span>{asking ? t('terminal.sending') : t('terminal.send')}</span>
-            </button>
+            {skillsSearch && (
+              <button
+                type="button"
+                className={styles.closeButton}
+                onClick={() => setSkillsSearch('')}
+                title={t('common.clear', 'Limpar')}
+              >
+                <X size={12} />
+              </button>
+            )}
           </div>
-          {availableSkills.length > 0 && (
-            <div className={styles.skillsRow}>
-              <span className={styles.skillsLabel}>{t('terminal.maestroSkillsLabel')}</span>
-              {availableSkills.slice(0, 8).map((s) => {
-                const active = selectedSkills.includes(s.id);
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => handleToggleSkill(s.id)}
-                    className={styles.skillButton}
-                    data-active={active ? 'true' : 'false'}
-                    title={s.description || s.name || s.id}
-                  >
-                    {active ? '✓ ' : '+ '}
-                    {s.name || s.id}
-                  </button>
-                );
-              })}
+
+          {skillCategories.length > 1 && (
+            <div className={styles.skillsCategoryBar}>
+              {skillCategories.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  className={styles.categoryChip}
+                  data-active={selectedSkillCategory === cat ? 'true' : 'false'}
+                  onClick={() => setSelectedSkillCategory(cat)}
+                >
+                  {cat === 'all' ? t('common.all', 'Todas') : cat}
+                </button>
+              ))}
             </div>
           )}
-          {askFeedback && (
-            <span
-              className={
-                askFeedback.includes('erro') || askFeedback.includes('failed')
-                  ? styles.feedbackAlert
-                  : styles.feedbackSuccess
-              }
-            >
-              {askFeedback}
-            </span>
-          )}
+
+          <div className={styles.skillsList}>
+            {filteredSkills.length === 0 ? (
+              <div className="nx-text-muted nx-p-4 nx-text-center" style={{ fontSize: '12px' }}>
+                {availableSkills.length === 0
+                  ? t('terminal.skillsLoading', 'Carregando catálogo dinâmico de skills...')
+                  : t('terminal.skillsEmpty', 'Nenhuma skill encontrada para o filtro atual.')}
+              </div>
+            ) : (
+              filteredSkills.map((skill) => {
+                const active = selectedSkills.includes(skill.id);
+                const isCopied = copiedSkillId === skill.id;
+                return (
+                  <div key={skill.id} className={styles.skillCard}>
+                    <div className={styles.skillCardHeader}>
+                      <span className={styles.skillCardName}>
+                        <Sparkles size={12} className="nx-text-accent" />
+                        {skill.name || skill.id}
+                      </span>
+                      <div className={styles.skillBadges}>
+                        {skill.category && (
+                          <span className={styles.skillCategoryBadge}>{skill.category}</span>
+                        )}
+                        <span className={styles.skillRiskBadge} data-risk={skill.risk || 'safe'}>
+                          {skill.risk || 'safe'}
+                        </span>
+                      </div>
+                    </div>
+                    {skill.description && (
+                      <p className={styles.skillCardDesc}>{skill.description}</p>
+                    )}
+                    {skill.triggers && skill.triggers.length > 0 && (
+                      <div className={styles.skillTriggers}>
+                        {skill.triggers.map((trig) => (
+                          <span key={trig} className={styles.skillTriggerTag}>
+                            {trig}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className={styles.skillCardActions}>
+                      <button
+                        type="button"
+                        className={styles.skillActionBtn}
+                        onClick={() => handleCopySkill(skill)}
+                        title={t('terminal.copySkillTitle', 'Copiar comando')}
+                      >
+                        {isCopied ? (
+                          <Check size={11} className="nx-text-emerald-400" />
+                        ) : (
+                          <Copy size={11} />
+                        )}
+                        <span>
+                          {isCopied
+                            ? t('terminal.copied', 'Copiado')
+                            : t('terminal.copy', 'Copiar')}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.skillActionBtn}
+                        data-primary="true"
+                        onClick={() => handleInsertSkillToTerminal(skill)}
+                        title={t('terminal.insertSkillTitle', 'Inserir comando no terminal')}
+                      >
+                        <CornerDownLeft size={11} />
+                        <span>{t('terminal.insert', 'Inserir')}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.skillActionBtn}
+                        onClick={() => handleToggleSkill(skill.id)}
+                        data-active={active ? 'true' : 'false'}
+                        title={t('terminal.selectForPrompt', 'Vincular para prompt (máx 3)')}
+                      >
+                        {active ? '✓ ' + t('terminal.selected', 'Prompt') : '+ Prompt'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <div className={styles.skillsDrawerFooter}>
+            <div className={styles.composerHeader}>
+              <span className={styles.composerTitle}>
+                <MessageSquare size={13} /> {t('terminal.sendInstructionTitle')}
+              </span>
+              {selectedSkills.length > 0 && (
+                <span className={styles.skillsLabel}>
+                  {selectedSkills.length}/3 {t('terminal.skillsSelected', 'selecionadas')}
+                </span>
+              )}
+            </div>
+            <div className={styles.composerRow}>
+              <input
+                type="text"
+                className={`nx-input ${styles.composerInput}`}
+                placeholder={t('terminal.sendInstructionPlaceholder')}
+                value={askPrompt}
+                onChange={(e) => setAskPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    void handleSendPrompt();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="nx-button"
+                data-tone="brand"
+                data-size="sm"
+                disabled={asking || !askPrompt.trim()}
+                onClick={() => void handleSendPrompt()}
+              >
+                <Send size={12} />
+                <span>{asking ? t('terminal.sending') : t('terminal.send')}</span>
+              </button>
+            </div>
+            {askFeedback && (
+              <span
+                className={
+                  askFeedback.includes('erro') || askFeedback.includes('failed')
+                    ? styles.feedbackAlert
+                    : styles.feedbackSuccess
+                }
+              >
+                {askFeedback}
+              </span>
+            )}
+          </div>
         </div>
-      )}
+      </ContextDrawer>
       {closeConfirmOpen && onClose && (
         <TerminalActionDialog
           close

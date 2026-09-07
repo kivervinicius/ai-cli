@@ -44,7 +44,6 @@ import { isWindowedPresentationMode, mosaicDropTargetViewId } from './presentati
 import { ptyWindowHeading } from './ptyLiveChrome';
 import { liveChromeFor, usePtyLiveChromeOptional } from './PtyLiveChromeContext';
 import { ARRANGE_MENU_PRESETS, type ArrangeMenuPreset } from './arrangePresets';
-import { ProjectCreateMenu } from '../features/projects/ProjectCreateMenu';
 
 const WINDOW_ACCENTS = ['#38bdf8', '#22c55e', '#f59e0b', '#f472b6', '#a78bfa', '#fb7185'];
 const WINDOW_ICONS = ['⌘', '⚡', '◆', '●', '★', '◎'];
@@ -698,17 +697,6 @@ const TerminalsHost: React.FC<{
           <div className="nx-minimized-chips" aria-hidden="true" />
         )}
         <div className="nx-terminals-host__chrome-cluster">
-          {createActions && (
-            <ProjectCreateMenu
-              onNewAgent={createActions.onNewAgent}
-              onNewAISession={createActions.onNewAISession}
-              onProjectShell={createActions.onProjectShell}
-              size="xs"
-              variant="compact"
-              label="Novo"
-              className="nx-terminals-create-menu"
-            />
-          )}
           <div className="nx-presentation-toggle" role="group" aria-label="Terminal presentation">
             <button
               type="button"

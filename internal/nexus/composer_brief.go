@@ -1,10 +1,48 @@
 package nexus
 
 import (
+	"fmt"
 	"math"
 	"regexp"
 	"strings"
+	"time"
 )
+
+type ComposerFactStatus string
+
+const (
+	ComposerFactProposed  ComposerFactStatus = "PROPOSED"
+	ComposerFactConfirmed ComposerFactStatus = "CONFIRMED"
+	ComposerFactInferred  ComposerFactStatus = "INFERRED"
+	ComposerFactAssumed   ComposerFactStatus = "ASSUMED"
+	ComposerFactDismissed ComposerFactStatus = "DISMISSED"
+)
+
+// ComposerFact is a traceable statement in the brief. It deliberately stores
+// provenance, rather than treating model output as user-confirmed truth.
+type ComposerFact struct {
+	ID         string             `json:"id"`
+	Field      string             `json:"field"`
+	Value      string             `json:"value"`
+	SourceType string             `json:"source_type"`
+	SourceRef  string             `json:"source_ref,omitempty"`
+	Confidence string             `json:"confidence,omitempty"`
+	Status     ComposerFactStatus `json:"status"`
+	Impact     string             `json:"impact,omitempty"`
+	Revision   int                `json:"revision"`
+	UpdatedAt  time.Time          `json:"updated_at"`
+}
+
+type MotivationMap struct {
+	Problem        []ComposerFact `json:"problem,omitempty"`
+	Affected       []ComposerFact `json:"affected,omitempty"`
+	Impact         []ComposerFact `json:"impact,omitempty"`
+	Result         []ComposerFact `json:"result,omitempty"`
+	Urgency        []ComposerFact `json:"urgency,omitempty"`
+	Tradeoffs      []ComposerFact `json:"tradeoffs,omitempty"`
+	SuccessSignals []ComposerFact `json:"success_signals,omitempty"`
+	FailureSignals []ComposerFact `json:"failure_signals,omitempty"`
+}
 
 type PromptArchetype string
 
@@ -153,6 +191,8 @@ type LivingBrief struct {
 	Unknowns      []PromptUnknown    `json:"unknowns,omitempty"`
 	OpenQuestions []string           `json:"open_questions,omitempty"`
 	Readiness     PromptReadiness    `json:"readiness"`
+	Motivation    MotivationMap      `json:"motivation,omitempty"`
+	Facts         []ComposerFact     `json:"facts,omitempty"`
 }
 
 type composerUnknownBlueprint struct {
@@ -182,6 +222,7 @@ func newComposerBrief(goal, sourcePrompt string) LivingBrief {
 		},
 	}
 	mergeTextIntoBrief(&brief, body, "USER")
+	brief.Motivation = deriveMotivationMap(brief)
 	refreshComposerBrief(&brief)
 	return brief
 }
@@ -204,6 +245,29 @@ func refreshComposerBrief(brief *LivingBrief) {
 		}
 	}
 	brief.Readiness = computePromptReadiness(*brief)
+	brief.Motivation = deriveMotivationMap(*brief)
+}
+
+func deriveMotivationMap(brief LivingBrief) MotivationMap {
+	now := time.Now().UTC()
+	fact := func(id, field, value, source, impact string) ComposerFact {
+		return ComposerFact{ID: id, Field: field, Value: strings.TrimSpace(value), SourceType: source, Confidence: "MEDIUM", Status: ComposerFactInferred, Impact: impact, Revision: 1, UpdatedAt: now}
+	}
+	out := MotivationMap{}
+	if strings.TrimSpace(brief.Goal) != "" {
+		out.Result = append(out.Result, fact("motivation-result", "motivation.result", brief.Goal, "USER", "defines the observable outcome"))
+	}
+	if len(brief.Context.ExistingState) > 0 {
+		for i, value := range brief.Context.ExistingState {
+			out.Problem = append(out.Problem, fact(fmt.Sprintf("motivation-problem-%d", i+1), "motivation.problem", value, "USER", "explains the current problem"))
+		}
+	}
+	if len(brief.Quality.AcceptanceCriteria) > 0 {
+		for i, value := range brief.Quality.AcceptanceCriteria {
+			out.SuccessSignals = append(out.SuccessSignals, fact(fmt.Sprintf("motivation-success-%d", i+1), "motivation.success", value, "USER", "proves success"))
+		}
+	}
+	return out
 }
 
 func mergeTextIntoBrief(brief *LivingBrief, text, source string) {

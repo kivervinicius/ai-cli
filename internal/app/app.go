@@ -263,6 +263,11 @@ func interactiveTUI() error {
 }
 
 func executeProviderWithSmartSelection(provName, explicitProfile string, args []string) error {
+	if hasProviderLaunchFlag(args, "--supervised") {
+		return executeProviderSupervised(provName, explicitProfile, removeProviderLaunchFlag(args, "--supervised"))
+	}
+	args = removeProviderLaunchFlag(args, "--direct")
+
 	// Keep quota monitoring alive for the lifetime of direct provider commands,
 	// including nexus agy/codex/cursor invocations.
 	nexus.Default().StartQuotaMonitor(context.Background())
@@ -429,6 +434,7 @@ func usage() {
   %s continue <id> --with <prov>  Cross-provider context handoff
 
   %s <provider> [flags]           Launch provider with intelligent account selection
+  %s <provider> --supervised      Launch through SessionHost; enables /nexus control
   %s <provider>:<profile> [flags] Launch specific profile (e.g. %s codex:work)
   %s <provider>:auto [flags]      Explicit auto-selection
   %s resume [id] [provider:name]  Resume previous session using provider-native syntax
@@ -471,7 +477,7 @@ Universal Canonical Aliases (translated to native options for all providers):
 Merged Help:
   %s <provider> --help            Show Nexus canonical aliases merged with official CLI help
 `,
-		p, p, p, p, p, p, p, p, p, p, p, p, p,
+		p, p, p, p, p, p, p, p, p, p, p, p, p, p,
 		p, p, p, p, p,
 		p, p, p, p, p, p, p, p, p,
 		p, p, p, p, p, p, p, p, p, p, p, p, p, p,
@@ -882,7 +888,7 @@ func usageCmd(args []string) error {
 		accs[p.Provider+":"+p.Name] = acc
 		qv := profile.GetQuotaView(p.Provider, p.Name, acc.Plan, acc.Email)
 		for _, group := range qv.ModelGroups {
-			fiveHour, weekly := quotaWindowDisplay(group.Windows, "5h"), quotaWindowDisplay(group.Windows, "weekly")
+			fiveHour, weekly := quotaWindowDisplay(group.Windows, "5h", qv.Status), quotaWindowDisplay(group.Windows, "weekly", qv.Status)
 			if fiveHour == "-" && weekly == "-" {
 				label := quotaUnknownLabel(qv.Status)
 				fiveHour = label
@@ -946,7 +952,7 @@ func usageCmd(args []string) error {
 	}
 }
 
-func quotaWindowDisplay(windows []quota.Window, kind string) string {
+func quotaWindowDisplay(windows []quota.Window, kind, snapshotStatus string) string {
 	for _, window := range windows {
 		matches := kind == "5h" && (window.Kind == "5h" || window.Kind == "daily" || window.Kind == "claude_5h" || window.Kind == "claude_five_hour")
 		if kind == "weekly" {
@@ -957,6 +963,12 @@ func quotaWindowDisplay(windows []quota.Window, kind string) string {
 			if reset == "" {
 				reset = "desconhecido"
 			}
+			if snapshotStatus == string(model.UsageEstimated) {
+				return fmt.Sprintf("~%2.0f%% / %s (ESTIMADA)", window.Remaining, reset)
+			}
+			if snapshotStatus != string(model.UsageLive) && snapshotStatus != string(model.UsageCached) {
+				return quotaUnknownLabel(snapshotStatus)
+			}
 			return fmt.Sprintf("%2.0f%% / %s", window.Remaining, reset)
 		}
 	}
@@ -964,15 +976,33 @@ func quotaWindowDisplay(windows []quota.Window, kind string) string {
 }
 
 func quotaGroupStatus(group quota.ModelGroup, snapshotStatus string) string {
-	if snapshotStatus == string(model.UsageUnknown) || snapshotStatus == string(model.UsageError) {
-		return "UNKNOWN"
+	switch snapshotStatus {
+	case string(model.UsageUnknown), string(model.UsageError), string(model.UsageUnsupported), "":
+		return "SEM EVIDÊNCIA"
+	case string(model.UsageEstimated):
+		return "ESTIMADA"
+	case string(model.UsageRateLimited):
+		return "RATE LIMITED"
 	}
+	knownWindows := 0
+	allExhausted := true
 	for _, window := range group.Windows {
 		if window.Kind != "unknown" && window.Remaining <= 0 {
-			return "INDISPONIVEL"
+			knownWindows++
+			continue
+		}
+		if window.Kind != "unknown" {
+			knownWindows++
+			allExhausted = false
 		}
 	}
-	return "DISPONIVEL"
+	if knownWindows == 0 {
+		return "SEM EVIDÊNCIA"
+	}
+	if allExhausted {
+		return "SEM QUOTA"
+	}
+	return "COM QUOTA"
 }
 
 // quotaUnknownLabel returns a human-readable placeholder for providers
@@ -1492,7 +1522,7 @@ func completionCmd(args []string) error {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage inspect sessions workspaces bind unbind bindings explain doctor security history stats config update maestro completion version release codex agy claude opencode gemini cursor"
+    opts="web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage inspect sessions workspaces bind unbind bindings explain doctor security history stats config update maestro completion version release codex agy claude opencode gemini cursor --supervised --direct --yolo --continue --resume"
     COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
     return 0
 }
@@ -1534,8 +1564,8 @@ _nexus() {
 _nexus "$@"
 `)
 	case "fish":
-		fmt.Print(`complete -c nexus -f -a "web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage sessions workspaces bind unbind explain doctor security history stats update maestro config version release"
-complete -c ai -f -a "web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage sessions workspaces bind unbind explain doctor security history stats update maestro config version release"
+		fmt.Print(`complete -c nexus -f -a "web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage inspect sessions workspaces bind unbind bindings explain doctor security history stats config update maestro completion version release codex agy claude opencode gemini cursor --supervised --direct --yolo --continue --resume"
+complete -c ai -f -a "web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage inspect sessions workspaces bind unbind bindings explain doctor security history stats config update maestro completion version release codex agy claude opencode gemini cursor --supervised --direct --yolo --continue --resume"
 `)
 	case "powershell", "pwsh":
 		fmt.Print(`Register-ArgumentCompleter -Native -CommandName @('nexus', 'ai') -ScriptBlock {
@@ -1545,7 +1575,7 @@ complete -c ai -f -a "web start stop ps running attach handoff continue resume c
         'control', 'ui', 'providers', 'profiles', 'add', 'remove', 'login', 'logout', 'use',
         'status', 'usage', 'inspect', 'sessions', 'workspaces', 'bind', 'unbind', 'bindings',
         'explain', 'doctor', 'security', 'history', 'stats', 'config', 'update', 'completion', 'version', 'release',
-        'codex', 'agy', 'claude', 'opencode', 'gemini', 'cursor'
+        'codex', 'agy', 'claude', 'opencode', 'gemini', 'cursor', '--supervised', '--direct', '--yolo', '--continue', '--resume'
     )
     $commands | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
         [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)

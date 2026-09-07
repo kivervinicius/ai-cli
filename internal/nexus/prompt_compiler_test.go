@@ -74,3 +74,23 @@ func TestCompileAgentPromptRejectsDegradedMaestro(t *testing.T) {
 		t.Fatalf("expected MAESTRO_DEGRADED error, got: %v", err)
 	}
 }
+
+func TestCompilePromptVariantsAreTraceableAndDistinct(t *testing.T) {
+	brief := newComposerBrief("Implement a notes feature", "Implement a notes feature with tests")
+	variants := CompilePromptVariants(brief, []MaestroSkillDesc{{ID: "skill-go", Version: "1.2.0"}}, "codex")
+	if len(variants) != 3 {
+		t.Fatalf("got %d variants", len(variants))
+	}
+	seen := map[PromptVariantKind]bool{}
+	for _, variant := range variants {
+		if variant.Hash == "" || variant.Content == "" || !strings.Contains(variant.Content, "source: Maestro") {
+			t.Fatalf("variant lacks traceability: %+v", variant)
+		}
+		seen[variant.Kind] = true
+	}
+	for _, kind := range []PromptVariantKind{PromptVariantGenericPortable, PromptVariantNexusAgent, PromptVariantFlowHandoff} {
+		if !seen[kind] {
+			t.Fatalf("missing %s", kind)
+		}
+	}
+}

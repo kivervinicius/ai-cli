@@ -13,11 +13,81 @@ import (
 )
 
 type ComposerSessionView struct {
-	Session   store.ComposerSession         `json:"session"`
-	Brief     LivingBrief                   `json:"brief"`
-	Turns     []store.ComposerTurn          `json:"turns"`
-	Skills    []store.ComposerSkillProposal `json:"skills"`
-	Artifacts []store.PromptArtifact        `json:"artifacts,omitempty"`
+	Session         store.ComposerSession            `json:"session"`
+	Brief           LivingBrief                      `json:"brief"`
+	Turns           []store.ComposerTurn             `json:"turns"`
+	Skills          []store.ComposerSkillProposal    `json:"skills"`
+	Artifacts       []store.PromptArtifact           `json:"artifacts,omitempty"`
+	Variants        map[string][]store.PromptVariant `json:"variants,omitempty"`
+	FlowSuitability FlowSuitabilityAssessment        `json:"flow_suitability"`
+	PromptReview    ComposerPromptReview             `json:"prompt_review,omitempty"`
+}
+
+type FlowSuitability string
+
+const (
+	FlowDirectFit           FlowSuitability = "DIRECT_FIT"
+	FlowBeneficial          FlowSuitability = "FLOW_BENEFICIAL"
+	FlowStronglyRecommended FlowSuitability = "FLOW_STRONGLY_RECOMMENDED"
+)
+
+type FlowSuitabilityAssessment struct {
+	Result  FlowSuitability `json:"result"`
+	Reasons []string        `json:"reasons"`
+	Signals []string        `json:"signals"`
+}
+
+type ComposerPromptReview struct {
+	Missing        []string `json:"missing,omitempty"`
+	Contradictions []string `json:"contradictions,omitempty"`
+	Diff           []string `json:"diff,omitempty"`
+}
+
+func ReviewComposerPrompt(brief LivingBrief) ComposerPromptReview {
+	review := ComposerPromptReview{}
+	if strings.TrimSpace(brief.SourcePrompt) == "" {
+		return review
+	}
+	if len(brief.Scope.InScope) == 0 {
+		review.Missing = append(review.Missing, "scope")
+	}
+	if len(brief.Quality.AcceptanceCriteria) == 0 {
+		review.Missing = append(review.Missing, "acceptance_criteria")
+	}
+	if len(brief.Quality.Verification) == 0 {
+		review.Missing = append(review.Missing, "verification")
+	}
+	lower := strings.ToLower(brief.SourcePrompt)
+	if (strings.Contains(lower, "must ") || strings.Contains(lower, "deve ")) && (strings.Contains(lower, "must not") || strings.Contains(lower, "não deve") || strings.Contains(lower, "nao deve")) {
+		review.Contradictions = append(review.Contradictions, "prompt contains both mandatory and prohibitive instructions; confirm precedence")
+	}
+	if len(review.Missing) > 0 {
+		review.Diff = append(review.Diff, "Composer added structured fields: "+strings.Join(review.Missing, ", "))
+	}
+	return review
+}
+
+func AssessComposerFlowSuitability(brief LivingBrief) FlowSuitabilityAssessment {
+	signals, reasons := []string{}, []string{}
+	if len(brief.Scope.InScope) >= 2 {
+		signals = append(signals, "multiple-workstreams")
+		reasons = append(reasons, "há múltiplas frentes no escopo")
+	}
+	if len(brief.Quality.Review) > 0 {
+		signals = append(signals, "independent-review")
+		reasons = append(reasons, "há revisão adicional")
+	}
+	if len(brief.Constraints.Security)+len(brief.Risks) > 0 {
+		signals = append(signals, "risk-or-gates")
+		reasons = append(reasons, "há risco ou restrição que beneficia gates")
+	}
+	if len(signals) >= 3 {
+		return FlowSuitabilityAssessment{FlowStronglyRecommended, reasons, signals}
+	}
+	if len(signals) > 0 {
+		return FlowSuitabilityAssessment{FlowBeneficial, reasons, signals}
+	}
+	return FlowSuitabilityAssessment{FlowDirectFit, []string{"execução direta é suficiente para este escopo"}, signals}
 }
 
 func (n *Nexus) CreateComposerSession(ctx context.Context, projectID, goal string) (*ComposerSessionView, error) {
@@ -55,7 +125,36 @@ func (n *Nexus) CreateComposerSessionWithPrompt(_ context.Context, projectID, go
 	if err != nil {
 		return nil, err
 	}
+	seedComposerSkillProposals(st, session.ID, brief, n.currentMaestroStatus())
 	return n.composeSessionView(st, *session, brief)
+}
+
+func seedComposerSkillProposals(st *store.Store, sessionID string, brief LivingBrief, status MaestroStatus) {
+	if !status.Available || status.Capabilities == nil {
+		return
+	}
+	for _, skill := range status.Capabilities.Skills {
+		if !skillRelevantToComposer(skill, brief) {
+			continue
+		}
+		_, _ = st.UpsertComposerSkillProposal(store.ComposerSkillProposal{
+			SessionID: sessionID, SkillID: skill.ID, State: store.ComposerSkillSuggested,
+			Reason:        "Discovered from the live Maestro capability catalog.",
+			Applicability: firstNonEmpty(skill.Description, "Compatible with this Composer brief."),
+			Risk:          skill.Risk, Source: "Maestro", Version: firstNonEmpty(skill.Version, status.Capabilities.Version), Available: true,
+		})
+	}
+}
+
+func skillRelevantToComposer(skill MaestroSkillDesc, brief LivingBrief) bool {
+	text := strings.ToLower(skill.ID + " " + skill.Name + " " + skill.Description + " " + strings.Join(skill.Triggers, " "))
+	if len(brief.Constraints.Security) > 0 || brief.Intent.Archetype == PromptArchetypeSecurity {
+		return strings.Contains(text, "secur") || strings.Contains(text, "auth")
+	}
+	if brief.Intent.Archetype == PromptArchetypeResearch {
+		return strings.Contains(text, "research") || strings.Contains(text, "review")
+	}
+	return true
 }
 
 func (n *Nexus) GetComposerSession(_ context.Context, id string) (*ComposerSessionView, error) {
@@ -81,6 +180,10 @@ func (n *Nexus) ListComposerSessions(_ context.Context, projectID string) ([]sto
 }
 
 func (n *Nexus) AddComposerTurn(ctx context.Context, sessionID, role, content string) (*ComposerSessionView, error) {
+	return n.AddComposerTurnExpected(ctx, sessionID, role, content, 0)
+}
+
+func (n *Nexus) AddComposerTurnExpected(ctx context.Context, sessionID, role, content string, expectedRevision int) (*ComposerSessionView, error) {
 	st, err := n.OpenProject()
 	if err != nil {
 		return nil, err
@@ -132,7 +235,7 @@ func (n *Nexus) AddComposerTurn(ctx context.Context, sessionID, role, content st
 			}
 		}
 	}
-	return n.persistComposerSession(st, session, brief)
+	return n.persistComposerSessionExpected(st, session, brief, expectedRevision)
 }
 
 func (n *Nexus) UpdateComposerSkillState(_ context.Context, sessionID, skillID, state string) (*ComposerSessionView, error) {
@@ -189,6 +292,19 @@ func (n *Nexus) FinalizeComposerSession(_ context.Context, sessionID string, sel
 	})
 	if err != nil {
 		return nil, err
+	}
+	status := n.currentMaestroStatus()
+	var desc []MaestroSkillDesc
+	if status.Capabilities != nil {
+		for _, candidate := range status.Capabilities.Skills {
+			if containsString(validatedSkills, candidate.ID) {
+				desc = append(desc, candidate)
+			}
+		}
+	}
+	for _, variant := range CompilePromptVariants(brief, desc, "") {
+		rawCaps, _ := json.Marshal(map[string]any{"maestro_available": status.Available})
+		_, _ = st.CreatePromptVariant(store.PromptVariant{ArtifactID: artifact.ID, Variant: string(variant.Kind), Target: variant.Target, Content: variant.Content, CapabilitiesJSON: string(rawCaps)})
 	}
 	for _, skill := range skills {
 		switch {
@@ -249,6 +365,10 @@ func (n *Nexus) RefineComposerArtifact(ctx context.Context, sessionID, refinemen
 // ResolveComposerUnknown updates the status and answer of a single unknown
 // item in the living brief and re-evaluates readiness.
 func (n *Nexus) ResolveComposerUnknown(_ context.Context, sessionID, unknownID, answer, status string) (*ComposerSessionView, error) {
+	return n.ResolveComposerUnknownExpected(context.Background(), sessionID, unknownID, answer, status, 0)
+}
+
+func (n *Nexus) ResolveComposerUnknownExpected(_ context.Context, sessionID, unknownID, answer, status string, expectedRevision int) (*ComposerSessionView, error) {
 	st, err := n.OpenProject()
 	if err != nil {
 		return nil, err
@@ -271,18 +391,11 @@ func (n *Nexus) ResolveComposerUnknown(_ context.Context, sessionID, unknownID, 
 		return nil, fmt.Errorf("unknown %q not found in session %q", unknownID, sessionID)
 	}
 	refreshComposerBrief(&brief)
-	return n.persistComposerSession(st, session, brief)
+	return n.persistComposerSessionExpected(st, session, brief, expectedRevision)
 }
 
 func (n *Nexus) composeSessionView(st *store.Store, session store.ComposerSession, brief LivingBrief) (*ComposerSessionView, error) {
 	refreshComposerBrief(&brief)
-	if session.State != store.ComposerFinalized {
-		session.State = composerSessionStateFromBrief(brief)
-		session.BriefJSON = mustJSON(brief)
-		if err := st.UpdateComposerSession(session); err != nil {
-			return nil, err
-		}
-	}
 	turns, err := st.ListComposerTurns(session.ID, 40)
 	if err != nil {
 		return nil, err
@@ -296,21 +409,35 @@ func (n *Nexus) composeSessionView(st *store.Store, session store.ComposerSessio
 	if err != nil {
 		return nil, err
 	}
+	variants := map[string][]store.PromptVariant{}
+	for _, artifact := range artifacts {
+		if values, variantErr := st.ListPromptVariants(artifact.ID); variantErr == nil && len(values) > 0 {
+			variants[artifact.ID] = values
+		}
+	}
 	return &ComposerSessionView{
-		Session:   session,
-		Brief:     brief,
-		Turns:     turns,
-		Skills:    skills,
-		Artifacts: artifacts,
+		Session:         session,
+		Brief:           brief,
+		Turns:           turns,
+		Skills:          skills,
+		Artifacts:       artifacts,
+		Variants:        variants,
+		FlowSuitability: AssessComposerFlowSuitability(brief),
+		PromptReview:    ReviewComposerPrompt(brief),
 	}, nil
 }
 
-func (n *Nexus) persistComposerSession(st *store.Store, session *store.ComposerSession, brief LivingBrief) (*ComposerSessionView, error) {
+func (n *Nexus) persistComposerSessionExpected(st *store.Store, session *store.ComposerSession, brief LivingBrief, expectedRevision int) (*ComposerSessionView, error) {
 	session.Title = firstNonEmpty(brief.Intent.Objective, brief.Goal, session.Title)
 	session.State = composerSessionStateFromBrief(brief)
 	session.BriefJSON = mustJSON(brief)
-	if err := st.UpdateComposerSession(*session); err != nil {
+	if err := st.UpdateComposerSessionExpected(*session, expectedRevision); err != nil {
 		return nil, err
+	}
+	if expectedRevision > 0 {
+		session.Revision = expectedRevision + 1
+	} else if latest, getErr := st.GetComposerSession(session.ID); getErr == nil {
+		session.Revision = latest.Revision
 	}
 	return n.composeSessionView(st, *session, brief)
 }
@@ -401,7 +528,9 @@ func reconcileComposerSkillAvailability(st *store.Store, sessionID string, skill
 		available[skillID] = struct{}{}
 	}
 	for i := range skills {
+		skills[i].Available = false
 		if _, ok := available[skills[i].SkillID]; ok {
+			skills[i].Available = true
 			continue
 		}
 		skills[i].State = store.ComposerSkillUnavailable

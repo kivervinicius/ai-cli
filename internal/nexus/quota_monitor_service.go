@@ -3,28 +3,36 @@ package nexus
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/control/events"
+	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/quota"
 	"github.com/kivervinicius/ai-cli/internal/profile"
 )
 
 const quotaMonitorInterval = time.Minute
+const quotaMonitorLeaseTTL = 2 * quotaMonitorInterval
 
 // QuotaMonitorService keeps quota alerts independent from any UI surface.
 // A single service belongs to one Nexus process and is stopped with its context.
 type QuotaMonitorService struct {
-	monitor  *QuotaDropMonitor
-	bus      *events.Bus
-	mu       sync.Mutex
-	ctx      context.Context
-	cancel   context.CancelFunc
-	started  bool
-	wg       sync.WaitGroup
-	degraded map[string]bool
+	monitor    *QuotaDropMonitor
+	bus        *events.Bus
+	mu         sync.Mutex
+	ctx        context.Context
+	cancel     context.CancelFunc
+	started    bool
+	wg         sync.WaitGroup
+	degraded   map[string]bool
+	leasePath  string
+	leaseToken string
+	leaseTTL   time.Duration
 }
 
 func NewQuotaMonitorService(monitor *QuotaDropMonitor, bus *events.Bus) *QuotaMonitorService {
@@ -34,7 +42,19 @@ func NewQuotaMonitorService(monitor *QuotaDropMonitor, bus *events.Bus) *QuotaMo
 	if bus == nil {
 		bus = events.DefaultBus()
 	}
-	return &QuotaMonitorService{monitor: monitor, bus: bus, degraded: make(map[string]bool)}
+	service := &QuotaMonitorService{
+		monitor:    monitor,
+		bus:        bus,
+		degraded:   make(map[string]bool),
+		leaseTTL:   quotaMonitorLeaseTTL,
+		leaseToken: fmt.Sprintf("%d-%d", os.Getpid(), time.Now().UnixNano()),
+	}
+	if dir, err := config.StateDir(); err == nil {
+		if os.MkdirAll(dir, 0700) == nil {
+			service.leasePath = filepath.Join(dir, "quota-monitor-leader.lease")
+		}
+	}
+	return service
 }
 
 // Start is idempotent. The first pass runs immediately, then the ticker wakes
@@ -54,7 +74,9 @@ func (s *QuotaMonitorService) Start(ctx context.Context) {
 
 func (s *QuotaMonitorService) loop() {
 	defer s.wg.Done()
-	s.check()
+	if s.acquireOrRenewLease() {
+		s.check()
+	}
 	ticker := time.NewTicker(quotaMonitorInterval)
 	defer ticker.Stop()
 	for {
@@ -62,7 +84,9 @@ func (s *QuotaMonitorService) loop() {
 		case <-s.ctx.Done():
 			return
 		case <-ticker.C:
-			s.check()
+			if s.acquireOrRenewLease() {
+				s.check()
+			}
 		}
 	}
 }
@@ -77,6 +101,53 @@ func (s *QuotaMonitorService) Stop() {
 	s.started = false
 	s.mu.Unlock()
 	s.wg.Wait()
+	s.releaseLease()
+}
+
+// acquireOrRenewLease elects one Nexus process as the quota collector. The
+// lease is deliberately a small O_EXCL file so it works on Unix and Windows
+// without a daemon or a platform-specific lock API. A crashed leader is
+// recoverable after leaseTTL; an active leader renews its file timestamp.
+func (s *QuotaMonitorService) acquireOrRenewLease() bool {
+	s.mu.Lock()
+	path, token, ttl := s.leasePath, s.leaseToken, s.leaseTTL
+	s.mu.Unlock()
+	if path == "" || token == "" || ttl <= 0 {
+		s.emitDegraded("lease", "quota collector lease is unavailable")
+		return false
+	}
+	if data, err := os.ReadFile(path); err == nil && strings.TrimSpace(string(data)) == token {
+		_ = os.Chtimes(path, time.Now(), time.Now())
+		return true
+	} else if err == nil {
+		if info, statErr := os.Stat(path); statErr == nil && time.Since(info.ModTime()) < ttl {
+			return false
+		}
+		_ = os.Remove(path)
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return false
+	}
+	_, writeErr := file.WriteString(token + "\n")
+	closeErr := file.Close()
+	if writeErr != nil || closeErr != nil {
+		_ = os.Remove(path)
+		return false
+	}
+	return true
+}
+
+func (s *QuotaMonitorService) releaseLease() {
+	s.mu.Lock()
+	path, token := s.leasePath, s.leaseToken
+	s.mu.Unlock()
+	if path == "" || token == "" {
+		return
+	}
+	if data, err := os.ReadFile(path); err == nil && strings.TrimSpace(string(data)) == token {
+		_ = os.Remove(path)
+	}
 }
 
 func (s *QuotaMonitorService) check() {

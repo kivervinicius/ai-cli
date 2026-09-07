@@ -16,6 +16,8 @@ pública e técnica.
 | Quero publicar uma versão | [Playbook de release](community-preview/RELEASE_PLAYBOOK.md) |
 | Quero verificar suporte | [Matriz de plataformas](platform/PLATFORM_SUPPORT_MATRIX.md) |
 | Quero reportar vulnerabilidade | [Política de segurança](../SECURITY.md) |
+| Quero usar o Composer | [Guia do Composer](nexus-composer-user-guide.md) |
+| Quero operar o Flow | [Guia do Flow](nexus-flow-user-guide.md) |
 
 ## Mapa da documentação
 
@@ -45,4 +47,3 @@ A documentação diferencia explicitamente:
 Não usamos uma promessa de suporte como substituto de evidência. A mesma regra
 vale para quotas, continuidade de sessão, assinaturas de artefatos e integração
 opcional com o Orquestrador Maestro.
-

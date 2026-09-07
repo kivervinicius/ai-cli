@@ -19,6 +19,7 @@ import type {
   ComposerSessionView,
   PromptArtifact,
   PromptReadinessCheck,
+  Agent,
   Project,
 } from '../../types';
 import { selectResumableComposerSession } from './composerSessionModel';
@@ -53,6 +54,8 @@ export const ComposerSurface: React.FC<{
   const [refineText, setRefineText] = useState('');
   const [showRefineInput, setShowRefineInput] = useState(false);
   const [unknownAnswers, setUnknownAnswers] = useState<Record<string, string>>({});
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState('');
 
   const selectedSkillIds = useMemo(
     () =>
@@ -78,6 +81,17 @@ export const ComposerSurface: React.FC<{
       }
     })();
   }, [project.id]);
+
+  useEffect(() => {
+    void nexus
+      .listAgents(project.id)
+      .then((items) => {
+        const next = items || [];
+        setAgents(next);
+        if (!selectedAgentId && next[0]) setSelectedAgentId(next[0].id);
+      })
+      .catch(() => undefined);
+  }, [project.id, selectedAgentId]);
 
   const briefItems = useMemo(
     () =>
@@ -134,7 +148,7 @@ export const ComposerSurface: React.FC<{
     setBusy(true);
     setError('');
     try {
-      setView(await nexus.addComposerTurn(view.session.id, textToSend));
+      setView(await nexus.addComposerTurn(view.session.id, textToSend, view.session.revision));
       setMessage('');
       await refreshSessions();
     } catch (err) {
@@ -197,6 +211,7 @@ export const ComposerSurface: React.FC<{
         unknownId,
         answer,
         status,
+        view.session.revision,
       );
       setView(updated);
       setUnknownAnswers((prev) => {
@@ -231,6 +246,20 @@ export const ComposerSurface: React.FC<{
       await navigator.clipboard.writeText(artifact.content);
     } catch {
       setError('Não foi possível copiar o prompt neste navegador.');
+    }
+  };
+
+  const sendToAgent = async () => {
+    if (!artifact || !selectedAgentId || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await nexus.askAgent(selectedAgentId, artifact.content, true, selectedSkillIds);
+      setMessage(t('work.composer.sentToAgent', { defaultValue: 'Prompt enviado ao Agent.' }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -711,6 +740,24 @@ export const ComposerSurface: React.FC<{
             <Button onClick={() => void copy()}>
               <ClipboardCopy size={14} /> Copiar
             </Button>
+            {agents.length > 0 && (
+              <>
+                <Select
+                  value={selectedAgentId}
+                  onChange={setSelectedAgentId}
+                  options={agents.map((agent) => ({ value: agent.id, label: agent.name }))}
+                  selectStyle={{ minWidth: 150 }}
+                />
+                <Button
+                  tone="brand"
+                  disabled={busy || !selectedAgentId}
+                  onClick={() => void sendToAgent()}
+                >
+                  <Send size={14} />{' '}
+                  {t('work.composer.sendToAgent', { defaultValue: 'Enviar ao Agent' })}
+                </Button>
+              </>
+            )}
             <Button tone="brand" onClick={() => onTransformFlow(artifact)}>
               <Layers size={14} /> Transformar em Flow
             </Button>

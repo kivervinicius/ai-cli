@@ -72,6 +72,9 @@ func (n *Nexus) MaterializePromptArtifactAsFlow(ctx context.Context, artifactID 
 		"nexus.source_artifact_revision": fmt.Sprintf("%d", artifact.Version),
 		"nexus.source_artifact_hash":     artifact.Hash,
 	}
+	if motivation, marshalErr := json.Marshal(brief.Motivation); marshalErr == nil {
+		facts["composer.motivation_map"] = string(motivation)
+	}
 	for key, value := range map[string]string{
 		"composer.context":   artifact.ContextJSON,
 		"composer.skill_ids": artifact.SkillIDsJSON,

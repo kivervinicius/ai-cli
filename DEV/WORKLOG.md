@@ -1,5 +1,91 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-07 — Execução Luna P0/P1 + início de continuidade
+
+- Baseline revalidado após limpar somente o cache Go: `go test ./...`, `go vet
+  ./...` e `cd web && bun run verify` passaram; o primeiro relatório frontend
+  havia falhado apenas porque `web/src/nexus/api.ts` ainda estava sem Prettier.
+- Adicionado `nexus <provider> --supervised`: o launch opt-in usa Launcher/
+  SessionHost e `attachRuntime`, preservando o modo direto e removendo a flag
+  Nexus antes do provider. Completion shell inclui o novo modo e aliases.
+- Checkpoint de handoff passou ao schema 4 e registra arquivos DEV obrigatórios,
+  status, tamanho e SHA-256; o kickoff exige reidratação Maestro. Adicionada
+  eleição de líder do monitor de quota por lease interprocesso recuperável.
+- Testes focados de app, handoff, nexus/quota e higienização passaram. A matriz
+  nativa macOS/Windows ainda precisa ser executada nos runners correspondentes.
+
+## 2026-09-07 — Auditoria de cobertura de quota e prioridade de provider
+
+- `nexus providers --json` confirmou AGY 1.1.27, Codex 0.153.4, Gemini 0.57.0,
+  OpenCode 1.18.29 e Cursor 2026.08.11; Cursor declara Usage=false.
+- `nexus profiles --json` mostrou duas contas AGY e duas Codex autenticadas,
+  mas todas sem observação verificável (`UNKNOWN`, `NONE`, `fetched_at` zero);
+  OpenCode está não autenticado. Nenhum alerta de consumo pode ser afirmado
+  para essas contas até existir uma fonte válida.
+- Configuração recebeu `provider_priorities` padrão Codex=1, AGY=2, OpenCode=3;
+  recomendação cross-provider respeita menor número antes do score quando ambos
+  os candidatos têm prioridade configurada, inclusive com quota desconhecida.
+
+## 2026-09-07 — Consolidação do Modo Foco no Header Principal, Build e Reinício do Serviço
+
+- **Modo Foco Permanente no Header Principal (`nx-topbar`)**:
+  - Requisito de usabilidade atendido: o controle de entrar e sair do Modo Foco agora reside permanentemente no header principal unificado, eliminando a desorientação de controles ocultos ou flutuantes.
+  - No Modo Normal: botão pill com ícone `Maximize2`, texto `Modo Foco` e tooltip/atalho `<kbd>Ctrl+Shift+F</kbd>`.
+  - No Modo Foco: o header principal permanece visível (`.nx-os-shell--zen .nx-topbar` e `.nx-os-shell--zen .nx-shell-chrome`), enquanto o botão comuta para destaque ativo (`data-active="true"`), ícone `Minimize2`, texto `Sair do Foco` e mesmo atalho.
+  - A troca de projetos continua 100% acessível no Modo Foco diretamente pelo seletor de projetos nativo da topbar.
+  - O layout zen ajusta o grid para `grid-template-rows: auto minmax(0, 1fr)` com `height: 100vh; overflow: hidden`, mantendo a barra de status inferior (`.nx-workspace-statusbar`) oculta no foco para máxima área útil.
+  - Removido o HUD flutuante redundante e limpos estilos obsoletos em `NexusShell.module.scss`.
+- **Qualidade, Build e Atualização do Serviço**:
+  - Formatação com Prettier (`npm --prefix web run format && npm --prefix web run format:check`) validada com 100% de conformidade.
+  - Linters de estilos (`lint:styles`, `check:styles`), ESLint e TypeScript (`npm --prefix web run typecheck`) com 0 erros.
+  - Testes unitários do frontend (`vitest run src/app/ src/workspace/`) passaram (23 arquivos de teste, 133 testes com 100% de sucesso).
+  - Corrigido campo `pendingRouterNotice string` na struct `SessionHost` em `internal/control/host/host.go`.
+  - Build completo do frontend (`npm --prefix web run build`) e backend (`make build` / `make install-local`) gerando o binário `nexus v0.5.0-beta.23` instalado em `~/.local/bin/nexus`.
+  - Reiniciado o processo web em `http://127.0.0.1:3000` (`kill 3071415 && nohup nexus web --port 3000 --listen 127.0.0.1 --no-open`), validado com HTTP 200 OK.
+
+## 2026-09-07 — Modo Foco com Zen HUD, Ajuste do Bottom, Drawer de Skills e Superfície Maestro
+
+- **Modo Foco Explícito & Zen Focus HUD**:
+  - Adicionado botão explícito de alternância de Modo Foco na topbar do Nexus (`NexusShell.tsx`), utilizando ícone `Maximize2` / `Minimize2` e atalho `Ctrl+Shift+F`.
+  - Desenvolvido o **Zen Focus HUD** flutuante no topo durante o modo foco:
+    - Seletor de projetos rápido (`[PR] Nome do Projeto ▾`) acionando `onOpenProjectManager` (`Ctrl+P`), permitindo alternar de projeto sem sair do foco.
+    - Botão de gaveta de navegação lateral (`Menu`) acionando `onOpenRail` (`Ctrl+B`).
+    - Badge discreto `Modo Foco Ativo`.
+    - Botão de saída de alto contraste `[Sair do Foco] (Ctrl+Shift+F)`.
+  - Estilização completa via SCSS Modules (`NexusShell.module.scss`) com backdrop blur, bordas e tokens semânticos `--nx-*`.
+- **Correção Matemática do Corte no Bottom da Tela**:
+  - Em `.nx-os-shell--zen .nx-os-main` (`web/src/app/workspace-os.css`), substituído o grid de 3 linhas pelo template de linha única `grid-template-rows: minmax(0, 1fr); padding: 0; margin: 0; overflow: hidden;`.
+  - Ocultados `nx-shell-chrome` e `nx-workspace-statusbar` via `display: none;`, e ajustado `.nx-workspace-host` para `100% / 100vh` sem transbordamento, eliminando o corte de ~38px que ocultava o prompt do terminal e o rodapé.
+- **Terminal UX & Remoção de Ruído Visual**:
+  - Ocultada a badge estática `CONTROL` quando o usuário já está no controle normal da sessão (`role === 'CONTROL'`).
+  - Preservado aviso e botão de ação exclusivamente quando a sessão estiver no modo observador (`role === 'VIEW_ONLY'`).
+- **Drawer Lateral de Skills do Maestro no Terminal**:
+  - Substituído o botão "Perguntar" quebrado pelo botão moderno `[⚡ Skills]` com contador de capacidades no terminal PTY (`AgentTerminal.tsx`).
+  - Implementado o `ContextDrawer` lateral do design system (`web/src/design-system/primitives/ContextDrawer.tsx`):
+    - Campo de busca instantânea por nome, trigger, comando, categoria ou descrição.
+    - Barra de chips com filtros dinâmicos por categoria (Core, Git, Refactoring, Testing, Web, etc.).
+    - Cards ricos de skills com badges de categoria e risco (`safe`, `write`, `high`).
+    - Ações rápidas por skill: "Inserir no Terminal" (`ws.send({ type: 'input' })` com foco imediato no cursor), "Copiar Comando" com feedback visual de cópia, e seleção de até 3 skills para envio direto de instrução.
+- **Menu Geral e Superfície do Maestro (100% Dinâmico)**:
+  - Backend Go (`internal/nexus/maestro.go`): expandido `MaestroSkillDesc` com `Category`, `Risk`, `Triggers` e `Aliases`. Implementada descoberta e parse em tempo real de `~/.orquestrador/SKILLS_MANIFEST.json` e diretórios de skills locais, com descoberta flexível de binários e metadados.
+  - Criado componente `<MaestroSurface />` em `web/src/features/maestro/MaestroSurface.tsx` e `MaestroSurface.module.scss`:
+    - Hero com status de conectividade em tempo real, versão ativa (`capabilities.version`) e contagem dinâmica de skills (55+ skills).
+    - Botão "Atualizar Catálogo" (`RefreshCw`) com re-consulta em runtime.
+    - Seções de Governança, Persistência de Contexto (`DEV/WORKLOG.md`) e Catálogo de Skills completo agrupado por categoria e filtrável.
+    - Conectado em `web/src/app/WorkspaceSurfaceHost.tsx` via lazy loading para `surface.type === 'maestro'`.
+    - Adicionado item "Maestro" nas ferramentas de sistema em `web/src/features/projects/ProjectRail.tsx`.
+- **Internacionalização & Qualidade**:
+  - Novas strings adicionadas em inglês, português e espanhol em `web/src/i18n/resources.ts`.
+  - Validação completa: Prettier (`format:check`), ESLint (`lint`), Stylelint (`lint:styles`), Style allowlist (`check:styles`), TypeScript (`typecheck`), 61 arquivos de testes do Vitest com 306 testes unitários passando 100%, Go tests (`go test ./internal/nexus/...`) passando 100% e build de produção (`build`) concluído com sucesso.
+
+
+- Registrado plano P0–P12 em DEV/SPECS/NEXUS_TERMINAL_CONTINUITY_LUNA.md e ponteiro
+  OMX, preservando implementação existente. Escopo integra CI, quotas, pools,
+  controle CLI, checkpoint Maestro e fallback nos três SOs.
+- Inspeção confirmou launch direto, attach sem reconexão, monitor por processo e
+  lacunas de handoff. Plano inclui testes nativos, fault injection e rollout.
+- Verificação desta etapa é documental; próxima ação de execução: P0/P1 pelo Luna.
+
 ## 2026-09-06 — Agent Mode Switch & Crash/Reboot Clean Session Guarantee
 
 - **Garantia de Conversa Limpa na Troca de Modo (Safe ↔ YOLO)**:
@@ -2550,3 +2636,43 @@ build` PASS e Web reiniciado em HTTP 200.
   `bun run quality`, and focused runner/nexus tests all passed.
 - Next context: run authenticated provider and native platform/browser recovery
   scenarios before making any complete-product claim.
+## Composer best-prompt campaign — 2026-09-07
+
+- Added the additive Composer v2 persistence migration for revisions, prompt
+  variants, destination receipts and real skill provenance/availability.
+- Added traceable facts, Motivation Map, prompt review (gaps/contradictions),
+  three compiler variants and explainable FlowSuitability.
+- Preserved the existing PromptArtifact→Flow adapter and included the
+  Motivation Map in structured handoff facts; no Flow internals were changed.
+- Added Agent destination UI and optimistic revision fields for turn/unknown
+  mutations.
+- Verification: `go test ./...`, `go vet ./...`, focused race suite,
+  `make web-verify`, and `git diff --check` passed after fixing one migration
+  query regression. Remaining plan gaps are recorded in the Composer checkpoint.
+
+## 2026-09-07 — AGY quota probe without keyring prompt
+
+- Causa: o probe de quota do AGY reutilizava o wrapper interativo de Secret
+  Service, criando um keyring privado por consulta e podendo disparar pedido de
+  senha. Os logs do AGY confirmavam falha de unlock e fallback para arquivo.
+- Correção: `Run/Login` mantém o keyring privado isolado; `fetchLiveQuota` agora
+  executa o modo não interativo sem D-Bus/Secret Service, usando o perfil e o
+  armazenamento em arquivo. Falha de leitura continua degradando para
+  `UNKNOWN`/última observação, sem fabricar quota atual. A criação inútil de
+  `keyring.pass` foi removida do adapter.
+- UX: removido o segundo menu `Novo` do cabeçalho de Terminais; o menu global
+  `Criar` permanece como ponto único para Agente, Sessão IA e Terminal.
+- Verificação: Go focado, `go vet` focado, typecheck Web, build/install local,
+  smoke de `nexus usage --json` com quota AGY `LIVE` e nenhum novo processo
+  `nexus-kr`; Web reiniciada e `/api/v1/health` respondeu `status: ok`.
+- O Desktop Linux foi recompilado/iniciado e a Web foi iniciada novamente;
+  runtimes AGY/Codex/shell existentes não foram encerrados.
+## 2026-09-07 — Sessão de decisões e quota honesta
+
+- Web/Desktop passaram a agrupar visualmente recursos por provider sem unir
+  perfis ou somar quotas; estados sem fonte reconhecida não ficam verdes.
+- Registrada a sessão de decisões em
+  `DEV/DECISIONS/NEXUS_TERMINAL_CONTINUITY.md`, incluindo rejeições e gates
+  nativos ainda pendentes.
+- `make quality` terminou com exit 0; typecheck e testes focados de quota
+  passaram após a alteração.

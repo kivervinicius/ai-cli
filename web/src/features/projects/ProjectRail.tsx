@@ -147,6 +147,7 @@ export const ProjectRail: React.FC<{
   const optionalTools = [
     { id: 'overview', label: t('nav.overview'), icon: Home },
     { id: 'terminals', label: t('nav.terminals'), icon: TerminalSquare },
+    { id: 'maestro', label: 'Maestro', icon: Sparkles },
     { id: 'work', label: 'Composer', icon: Layers },
     { id: 'missions', label: 'Flow Runs', icon: Workflow },
     { id: 'resources', label: t('nav.resources'), icon: Gauge },

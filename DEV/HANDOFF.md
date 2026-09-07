@@ -1,5 +1,59 @@
 # Handoff
 
+## Atualização 2026-09-07 — AGY sem keyring no monitor de quota
+
+O probe de quota do AGY não inicia mais Secret Service nem keyring privado. O
+keyring isolado continua reservado ao fluxo interativo/login (`Run`). Quando o
+probe não consegue usar o armazenamento em arquivo, a quota permanece
+`UNKNOWN`/última observação e não é usada como capacidade atual. O binário em
+`/home/desenvolvedor/.local/bin/nexus` foi recompilado e instalado; a Web foi
+reiniciada em `127.0.0.1:3000` e o health check passou.
+
+Também foi removido o menu duplicado `Novo` do cabeçalho de Terminais. O único
+ponto global de criação é o menu `Criar`.
+
+Próxima validação manual: abrir o Nexus, observar por pelo menos um ciclo de
+quota e confirmar que não aparece solicitação de senha; abrir uma sessão AGY
+interativa e confirmar que login/execução continuam funcionando.
+
+O Desktop Linux também foi recompilado e iniciado como
+`/home/desenvolvedor/.local/bin/nexus-desktop`. A Web foi iniciada novamente em
+`127.0.0.1:3000`. Os runtimes AGY, Codex e shells já existentes permaneceram
+ativos; não houve encerramento em massa.
+
+## Execução Luna em andamento — 2026-09-07
+
+O plano `DEV/SPECS/NEXUS_TERMINAL_CONTINUITY_LUNA.md` está sendo executado.
+P0/P1 local passaram: Go completo/vet e frontend 10/10. A implementação já
+inclui `nexus <provider> --supervised` opt-in, completion de flags, checkpoint
+Maestro schema 4 com digest dos arquivos DEV e lease interprocesso para eleger
+um coletor de quota. Testes focados passaram.
+
+Pacotes confirmados nesta sessão: P0/P1 local; P3 lease do monitor; P4 prioridade
+cross-provider; P6 `--supervised` opt-in; P7 sugestões `/nexus<TAB>` e completion
+shell; P8 checkpoint Maestro. Host, handoff e nexus também compilam cruzado para
+Windows amd64 e macOS arm64; isso não substitui execução nativa.
+
+Ainda não declarar conclusão: pools entre providers, fallback automático,
+autocomplete interno, transação/reconexão completa e execução nativa Windows/
+macOS continuam pendentes. Na próxima sessão, reidratar este handoff e o plano;
+rodar o gate completo após cada pacote. A decisão de manter supervisão opt-in
+até evidência nativa deve ser revista somente após P6/P12.
+
+Quota atual: a auditoria de 2026-09-07 encontrou contas AGY/Codex autenticadas,
+porém sem fonte/janela observada (`UNKNOWN`/`NONE`); OpenCode não autenticado e
+Cursor sem Usage. Não usar esses números para anunciar capacidade ou fallback.
+
+## Plano para Luna — 2026-09-06
+
+Leia [`SPECS/NEXUS_TERMINAL_CONTINUITY_LUNA.md`](SPECS/NEXUS_TERMINAL_CONTINUITY_LUNA.md)
+para executar a próxima campanha. Contém P0–P12, evidência de código, contratos,
+matriz nativa e prompt. Esta etapa alterou somente documentação; nenhum novo PASS
+de runtime/CI foi produzido. Começar pelo inventário do worktree e baseline.
+Correções às promessas anteriores: quota não exposta é desconhecida; checkpoint
+não prova reidratação; handoff exige reconexão e recuperação real; singleton por
+processo não evita alerta duplicado entre instâncias. Flags novas são propostas.
+
 ## Atualização 2026-09-06 — Fechamento local dos reds do CI
 
 O run remoto `34060911997` falhou em Frontend (Prettier), Windows (teste Go
@@ -397,3 +451,23 @@ há commit ou push automático nesta sessão.
 O monitor não usa mais o texto variável de contagem regressiva do reset na
 identidade da janela. Isso elimina alertas repetidos para a mesma quota Gemini
 abaixo do limiar quando apenas o countdown muda. Regressão normal e race passaram.
+## Composer best-prompt handoff — 2026-09-07
+
+Composer-only slice completed without touching Flow internals. New domain
+contracts and migration are in `internal/nexus/composer*.go`,
+`internal/nexus/store/composer.go`, `internal/nexus/store/migrations/0014_composer_v2.sql`
+and `internal/nexus/prompt_compiler.go`. Contract details and known gaps are
+in `DEV/SPECS/COMPOSER_FLOW_IMPLEMENTATION.md` and
+`docs/nexus-composer-validation.md`.
+
+Do not claim the full approved plan complete yet: remaining work includes
+provider/local federated skill adapters, all-mutation revision enforcement,
+context redaction/budgets, Composer UI cleanup and dedicated E2E scenarios.
+## Sessão de decisões Luna
+
+As decisões de quota sem fabricação, agrupamento visual com credenciais
+separadas, prioridade configurável, supervisão opt-in e limites de continuidade
+estão registradas em
+[`DEV/DECISIONS/NEXUS_TERMINAL_CONTINUITY.md`](DECISIONS/NEXUS_TERMINAL_CONTINUITY.md).
+O status atual continua parcial: gates locais passaram, mas a promoção oficial
+aguarda matriz nativa macOS/Windows e CI remoto no mesmo SHA.

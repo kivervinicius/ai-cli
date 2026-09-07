@@ -18,44 +18,45 @@
   pointer-events: none;
 }
 
-.zenFloatingBar {
-  position: fixed;
-  top: 8px;
-  right: 14px;
-  z-index: var(--nx-z-modal);
-  opacity: 0.75;
-  transition:
-    opacity 0.2s ease-in-out,
-    transform 0.2s ease-in-out;
-
-  &:hover,
-  &:focus-within {
-    opacity: 1;
-    transform: translateY(2px);
-  }
-}
-
-.zenExitBtn {
+.focusToggleBtn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
+  gap: 6px;
+  padding: 4px 9px;
   font-size: var(--nx-font-size-xs);
   font-family: inherit;
-  color: var(--nx-text);
-  background: color-mix(in srgb, var(--nx-bg-elevated) 90%, var(--nx-accent) 10%);
+  font-weight: 500;
+  color: var(--nx-text-soft);
+  background: var(--nx-surface-2);
   border: 1px solid var(--nx-border);
   border-radius: var(--nx-radius-full);
-  box-shadow: var(--nx-shadow-lg);
   cursor: pointer;
   transition:
     background-color 0.15s ease,
-    border-color 0.15s ease;
+    border-color 0.15s ease,
+    color 0.15s ease;
 
   &:hover {
-    background: var(--nx-bg-elevated);
+    background: var(--nx-surface-3);
+    border-color: var(--nx-border-strong);
+    color: var(--nx-text);
+  }
+
+  &[data-active='true'] {
+    background: color-mix(in srgb, var(--nx-accent) 20%, var(--nx-surface-2));
     border-color: var(--nx-accent);
     color: var(--nx-accent-text);
+    font-weight: 600;
+
+    &:hover {
+      background: color-mix(in srgb, var(--nx-accent) 30%, var(--nx-surface-2));
+      color: var(--nx-text-bright, #fff);
+    }
+
+    kbd {
+      border-color: var(--nx-accent);
+      color: var(--nx-accent-text);
+    }
   }
 
   &:focus-visible {
@@ -73,4 +74,8 @@
     border: 1px solid var(--nx-border);
     border-radius: var(--nx-radius-sm);
   }
+}
+
+.focusBtnText {
+  white-space: nowrap;
 }

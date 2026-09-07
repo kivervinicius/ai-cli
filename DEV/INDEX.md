@@ -8,6 +8,7 @@ O código canônico utiliza o binário `nexus`, mantendo `ai` como alias transpa
 
 ## 1. Governança e Estado Ativo
 
+- [`SPECS/NEXUS_TERMINAL_CONTINUITY_LUNA.md`](SPECS/NEXUS_TERMINAL_CONTINUITY_LUNA.md): Plano executável Luna para CI, quota, pools, terminal supervisionado e continuidade nos três SOs.
 - [`HANDOFF.md`](HANDOFF.md): Estado atual de execução e próxima ação recomendada.
 - [`CONTEXT.md`](CONTEXT.md): Arquitetura corrente, runtime, drivers e restrições operacionais.
 - [`SPECS/ACTIVE.md`](SPECS/ACTIVE.md): Contrato ativo de trabalho e critérios de aceitação vigentes.
@@ -51,3 +52,4 @@ O código canônico utiliza o binário `nexus`, mantendo `ai` como alias transpa
 - [`FINAL_RELEASE_REPORT.md`](FINAL_RELEASE_REPORT.md): Relatório de fechamento de releases estáveis.
 - [`NEXUS_V0_FINAL_AUDIT.md`](NEXUS_V0_FINAL_AUDIT.md) & [`NEXUS_V1_FINAL_ENGINEERING_REPORT.md`](NEXUS_V1_FINAL_ENGINEERING_REPORT.md): Auditorias técnicas de consolidação.
 - [`DEV/validation/`](validation/): Logs brutos, capturas de tela e artefatos de testes automatizados e manuais.
+Decision record: [`DEV/DECISIONS/NEXUS_TERMINAL_CONTINUITY.md`](DECISIONS/NEXUS_TERMINAL_CONTINUITY.md)

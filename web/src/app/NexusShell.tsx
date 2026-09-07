@@ -6,6 +6,7 @@ import {
   ChevronDown,
   CircleHelp,
   Command,
+  Maximize2,
   Menu,
   Minimize2,
   MoonStar,
@@ -98,20 +99,6 @@ export const NexusShell: React.FC<{
 
   return (
     <div className={zenMode ? 'nx-os-shell nx-os-shell--zen' : 'nx-os-shell'}>
-      {zenMode && onToggleZenMode && (
-        <aside className={styles.zenFloatingBar} aria-label={t('workspace.focusActive')}>
-          <button
-            type="button"
-            className={styles.zenExitBtn}
-            onClick={onToggleZenMode}
-            title={t('workspace.focusModeHint')}
-          >
-            <Minimize2 size={13} />
-            <span>{t('workspace.exitFocus')}</span>
-            <kbd>Ctrl+Shift+F</kbd>
-          </button>
-        </aside>
-      )}
       <a href="#nexus-workspace" className="nx-skip-link">
         {t('shell.skip')}
       </a>
@@ -214,6 +201,26 @@ export const NexusShell: React.FC<{
               <IconButton label={t('shell.tour')} onClick={onOpenWelcome}>
                 <CircleHelp size={15} />
               </IconButton>
+
+              {/* Focus Mode Explicit Enter & Exit Button */}
+              {onToggleZenMode && (
+                <button
+                  type="button"
+                  className={styles.focusToggleBtn}
+                  data-active={zenMode ? 'true' : 'false'}
+                  onClick={onToggleZenMode}
+                  title={zenMode ? t('workspace.exitFocusMode') : t('workspace.focusMode')}
+                  aria-label={zenMode ? t('workspace.exitFocusMode') : t('workspace.focusMode')}
+                >
+                  {zenMode ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                  <span className={styles.focusBtnText}>
+                    {zenMode
+                      ? t('workspace.exitFocus')
+                      : t('workspace.focusModeShort', 'Modo Foco')}
+                  </span>
+                  <kbd>Ctrl+Shift+F</kbd>
+                </button>
+              )}
 
               {/* Theme & Settings */}
               <IconButton label={t('shell.appearance')} onClick={onSettings}>

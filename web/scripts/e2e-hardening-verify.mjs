@@ -170,7 +170,13 @@ async function main() {
       `  ✓ Axe accessibility scan passed (${axeResults.violations.length} minor violations)`,
     );
     console.log('4. Testing semantic global deep-links...');
-    const routeUrl = (pathname) => new URL(pathname, bootstrapUrl);
+    const routeUrl = (pathname) => {
+      const url = new URL(pathname, bootstrapUrl);
+      // Bootstrap authentication is carried by the one-time URL token in this
+      // headless smoke test. Preserve it while exercising deep links.
+      url.search = new URL(bootstrapUrl).search;
+      return url;
+    };
     const updatesUrl = routeUrl('/updates');
     await page.goto(updatesUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.locator('.nx-settings-tabs').waitFor({ state: 'visible', timeout: 10000 });

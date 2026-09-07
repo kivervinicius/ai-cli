@@ -45,6 +45,21 @@ func FormatKickoffPrompt(cp WorkCheckpoint) string {
 	if cp.Goal != "" {
 		fmt.Fprintf(&sb, "Current Goal / Task: %s\n", cp.Goal)
 	}
+	if len(cp.MaestroContext.ReadOrder) > 0 {
+		sb.WriteString("Maestro continuity contract:\n")
+		sb.WriteString("Read these workspace files in order before changing anything:\n")
+		for _, path := range cp.MaestroContext.ReadOrder {
+			status := ""
+			for _, file := range cp.MaestroContext.Files {
+				if file.Path == path {
+					status = " [" + file.Status + "]"
+					break
+				}
+			}
+			fmt.Fprintf(&sb, " - %s%s\n", path, status)
+		}
+		sb.WriteString("Reconcile Git status and the checkpoint before repeating work.\n")
+	}
 	sb.WriteString("==================================================\n")
 	sb.WriteString("Please inspect the modified files and continue the ongoing task in this workspace.")
 	return security.Redact(sb.String())

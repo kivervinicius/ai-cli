@@ -424,6 +424,7 @@ export interface ComposerSession {
   state: ComposerState;
   context_fingerprint: string;
   brief_json: string;
+  revision: number;
   created_at: string;
   updated_at: string;
 }
@@ -453,6 +454,26 @@ export interface PromptArtifact {
   context_json: string;
   skill_ids_json: string;
   created_at: string;
+}
+export interface PromptVariant {
+  id: string;
+  artifact_id: string;
+  variant: 'GENERIC_PORTABLE' | 'NEXUS_AGENT' | 'FLOW_HANDOFF' | string;
+  target?: string;
+  content: string;
+  hash: string;
+  capabilities_json?: string;
+  created_at: string;
+}
+export interface FlowSuitabilityAssessment {
+  result: 'DIRECT_FIT' | 'FLOW_BENEFICIAL' | 'FLOW_STRONGLY_RECOMMENDED' | string;
+  reasons: string[];
+  signals: string[];
+}
+export interface ComposerPromptReview {
+  missing?: string[];
+  contradictions?: string[];
+  diff?: string[];
 }
 export interface PromptReadinessCheck {
   key: string;
@@ -488,6 +509,9 @@ export interface ComposerSessionView {
   turns: ComposerTurn[];
   skills: ComposerSkillProposal[];
   artifacts?: PromptArtifact[];
+  variants?: Record<string, PromptVariant[]>;
+  flow_suitability?: FlowSuitabilityAssessment;
+  prompt_review?: ComposerPromptReview;
 }
 
 export interface ClarificationUnknown {

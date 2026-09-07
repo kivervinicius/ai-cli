@@ -48,6 +48,7 @@ type SessionHost struct {
 	clients               map[net.Conn]bool
 	activeWriter          net.Conn
 	pendingControlCommand string
+	pendingRouterNotice   string
 	stopChan              chan struct{}
 	doneChan              chan struct{}
 	prefixRouter          *SlashPrefixRouter
@@ -449,6 +450,7 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 	var promptWrite []byte
 	var forwardWrite []byte
 	var controlCmd string
+	var routerNotice string
 	skipResponse := false
 
 	switch req.Command {
@@ -506,6 +508,8 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 				forwardWrite = sh.collectAttachedInputLocked(conn, []byte(p.Data))
 				controlCmd = sh.pendingControlCommand
 				sh.pendingControlCommand = ""
+				routerNotice = sh.pendingRouterNotice
+				sh.pendingRouterNotice = ""
 			}
 		}
 		resp, _ = protocol.NewResponse("input_received")
@@ -566,6 +570,9 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		sh.handleControlCommandLocked(controlCmd)
 		sh.mu.Unlock()
 	}
+	if routerNotice != "" {
+		sh.broadcast([]byte("\r\n[Nexus] " + routerNotice + "\r\n"))
+	}
 	if skipResponse {
 		return
 	}
@@ -578,6 +585,8 @@ func (sh *SessionHost) processAttachedInput(conn net.Conn, data []byte) {
 	forward := sh.collectAttachedInputLocked(conn, data)
 	controlCmd := sh.pendingControlCommand
 	sh.pendingControlCommand = ""
+	routerNotice := sh.pendingRouterNotice
+	sh.pendingRouterNotice = ""
 	sh.mu.Unlock()
 
 	if len(forward) > 0 {
@@ -587,6 +596,9 @@ func (sh *SessionHost) processAttachedInput(conn net.Conn, data []byte) {
 		sh.mu.Lock()
 		sh.handleControlCommandLocked(controlCmd)
 		sh.mu.Unlock()
+	}
+	if routerNotice != "" {
+		sh.broadcast([]byte("\r\n[Nexus] " + routerNotice + "\r\n"))
 	}
 }
 
@@ -613,6 +625,9 @@ func (sh *SessionHost) collectAttachedInputLocked(conn net.Conn, data []byte) []
 		}
 		if out.Action == ActionControlCommand && out.ControlCmd != "" {
 			sh.pendingControlCommand = out.ControlCmd
+		}
+		if out.Action == ActionSuggestions && out.Suggestions != "" {
+			sh.pendingRouterNotice = "Nexus: " + out.Suggestions
 		}
 	}
 	return forward

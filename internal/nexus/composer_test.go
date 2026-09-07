@@ -72,6 +72,46 @@ func TestMaterializePromptArtifactPreservesLineage(t *testing.T) {
 	}
 }
 
+func TestComposerFlowSuitabilityExplainsItsRecommendation(t *testing.T) {
+	brief := newComposerBrief("Implement a full-stack feature", "Implement backend and frontend with review")
+	brief.Scope.InScope = []string{"backend", "frontend"}
+	brief.Quality.Review = []string{"independent review"}
+	assessment := AssessComposerFlowSuitability(brief)
+	if assessment.Result == FlowDirectFit || len(assessment.Reasons) == 0 || len(assessment.Signals) == 0 {
+		t.Fatalf("unexplained suitability: %+v", assessment)
+	}
+}
+
+func TestReviewComposerPromptReportsGapsAndContradictions(t *testing.T) {
+	brief := newComposerBrief("Improve the API", "The endpoint must be fast but must not return quickly")
+	review := ReviewComposerPrompt(brief)
+	if len(review.Missing) == 0 || len(review.Contradictions) != 1 || len(review.Diff) == 0 {
+		t.Fatalf("unexpected review: %+v", review)
+	}
+}
+
+func TestComposerRevisionConflictIsRejected(t *testing.T) {
+	n := openTestNexus(t)
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := st.CreateProject(store.Project{Name: "revision", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := st.CreateComposerSession(store.ComposerSession{ProjectID: project.ID, BriefJSON: `{}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpdateComposerSessionExpected(*session, session.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpdateComposerSessionExpected(*session, session.Revision); err == nil {
+		t.Fatal("expected stale revision conflict")
+	}
+}
+
 func TestComposerImportedPromptTracksUnknownsAndAppliesSkills(t *testing.T) {
 	n := openTestNexus(t)
 	n.maestroStatus = func() MaestroStatus {

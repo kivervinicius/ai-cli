@@ -4,9 +4,9 @@ import { describe, expect, it } from 'vitest';
 const source = readFileSync(new URL('./ProjectRail.tsx', import.meta.url), 'utf8');
 
 describe('Project rail Maestro entry', () => {
-  it('does not expose Maestro as a workspace surface', () => {
+  it('exposes Maestro as a system surface in optional tools', () => {
     expect(source).not.toContain('rail.maestroMethod');
-    expect(source).not.toContain("id: 'maestro'");
+    expect(source).toContain("id: 'maestro'");
   });
 
   it('keeps the project overview available from the project rail', () => {

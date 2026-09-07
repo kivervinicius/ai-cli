@@ -1,5 +1,43 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-07 — Execução Luna P0/P1 e fundação de continuidade
+
+- `go test -count=1 ./...` — PASS.
+- `go vet ./...` — PASS.
+- `cd web && bun run verify` — PASS, 10/10 gates; a execução anterior foi
+  corrigida formatando `web/src/nexus/api.ts`.
+- `go test ./internal/app ./internal/control/handoff ./internal/nexus -count=1`
+  — PASS após adicionar launch supervisionado, checkpoint Maestro schema 4 e
+  lease do quota monitor.
+- `git diff --check` — PASS antes das alterações atuais; repetir no gate final.
+- Cross-platform native runtime — PENDENTE; cross-build não substitui Windows
+  ConPTY/Named Pipe nem macOS PTY/race.
+
+## Evidência de cobertura de quota — 2026-09-07
+
+- `go run ./cmd/nexus providers --json` — PASS; binários e capabilities foram
+  enumerados sem tratar capability `Usage` como dado atual.
+- `go run ./cmd/nexus profiles --json` — PASS; AGY/Codex autenticados, porém
+  todos `UNKNOWN`/`NONE` sem janelas/freshness. OpenCode não autenticado e Cursor
+  sem Usage. O monitor corretamente não emite alerta de percentual nesses casos.
+- Teste de prioridade cross-provider — PASS; `TestResourceRecommendation_ProviderPriorityControlsFallbackOrder`.
+
+## Terminal/continuidade — 2026-09-07
+
+- `go test -race -count=1 ./internal/control/host ./internal/control/handoff
+  ./internal/nexus ./internal/app ./internal/core/config` — PASS.
+- `go vet` dos pacotes afetados e `git diff --check` — PASS.
+- Cross-build de testes dos pacotes host, handoff e nexus para Windows amd64 e
+  macOS arm64 — PASS como compilação; execução nativa permanece PENDENTE.
+- `--supervised` e `/nexus<TAB>` ainda não têm PASS nativo Windows/macOS.
+
+## 2026-09-06 — Plano Luna (somente documentação)
+
+- Código de lançamento, attach, quota monitor, checkpoint/handoff e workflow
+  inspecionado para fundamentar DEV/SPECS/NEXUS_TERMINAL_CONTINUITY_LUNA.md.
+- Nenhuma implementação ou suíte runtime executada nesta etapa; não há novo
+  resultado de CI remoto. Verificações de execução estão definidas em P0–P12.
+
 ## 2026-09-06 — CI closure pass after remote failure reproduction
 
 - Remote run `34060911997` was inspected by job/step metadata. Frontend failed
@@ -522,22 +560,7 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
   SHA-256; teste de concorrência passou 50x, race 10x e `go test ./...` passou.
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-07T03:17:46Z
+## Frontend gate — 2026-09-07T11:58:09Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
 
-## Cross-platform CI hardening — 2026-09-07
-
-- `go test -count=1 ./...`: PASS
-- `go test -race -count=1 ./...`: PASS
-- `go vet ./...` e golangci-lint v2.12.2: PASS
-- `bun run verify`: 10/10 PASS
-- Compilação cruzada de testes Windows amd64 e macOS arm64: PASS
-- GoReleaser snapshot, Wails desktop e `make quality`: PASS
-- Execução nativa Windows/macOS e CI GitHub: pendentes de publicação do SHA.
-
-## Quota alert deduplication — 2026-09-07
-
-- `go test -count=1 ./internal/nexus -run 'QuotaDropMonitor'`: PASS
-- `go test -race -count=1 ./internal/nexus -run 'QuotaDropMonitor'`: PASS
-- Regressão: alteração do countdown de reset não repete o alerta da mesma janela.

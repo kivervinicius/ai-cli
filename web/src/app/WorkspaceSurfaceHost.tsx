@@ -63,6 +63,9 @@ const SessionsSurface = React.lazy(() =>
 const SettingsSurface = React.lazy(() =>
   import('../features/settings/SettingsSurface').then((m) => ({ default: m.SettingsSurface })),
 );
+const MaestroSurface = React.lazy(() =>
+  import('../features/maestro/MaestroSurface').then((m) => ({ default: m.MaestroSurface })),
+);
 const ProjectShellSurface = React.lazy(() =>
   import('../features/shell/ProjectShellSurface').then((m) => ({ default: m.ProjectShellSurface })),
 );
@@ -382,13 +385,7 @@ export const WorkspaceSurfaceHost: React.FC<{
     if (surface.type === 'maestro') {
       return (
         <div className="nx-surface-scroll">
-          <div className="nx-page-header">
-            <div>
-              <span className="nx-eyebrow">{t('surfaces.maestroEyebrow')}</span>
-              <h1>Maestro</h1>
-              <p>{t('maestroControl.legacySurface')}</p>
-            </div>
-          </div>
+          <MaestroSurface />
         </div>
       );
     }

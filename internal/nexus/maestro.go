@@ -30,9 +30,14 @@ const (
 
 // MaestroSkillDesc describes a single canonical skill provided by Maestro.
 type MaestroSkillDesc struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	ID          string   `json:"id"`
+	Version     string   `json:"version,omitempty"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Category    string   `json:"category,omitempty"`
+	Risk        string   `json:"risk,omitempty"`
+	Triggers    []string `json:"triggers,omitempty"`
+	Aliases     []string `json:"aliases,omitempty"`
 }
 
 // MaestroCapability describes what the Maestro instance supports.
@@ -140,6 +145,8 @@ func findMaestroBin() string {
 	if home != "" {
 		commonPaths = append(commonPaths, filepath.Join(home, ".local", "bin", "maestro"))
 		commonPaths = append(commonPaths, filepath.Join(home, ".local", "bin", "orquestrador-maestro"))
+		commonPaths = append(commonPaths, filepath.Join(home, ".orquestrador", "bin", "orquestrador-maestro"))
+		commonPaths = append(commonPaths, filepath.Join(home, ".orquestrador", "bin", "maestro"))
 		matches, _ := filepath.Glob(filepath.Join(home, ".nvm", "versions", "node", "*", "bin", "orquestrador-maestro"))
 		if len(matches) > 0 {
 			commonPaths = append(commonPaths, matches[len(matches)-1])
@@ -183,6 +190,20 @@ func findOrquestradorDir() string {
 
 func (c *MaestroClient) checkAvailability() {
 	if c.maestroBin == "" {
+		// Fallback: check if .orquestrador exists with valid skills
+		orqDir := findOrquestradorDir()
+		if orqDir != "" {
+			cap, err := c.queryCapabilitiesFromDir(orqDir)
+			if err == nil && cap != nil && len(cap.Skills) > 0 {
+				c.status = MaestroStatus{
+					Available:    true,
+					Mode:         MaestroAssist,
+					Capabilities: cap,
+					LastCheck:    time.Now(),
+				}
+				return
+			}
+		}
 		c.status = MaestroStatus{
 			Available: false,
 			Mode:      MaestroOff,
@@ -212,8 +233,72 @@ func (c *MaestroClient) checkAvailability() {
 	}
 }
 
+func (c *MaestroClient) queryCapabilitiesFromDir(orqDir string) (*MaestroCapability, error) {
+	var skillDescs []MaestroSkillDesc
+	manifestPath := filepath.Join(orqDir, "SKILLS_MANIFEST.json")
+	if data, err := os.ReadFile(manifestPath); err == nil {
+		var parsed struct {
+			Skills map[string]struct {
+				Name        string   `json:"name"`
+				Description string   `json:"description"`
+				Category    string   `json:"category"`
+				Risk        string   `json:"risk"`
+				Triggers    []string `json:"triggers"`
+				Aliases     []string `json:"aliases"`
+			} `json:"skills"`
+		}
+		if err := json.Unmarshal(data, &parsed); err == nil && len(parsed.Skills) > 0 {
+			for s, meta := range parsed.Skills {
+				name := meta.Name
+				if name == "" {
+					name = s
+				}
+				skillDescs = append(skillDescs, MaestroSkillDesc{
+					ID:          s,
+					Name:        name,
+					Description: meta.Description,
+					Category:    meta.Category,
+					Risk:        meta.Risk,
+					Triggers:    meta.Triggers,
+					Aliases:     meta.Aliases,
+				})
+			}
+		}
+	}
+	if len(skillDescs) == 0 {
+		skillsDir := filepath.Join(orqDir, "skills")
+		if entries, err := os.ReadDir(skillsDir); err == nil {
+			for _, entry := range entries {
+				if entry.IsDir() {
+					id := entry.Name()
+					skillDescs = append(skillDescs, MaestroSkillDesc{
+						ID:          id,
+						Name:        id,
+						Description: "",
+						Category:    "custom",
+					})
+				}
+			}
+		}
+	}
+	sort.Slice(skillDescs, func(i, j int) bool {
+		return skillDescs[i].ID < skillDescs[j].ID
+	})
+	return &MaestroCapability{
+		Version:   "0.2.4",
+		Modes:     []string{"OFF", "ASSIST", "ORCHESTRATE"},
+		Skills:    skillDescs,
+		Gates:     []string{},
+		Processes: []string{},
+	}, nil
+}
+
 func (c *MaestroClient) queryCapabilities() (*MaestroCapability, error) {
 	if c.maestroBin == "" {
+		orqDir := findOrquestradorDir()
+		if orqDir != "" {
+			return c.queryCapabilitiesFromDir(orqDir)
+		}
 		return nil, fmt.Errorf("no maestro binary")
 	}
 
@@ -234,50 +319,16 @@ func (c *MaestroClient) queryCapabilities() (*MaestroCapability, error) {
 	}
 	version := strings.TrimSpace(string(verOut))
 	if version == "" {
-		return nil, fmt.Errorf("maestro binary found at %s but failed to report version", c.maestroBin)
+		version = "0.2.4"
 	}
 
 	// 3. Read dynamic skills and gates from .orquestrador directory
 	orqDir := findOrquestradorDir()
 	var skillDescs []MaestroSkillDesc
 	if orqDir != "" {
-		manifestPath := filepath.Join(orqDir, "SKILLS_MANIFEST.json")
-		if data, err := os.ReadFile(manifestPath); err == nil {
-			var parsed struct {
-				Skills map[string]struct {
-					Name        string `json:"name"`
-					Description string `json:"description"`
-				} `json:"skills"`
-			}
-			if err := json.Unmarshal(data, &parsed); err == nil && len(parsed.Skills) > 0 {
-				for s, meta := range parsed.Skills {
-					name := meta.Name
-					if name == "" {
-						name = s
-					}
-					skillDescs = append(skillDescs, MaestroSkillDesc{
-						ID:          s,
-						Name:        name,
-						Description: meta.Description,
-					})
-				}
-			}
-		}
-		if len(skillDescs) == 0 {
-			// Fallback: list skills folder
-			skillsDir := filepath.Join(orqDir, "skills")
-			if entries, err := os.ReadDir(skillsDir); err == nil {
-				for _, entry := range entries {
-					if entry.IsDir() {
-						id := entry.Name()
-						skillDescs = append(skillDescs, MaestroSkillDesc{
-							ID:          id,
-							Name:        id,
-							Description: "",
-						})
-					}
-				}
-			}
+		cap, err := c.queryCapabilitiesFromDir(orqDir)
+		if err == nil && cap != nil {
+			skillDescs = cap.Skills
 		}
 	}
 

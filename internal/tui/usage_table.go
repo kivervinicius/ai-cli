@@ -778,9 +778,44 @@ func toUsageTableRows(rows []UsageTableRow) []table.Row {
 			model = model[:13] + ".."
 		}
 
-		result = append(result, table.Row{provBadge, identity, model, row.FiveHour, row.Weekly, row.Status})
+		statusStyle := usageStatusStyle(row.Status)
+		quotaStyle := usageQuotaStyle(row.Status)
+		result = append(result, table.Row{
+			provBadge,
+			identity,
+			model,
+			quotaStyle.Render(row.FiveHour),
+			quotaStyle.Render(row.Weekly),
+			statusStyle.Render(row.Status),
+		})
 	}
 	return result
+}
+
+func usageStatusStyle(status string) lipgloss.Style {
+	switch status {
+	case "SEM QUOTA", "RATE LIMITED":
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196"))
+	case "COM QUOTA":
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42"))
+	case "ESTIMADA":
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("208"))
+	default:
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
+	}
+}
+
+func usageQuotaStyle(status string) lipgloss.Style {
+	switch status {
+	case "SEM QUOTA", "RATE LIMITED":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	case "COM QUOTA":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	case "ESTIMADA":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("208"))
+	default:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	}
 }
 
 func toSessionTableRows(sess []conversation.Conversation) []table.Row {

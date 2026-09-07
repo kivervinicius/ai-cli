@@ -117,10 +117,10 @@ export const nexus = {
     ),
   getComposerSession: (id: string) =>
     request<import('../types').ComposerSessionView>(`/api/v1/composer-sessions/${id}`),
-  addComposerTurn: (id: string, content: string) =>
+  addComposerTurn: (id: string, content: string, expectedRevision?: number) =>
     request<import('../types').ComposerSessionView>(`/api/v1/composer-sessions/${id}/turns`, {
       method: 'POST',
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, expected_revision: expectedRevision }),
     }),
   updateComposerSkillState: (id: string, skillId: string, state: string) =>
     request<import('../types').ComposerSessionView>(
@@ -137,12 +137,18 @@ export const nexus = {
       method: 'POST',
       body: JSON.stringify({ goal: refinementGoal || '' }),
     }),
-  resolveComposerUnknown: (id: string, unknownId: string, answer: string, status: string) =>
+  resolveComposerUnknown: (
+    id: string,
+    unknownId: string,
+    answer: string,
+    status: string,
+    expectedRevision?: number,
+  ) =>
     request<import('../types').ComposerSessionView>(
       `/api/v1/composer-sessions/${id}/unknowns/${encodeURIComponent(unknownId)}/resolve`,
       {
         method: 'POST',
-        body: JSON.stringify({ answer, status }),
+        body: JSON.stringify({ answer, status, expected_revision: expectedRevision }),
       },
     ),
   materializePromptArtifact: async (id: string) =>

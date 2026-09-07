@@ -134,3 +134,27 @@ func TestSlashPrefixRouter_NeverLeaksToChild(t *testing.T) {
 		t.Errorf("unexpected command interception: %q", interceptedCmd)
 	}
 }
+
+func TestSlashPrefixRouter_SuggestsNexusCommandsWithoutStealingProviderSlash(t *testing.T) {
+	router := NewSlashPrefixRouter()
+	for _, b := range []byte("/nexus") {
+		_ = router.ProcessByte(b)
+	}
+	out := router.ProcessByte('\t')
+	if out.Action != ActionSuggestions || out.Suggestions == "" {
+		t.Fatalf("expected Nexus suggestions, got %+v", out)
+	}
+	if out := router.ProcessByte('s'); out.Action != ActionNone {
+		t.Fatalf("expected command editing after suggestion, got %+v", out)
+	}
+
+	router.Reset()
+	var forwarded []byte
+	for _, b := range []byte("/help\t") {
+		out := router.ProcessByte(b)
+		forwarded = append(forwarded, out.ForwardBytes...)
+	}
+	if string(forwarded) != "/help\t" {
+		t.Fatalf("provider slash input was altered: %q", forwarded)
+	}
+}

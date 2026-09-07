@@ -33,6 +33,8 @@
 
 > **Mapa de lançamento:** [documentação técnica e de produto](docs/README.md) ·
 > [guia do produto](docs/community-preview/PRODUCT_GUIDE.md) ·
+> [guia do Composer](docs/nexus-composer-user-guide.md) ·
+> [guia do Flow e integração](docs/nexus-flow-user-guide.md) ·
 > [visão técnica](docs/community-preview/TECHNICAL_OVERVIEW.md) ·
 > [playbook de publicação](docs/community-preview/RELEASE_PLAYBOOK.md)
 

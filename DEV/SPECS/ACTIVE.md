@@ -1,5 +1,13 @@
 # Especificação ativa: IAPro Nexus — Implementação Completa Web + Desktop Multiplataforma
 
+## Complemento de execução planejado — 2026-09-06
+
+O plano solicitado para execução posterior pelo Luna está em
+[`NEXUS_TERMINAL_CONTINUITY_LUNA.md`](NEXUS_TERMINAL_CONTINUITY_LUNA.md).
+Cobre CI, quotas, pools, supervisão CLI e continuidade multiplataforma; adiciona
+pacotes P0–P12 sem substituir o contrato Web/Desktop abaixo. Status: planejado,
+não implementado nesta etapa. Maestro permanece instalação opcional.
+
 ## Objetivo
 
 Tornar oficialmente o IAPro Nexus uma aplicação com duas superfícies de execução equivalentes:
@@ -44,3 +52,4 @@ Ambas utilizando:
 8. **Documentação & ADRs**:
    - ADRs de Desktop (Wails v2), Update Architecture e Maestro Integration.
    - Relatórios em `DEV/validation/` e `docs/superpowers/reports/`.
+Decisões executivas e pendências de promoção: `DEV/DECISIONS/NEXUS_TERMINAL_CONTINUITY.md`.

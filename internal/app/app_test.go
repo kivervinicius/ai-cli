@@ -269,7 +269,7 @@ func TestQuotaGroupStatusKeepsUsableModelGroupAvailable(t *testing.T) {
 		{Name: "Claude & GPT Models", Windows: []quota.Window{{Kind: "claude_5h", Remaining: 0}, {Kind: "claude_weekly", Remaining: 0}}},
 	}}
 	qv.ComputeAvailability()
-	if !qv.IsAvailable() || quotaGroupStatus(qv.ModelGroups[0], qv.Status) != "DISPONIVEL" || quotaGroupStatus(qv.ModelGroups[1], qv.Status) != "INDISPONIVEL" {
+	if !qv.IsAvailable() || quotaGroupStatus(qv.ModelGroups[0], qv.Status) != "COM QUOTA" || quotaGroupStatus(qv.ModelGroups[1], qv.Status) != "SEM QUOTA" {
 		t.Fatalf("expected mixed group availability, got profile=%v reasons=%+v", qv.IsAvailable(), qv.AvailReasons)
 	}
 }
@@ -299,6 +299,9 @@ func TestPerformSystemUpdateDoesNotClaimNexusBinaryUpdated(t *testing.T) {
 
 func TestMaestroStatusIsExplicitAndDegradedWithoutMaestro(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AI_CLI_DATA_DIR", t.TempDir())
+	t.Setenv("NEXUS_ORQUESTRADOR_DIR", filepath.Join(t.TempDir(), "missing-maestro"))
 	out, err := captureStdout(func() error {
 		return Run([]string{"maestro", "status"})
 	})

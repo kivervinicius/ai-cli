@@ -1514,8 +1514,9 @@ func (h *NexusHandler) handleComposerSession(w http.ResponseWriter, r *http.Requ
 		sessionID := parts[0]
 		unknownID := strings.Trim(parts[1], "/")
 		var body struct {
-			Answer string `json:"answer"`
-			Status string `json:"status"`
+			Answer           string `json:"answer"`
+			Status           string `json:"status"`
+			ExpectedRevision int    `json:"expected_revision,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
@@ -1524,7 +1525,7 @@ func (h *NexusHandler) handleComposerSession(w http.ResponseWriter, r *http.Requ
 		if strings.TrimSpace(body.Status) == "" {
 			body.Status = "ANSWERED"
 		}
-		view, err := h.nexus.ResolveComposerUnknown(r.Context(), sessionID, unknownID, body.Answer, body.Status)
+		view, err := h.nexus.ResolveComposerUnknownExpected(r.Context(), sessionID, unknownID, body.Answer, body.Status, body.ExpectedRevision)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -1535,13 +1536,14 @@ func (h *NexusHandler) handleComposerSession(w http.ResponseWriter, r *http.Requ
 	if strings.HasSuffix(id, "/turns") {
 		id = strings.TrimSuffix(id, "/turns")
 		var body struct {
-			Content string `json:"content"`
+			Content          string `json:"content"`
+			ExpectedRevision int    `json:"expected_revision,omitempty"`
 		}
 		if r.Method != http.MethodPost || json.NewDecoder(r.Body).Decode(&body) != nil {
 			writeError(w, http.StatusBadRequest, "content is required")
 			return
 		}
-		view, err := h.nexus.AddComposerTurn(r.Context(), id, store.ComposerUser, body.Content)
+		view, err := h.nexus.AddComposerTurnExpected(r.Context(), id, store.ComposerUser, body.Content, body.ExpectedRevision)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return

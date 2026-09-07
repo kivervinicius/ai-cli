@@ -4,6 +4,8 @@ import { Badge, EmptyState, Progress, Spinner } from '../design-system';
 import { nexus } from './api';
 import { translateStatus } from '../i18n';
 import { useTranslation } from 'react-i18next';
+import styles from './ResourcePicker.module.scss';
+import { quotaTruthState } from '../features/work/directSessionModel';
 
 interface QuotaWindow {
   kind: string;
@@ -135,78 +137,116 @@ export const ResourcePicker: React.FC<Props> = ({ agentId, preferProvider, onSel
       />
     );
 
+  const providerGroups = accounts.reduce<Record<string, ProviderAccount[]>>((groups, account) => {
+    const key = account.provider || 'unknown';
+    (groups[key] ||= []).push(account);
+    return groups;
+  }, {});
+
   return (
     <div className="nx-resource-picker">
       <div className="nx-resource-account-list">
-        {accounts.map((account) => {
-          const selected = decision?.selected?.id === account.id;
-          const qv = account.quota_view;
-          const hasGroups = qv && qv.model_groups && qv.model_groups.length > 0;
-          const multiGroups = qv && qv.model_groups && qv.model_groups.length > 1;
+        {Object.entries(providerGroups).map(([provider, providerAccounts]) => (
+          <section className={styles.providerGroup} key={provider}>
+            <h3 className={styles.providerHeading}>
+              <span>{provider}</span>
+              <span className={styles.providerCount}>
+                {t('resources.accountCount', { count: providerAccounts.length })}
+              </span>
+            </h3>
+            {providerAccounts.map((account) => {
+              const selected = decision?.selected?.id === account.id;
+              const qv = account.quota_view;
+              const hasGroups = qv && qv.model_groups && qv.model_groups.length > 0;
+              const multiGroups = qv && qv.model_groups && qv.model_groups.length > 1;
+              const quotaState = quotaTruthState(account);
 
-          return (
-            <button
-              key={account.id}
-              type="button"
-              className="nx-resource-account"
-              data-selected={selected}
-              onClick={() => void choose(account)}
-              disabled={
-                !agentId || !account.authenticated || !account.available || selecting === account.id
-              }
-            >
-              <span className="nx-resource-account__icon">
-                {account.rate_limited ? <ShieldAlert size={17} /> : <Activity size={17} />}
-              </span>
-              <span className="nx-resource-account__main">
-                <span className="nx-resource-account__title">
-                  <strong>{account.display_name || account.provider}</strong>
-                  <Badge>{account.profile}</Badge>
-                  <Badge tone={healthTone(account.health)}>{translateStatus(account.health)}</Badge>
-                  <Badge tone={account.available ? 'success' : 'danger'}>
-                    {account.available
-                      ? 'DISPONIVEL'
-                      : account.avail_reasons?.rate_limited
-                        ? 'RATE LIMITED'
-                        : account.avail_reasons?.exhausted_windows
-                          ? 'QUOTA ESGOTADA'
-                          : 'INDISPONIVEL'}
-                  </Badge>
-                  {account.is_default && <Badge>{t('common.default')}</Badge>}
-                  {selected && (
-                    <Badge>
-                      <Check size={12} /> {t('common.selected')}
-                    </Badge>
-                  )}
-                </span>
-                <span className="nx-resource-account__quota">
-                  {hasGroups ? (
-                    qv!.model_groups.map((group, gi) => (
-                      <span key={gi} className="nx-resource-account__group">
-                        {multiGroups && group.name && (
-                          <span className="nx-resource-account__group-heading">
-                            <span className="nx-resource-account__group-name">{group.name}</span>
-                            <Badge tone={groupAvailable(group) ? 'success' : 'danger'}>
-                              {groupAvailable(group) ? 'DISPONIVEL' : 'INDISPONIVEL'}
-                            </Badge>
-                          </span>
-                        )}
-                        {group.windows.map((w) => (
-                          <QuotaBar key={w.kind} w={w} />
-                        ))}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="nx-resource-account__quota-unknown">
-                      {t('resources.unknown')}
+              return (
+                <button
+                  key={account.id}
+                  type="button"
+                  className={`${styles.account} nx-resource-account`}
+                  data-quota-state={quotaState}
+                  data-selected={selected}
+                  onClick={() => void choose(account)}
+                  disabled={
+                    !agentId ||
+                    !account.authenticated ||
+                    !account.available ||
+                    selecting === account.id
+                  }
+                >
+                  <span className="nx-resource-account__icon">
+                    {account.rate_limited ? <ShieldAlert size={17} /> : <Activity size={17} />}
+                  </span>
+                  <span className="nx-resource-account__main">
+                    <span className="nx-resource-account__title">
+                      <strong>{account.display_name || account.provider}</strong>
+                      <Badge>{account.profile}</Badge>
+                      <Badge tone={healthTone(account.health)}>
+                        {translateStatus(account.health)}
+                      </Badge>
+                      <Badge
+                        tone={
+                          quotaState === 'confirmed'
+                            ? 'success'
+                            : quotaState === 'stale'
+                              ? 'warning'
+                              : 'danger'
+                        }
+                      >
+                        {quotaState === 'confirmed'
+                          ? t('resources.confirmed')
+                          : quotaState === 'exhausted'
+                            ? t('resources.exhausted')
+                            : quotaState === 'blocked'
+                              ? t('resources.rateLimited')
+                              : quotaState === 'stale'
+                                ? t('resources.stale')
+                                : t('resources.unknown')}
+                      </Badge>
+                      {account.is_default && <Badge>{t('common.default')}</Badge>}
+                      {selected && (
+                        <Badge>
+                          <Check size={12} /> {t('common.selected')}
+                        </Badge>
+                      )}
                     </span>
-                  )}
-                </span>
-              </span>
-              {selecting === account.id && <Spinner />}
-            </button>
-          );
-        })}
+                    <span className="nx-resource-account__quota">
+                      {hasGroups ? (
+                        qv!.model_groups.map((group, gi) => (
+                          <span key={gi} className="nx-resource-account__group">
+                            {multiGroups && group.name && (
+                              <span className="nx-resource-account__group-heading">
+                                <span className="nx-resource-account__group-name">
+                                  {group.name}
+                                </span>
+                                <Badge tone={groupAvailable(group) ? 'success' : 'danger'}>
+                                  {groupAvailable(group) ? 'DISPONIVEL' : 'INDISPONIVEL'}
+                                </Badge>
+                              </span>
+                            )}
+                            {group.windows.map((w) => (
+                              <QuotaBar key={w.kind} w={w} />
+                            ))}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="nx-resource-account__quota-unknown">
+                          {t('resources.unknown')}
+                        </span>
+                      )}
+                    </span>
+                    <span className={styles.quotaState} data-state={quotaState}>
+                      {t(`resources.state.${quotaState}`)}
+                    </span>
+                  </span>
+                  {selecting === account.id && <Spinner />}
+                </button>
+              );
+            })}
+          </section>
+        ))}
       </div>
       {decision && (
         <div className="nx-resource-decision">

@@ -20,12 +20,14 @@ const (
 	ActionNone RouterActionType = iota
 	ActionForwardBytes
 	ActionControlCommand
+	ActionSuggestions
 )
 
 type RouterOutput struct {
 	Action       RouterActionType
 	ForwardBytes []byte
 	ControlCmd   string
+	Suggestions  string
 }
 
 // SlashPrefixRouter handles input bytes character by character, buffering ambiguous slash prefixes
@@ -79,6 +81,17 @@ func (r *SlashPrefixRouter) ProcessByte(b byte) RouterOutput {
 		return RouterOutput{Action: ActionForwardBytes, ForwardBytes: []byte{b}}
 
 	case StateBuffering:
+		if b == '\t' {
+			trimmedPrefix := strings.ToLower(strings.TrimSpace(r.prefixBuf.String()))
+			if trimmedPrefix == "/nexus" || trimmedPrefix == "/ai" {
+				r.state = StateControlCommand
+				r.commandBuf.Reset()
+				r.commandBuf.WriteString(r.prefixBuf.String())
+				r.commandBuf.WriteByte(' ')
+				r.prefixBuf.Reset()
+				return RouterOutput{Action: ActionSuggestions, Suggestions: slashSuggestions(" ")}
+			}
+		}
 		// Check if delimiter encountered
 		if b == ' ' || b == '\t' || b == '\r' || b == '\n' {
 			trimmedPrefix := strings.ToLower(strings.TrimSpace(r.prefixBuf.String()))
@@ -142,6 +155,9 @@ func (r *SlashPrefixRouter) ProcessByte(b byte) RouterOutput {
 		return RouterOutput{Action: ActionForwardBytes, ForwardBytes: out}
 
 	case StateControlCommand:
+		if b == '\t' {
+			return RouterOutput{Action: ActionSuggestions, Suggestions: slashSuggestions(r.commandBuf.String())}
+		}
 		if b == '\r' || b == '\n' {
 			cmd := strings.TrimSpace(r.commandBuf.String())
 			r.Reset()
@@ -166,4 +182,20 @@ func (r *SlashPrefixRouter) ProcessByte(b byte) RouterOutput {
 	}
 
 	return RouterOutput{Action: ActionForwardBytes, ForwardBytes: []byte{b}}
+}
+
+func slashSuggestions(command string) string {
+	parts := strings.Fields(strings.ToLower(command))
+	if len(parts) <= 1 {
+		return "status  usage  accounts  handoff  continue  detach  stop  help"
+	}
+	options := []string{"status", "usage", "accounts", "handoff", "continue", "detach", "stop", "help"}
+	needle := parts[len(parts)-1]
+	filtered := make([]string, 0, len(options))
+	for _, option := range options {
+		if strings.HasPrefix(option, needle) {
+			filtered = append(filtered, option)
+		}
+	}
+	return strings.Join(filtered, "  ")
 }
