@@ -141,7 +141,11 @@ async function main() {
       `Terminal tab must not raise xterm viewport errors: ${pageErrors.join(' | ')}`,
     );
 
-    const axeResults = await new AxeBuilder({ page }).analyze();
+    // ANSI foreground/background pairs are emitted by the user's shell inside
+    // xterm and are not Nexus-owned UI styling. Keep the terminal in the
+    // interaction assertions below, but exclude its arbitrary output from the
+    // product chrome contrast audit.
+    const axeResults = await new AxeBuilder({ page }).exclude('.xterm').analyze();
     const seriousViolations = axeResults.violations.filter((violation) =>
       ['serious', 'critical'].includes(violation.impact),
     );

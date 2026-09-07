@@ -559,8 +559,32 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
 - Registry: invalidação cross-process agora usa `ModTime` + tamanho + fingerprint
   SHA-256; teste de concorrência passou 50x, race 10x e `go test ./...` passou.
 
+## Maestro catalog and skill context — 2026-09-07
+
+- `go test ./internal/nexus -run 'TestMaestro|TestFindOrquestrador' -count=1` —
+  PASS after global/profile catalog merge and prompt provenance changes.
+- Frontend typecheck, lint, stylelint, focused tests and build — PASS after
+  replacing command copy with complete skill context.
+- Real browser smoke against the rebuilt server — PASS: `53 de 53 disponíveis`,
+  53 cards and 53 usage-context panels; `skill-database-migrations` exposed
+  its `SKILL.md` prompt.
+- This does not replace native macOS/Windows execution; those release gates
+  remain pending where recorded above.
+
+## Open Design typography and visual QA — 2026-09-07
+
+- Open Design audit identified undersized semantic typography and one dark-theme
+  contrast failure in the shell.
+- `node web/scripts/maestro-visual-verify.mjs` — PASS after correction:
+  screenshots at five required viewports, no horizontal overflow, search
+  interaction, Axe with zero serious/critical violations, and no page errors.
+- `bun run format:check`, `bun run typecheck`, `bun run lint:styles`, focused
+  theme/Maestro tests (14/14), frontend build, focused Go tests, `go vet` and
+  `git diff --check` — PASS. Existing ESLint warnings remain warnings only.
+- Typography tokens use `rem`; visual verification was repeated after the
+  migration and the rebuilt server health endpoint returned `status: ok`.
+
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-07T11:58:09Z
+## Frontend gate — 2026-09-07T13:20:49Z
 
-Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
-
+Verdict: **FAIL**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).

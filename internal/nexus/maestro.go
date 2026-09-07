@@ -38,6 +38,7 @@ type MaestroSkillDesc struct {
 	Risk        string   `json:"risk,omitempty"`
 	Triggers    []string `json:"triggers,omitempty"`
 	Aliases     []string `json:"aliases,omitempty"`
+	Prompt      string   `json:"prompt,omitempty"`
 }
 
 // MaestroCapability describes what the Maestro instance supports.
@@ -160,18 +161,31 @@ func findMaestroBin() string {
 	return ""
 }
 
-func findOrquestradorDir() string {
+func findOrquestradorDirs() []string {
+	var dirs []string
 	// Explicit override is useful for CI and non-standard installations.
 	if explicit := strings.TrimSpace(os.Getenv("NEXUS_ORQUESTRADOR_DIR")); explicit != "" {
 		if fi, err := os.Stat(explicit); err == nil && fi.IsDir() {
-			return filepath.Clean(explicit)
+			dirs = append(dirs, filepath.Clean(explicit))
+			return dirs
 		}
 	}
 	// Host user home.
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		candidate := filepath.Join(home, ".orquestrador")
 		if fi, err := os.Stat(candidate); err == nil && fi.IsDir() {
-			return candidate
+			dirs = append(dirs, candidate)
+		}
+		// Profile homes can be nested below the real user home. Walk ancestors
+		// so the canonical global catalog is available without hardcoding an OS
+		// or profile layout. The nearest catalog remains first and wins overrides.
+		ancestor := filepath.Dir(home)
+		for i := 0; i < 10 && ancestor != filepath.Dir(ancestor); i++ {
+			candidate = filepath.Join(ancestor, ".orquestrador")
+			if fi, err := os.Stat(candidate); err == nil && fi.IsDir() {
+				dirs = appendUniquePath(dirs, candidate)
+			}
+			ancestor = filepath.Dir(ancestor)
 		}
 	}
 	// Isolated ai-cli/Nexus profile homes under the canonical cross-platform DataDir.
@@ -181,19 +195,37 @@ func findOrquestradorDir() string {
 		sort.Strings(matches)
 		for _, candidate := range matches {
 			if fi, err := os.Stat(candidate); err == nil && fi.IsDir() {
-				return candidate
+				dirs = appendUniquePath(dirs, candidate)
 			}
 		}
 	}
-	return ""
+	return dirs
+}
+
+func appendUniquePath(paths []string, candidate string) []string {
+	candidate = filepath.Clean(candidate)
+	for _, path := range paths {
+		if filepath.Clean(path) == candidate {
+			return paths
+		}
+	}
+	return append(paths, candidate)
+}
+
+func findOrquestradorDir() string {
+	dirs := findOrquestradorDirs()
+	if len(dirs) == 0 {
+		return ""
+	}
+	return dirs[0]
 }
 
 func (c *MaestroClient) checkAvailability() {
 	if c.maestroBin == "" {
 		// Fallback: check if .orquestrador exists with valid skills
-		orqDir := findOrquestradorDir()
-		if orqDir != "" {
-			cap, err := c.queryCapabilitiesFromDir(orqDir)
+		dirs := findOrquestradorDirs()
+		if len(dirs) > 0 {
+			cap, err := c.queryCapabilitiesFromDirs(dirs)
 			if err == nil && cap != nil && len(cap.Skills) > 0 {
 				c.status = MaestroStatus{
 					Available:    true,
@@ -261,6 +293,7 @@ func (c *MaestroClient) queryCapabilitiesFromDir(orqDir string) (*MaestroCapabil
 					Risk:        meta.Risk,
 					Triggers:    meta.Triggers,
 					Aliases:     meta.Aliases,
+					Prompt:      readSkillPrompt(orqDir, s),
 				})
 			}
 		}
@@ -276,6 +309,7 @@ func (c *MaestroClient) queryCapabilitiesFromDir(orqDir string) (*MaestroCapabil
 						Name:        id,
 						Description: "",
 						Category:    "custom",
+						Prompt:      readSkillPrompt(orqDir, id),
 					})
 				}
 			}
@@ -293,6 +327,39 @@ func (c *MaestroClient) queryCapabilitiesFromDir(orqDir string) (*MaestroCapabil
 	}, nil
 }
 
+func (c *MaestroClient) queryCapabilitiesFromDirs(dirs []string) (*MaestroCapability, error) {
+	merged := make(map[string]MaestroSkillDesc)
+	// Discover global first and active profile last so profile metadata can
+	// intentionally override a canonical skill without hiding global skills.
+	for i := len(dirs) - 1; i >= 0; i-- {
+		cap, err := c.queryCapabilitiesFromDir(dirs[i])
+		if err != nil {
+			continue
+		}
+		for _, skill := range cap.Skills {
+			merged[skill.ID] = skill
+		}
+	}
+	if len(merged) == 0 {
+		return nil, fmt.Errorf("no Maestro skills found")
+	}
+	skills := make([]MaestroSkillDesc, 0, len(merged))
+	for _, skill := range merged {
+		skills = append(skills, skill)
+	}
+	sort.Slice(skills, func(i, j int) bool { return skills[i].ID < skills[j].ID })
+	return &MaestroCapability{Version: "0.2.4", Modes: []string{"OFF", "ASSIST", "ORCHESTRATE"}, Skills: skills, Gates: []string{}, Processes: []string{}}, nil
+}
+
+func readSkillPrompt(orqDir, skillID string) string {
+	path := filepath.Join(orqDir, "skills", skillID, "SKILL.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
 func (c *MaestroClient) queryCapabilities() (*MaestroCapability, error) {
 	if c.maestroBin == "" {
 		orqDir := findOrquestradorDir()
@@ -307,6 +374,11 @@ func (c *MaestroClient) queryCapabilities() (*MaestroCapability, error) {
 	if out, err := cmd.Output(); err == nil {
 		var cap MaestroCapability
 		if err := json.Unmarshal(out, &cap); err == nil && cap.Version != "" {
+			if dirs := findOrquestradorDirs(); len(dirs) > 0 {
+				if local, localErr := c.queryCapabilitiesFromDirs(dirs); localErr == nil {
+					cap.Skills = local.Skills
+				}
+			}
 			return &cap, nil
 		}
 	}
@@ -323,10 +395,10 @@ func (c *MaestroClient) queryCapabilities() (*MaestroCapability, error) {
 	}
 
 	// 3. Read dynamic skills and gates from .orquestrador directory
-	orqDir := findOrquestradorDir()
+	dirs := findOrquestradorDirs()
 	var skillDescs []MaestroSkillDesc
-	if orqDir != "" {
-		cap, err := c.queryCapabilitiesFromDir(orqDir)
+	if len(dirs) > 0 {
+		cap, err := c.queryCapabilitiesFromDirs(dirs)
 		if err == nil && cap != nil {
 			skillDescs = cap.Skills
 		}

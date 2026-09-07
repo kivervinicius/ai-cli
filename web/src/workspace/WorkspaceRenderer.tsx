@@ -1198,9 +1198,15 @@ const DesktopWorkspace: React.FC<{
                       className="nx-desktop-window__attention-dot"
                       data-kind={attentionKind || 'needs_user'}
                       data-unread={unread ? 'true' : undefined}
-                      aria-label={
-                        unread ? 'unread attention' : questionnaire ? 'questionnaire' : 'attention'
-                      }
+                      role="img"
+                      aria-label={t(
+                        unread
+                          ? 'workspace.unreadAttention'
+                          : questionnaire
+                            ? 'workspace.questionnaire'
+                            : 'workspace.attention',
+                        unread ? 'Unread attention' : questionnaire ? 'Questionnaire' : 'Attention',
+                      )}
                     />
                   )}
                   <strong>{heading.heading}</strong>

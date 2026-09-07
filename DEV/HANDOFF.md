@@ -471,3 +471,11 @@ estão registradas em
 [`DEV/DECISIONS/NEXUS_TERMINAL_CONTINUITY.md`](DECISIONS/NEXUS_TERMINAL_CONTINUITY.md).
 O status atual continua parcial: gates locais passaram, mas a promoção oficial
 aguarda matriz nativa macOS/Windows e CI remoto no mesmo SHA.
+
+## Maestro catalog follow-up — 2026-09-07
+
+The Maestro surface now reports the merged global + active-profile catalog.
+Local runtime smoke confirmed 53/53 skills (the previous profile-only view was
+48). Cards expose and copy the complete `SKILL.md` usage context, with a
+generated fallback only when the source file is unavailable. Preserve merge by
+stable skill ID and prompt provenance when changing discovery.

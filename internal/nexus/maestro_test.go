@@ -1,11 +1,53 @@
 package nexus
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 )
+
+func TestMaestroCapabilitiesMergeProfileAndCanonicalCatalog(t *testing.T) {
+	global := t.TempDir()
+	profile := t.TempDir()
+	manifest := func(dir string, ids ...string) {
+		skills := map[string]map[string]any{}
+		for _, id := range ids {
+			skills[id] = map[string]any{"name": id, "description": id + " description"}
+			if err := os.MkdirAll(filepath.Join(dir, "skills", id), 0700); err != nil {
+				t.Fatal(err)
+			}
+			prompt := "# " + id + "\n\nUse this skill with its complete operating contract."
+			if err := os.WriteFile(filepath.Join(dir, "skills", id, "SKILL.md"), []byte(prompt), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		data, err := json.Marshal(map[string]any{"skills": skills})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SKILLS_MANIFEST.json"), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest(global, "skill-database-migrations", "skill-global-only")
+	manifest(profile, "skill-database-migrations", "skill-profile-only")
+	client := &MaestroClient{}
+	cap, err := client.queryCapabilitiesFromDirs([]string{profile, global})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(cap.Skills); got != 3 {
+		t.Fatalf("merged catalog count = %d, want 3", got)
+	}
+	if cap.Skills[0].ID != "skill-database-migrations" {
+		t.Fatalf("skills must be sorted by id, got %+v", cap.Skills)
+	}
+	if got := cap.Skills[0].Prompt; got == "" || got != "# skill-database-migrations\n\nUse this skill with its complete operating contract." {
+		t.Fatalf("merged skill must carry its SKILL.md prompt, got %q", got)
+	}
+}
 
 func TestMaestroUnavailableNeverFabricatesAdvice(t *testing.T) {
 	c := &MaestroClient{status: MaestroStatus{Available: false, Mode: MaestroOff}, maestroBin: ""}

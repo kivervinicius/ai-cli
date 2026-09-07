@@ -2676,3 +2676,32 @@ build` PASS e Web reiniciado em HTTP 200.
   nativos ainda pendentes.
 - `make quality` terminou com exit 0; typecheck e testes focados de quota
   passaram após a alteração.
+
+## 2026-09-07 — Maestro: catálogo completo e contexto de uso
+
+- Descoberta corrigida para mesclar o `.orquestrador` global com o perfil
+  ativo, deduplicando por ID e mantendo override do perfil.
+- Smoke real no servidor confirmou `53 de 53 disponíveis` (antes: 48).
+- Cards agora mostram e copiam o `SKILL.md` completo como contexto de uso.
+- `skill-database-migrations` foi verificada no browser e apresentou o prompt
+  integral da skill.
+- Regressão adicionada para merge, ordenação e preservação do prompt. Sem
+  commit ou push automático.
+
+## 2026-09-07 — Auditoria Open Design de tipografia e contraste
+
+- Escala compartilhada revisada: labels mínimas passaram de 10–11px para uma
+  faixa legível de 11–14px; títulos foram mantidos proporcionais.
+- Corrigido contraste real do `--nx-subtle` no preset Nexus Dark, incluindo a
+  fonte de tema que sobrescrevia o CSS base.
+- Filtros e ação de contexto do Maestro ganharam alvos de interação de 30px.
+- Verificação visual Axe passou nos cinco viewports suportados; screenshots
+  foram regenerados em `.tempmediaStorage/maestro`.
+
+## 2026-09-07 — Escala tipográfica em rem
+
+- Tokens semânticos migrados de pixels para `rem`, preservando a escala visual
+  atual e tornando zoom/browser/font-scale previsíveis.
+- `html` passou a aplicar o fator de escala uma única vez; densidades compacta
+  e confortável também usam rem.
+- `make build` passou e o servidor foi reiniciado na porta 3000.

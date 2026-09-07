@@ -67,6 +67,55 @@ estado deve permanecer recuperável/pendente; não pode ser anunciado como
 
 ## Evidência desta sessão
 
+### Catálogo Maestro: contagem confiável e contexto executável
+
+O catálogo da tela Maestro mescla o `.orquestrador` global com o catálogo do
+perfil ativo, deduplicando por `skill.id`; metadados do perfil ativo têm
+precedência para a mesma identidade. Na validação local, a composição passou
+de 48 para 53 skills e a UI exibiu `53 de 53 disponíveis`.
+
+O antigo “Copiar comando” foi substituído por “Copiar contexto de uso”. Cada
+card expõe o conteúdo integral de `skills/<id>/SKILL.md` em “Como usar esta
+skill” e copia esse mesmo contexto. Se o arquivo não existir, há um fallback
+explícito baseado em nome, descrição, triggers e requisitos de verificação.
+
+Assim, a contagem vem do catálogo mesclado, a identidade é deduplicada por ID
+e o prompt mostrado/copiado mantém a mesma origem usada pelo runtime. A
+regressão cobre merge, ordenação e leitura do `SKILL.md`, com smoke real no
+servidor.
+
+### Tipografia e acessibilidade visual
+
+A auditoria Open Design identificou que a escala compartilhada começava em
+10–11px e que o preset `nexus-dark` sobrescrevia `--nx-subtle` com uma cor
+abaixo do contraste AA em elementos reais do shell. A escala semântica foi
+elevada de forma incremental (2xs 11px, xs 12px, sm 13px, base 14px) e o
+subtle dark foi alinhado na fonte de verdade do tema e no CSS base. Controles
+de filtro e cópia do Maestro passaram a ter 30px de altura mínima.
+
+O verificador visual agora usa um `BrowserContext` real, coleta screenshots em
+320×568, 390×844, 768×1024, 1024×768 e 1440×900, verifica overflow e executa
+Axe. Após a correção, os cinco viewports passaram sem violações sérias.
+
+Os tokens tipográficos agora usam `rem`, com `1rem = 14px` na escala Nexus
+normal. O `html` aplica a escala do usuário uma única vez; isso mantém zoom do
+navegador, preferências de acessibilidade e densidade compacta/comfortable
+coerentes sem misturar `px` fixos com tokens escaláveis.
+
+### Direção Open Design do Maestro
+
+A tela adotou a direção **Tech Utility**: catálogo operacional, alta densidade
+legível e status acionável. A intervenção foi `critique → polish → adapt`:
+hierarquia do hero reduzida, catálogo com título/contagem próprios, busca como
+controle semântico, cards resistentes a nomes longos, foco visível, estados de
+loading/erro/vazio e breakpoints para 320–1440px. Gradientes decorativos,
+glows, card nesting excessivo e texto inline foram evitados.
+
+- Web: `MaestroSurface.tsx` e `MaestroSurface.module.scss`.
+- Validação: typecheck, ESLint, Stylelint, testes direcionados e build passaram.
+- Risco restante: a captura anexada é uma referência visual; screenshots reais
+  nos cinco viewports ainda devem ser coletados pelo browser/E2E do ambiente.
+
 - `make quality` terminou com `make_quality_exit=0` após os ajustes de lint e
   formatação.
 - `go test -race -count=1 ./...`, `go vet ./...` e `cd web && bun run verify`

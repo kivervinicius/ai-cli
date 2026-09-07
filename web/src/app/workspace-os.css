@@ -15,7 +15,8 @@
   --nx-text: #f1f3f7;
   --nx-text-soft: #d9dde6;
   --nx-muted: #8a93a5;
-  --nx-subtle: #626c82;
+  /* Secondary labels must remain readable on the dark workspace surface. */
+  --nx-subtle: #8b95a8;
   --nx-accent: #8b5cf6;
   --nx-accent-hover: #9f75ff;
   --nx-accent-soft: rgba(139, 92, 246, 0.14);
@@ -117,8 +118,8 @@
   --nx-density-btn-h: 28px;
   --nx-density-row-h: 30px;
   --nx-density-gap: 6px;
-  --nx-density-font-body: calc(12px * var(--nx-font-scale, 1));
-  --nx-density-font-title: calc(13px * var(--nx-font-scale, 1));
+  --nx-density-font-body: 0.857rem;
+  --nx-density-font-title: 0.929rem;
 }
 :root[data-density="comfortable"] {
   --nx-topbar: 52px;
@@ -130,14 +131,14 @@
   --nx-density-btn-h: 36px;
   --nx-density-row-h: 44px;
   --nx-density-gap: 12px;
-  --nx-density-font-body: calc(13.5px * var(--nx-font-scale, 1));
-  --nx-density-font-title: calc(15px * var(--nx-font-scale, 1));
+  --nx-density-font-body: 0.964rem;
+  --nx-density-font-title: 1.071rem;
 }
 * {
   box-sizing: border-box;
 }
 html {
-  font-size: calc(14px * var(--nx-font-scale, 1));
+  font-size: calc(87.5% * var(--nx-font-scale, 1));
 }
 html,
 body,
@@ -151,7 +152,7 @@ body {
   background: var(--nx-bg);
   color: var(--nx-text);
   font-family: var(--nx-font);
-  font-size: calc(13px * var(--nx-font-scale, 1));
+  font-size: 0.929rem;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
@@ -6306,7 +6307,7 @@ button {
 .nx-uui-notification__id {
   font-family: var(--nx-font-mono);
   font-size: 10.5px;
-  color: var(--nx-subtle);
+  color: var(--nx-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -7840,6 +7841,9 @@ button {
 .nx-create-menu {
   position: relative;
   display: inline-flex;
+}
+.nx-topbar__context > .nx-create-menu {
+  z-index: 20;
 }
 .nx-create-menu__trigger {
   display: inline-flex;

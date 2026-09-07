@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   BrainCircuit,
@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Copy,
   Cpu,
+  LoaderCircle,
   Layers,
   RefreshCw,
   Search,
@@ -25,6 +26,7 @@ export interface MaestroSkill {
   risk?: string;
   triggers?: string[];
   aliases?: string[];
+  prompt?: string;
 }
 
 export interface MaestroStatusData {
@@ -47,30 +49,56 @@ export const MaestroSurface: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [copiedSkillId, setCopiedSkillId] = useState<string | null>(null);
 
-  const loadData = async (isManual = false) => {
-    if (isManual) setRefreshing(true);
-    else setLoading(true);
+  const skillPrompt = (skill: MaestroSkill) =>
+    skill.prompt?.trim() ||
+    [
+      `Use the Maestro skill "${skill.name || skill.id}" for this task.`,
+      skill.description,
+      skill.triggers?.length ? `Relevant triggers: ${skill.triggers.join(', ')}` : '',
+      'Respect the skill risk level, project instructions, verification requirements, and rollback constraints.',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
 
-    try {
-      const res = await nexus.getMaestroStatus();
-      setStatus(res);
-    } catch (e) {
-      setStatus({
-        available: false,
-        error: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  const loadData = useCallback(
+    async (isManual = false) => {
+      if (isManual) setRefreshing(true);
+      else setLoading(true);
+
+      try {
+        const res = await Promise.race([
+          nexus.getMaestroStatus(),
+          new Promise<never>((_, reject) =>
+            window.setTimeout(
+              () =>
+                reject(
+                  new Error(t('maestroSurface.timeout', 'Tempo limite ao consultar o Maestro.')),
+                ),
+              10000,
+            ),
+          ),
+        ]);
+        setStatus(res);
+      } catch (e) {
+        setStatus({
+          available: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [loadData]);
 
   const skills = useMemo(() => {
-    return status?.capabilities?.skills || [];
+    const catalog = status?.capabilities?.skills;
+    return Array.isArray(catalog) ? catalog : [];
   }, [status]);
 
   const categories = useMemo(() => {
@@ -110,24 +138,35 @@ export const MaestroSurface: React.FC = () => {
     });
   }, [skills, searchQuery, selectedCategory]);
 
-  const handleCopySkillCommand = (skill: MaestroSkill) => {
-    const text = skill.triggers?.[0] || `/${skill.id}`;
+  const handleCopySkillPrompt = (skill: MaestroSkill) => {
+    const text = skillPrompt(skill);
     void navigator.clipboard.writeText(text);
     setCopiedSkillId(skill.id);
     setTimeout(() => setCopiedSkillId(null), 1800);
   };
 
-  const isDegraded = !status?.available;
+  const isLoading = loading && !status;
+  const isDegraded = Boolean(status && !status.available);
   const version = status?.capabilities?.version || '0.2.4';
 
   return (
-    <div className={styles.container}>
+    <main
+      className={styles.container}
+      aria-labelledby="maestro-page-title"
+      data-testid="maestro-surface"
+    >
       {/* Hero Section */}
       <header className={styles.hero}>
         <div className={styles.heroContent}>
+          <span className={styles.eyebrow}>
+            <span className={styles.eyebrowDot} aria-hidden="true" />
+            {t('maestroSurface.eyebrow', 'Catálogo operacional')}
+          </span>
           <div className={styles.heroTitleRow}>
             <Sparkles className={styles.heroIcon} size={26} />
-            <h1 className={styles.heroTitle}>Orquestrador Maestro</h1>
+            <h1 className={styles.heroTitle} id="maestro-page-title">
+              Orquestrador Maestro
+            </h1>
           </div>
           <p className={styles.heroDesc}>
             {t(
@@ -177,7 +216,10 @@ export const MaestroSurface: React.FC = () => {
       </header>
 
       {/* Overview Cards */}
-      <section className={styles.overviewGrid}>
+      <section
+        className={styles.overviewGrid}
+        aria-label={t('maestroSurface.overviewLabel', 'Como o Maestro funciona')}
+      >
         <div className={styles.infoCard}>
           <div className={styles.infoCardTitle}>
             <BrainCircuit size={16} className="nx-text-accent" />
@@ -219,10 +261,26 @@ export const MaestroSurface: React.FC = () => {
       </section>
 
       {/* Catalog Section */}
-      <section className={styles.catalogSection}>
+      <section className={styles.catalogSection} aria-labelledby="maestro-catalog-title">
         <div className={styles.catalogHeader}>
+          <div className={styles.catalogHeadingRow}>
+            <div>
+              <span className={styles.sectionEyebrow}>
+                {t('maestroSurface.catalogEyebrow', 'Catálogo')}
+              </span>
+              <h2 className={styles.catalogTitle} id="maestro-catalog-title">
+                {t('maestroSurface.catalogTitle', 'Skills disponíveis')}
+              </h2>
+            </div>
+            <span className={styles.catalogCount} aria-live="polite">
+              {t('maestroSurface.filteredCount', '{{visible}} de {{total}} disponíveis', {
+                visible: filteredSkills.length,
+                total: skills.length,
+              })}
+            </span>
+          </div>
           <div className={styles.catalogToolbar}>
-            <div className={styles.searchBox}>
+            <label className={styles.searchBox}>
               <Search size={15} className="nx-text-muted" />
               <input
                 type="text"
@@ -243,14 +301,14 @@ export const MaestroSurface: React.FC = () => {
                   <X size={14} />
                 </button>
               )}
-            </div>
-
-            <div className="nx-text-muted" style={{ fontSize: '12px' }}>
-              {filteredSkills.length} de {skills.length} skills disponíveis
-            </div>
+            </label>
           </div>
 
-          <div className={styles.categoryFilterRow}>
+          <div
+            className={styles.categoryFilterRow}
+            role="toolbar"
+            aria-label={t('maestroSurface.categoryLabel', 'Filtrar por categoria')}
+          >
             {categories.map((cat) => (
               <button
                 key={cat.id}
@@ -266,7 +324,25 @@ export const MaestroSurface: React.FC = () => {
           </div>
         </div>
 
-        {filteredSkills.length === 0 ? (
+        {isLoading ? (
+          <div className={styles.emptyState} role="status">
+            <LoaderCircle size={28} className={styles.loadingIcon} />
+            <p>{t('maestroSurface.loadingCatalog', 'Carregando catálogo de skills…')}</p>
+          </div>
+        ) : status?.error ? (
+          <div className={styles.emptyState} data-tone="danger" role="alert">
+            <ShieldAlert size={28} />
+            <strong>{t('maestroSurface.loadError', 'Não foi possível carregar o Maestro')}</strong>
+            <p>{status.error}</p>
+            <button
+              type="button"
+              className={styles.retryButton}
+              onClick={() => void loadData(true)}
+            >
+              <RefreshCw size={13} /> {t('common.retry', 'Tentar novamente')}
+            </button>
+          </div>
+        ) : filteredSkills.length === 0 ? (
           <div className={styles.emptyState}>
             <Sparkles size={28} />
             <p>
@@ -315,12 +391,20 @@ export const MaestroSurface: React.FC = () => {
                     </div>
                   )}
 
+                  <details className={styles.promptDetails}>
+                    <summary>{t('maestroSurface.promptSummary', 'Como usar esta skill')}</summary>
+                    <pre>{skillPrompt(skill)}</pre>
+                  </details>
+
                   <div className={styles.skillBottomRow}>
                     <button
                       type="button"
                       className={styles.copyTriggerBtn}
-                      onClick={() => handleCopySkillCommand(skill)}
-                      title={t('maestroSurface.copyCommandTitle', 'Copiar comando')}
+                      onClick={() => handleCopySkillPrompt(skill)}
+                      title={t(
+                        'maestroSurface.copyPromptTitle',
+                        'Copiar contexto completo da skill',
+                      )}
                     >
                       {isCopied ? (
                         <Check size={12} className="nx-text-emerald-400" />
@@ -330,7 +414,7 @@ export const MaestroSurface: React.FC = () => {
                       <span>
                         {isCopied
                           ? t('common.copied', 'Copiado!')
-                          : t('maestroSurface.copyCommand', 'Copiar Comando')}
+                          : t('maestroSurface.copyPrompt', 'Copiar contexto de uso')}
                       </span>
                     </button>
                   </div>
@@ -340,6 +424,6 @@ export const MaestroSurface: React.FC = () => {
           </div>
         )}
       </section>
-    </div>
+    </main>
   );
 };
