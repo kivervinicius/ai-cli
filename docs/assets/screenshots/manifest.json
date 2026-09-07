@@ -1,11 +1,11 @@
 {
-  "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
+  "source_sha": "2d31ff0f4e0e44eb9e9870a5d49dd4f7a466bf98",
   "generated_by": "web/scripts/docs-capture.mjs",
   "captures": [
     {
       "id": "VIS-001",
       "file": "workspace-overview.png",
-      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
+      "source_sha": "2d31ff0f4e0e44eb9e9870a5d49dd4f7a466bf98",
       "surface": "web/workspace",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
@@ -16,7 +16,7 @@
     {
       "id": "VIS-003",
       "file": "direct-session.png",
-      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
+      "source_sha": "2d31ff0f4e0e44eb9e9870a5d49dd4f7a466bf98",
       "surface": "web/direct-session",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
@@ -27,7 +27,7 @@
     {
       "id": "VIS-005",
       "file": "terminal.png",
-      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
+      "source_sha": "2d31ff0f4e0e44eb9e9870a5d49dd4f7a466bf98",
       "surface": "web/terminal",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
@@ -38,7 +38,7 @@
     {
       "id": "VIS-002",
       "file": "projects.png",
-      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
+      "source_sha": "2d31ff0f4e0e44eb9e9870a5d49dd4f7a466bf98",
       "surface": "web/projects",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
@@ -49,7 +49,7 @@
     {
       "id": "VIS-007",
       "file": "composer.png",
-      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
+      "source_sha": "2d31ff0f4e0e44eb9e9870a5d49dd4f7a466bf98",
       "surface": "web/composer",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
@@ -60,7 +60,7 @@
     {
       "id": "VIS-008",
       "file": "flow.png",
-      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
+      "source_sha": "2d31ff0f4e0e44eb9e9870a5d49dd4f7a466bf98",
       "surface": "web/flow",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
@@ -71,7 +71,7 @@
     {
       "id": "VIS-006",
       "file": "agents.png",
-      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
+      "source_sha": "2d31ff0f4e0e44eb9e9870a5d49dd4f7a466bf98",
       "surface": "web/agents",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
@@ -82,7 +82,7 @@
     {
       "id": "VIS-009",
       "file": "mission.png",
-      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
+      "source_sha": "2d31ff0f4e0e44eb9e9870a5d49dd4f7a466bf98",
       "surface": "web/mission",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
@@ -93,7 +93,7 @@
     {
       "id": "VIS-010",
       "file": "usage-quota.png",
-      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
+      "source_sha": "2d31ff0f4e0e44eb9e9870a5d49dd4f7a466bf98",
       "surface": "web/usage-quota",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
@@ -104,7 +104,7 @@
     {
       "id": "VIS-004",
       "file": "provider.png",
-      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
+      "source_sha": "2d31ff0f4e0e44eb9e9870a5d49dd4f7a466bf98",
       "surface": "web/provider",
       "scenario": "real-local-bootstrap",
       "viewport": "1440x900",
@@ -115,7 +115,7 @@
     {
       "id": "VIS-011",
       "file": "desktop.png",
-      "source_sha": "8ff720cd3f6ed157e1f157aa5d788ba44abccca1",
+      "source_sha": "2d31ff0f4e0e44eb9e9870a5d49dd4f7a466bf98",
       "surface": "desktop/wails-linux",
       "scenario": "real-local-core-and-wails-shell",
       "viewport": "1280x800",

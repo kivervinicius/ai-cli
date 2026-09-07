@@ -4,7 +4,7 @@
 
 - Branch base: `feat/nexus-maximum-delivery`
 - Base SHA: `5b37572dbed6e551217cdf3d1af16fbe93e2e092`
-- Final documentation SHA: `8ff720c` (local worktree; uncommitted closure changes are recorded below)
+- Final documentation SHA: `2d31ff0` (committed local closure)
 - Reference main: `f71eb515278168e33d626fd631cd89dfb5e58faf`
 - Worktree: `docs/nexus-publication-overhaul`
 
@@ -41,7 +41,7 @@ status or product state is fabricated.
 | Terminal | PASS | `4cf7ebc...` | `terminal.png` |
 | Mission | PASS | `4cf7ebc...` | `mission.png` |
 | Usage/Quota | PASS | `4cf7ebc...` | `usage-quota.png` |
-| Desktop | PASS | `8ff720c...` | real Wails Linux window + isolated Core; `desktop.png` |
+| Desktop | PASS | `2d31ff0...` | real Wails Linux window + isolated Core; `desktop.png` |
 
 The Web visual coverage is complete for the captured surfaces. Desktop is
 captured from a real Wails Linux window backed by an isolated local Core; this
