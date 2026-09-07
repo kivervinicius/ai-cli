@@ -284,6 +284,7 @@ export const WorkspaceSurfaceHost: React.FC<{
         <div className="nx-agent-terminal-surface">
           <AgentTerminal
             agentId={surface.data.agentId}
+            projectId={project.id}
             runtimeId={runtime?.runtime_id}
             initialPrompt={surface.data.initialPrompt}
             provider={runtime?.provider_id || runtime?.provider || 'claude'}

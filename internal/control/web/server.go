@@ -118,6 +118,9 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	// Maestro Assist (Gate 6)
 	mux.HandleFunc("/api/v1/maestro", s.authMiddleware(nexusHandler.handleMaestroStatus))
 	mux.HandleFunc("/api/v1/maestro/advice", s.authMiddleware(nexusHandler.handleMaestroAdvice))
+	mux.HandleFunc("/api/v1/maestro/catalog", s.authMiddleware(nexusHandler.handleMaestroCatalog))
+	mux.HandleFunc("/api/v1/maestro/sync/preview", s.authMiddleware(nexusHandler.handleMaestroSyncPreview))
+	mux.HandleFunc("/api/v1/maestro/sync", s.authMiddleware(nexusHandler.handleMaestroSync))
 
 	// WorkPlans & Intelligence (Phase C & D)
 	mux.HandleFunc("/api/v1/intelligence", s.authMiddleware(nexusHandler.handleIntelligence))

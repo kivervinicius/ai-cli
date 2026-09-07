@@ -527,14 +527,37 @@ func (h *NexusHandler) handleAgentAsk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Prompt        string   `json:"prompt"`
-		SkillIDs      []string `json:"skill_ids,omitempty"`
-		Scope         string   `json:"scope,omitempty"`
-		StartIfNeeded bool     `json:"start_if_needed"`
+		Prompt               string   `json:"prompt"`
+		SkillIDs             []string `json:"skill_ids,omitempty"`
+		Scope                string   `json:"scope,omitempty"`
+		StartIfNeeded        bool     `json:"start_if_needed"`
+		ProjectID            string   `json:"project_id,omitempty"`
+		ContextFingerprintID string   `json:"context_fingerprint_id,omitempty"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil || strings.TrimSpace(body.Prompt) == "" {
 		writeError(w, http.StatusBadRequest, "prompt is required")
 		return
+	}
+	if strings.TrimSpace(body.ProjectID) != "" || strings.TrimSpace(body.ContextFingerprintID) != "" {
+		if strings.TrimSpace(body.ProjectID) == "" || strings.TrimSpace(body.ContextFingerprintID) == "" {
+			writeError(w, http.StatusConflict, "prepared task requires project_id and context_fingerprint_id")
+			return
+		}
+		st, storeErr := h.nexus.OpenProject()
+		if storeErr != nil {
+			writeError(w, http.StatusServiceUnavailable, storeErr.Error())
+			return
+		}
+		agent, agentErr := st.GetAgent(id, body.ProjectID)
+		if agentErr != nil {
+			writeError(w, http.StatusNotFound, "agent does not belong to the prepared project")
+			return
+		}
+		readiness, readinessErr := h.nexus.ObserveContextReadiness(agent.ProjectID)
+		if readinessErr != nil || readiness.State != nexus.ContextReady || readiness.CurrentFingerprintID != body.ContextFingerprintID {
+			writeError(w, http.StatusConflict, "prepared task context is missing, stale, or changed")
+			return
+		}
 	}
 
 	client := nexus.NewMaestroClient()
@@ -799,6 +822,46 @@ func (h *NexusHandler) handleMaestroStatus(w http.ResponseWriter, r *http.Reques
 	client := nexus.NewMaestroClient()
 	status := client.Status()
 	writeJSON(w, http.StatusOK, status)
+}
+
+func (h *NexusHandler) handleMaestroCatalog(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	client := nexus.NewMaestroClient()
+	writeJSON(w, http.StatusOK, client.Catalog())
+}
+
+func (h *NexusHandler) handleMaestroSyncPreview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	preview, err := nexus.NewMaestroClient().SyncPreview()
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, preview)
+}
+
+func (h *NexusHandler) handleMaestroSync(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var preview nexus.SkillSyncPreview
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&preview); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid sync preview")
+		return
+	}
+	result, err := nexus.NewMaestroClient().ApplySyncPreview(r.Context(), preview)
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 // handleMaestroAdvice POST /api/v1/maestro/advice — request Maestro recommendations.

@@ -29,6 +29,30 @@ export interface MaestroSkill {
   prompt?: string;
 }
 
+export interface CatalogSkill extends MaestroSkill {
+  source: 'canonical' | 'community' | 'codex' | string;
+  availability: 'AVAILABLE' | 'SYNCHRONIZABLE' | 'TASK_ONLY' | string;
+  activation_mode?: string;
+  copies: number;
+  contract?: string;
+}
+
+export interface MaestroCatalog {
+  operational: CatalogSkill[];
+  library: CatalogSkill[];
+  counts: { operational: number; library: number; copies: number };
+}
+
+export interface SkillSyncPreview {
+  id: string;
+  dry_run: boolean;
+  tool: string;
+  roots: string[];
+  skills: string[];
+  command: string;
+  output?: string;
+}
+
 export interface MaestroStatusData {
   available: boolean;
   mode?: string;
@@ -48,6 +72,7 @@ export const MaestroSurface: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [copiedSkillId, setCopiedSkillId] = useState<string | null>(null);
+  const [catalog, setCatalog] = useState<MaestroCatalog | null>(null);
 
   const skillPrompt = (skill: MaestroSkill) =>
     skill.prompt?.trim() ||
@@ -67,7 +92,7 @@ export const MaestroSurface: React.FC = () => {
 
       try {
         const res = await Promise.race([
-          nexus.getMaestroStatus(),
+          Promise.all([nexus.getMaestroStatus(), nexus.getMaestroCatalog()]),
           new Promise<never>((_, reject) =>
             window.setTimeout(
               () =>
@@ -78,7 +103,8 @@ export const MaestroSurface: React.FC = () => {
             ),
           ),
         ]);
-        setStatus(res);
+        setStatus(res[0]);
+        setCatalog(res[1]);
       } catch (e) {
         setStatus({
           available: false,
@@ -97,9 +123,9 @@ export const MaestroSurface: React.FC = () => {
   }, [loadData]);
 
   const skills = useMemo(() => {
-    const catalog = status?.capabilities?.skills;
-    return Array.isArray(catalog) ? catalog : [];
-  }, [status]);
+    const discovered = catalog?.operational || status?.capabilities?.skills;
+    return Array.isArray(discovered) ? discovered : [];
+  }, [catalog, status]);
 
   const categories = useMemo(() => {
     const counts: Record<string, number> = { all: skills.length };
@@ -166,13 +192,13 @@ export const MaestroSurface: React.FC = () => {
             <div className={styles.heroTitleRow}>
               <Sparkles className={styles.heroIcon} size={22} />
               <h1 className={styles.heroTitle} id="maestro-page-title">
-                Orquestrador Maestro
+                Maestro · Contexto e skills
               </h1>
             </div>
             <p className={styles.heroDesc}>
               {t(
                 'maestroSurface.heroDesc',
-                'Motor de orquestração cognitiva, governança de agentes autônomos e catálogo executável de skills dinâmicas do Nexus.',
+                'Prepare contexto durável e contratos de skills para revisar o trabalho antes de enviá-lo ao Agente.',
               )}
             </p>
 
@@ -182,7 +208,7 @@ export const MaestroSurface: React.FC = () => {
                 <span>
                   {isDegraded
                     ? t('maestroSurface.degraded', 'Modo Standalone / Degradado')
-                    : t('maestroSurface.connected', 'Conectado & Operacional')}
+                    : t('maestroSurface.connected', 'Catálogo disponível')}
                 </span>
               </span>
 
@@ -194,7 +220,8 @@ export const MaestroSurface: React.FC = () => {
               <span className={styles.versionPill} title="Total de capacidades ativas">
                 <Layers size={12} />
                 <span>
-                  {skills.length} {t('maestroSurface.skillsLoaded', 'skills dinâmicas')}
+                  {catalog?.counts.operational ?? skills.length}{' '}
+                  {t('maestroSurface.skillsLoaded', 'disponíveis agora')}
                 </span>
               </span>
             </div>

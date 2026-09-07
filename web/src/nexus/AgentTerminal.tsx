@@ -50,6 +50,7 @@ import { ResourcePicker } from './ResourcePicker';
 import { TerminalActionDialog } from './TerminalActionDialog';
 import { scrubProtocolOutput } from './terminalProtocol';
 import { ConfirmDialog, ContextDrawer, Tooltip } from '../design-system';
+import { TaskPreparationDialog } from '../components/TaskPreparationDialog';
 import type { RuntimeSession } from '../types';
 import { consumePtyOutputForChrome, extractOscTitle } from '../workspace/ptyLiveChrome';
 import { usePtyLiveChromeOptional } from '../workspace/PtyLiveChromeContext';
@@ -73,6 +74,7 @@ export interface AgentTerminalSkill {
 
 export const AgentTerminal: React.FC<{
   agentId: string;
+  projectId?: string;
   runtimeId?: string;
   initialPrompt?: string;
   provider?: string;
@@ -91,6 +93,7 @@ export const AgentTerminal: React.FC<{
   onDelete?: () => void | Promise<void>;
 }> = ({
   agentId,
+  projectId,
   runtimeId,
   initialPrompt,
   provider,
@@ -119,6 +122,7 @@ export const AgentTerminal: React.FC<{
   const [boundRuntimeId, setBoundRuntimeId] = useState(runtimeId || '');
   const [connectNonce, setConnectNonce] = useState(0);
   const [askOpen, setAskOpen] = useState(false);
+  const [preparationOpen, setPreparationOpen] = useState(false);
   const [skillsSearch, setSkillsSearch] = useState('');
   const [selectedSkillCategory, setSelectedSkillCategory] = useState('all');
   const [copiedSkillId, setCopiedSkillId] = useState<string | null>(null);
@@ -1034,14 +1038,14 @@ export const AgentTerminal: React.FC<{
           className="nx-agent-terminal__ask-btn"
           onClick={() => {
             const next = !askOpen;
-            setAskOpen(next);
+            setPreparationOpen(next);
             if (next && availableSkills.length === 0) {
               void loadSkills();
             }
           }}
         >
           <Sparkles size={13} />
-          <span>{t('terminal.ask')}</span>
+          <span>{t('terminal.prepareInstruction', 'Preparar instrução para o Agente')}</span>
           {availableSkills.length > 0 && (
             <span className={styles.skillsCountBadge}>{availableSkills.length}</span>
           )}
@@ -1277,6 +1281,24 @@ export const AgentTerminal: React.FC<{
           </div>
         </div>
       </ContextDrawer>
+      <TaskPreparationDialog
+        open={preparationOpen}
+        agentId={agentId}
+        agentName={agentName || displayName}
+        projectId={projectId}
+        initialPrompt={initialPrompt}
+        startIfNeeded={false}
+        onClose={() => setPreparationOpen(false)}
+        onSubmit={async (prompt, skills, _startIfNeeded, contextFingerprintId) => {
+          await nexus.askAgent(
+            agentId,
+            prompt,
+            false,
+            skills,
+            projectId && contextFingerprintId ? { projectId, contextFingerprintId } : undefined,
+          );
+        }}
+      />
       {closeConfirmOpen && onClose && (
         <TerminalActionDialog
           close

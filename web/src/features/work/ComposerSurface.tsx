@@ -24,7 +24,9 @@ import type {
 } from '../../types';
 import { selectResumableComposerSession } from './composerSessionModel';
 import { composerNeedsGapConfirmation } from './composerModel';
+import type { ComposerGate } from './composerModel';
 import { asArray, asStringArray } from '../../lib/safeArray';
+import { TaskPreparationDialog } from '../../components/TaskPreparationDialog';
 
 const ARCHETYPE_LABELS: Record<string, string> = {
   SOFTWARE_FEATURE: 'Feature',
@@ -39,7 +41,8 @@ const ARCHETYPE_LABELS: Record<string, string> = {
 export const ComposerSurface: React.FC<{
   project: Project;
   onTransformFlow: (artifact: PromptArtifact) => void;
-}> = ({ project, onTransformFlow }) => {
+  destinationGate?: ComposerGate;
+}> = ({ project, onTransformFlow, destinationGate }) => {
   const { t } = useTranslation();
   const [sessions, setSessions] = useState<ComposerSession[]>([]);
   const [view, setView] = useState<ComposerSessionView | null>(null);
@@ -56,6 +59,9 @@ export const ComposerSurface: React.FC<{
   const [unknownAnswers, setUnknownAnswers] = useState<Record<string, string>>({});
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState('');
+  const [preparationOpen, setPreparationOpen] = useState(false);
+  const canMaterialize = destinationGate?.canMaterialize ?? true;
+  const canExecute = destinationGate?.canExecute ?? true;
 
   const selectedSkillIds = useMemo(
     () =>
@@ -249,19 +255,15 @@ export const ComposerSurface: React.FC<{
     }
   };
 
-  const sendToAgent = async () => {
-    if (!artifact || !selectedAgentId || busy) return;
-    setBusy(true);
-    setError('');
-    try {
-      await nexus.askAgent(selectedAgentId, artifact.content, true, selectedSkillIds);
-      setMessage(t('work.composer.sentToAgent', { defaultValue: 'Prompt enviado ao Agent.' }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
+  const startAgentIfNeeded = !new Set([
+    'WORKING',
+    'WAITING',
+    'APPROVAL',
+    'HANDOFF',
+    'STARTING',
+    'RECOVERING',
+  ]).has(String(selectedAgent?.status || '').toUpperCase());
 
   if (!view) {
     return (
@@ -750,21 +752,32 @@ export const ComposerSurface: React.FC<{
                 />
                 <Button
                   tone="brand"
-                  disabled={busy || !selectedAgentId}
-                  onClick={() => void sendToAgent()}
+                  disabled={busy || !selectedAgentId || !canExecute}
+                  onClick={() => setPreparationOpen(true)}
                 >
                   <Send size={14} />{' '}
-                  {t('work.composer.sendToAgent', { defaultValue: 'Enviar ao Agent' })}
+                  {t('work.composer.reviewBeforeSend', { defaultValue: 'Revisar antes de enviar' })}
                 </Button>
               </>
             )}
-            <Button tone="brand" onClick={() => onTransformFlow(artifact)}>
+            <Button
+              tone="brand"
+              disabled={!canMaterialize}
+              title={!canMaterialize ? destinationGate?.reason : undefined}
+              onClick={() => onTransformFlow(artifact)}
+            >
               <Layers size={14} /> Transformar em Flow
             </Button>
             <Button disabled={busy} onClick={() => setShowRefineInput(!showRefineInput)}>
               <RefreshCw size={14} /> Refinar (v{artifact.version + 1})
             </Button>
           </div>
+          {destinationGate && (!canMaterialize || !canExecute) && (
+            <small className="nx-muted-copy">
+              Copy permanece disponível. {destinationGate.reason} Prepare o contexto para habilitar
+              Flow e Agent.
+            </small>
+          )}
 
           {showRefineInput && (
             <div
@@ -801,6 +814,22 @@ export const ComposerSurface: React.FC<{
           )}
         </Card>
       )}
+      <TaskPreparationDialog
+        open={preparationOpen}
+        agentId={selectedAgentId}
+        agentName={selectedAgent?.name}
+        projectId={project.id}
+        initialPrompt={artifact?.content || ''}
+        startIfNeeded={startAgentIfNeeded}
+        onClose={() => setPreparationOpen(false)}
+        onSubmit={async (prompt, skills, startIfNeeded, contextFingerprintId) => {
+          await nexus.askAgent(selectedAgentId, prompt, startIfNeeded, skills, {
+            projectId: project.id,
+            contextFingerprintId: contextFingerprintId || '',
+          });
+          setMessage(t('work.composer.sentToAgent', { defaultValue: 'Tarefa enviada ao Agente.' }));
+        }}
+      />
     </div>
   );
 };

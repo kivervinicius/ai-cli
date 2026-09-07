@@ -163,7 +163,7 @@ export const AgentsSurface: React.FC<{
                   <TerminalSquare size={13} /> {t('agents.terminal')}
                 </Button>
                 <Button size="sm" onClick={() => setAskAgent(agent)}>
-                  <MessageSquareText size={13} /> Ask
+                  <MessageSquareText size={13} /> Preparar tarefa
                 </Button>
                 <Button size="sm" onClick={() => onConfigure(agent)}>
                   <Settings2 size={13} /> {t('agents.configure')}

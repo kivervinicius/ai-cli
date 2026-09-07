@@ -1,6 +1,15 @@
 /* Nexus product API client (projects, agents, layouts, config). */
 
-import { Project, Agent, AgentDetail, RuntimeSession, AgentConfig, ConfigImpact } from '../types';
+import {
+  Project,
+  Agent,
+  AgentDetail,
+  RuntimeSession,
+  AgentConfig,
+  ConfigImpact,
+  MaestroCatalog,
+  SkillSyncPreview,
+} from '../types';
 import { getDesktopAuthToken, getDesktopBaseUrl } from '../api';
 import { normalizeWorkPlan } from './workPlan';
 
@@ -185,11 +194,21 @@ export const nexus = {
       method: 'POST',
       body: '{}',
     }),
-  askAgent: (id: string, prompt: string, startIfNeeded = false, skillIds?: string[]) => {
-    const body: Record<string, any> = { prompt, start_if_needed: startIfNeeded };
+  askAgent: (
+    id: string,
+    prompt: string,
+    startIfNeeded = false,
+    skillIds?: string[],
+    prepared?: { projectId: string; contextFingerprintId: string },
+  ) => {
+    const body: Record<string, unknown> = { prompt, start_if_needed: startIfNeeded };
     if (skillIds && skillIds.length > 0) {
       body.skill_ids = skillIds;
       body.scope = 'NEXT_PROMPT';
+    }
+    if (prepared) {
+      body.project_id = prepared.projectId;
+      body.context_fingerprint_id = prepared.contextFingerprintId;
     }
     return request<{ agent_id: string; runtime_id: string; started: boolean; accepted: boolean }>(
       `/api/v1/agents/${id}/ask`,
@@ -231,6 +250,17 @@ export const nexus = {
 
   // Maestro Assist (Gate 6)
   getMaestroStatus: () => request<any>('/api/v1/maestro'),
+  getMaestroCatalog: () => request<MaestroCatalog>('/api/v1/maestro/catalog'),
+  previewMaestroSync: () =>
+    request<SkillSyncPreview>('/api/v1/maestro/sync/preview', {
+      method: 'POST',
+      body: '{}',
+    }),
+  applyMaestroSync: (preview: SkillSyncPreview) =>
+    request<SkillSyncPreview>('/api/v1/maestro/sync', {
+      method: 'POST',
+      body: JSON.stringify(preview),
+    }),
   getMaestroAdvice: (projectId: string, agentId?: string, intent?: string) =>
     request<any>('/api/v1/maestro/advice', {
       method: 'POST',
@@ -462,9 +492,7 @@ export const nexus = {
       body: JSON.stringify(data),
     }),
   compilePackagePrompt: (planId: string, packageId: string, phaseId?: string) =>
-    request<{ compiled_prompt: string; package_id: string }>(
-      `/api/v1/plans/${planId}/compile`,
-      {
+    request<{ compiled_prompt: string; package_id: string }>(`/api/v1/plans/${planId}/compile`, {
       method: 'POST',
       body: JSON.stringify({ package_id: packageId, phase_id: phaseId }),
     }),

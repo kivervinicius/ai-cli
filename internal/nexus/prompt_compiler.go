@@ -54,10 +54,18 @@ type CompiledAgentPrompt struct {
 	CompiledPrompt  string   `json:"compiled_prompt"`
 	PromptHash      string   `json:"prompt_hash"`
 	ValidatedSkills []string `json:"validated_skills"`
+	SkillContracts  []string `json:"skill_contracts,omitempty"`
 }
 
 // CompileAgentPromptWithValidatedSkills constructs the compiled prompt envelope with already validated skills.
 func CompileAgentPromptWithValidatedSkills(userPrompt string, validatedSkills []string) *CompiledAgentPrompt {
+	return CompileAgentPromptWithContracts(userPrompt, validatedSkills, nil)
+}
+
+// CompileAgentPromptWithContracts embeds the complete selected skill
+// contracts. IDs alone are insufficient because the receiving Agent may not
+// share the same local Maestro installation.
+func CompileAgentPromptWithContracts(userPrompt string, validatedSkills []string, contracts []CatalogSkill) *CompiledAgentPrompt {
 	var compiled string
 	if len(validatedSkills) == 0 {
 		compiled = userPrompt
@@ -68,6 +76,14 @@ func CompileAgentPromptWithValidatedSkills(userPrompt string, validatedSkills []
 		b.WriteString("Validated Maestro skills:\n")
 		for _, s := range validatedSkills {
 			b.WriteString("- " + s + "\n")
+		}
+		for _, skill := range contracts {
+			if strings.TrimSpace(skill.Contract) == "" {
+				continue
+			}
+			b.WriteString("\n--- Skill contract: " + skill.ID + " (" + string(skill.Source) + ") ---\n")
+			b.WriteString(skill.Contract)
+			b.WriteString("\n--- End skill contract ---\n")
 		}
 		b.WriteString("\nUser request:\n")
 		b.WriteString(userPrompt)
@@ -81,7 +97,16 @@ func CompileAgentPromptWithValidatedSkills(userPrompt string, validatedSkills []
 		CompiledPrompt:  compiled,
 		PromptHash:      hashStr,
 		ValidatedSkills: validatedSkills,
+		SkillContracts:  contractIDs(contracts),
 	}
+}
+
+func contractIDs(skills []CatalogSkill) []string {
+	ids := make([]string, 0, len(skills))
+	for _, skill := range skills {
+		ids = append(ids, skill.ID)
+	}
+	return ids
 }
 
 // CompileAgentPrompt compiles user request and optional Maestro skill ids into an
@@ -113,5 +138,11 @@ func CompileAgentPrompt(userPrompt string, requestedSkills []string, maestroClie
 		}
 	}
 
-	return CompileAgentPromptWithValidatedSkills(userPrompt, validatedSkills), nil
+	contracts := make([]CatalogSkill, 0, len(validatedSkills))
+	for _, id := range validatedSkills {
+		if skill, ok := maestroClient.CatalogSkill(id); ok {
+			contracts = append(contracts, skill)
+		}
+	}
+	return CompileAgentPromptWithContracts(userPrompt, validatedSkills, contracts), nil
 }

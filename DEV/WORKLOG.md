@@ -1,5 +1,13 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-07 — Ajuste do gate agregado
+
+- Corrigida a anotação obsoleta em `DEV/HANDOFF.md` que reportava falha de
+  `bun run verify`.
+- Reexecutado `node web/scripts/verify-report.mjs`: 10/10 gates PASS.
+- Reexecutados `go test ./... -count=1`, testes do runner, Vitest (61 arquivos,
+  311 testes), typecheck, lint de estilos, check de estilos e `git diff --check`.
+
 ## 2026-09-07 — Spacing, Padding & Surface Architecture Refactor (Maestro, Overview & Settings)
 
 ### Summary
@@ -2996,3 +3004,55 @@ build` PASS e Web reiniciado em HTTP 200.
 - `nexus web open/url` reutiliza o BootstrapURL persistido e reconstrói o
   fragmento para estados antigos.
 - Testes unitários Web/Go, typecheck, build e validação real com `curl` passaram.
+# 2026-09-07 — Composer destination permissions
+
+- Composer context gate foi separado em composição/finalização, materialização
+  Flow e execução Agent. Estados `MISSING`, `STALE`, `HYDRATING` e `FAILED`
+  continuam permitindo elaborar, finalizar e copiar o PromptArtifact.
+- Flow e Agent permanecem desabilitados até contexto durável `READY`, com motivo
+  acionável exibido junto às ações; contratos de WorkPlan/PromptArtifact não
+  foram alterados.
+- Verificação: typecheck, 40 testes focados de Work e lint/style/check-styles
+  passaram; build Web passou.
+## 2026-09-07 — Catálogo honesto e preparação de tarefa
+
+- O contrato Maestro ganhou catálogo operacional/biblioteca deduplicado por ID,
+  origem, disponibilidade, cópias e contrato integral da skill.
+- Adicionados endpoints autenticados para catálogo, prévia de sincronização e
+  aplicação confirmada apenas contra o script oficial com ID fresco.
+- A compilação de prompts agora inclui os contratos completos das skills; a
+  UI de Agentes passou a apresentar “Preparar tarefa” e as três etapas do
+  fluxo.
+- Verificação: `go test ./...`, typecheck, format check e testes Vitest focados
+  passaram; lint mantém apenas warning preexistente em `NexusWorkspaceApp`.
+# 2026-09-07 — Nexus 1.0 final acceptance audit
+
+- Auditoria fresca de branch/HEAD/remote/dirty worktree, DEV, arquitetura,
+  validações e planos OMX concluída.
+- Runner agora persiste `StrategyVariant` (`ALTERNATE_APPROACH`,
+  `REPLAN_DECOMPOSE`, `ESCALATE_n`) em cada remediação; `MissionRun` expõe
+  `NeedsHuman` estruturado com reason code, impacto, ações e identidade.
+- Ledger `DEV/NEXUS_1_FINAL_ACCEPTANCE.md` registra o estado same-SHA e mantém
+  `NO_GO` para provas ausentes (overnight, dogfooding, crash/provider autenticado
+  e Windows/macOS nativos).
+- Verificação: `go test ./...`, `go vet ./...`, runner/store race, typecheck,
+  testes Web focados, lint/style/check-styles, build/embed e `git diff --check`.
+## 2026-09-07 — Continuação: diálogo único de preparação
+
+- Criado `TaskPreparationDialog` compartilhado por Agentes, Terminal e
+  Composer, com Objetivo, Contexto, Skills/revisão e prévia integral do
+  envelope.
+- O diálogo consulta readiness, oferece preparar/atualizar contexto e mantém
+  criação de `AGENTS.md` como ação explícita; seleção fica limitada a três
+  skills.
+- Envios preparados carregam `project_id` e fingerprint; o backend rejeita
+  contexto ausente, stale ou pertencente a outro projeto.
+- Verificação: 61 arquivos Vitest / 311 testes, `go test ./...`, typecheck,
+  lint, format, stylelint, allowlist e `go vet` passaram.
+# 2026-09-07 — Ajuste do gate agregado
+
+- Corrigida a anotação obsoleta em `DEV/HANDOFF.md` que reportava falha de
+  `bun run verify`.
+- Reexecutado `node web/scripts/verify-report.mjs`: 10/10 gates PASS.
+- Reexecutados `go test ./... -count=1`, testes do runner, Vitest (61 arquivos,
+  311 testes), typecheck, lint de estilos, check de estilos e `git diff --check`.

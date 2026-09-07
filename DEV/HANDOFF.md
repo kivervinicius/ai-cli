@@ -617,3 +617,55 @@ Nota operacional: neste ambiente `HOME` pode apontar para um perfil do Codex.
 Para atualizar a instância usada pelo serviço, instalar explicitamente com
 `LOCAL_BIN=/home/desenvolvedor/.local/bin make install-local`; `make build`
 sozinho não substitui o executável global.
+# Atualização 2026-09-07 — Composer com destinos separados
+
+O Composer agora permanece utilizável quando o contexto está `MISSING`, `STALE`,
+`HYDRATING` ou `FAILED`: elaboração, finalização e Copy seguem disponíveis.
+Materialização Flow e envio ao Agent ficam explicitamente desabilitados até
+`Context Readiness = READY`, com a razão e a ação de preparação visíveis.
+
+Verificação: typecheck, testes focados de Work (40), lint/style/check-styles,
+build Web e `go test ./...` passaram após sincronizar o bundle embutido. O gate
+agregado `node web/scripts/verify-report.mjs` também passou (10/10 gates; o
+relatório está em `DEV/validation/FRONTEND_LATEST.md`).
+# Atualização 2026-09-07 — Catálogo honesto e preparação de tarefa
+
+Implementada a primeira fatia do fluxo: catálogo Maestro separado em
+operacional/biblioteca, deduplicação por ID com origem e disponibilidade,
+contratos completos de skills no prompt compilado, e endpoints autenticados de
+catálogo e sync com prévia/ID de confirmação e timeout.
+
+Agentes agora exibem “Preparar tarefa”, com Objetivo, Contexto e Skills/revisão;
+Agentes ativos reutilizam o runtime e Agentes parados continuam usando
+“Iniciar e enviar tarefa”.
+
+Verificação: `go test ./...`, typecheck, format check e Vitest focado passaram;
+lint sem erros, com um warning preexistente. Próximo passo: completar a
+integração do mesmo diálogo no Terminal/Composer e executar `make quality` mais
+validação visual/Axe nos cinco breakpoints.
+# Atualização 2026-09-07 — Finalization autopilot audit
+
+Auditoria RC fresca registrada em `DEV/NEXUS_1_FINAL_ACCEPTANCE.md`. O runner
+agora persiste mudança de estratégia por remediação e um contrato estruturado
+`NeedsHuman`; o novo `TestOvernightAcceptanceSandbox` cobre o fluxo unattended
+determinístico com falha injetada e DoD global. Gates locais Linux/Web/Go passam;
+Frontend está em 61 arquivos/311 testes, Go/race/vet/quality/security passam;
+o veredito permanece `NO_GO` por ausência de dogfooding real, crash/provider E2E
+autenticado, matriz same-SHA e execução nativa Windows/macOS.
+# Atualização 2026-09-07 — Diálogo único de preparação
+
+O fluxo “Preparar tarefa” agora usa `web/src/components/TaskPreparationDialog.tsx`
+nos Agentes, Terminal e Composer. Ele consulta contexto durável, exige estado
+`READY` para envio, permite preparar/atualizar contexto e deixa a criação de
+`AGENTS.md` explícita. Skills ficam limitadas a três e a prévia mostra o
+envelope completo sem diff, credenciais, `.env`, sessões ou transcrições.
+
+O endpoint de envio valida `project_id` e `context_fingerprint_id`; mudanças de
+branch/worktree/estado invalidam o envio. Verificação completa de testes Go/Web,
+typecheck, lint, estilos e vet passou. Próxima ação: `npm run build` e executar
+validação visual/Axe do diálogo nos breakpoints definidos no plano.
+
+Validação visual/Axe concluída: `node web/scripts/task-preparation-visual-verify.mjs`
+passou nos cinco breakpoints, sem overflow horizontal, sem violações Axe
+serious/critical e com foco de teclado na prévia rolável. Evidências estão em
+`.tempmediaStorage/task-preparation/`.

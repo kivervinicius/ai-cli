@@ -1,7 +1,9 @@
 package nexus
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -39,6 +41,174 @@ type MaestroSkillDesc struct {
 	Triggers    []string `json:"triggers,omitempty"`
 	Aliases     []string `json:"aliases,omitempty"`
 	Prompt      string   `json:"prompt,omitempty"`
+}
+
+// SkillSource identifies where a skill was discovered. It is deliberately
+// part of the API contract: discovery is not the same thing as installation.
+type SkillSource string
+
+const (
+	SkillSourceCanonical SkillSource = "canonical"
+	SkillSourceCommunity SkillSource = "community"
+	SkillSourceCodex     SkillSource = "codex"
+)
+
+type SkillAvailability string
+
+const (
+	SkillAvailable      SkillAvailability = "AVAILABLE"
+	SkillSynchronizable SkillAvailability = "SYNCHRONIZABLE"
+	SkillTaskOnly       SkillAvailability = "TASK_ONLY"
+)
+
+// CatalogSkill is the honest, UI-facing skill contract. Contract contains the
+// complete SKILL.md content when it is safe to apply it to one task.
+type CatalogSkill struct {
+	MaestroSkillDesc
+	Source       SkillSource       `json:"source"`
+	Availability SkillAvailability `json:"availability"`
+	Mode         string            `json:"activation_mode"`
+	Root         string            `json:"root,omitempty"`
+	Copies       int               `json:"copies"`
+	Contract     string            `json:"contract,omitempty"`
+}
+
+type SkillCatalog struct {
+	Operational []CatalogSkill `json:"operational"`
+	Library     []CatalogSkill `json:"library"`
+	Counts      struct {
+		Operational int `json:"operational"`
+		Library     int `json:"library"`
+		Copies      int `json:"copies"`
+	} `json:"counts"`
+}
+
+type SkillSyncPreview struct {
+	ID      string   `json:"id"`
+	DryRun  bool     `json:"dry_run"`
+	Tool    string   `json:"tool"`
+	Roots   []string `json:"roots"`
+	Skills  []string `json:"skills"`
+	Command string   `json:"command"`
+	Output  string   `json:"output,omitempty"`
+}
+
+const maxSkillSyncOutput = 1 << 20
+
+type boundedOutput struct {
+	buf bytes.Buffer
+	max int
+}
+
+func (b *boundedOutput) Write(p []byte) (int, error) {
+	if len(p) > b.max-b.buf.Len() {
+		return 0, fmt.Errorf("sync output exceeds %d bytes", b.max)
+	}
+	return b.buf.Write(p)
+}
+
+func (c *MaestroClient) ApplySyncPreview(ctx context.Context, preview SkillSyncPreview) (*SkillSyncPreview, error) {
+	current, err := c.SyncPreview()
+	if err != nil {
+		return nil, err
+	}
+	if preview.ID == "" || preview.ID != current.ID || filepath.Clean(preview.Tool) != filepath.Clean(current.Tool) {
+		return nil, fmt.Errorf("sync preview is stale or not an official script")
+	}
+	if filepath.Base(current.Tool) != "sync-skills.sh" {
+		return nil, fmt.Errorf("sync tool is not executable on this platform")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "bash", current.Tool, "--apply")
+	var output boundedOutput
+	output.max = maxSkillSyncOutput
+	cmd.Stdout = &output
+	err = cmd.Run()
+	result := *current
+	result.DryRun = false
+	result.Output = output.buf.String()
+	if err != nil {
+		return nil, fmt.Errorf("official skill sync failed: %w", err)
+	}
+	return &result, nil
+}
+
+func (c *MaestroClient) SyncPreview() (*SkillSyncPreview, error) {
+	dirs := findOrquestradorDirs()
+	if len(dirs) == 0 {
+		return nil, fmt.Errorf("maestro library root not found")
+	}
+	root := filepath.Clean(dirs[0])
+	for _, candidate := range []string{filepath.Join(root, "sync-skills.sh"), filepath.Join(root, "sync-skills.ps1")} {
+		info, err := os.Stat(candidate)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		base := filepath.Base(candidate)
+		if base != "sync-skills.sh" && base != "sync-skills.ps1" {
+			continue
+		}
+		catalog := c.Catalog()
+		skills := make([]string, 0, len(catalog.Library))
+		for _, skill := range catalog.Library {
+			if skill.Availability == SkillSynchronizable {
+				skills = append(skills, skill.ID)
+			}
+		}
+		preview := &SkillSyncPreview{ID: fmt.Sprintf("%x", sha256.Sum256([]byte(candidate+strings.Join(skills, "\n")))), DryRun: true, Tool: candidate, Roots: dirs, Skills: skills, Command: base + " --dry-run"}
+		if base == "sync-skills.sh" {
+			var output boundedOutput
+			output.max = maxSkillSyncOutput
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			cmd := exec.CommandContext(ctx, "bash", candidate, "--dry-run")
+			cmd.Stdout = &output
+			err = cmd.Run()
+			cancel()
+			if err != nil {
+				return nil, fmt.Errorf("official skill sync dry-run failed: %w", err)
+			}
+			preview.Output = output.buf.String()
+		}
+		return preview, nil
+	}
+	return nil, fmt.Errorf("official sync-skills script not found")
+}
+
+// MergeSkillCatalog deduplicates skills by stable ID while retaining the
+// strongest usable source and the number of discovered copies.
+func MergeSkillCatalog(groups ...[]CatalogSkill) SkillCatalog {
+	merged := make(map[string]CatalogSkill)
+	copies := make(map[string]int)
+	priority := map[SkillAvailability]int{SkillAvailable: 3, SkillSynchronizable: 2, SkillTaskOnly: 1}
+	for _, group := range groups {
+		for _, skill := range group {
+			id := strings.TrimSpace(skill.ID)
+			if id == "" {
+				continue
+			}
+			copies[id]++
+			if old, ok := merged[id]; !ok || priority[skill.Availability] > priority[old.Availability] {
+				merged[id] = skill
+			}
+		}
+	}
+	result := SkillCatalog{Operational: []CatalogSkill{}, Library: []CatalogSkill{}}
+	for id, skill := range merged {
+		skill.Copies = copies[id]
+		result.Library = append(result.Library, skill)
+		if skill.Availability == SkillAvailable {
+			result.Operational = append(result.Operational, skill)
+		}
+	}
+	sort.Slice(result.Library, func(i, j int) bool { return result.Library[i].ID < result.Library[j].ID })
+	sort.Slice(result.Operational, func(i, j int) bool { return result.Operational[i].ID < result.Operational[j].ID })
+	result.Counts.Operational = len(result.Operational)
+	result.Counts.Library = len(result.Library)
+	for _, skill := range result.Library {
+		result.Counts.Copies += skill.Copies
+	}
+	return result
 }
 
 // MaestroCapability describes what the Maestro instance supports.
@@ -421,6 +591,44 @@ func (c *MaestroClient) queryCapabilities() (*MaestroCapability, error) {
 // Status returns the current Maestro integration status.
 func (c *MaestroClient) Status() MaestroStatus {
 	return c.status
+}
+
+// Catalog returns the merged operational catalog plus the local Maestro
+// library. No network lookup or installation is performed here.
+func (c *MaestroClient) Catalog() SkillCatalog {
+	groups := make([][]CatalogSkill, 0)
+	for i, dir := range findOrquestradorDirs() {
+		cap, err := c.queryCapabilitiesFromDir(dir)
+		if err != nil || cap == nil {
+			continue
+		}
+		source := SkillSourceCommunity
+		if i == 0 {
+			source = SkillSourceCanonical
+		}
+		availability := SkillSynchronizable
+		if source == SkillSourceCanonical {
+			availability = SkillAvailable
+		}
+		items := make([]CatalogSkill, 0, len(cap.Skills))
+		for _, skill := range cap.Skills {
+			items = append(items, CatalogSkill{MaestroSkillDesc: skill, Source: source, Availability: availability, Mode: "task", Root: dir, Contract: skill.Prompt})
+		}
+		groups = append(groups, items)
+	}
+	return MergeSkillCatalog(groups...)
+}
+
+// CatalogSkill returns a validated skill contract by ID, including skills
+// that can only be attached to this task and are not globally installed.
+func (c *MaestroClient) CatalogSkill(id string) (CatalogSkill, bool) {
+	catalog := c.Catalog()
+	for _, skill := range catalog.Library {
+		if skill.ID == strings.TrimSpace(id) {
+			return skill, true
+		}
+	}
+	return CatalogSkill{}, false
 }
 
 // ListSkills returns all available Maestro skill names.

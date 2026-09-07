@@ -1,5 +1,33 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-07 — Preparar tarefa
+
+- PASS — `npm run verify` (10/10 gates), `npm run build` e 311 testes Vitest.
+- PASS — `go test ./...`, `go vet` afetado, typecheck, lint, format, stylelint,
+  allowlist e `git diff --check`.
+- PASS — validação visual/Axe específica do novo diálogo nos cinco breakpoints
+  registrada na seção seguinte.
+
+## 2026-09-07 — Visual/Axe do diálogo de preparação
+
+- PASS — `node web/scripts/task-preparation-visual-verify.mjs`.
+- PASS — screenshots em 320×568, 390×844, 768×1024, 1024×768 e 1440×900.
+- PASS — ausência de overflow horizontal, navegação por teclado e Axe sem
+  violações `serious`/`critical`.
+
+## 2026-09-07 — Composer permissões por destino
+
+- `cd web && bun run typecheck` — PASS.
+- `cd web && bun run test -- --run src/features/work` — PASS (10 arquivos,
+  40 testes), incluindo Composer `MISSING` editável e destinos bloqueados.
+- `cd web && bun run lint && bun run lint:styles && bun run check:styles` — PASS
+  (apenas warning preexistente de dependência de hook em `NexusWorkspaceApp`).
+- `cd web && bun run build` — PASS.
+- `node web/scripts/build.mjs` sincronizou `web/dist` com o bundle embutido;
+  `go test ./...` — PASS.
+- `go test ./internal/nexus/runner -run 'Test(OvernightAcceptanceSandbox|RemediationPersistsStrategyChangeBeforeRetry|NeedsHumanContractIsStructuredAndDurable)'` — PASS; sandbox determinístico cobre plano paralelo, receipt de dependência, falha injetada, remediação e DoD global.
+- `make quality` — PASS; frontend 61 arquivos/311 testes e `golangci-lint` sem issues após corrigir a mensagem de erro capitalizada em `internal/nexus/maestro.go`.
+
 ## 2026-09-07 — Correção do bootstrap de autenticação Web
 
 - `nexus web` + `curl` em processo real — PASS: fragmento de bootstrap trocado
@@ -671,6 +699,9 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
   no Makefile.
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-07T17:56:30Z
+## Frontend gate — 2026-09-07T20:07:37Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
+
+O relatório foi regenerado após a correção do handoff: `node web/scripts/verify-report.mjs`
+concluiu 10/10 gates no SHA candidato local.

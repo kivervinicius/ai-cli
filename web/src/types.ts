@@ -339,6 +339,38 @@ export interface ContextReadiness {
   updated_at?: string;
 }
 
+export interface CatalogSkill {
+  id: string;
+  name?: string;
+  description?: string;
+  category?: string;
+  risk?: string;
+  triggers?: string[];
+  aliases?: string[];
+  prompt?: string;
+  source: string;
+  availability: string;
+  activation_mode?: string;
+  copies: number;
+  contract?: string;
+}
+
+export interface MaestroCatalog {
+  operational: CatalogSkill[];
+  library: CatalogSkill[];
+  counts: { operational: number; library: number; copies: number };
+}
+
+export interface SkillSyncPreview {
+  id: string;
+  dry_run: boolean;
+  tool: string;
+  roots: string[];
+  skills: string[];
+  command: string;
+  output?: string;
+}
+
 export interface WorkPackage {
   id: string;
   title: string;
