@@ -745,20 +745,6 @@ const TerminalsHost: React.FC<{
               onReset={workspace.reset}
             />
           )}
-          <button
-            type="button"
-            className="nx-presentation-zen-btn"
-            data-active={presentation.state.zenMode ? 'true' : 'false'}
-            onClick={() => presentation.toggleZenMode()}
-            title={
-              presentation.state.zenMode ? t('workspace.exitFocusMode') : t('workspace.focusMode')
-            }
-          >
-            {presentation.state.zenMode ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
-            <span>
-              {presentation.state.zenMode ? t('workspace.exitFocus') : t('workspace.focusMode')}
-            </span>
-          </button>
         </div>
       </header>
       <div className="nx-terminals-host__body">
