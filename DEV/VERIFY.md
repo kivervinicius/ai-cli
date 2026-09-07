@@ -1,5 +1,20 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-07 — Deep review fixes (commit 059bb5c)
+
+- `go test -count=1 ./...` — PASS (all packages)
+- `go vet ./...` — PASS
+- `cd web && bun run typecheck` — PASS
+- `cd web && bun run lint` — PASS (1 pre-existing warning)
+- `cd web && bun run lint:styles` — PASS
+- `cd web && bun run check:styles` — PASS
+- `cd web && bun run test -- --run` — PASS (62 files, 313 tests)
+- `make quality` — PASS
+- `make security` — PASS (no vulnerabilities)
+- `make build` — PASS (nexus v0.5.0-beta.23)
+- `git diff --check` — PASS
+- Commit: `059bb5c` (29 files, +1062/-271)
+
 ## 2026-09-07 — Preparar tarefa
 
 - PASS — `npm run verify` (10/10 gates), `npm run build` e 311 testes Vitest.

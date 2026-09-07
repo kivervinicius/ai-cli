@@ -1,5 +1,27 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-07 — Deep review fixes + commit (059bb5c)
+
+### Contexto
+Deep review identificou 3 HIGH, 5 MEDIUM, 5 LOW. Execução via autopilot com
+dois workers paralelos (backend/frontend).
+
+### Alterações
+- **Backend**: cache de catálogo com TTL 30s, allowlist de diretório para shell
+  exec, captura de stderr, hash com mtime, teste de timestamp reforçado.
+- **Frontend**: migração de ~20 inline styles para SCSS Module em ComposerSurface.
+  Outros findings (H3, M1, M2, M4, L1) já estavam resolvidos.
+
+### Verificação
+- `go test ./...` PASS, `go vet ./...` PASS
+- `bun run typecheck` PASS, `bun run lint` PASS, `bun run lint:styles` PASS
+- `bun run check:styles` PASS, `bun run test` 313/313 PASS
+- `make quality` PASS, `make security` PASS, `make build` PASS
+- Commit: `059bb5c` (29 arquivos, +1062/-271)
+
+### Próximo
+Push → CI same-SHA → release candidate.
+
 ## 2026-09-07 — Ajuste do gate agregado
 
 - Corrigida a anotação obsoleta em `DEV/HANDOFF.md` que reportava falha de

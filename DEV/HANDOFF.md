@@ -1,5 +1,31 @@
 # Handoff
 
+## Atualização 2026-09-07 — Deep review fixes + commit
+
+### Alterações desta sessão
+Commit `059bb5c`: fix(web,go): close review findings and migrate inline styles to SCSS Modules.
+
+**Backend (Go):**
+- `internal/nexus/maestro.go`: catálogo com cache TTL 30s, allowlist de diretório para execução de shell, captura de stderr, hash de preview incluindo mtime.
+- `internal/nexus/runner/runner_test.go`: asserção de timestamp reforçada.
+
+**Frontend (React/TypeScript):**
+- `web/src/features/work/ComposerSurface.tsx` + `.module.scss`: ~20 inline styles migrados para SCSS Module.
+- Outros findings do review (H3, M1, M2, M4, L1) já estavam resolvidos no codebase.
+
+### Validação
+- `go test ./...` PASS, `go vet ./...` PASS
+- `bun run typecheck` PASS, `bun run lint` PASS (1 warning preexistente)
+- `bun run lint:styles` PASS, `bun run check:styles` PASS
+- `bun run test` 62/62 arquivos, 313/313 testes PASS
+- `make quality` PASS, `make security` PASS, `make build` PASS (v0.5.0-beta.23)
+
+### Próximo passo
+CI same-SHA: fazer push do commit `059bb5c` e aguardar resultados do GitHub Actions.
+Se CI green → preparar release candidate com changelog e branch protection.
+
+---
+
 ## Atualização 2026-09-07 — Auth inválida ao abrir `nexus web`
 
 A causa era o comando abrir apenas a URL base depois que o token deixou de ser
