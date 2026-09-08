@@ -6,6 +6,17 @@ import (
 	"testing"
 )
 
+func TestAGYSecretServiceIsOptIn(t *testing.T) {
+	t.Setenv("NEXUS_AGY_ENABLE_SECRET_SERVICE", "")
+	if agySecretServiceEnabled() {
+		t.Fatal("Secret Service must be disabled by default to avoid recurring GNOME prompts")
+	}
+	t.Setenv("NEXUS_AGY_ENABLE_SECRET_SERVICE", "1")
+	if !agySecretServiceEnabled() {
+		t.Fatal("Secret Service opt-in was not honored")
+	}
+}
+
 func TestLinkSharedAgyItemsDoesNotOverwriteProfileSettings(t *testing.T) {
 	host := t.TempDir()
 	profile := t.TempDir()

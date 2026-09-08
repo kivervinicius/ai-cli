@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -35,5 +36,34 @@ func TestCredentialCapabilityIsTruthfulOnUnsupportedPlatforms(t *testing.T) {
 	}
 	if (runtime.GOOS == "windows" || runtime.GOOS == "darwin") && capability.Status == CredentialSupported {
 		t.Fatalf("unsupported native integration must not claim support: %+v", capability)
+	}
+}
+
+func TestDisableSessionSecretServiceFailsClosedWithoutLeakingHostBus(t *testing.T) {
+	env := DisableSessionSecretService([]string{
+		"PATH=/usr/bin",
+		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus",
+		"AI_HOST_DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus",
+		"GNOME_KEYRING_CONTROL=/run/user/1000/keyring",
+		"GNOME_KEYRING_PID=1234",
+	})
+
+	values := make(map[string]string)
+	for _, entry := range env {
+		key, value, ok := strings.Cut(entry, "=")
+		if ok {
+			values[key] = value
+		}
+	}
+	if got := values["DBUS_SESSION_BUS_ADDRESS"]; got != "unix:path=/dev/null" {
+		t.Fatalf("session bus must fail closed, got %q", got)
+	}
+	for _, key := range []string{"AI_HOST_DBUS_SESSION_BUS_ADDRESS", "GNOME_KEYRING_CONTROL", "GNOME_KEYRING_PID"} {
+		if _, ok := values[key]; ok {
+			t.Errorf("sensitive desktop credential route %s must be removed", key)
+		}
+	}
+	if got := values["PATH"]; got != "/usr/bin" {
+		t.Fatalf("unrelated environment changed: PATH=%q", got)
 	}
 }

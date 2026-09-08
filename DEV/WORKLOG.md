@@ -3147,3 +3147,17 @@ build` PASS e Web reiniciado em HTTP 200.
 - Reexecutado `node web/scripts/verify-report.mjs`: 10/10 gates PASS.
 - Reexecutados `go test ./... -count=1`, testes do runner, Vitest (61 arquivos,
   311 testes), typecheck, lint de estilos, check de estilos e `git diff --check`.
+## 2026-09-08 — AGY sem prompts recorrentes do GNOME Keyring
+
+- **Causa**: cada execução podia iniciar um `gnome-keyring-daemon` privado e,
+  quando o chaveiro estava bloqueado, o desktop ativava o
+  `org.gnome.keyring.SystemPrompter`. O probe de quota também podia permitir
+  autolaunch do barramento da sessão ao apenas remover `DBUS_SESSION_BUS_ADDRESS`.
+- **Correção**: Secret Service do AGY passou a ser opt-in explícito via
+  `NEXUS_AGY_ENABLE_SECRET_SERVICE=1`; o fluxo padrão usa a sessão OAuth em
+  arquivos do perfil e não inicia daemon/keyring. Probes não interativos agora
+  usam endereço D-Bus deliberadamente inalcançável (`/dev/null`) e removem a
+  rota do barramento do host, evitando prompts e vazamento de credenciais.
+- **Verificação**: `go test ./internal/runtime ./internal/core/provider/adapters/agy ./internal/control/driver`,
+  `go test -race ./internal/runtime ./internal/core/provider/adapters/agy` e
+  `git diff --check` passaram.

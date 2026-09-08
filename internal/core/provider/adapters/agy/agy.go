@@ -25,6 +25,15 @@ var emailRegex = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z
 
 type Adapter struct{}
 
+// agySecretServiceEnabled controls the optional Linux Secret Service bridge.
+// AGY's file-backed OAuth session is the non-interactive default: starting a
+// fresh private gnome-keyring for every launch can trigger GNOME's
+// SystemPrompter when the keyring is locked. Users who explicitly need a
+// Secret Service credential can opt in with NEXUS_AGY_ENABLE_SECRET_SERVICE=1.
+func agySecretServiceEnabled() bool {
+	return os.Getenv("NEXUS_AGY_ENABLE_SECRET_SERVICE") == "1"
+}
+
 func New() *Adapter {
 	return &Adapter{}
 }
@@ -130,7 +139,10 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 
 	env := runtime.EnvSet(os.Environ(), envOverrides, "DBUS_SESSION_BUS_ADDRESS", "GNOME_KEYRING_CONTROL", "GNOME_KEYRING_PID")
 
-	wrappedBin, wrappedArgs := runtime.WrapWithIsolatedSecretService(bin, args)
+	wrappedBin, wrappedArgs := bin, args
+	if agySecretServiceEnabled() {
+		wrappedBin, wrappedArgs = runtime.WrapWithIsolatedSecretService(bin, args)
+	}
 	return runtime.RunInteractive(wrappedBin, wrappedArgs, env, cwd)
 }
 
@@ -599,23 +611,22 @@ func (a *Adapter) fetchLiveQuota(ctx context.Context, p model.Profile) (model.Us
 		return model.UsageSnapshot{}, false
 	}
 	envOverrides := map[string]string{
-		"HOME":                             home,
-		"XDG_CONFIG_HOME":                  filepath.Join(home, ".config"),
-		"XDG_CACHE_HOME":                   filepath.Join(home, ".cache"),
-		"XDG_DATA_HOME":                    filepath.Join(home, ".local", "share"),
-		"XDG_STATE_HOME":                   filepath.Join(home, ".local", "state"),
-		"PATH":                             runtime.EnhancedPATH(internalBin, filepath.Dir(bin)),
-		"BROWSER":                          filepath.Join(internalBin, "ai-browser"),
-		"AI_HOST_DBUS_SESSION_BUS_ADDRESS": os.Getenv("DBUS_SESSION_BUS_ADDRESS"),
-		"PYTHON_KEYRING_BACKEND":           "keyring.backends.null.Keyring",
+		"HOME":                   home,
+		"XDG_CONFIG_HOME":        filepath.Join(home, ".config"),
+		"XDG_CACHE_HOME":         filepath.Join(home, ".cache"),
+		"XDG_DATA_HOME":          filepath.Join(home, ".local", "share"),
+		"XDG_STATE_HOME":         filepath.Join(home, ".local", "state"),
+		"PATH":                   runtime.EnhancedPATH(internalBin, filepath.Dir(bin)),
+		"BROWSER":                filepath.Join(internalBin, "ai-browser"),
+		"PYTHON_KEYRING_BACKEND": "keyring.backends.null.Keyring",
 	}
-	env := runtime.EnvSet(os.Environ(), envOverrides, "DBUS_SESSION_BUS_ADDRESS", "GNOME_KEYRING_CONTROL", "GNOME_KEYRING_PID")
+	env := runtime.DisableSessionSecretService(runtime.EnvSet(os.Environ(), envOverrides))
 	args := []string{"--output-format", "text", "--print-timeout", "12s", "--print=/quota"}
 	// Quota probes are deliberately non-interactive and must never initialize
-	// Secret Service. AGY's interactive/login path still uses the isolated
-	// keyring in Run above, but a background quota refresh must not prompt for
-	// a password or create a new keyring daemon. With the session bus and
-	// keyring variables removed from env, AGY can use its profile token/file
+	// Secret Service. The interactive/login path may use the isolated keyring
+	// only when explicitly enabled, but a background quota refresh must not
+	// prompt for a password or create a new keyring daemon. With the session bus
+	// forced to an unreachable address, AGY can use its profile token/file
 	// storage; if that is unavailable the probe fails closed and the caller
 	// exposes UNKNOWN/last-known data instead of blocking the user.
 

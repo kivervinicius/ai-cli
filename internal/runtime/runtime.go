@@ -185,6 +185,19 @@ func EnvSet(base []string, overrides map[string]string, unset ...string) []strin
 	return out
 }
 
+// DisableSessionSecretService prevents non-interactive provider probes from
+// reaching (or autolaunching) the user's desktop Secret Service. Merely
+// removing DBUS_SESSION_BUS_ADDRESS is insufficient: D-Bus clients may then
+// discover and connect to the user's session bus via autolaunch.
+func DisableSessionSecretService(env []string) []string {
+	return EnvSet(env, map[string]string{
+		// A present, deliberately unreachable address disables D-Bus autolaunch.
+		// /dev/null cannot become a Unix socket, so this fails closed on Unix;
+		// providers on other platforms simply ignore the variable.
+		"DBUS_SESSION_BUS_ADDRESS": "unix:path=/dev/null",
+	}, "AI_HOST_DBUS_SESSION_BUS_ADDRESS", "GNOME_KEYRING_CONTROL", "GNOME_KEYRING_PID")
+}
+
 // RunInteractive executes an external CLI in full interactive TTY passthrough mode.
 func RunInteractive(bin string, args []string, env []string, cwd string) (model.Failure, error) {
 	resolved, err := ResolveCommand(bin)

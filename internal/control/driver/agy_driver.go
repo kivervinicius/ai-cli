@@ -142,7 +142,13 @@ func (d *AGYDriver) BuildCommand(ctx context.Context, p model.Profile, extraArgs
 		"PATH":                             runtime.EnhancedPATH(filepath.Dir(bin)),
 	}, "DBUS_SESSION_BUS_ADDRESS", "GNOME_KEYRING_CONTROL", "GNOME_KEYRING_PID")
 
-	wrappedBin, wrappedArgs := runtime.WrapWithIsolatedSecretService(bin, extraArgs)
+	wrappedBin, wrappedArgs := bin, extraArgs
+	// Keep supervised AGY launches prompt-free by default. The isolated
+	// Secret Service is available as an explicit opt-in for profiles that
+	// genuinely require keyring-backed credentials.
+	if os.Getenv("NEXUS_AGY_ENABLE_SECRET_SERVICE") == "1" {
+		wrappedBin, wrappedArgs = runtime.WrapWithIsolatedSecretService(bin, extraArgs)
+	}
 	return wrappedBin, wrappedArgs, env, nil
 }
 

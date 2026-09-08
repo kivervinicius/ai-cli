@@ -751,3 +751,10 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
 ## Frontend gate — 2026-09-07T21:24:48Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
+## AGY — GNOME Keyring prompt-free (2026-09-08)
+
+- Execução interativa padrão não envolve `dbus-run-session`/`gnome-keyring-daemon`.
+- Secret Service permanece disponível somente com `NEXUS_AGY_ENABLE_SECRET_SERVICE=1`.
+- Probe de quota falha fechado para o D-Bus do desktop (`unix:path=/dev/null`) e
+  não exporta `AI_HOST_DBUS_SESSION_BUS_ADDRESS` nem variáveis do keyring.
+- Testes focados e race do runtime/adaptador passaram.
