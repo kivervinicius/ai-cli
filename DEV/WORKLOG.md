@@ -3091,6 +3091,10 @@ build` PASS e Web reiniciado em HTTP 200.
   `ComposerSurface.tsx`; `bunx prettier --write` corrigiu e a checagem passou.
 - Os artefatos de diagnóstico foram listados pela API, mas o download retornou
   HTTP 401; não é possível atribuir causa aos agregadores sem logs.
+- Instrumentação adicionada ao workflow: Browser publica logs separados por
+  suíte e Desktop macOS publica o log completo do build, ambos com o SHA do
+  run. A próxima execução deve revelar o primeiro erro real em vez de apenas o
+  agregado.
 # 2026-09-07 — Composer destination permissions
 
 - Composer context gate foi separado em composição/finalização, materialização

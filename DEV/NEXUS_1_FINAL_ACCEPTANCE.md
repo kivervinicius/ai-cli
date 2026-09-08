@@ -129,6 +129,15 @@ candidate SHA before accepting the run; mismatches are ignored and retried.
   CI passa no checkout atual. O workflow também passou a imprimir explicitamente
   os outcomes individuais dos diagnósticos Windows/macOS antes do agregado.
 
+## CI instrumentation pending next run
+
+- O Browser job agora grava logs separados para `test:e2e`, `test:a11y` e
+  `test:visual`, publica `browser-diagnostics-${{ github.sha }}` e só então falha
+  no agregado se o passo de verificação tiver outcome `failure`.
+- O build Desktop macOS agora publica `desktop-macos-build-diagnostics-${{ github.sha }}`
+  mesmo em falha. A próxima execução é necessária para identificar a causa
+  nativa, pois logs históricos exigem permissão de administração.
+
 ## Exact blockers and reproduction
 
 1. Run the authenticated provider-backed overnight scenario and save mission

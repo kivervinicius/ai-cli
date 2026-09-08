@@ -119,11 +119,26 @@ jobs:
         run: go build -o nexus ./cmd/nexus
 
       - name: Run browser verification
+        id: browser-verification
+        continue-on-error: true
         working-directory: web
         run: |
-          bun run test:e2e
-          bun run test:a11y
-          bun run test:visual
+          set -o pipefail
+          bun run test:e2e 2>&1 | tee "$RUNNER_TEMP/nexus-browser-e2e.log"
+          bun run test:a11y 2>&1 | tee "$RUNNER_TEMP/nexus-browser-a11y.log"
+          bun run test:visual 2>&1 | tee "$RUNNER_TEMP/nexus-browser-visual.log"
+
+      - name: Upload browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-diagnostics-${{ github.sha }}
+          path: ${{ runner.temp }}/nexus-browser-*.log
+          if-no-files-found: ignore
+
+      - name: Assert browser verification
+        if: always()
+        run: test '${{ steps.browser-verification.outcome }}' = success
 
   test-linux:
     name: Linux E2E (Go ${{ matrix.go }})
@@ -474,8 +489,11 @@ jobs:
         run: bun run build
 
       - name: Build macOS desktop with Wails
+        id: macos-desktop-build
+        continue-on-error: true
         run: |
           set -euo pipefail
+          exec > >(tee "$RUNNER_TEMP/nexus-desktop-macos-build.log") 2>&1
           cd cmd/nexus-desktop
           go run github.com/wailsapp/wails/v2/cmd/wails@v2.15.0 build -clean -s -m -tags production
           apps=()
@@ -496,6 +514,18 @@ jobs:
           }
           /usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Contents/Info.plist" | grep -Fx 'IAPro Nexus'
           printf 'Validated macOS bundle: %s\n' "$app"
+
+      - name: Upload macOS desktop build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-build-diagnostics-${{ github.sha }}
+          path: ${{ runner.temp }}/nexus-desktop-macos-build.log
+          if-no-files-found: ignore
+
+      - name: Assert macOS desktop build
+        if: always()
+        run: test '${{ steps.macos-desktop-build.outcome }}' = success
 
       - name: Package macOS desktop artifact
         run: |
