@@ -1,5 +1,26 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-08 — Project Shell IPC timeout
+
+- PASS — teste de fallback do ShellDriver com `SHELL` inválido.
+- PASS — `go test ./internal/control/driver ./internal/control/web ./internal/nexus`.
+- Causa confirmada nos logs: `/usr/bin/zsh` não pôde ser executado pelo
+  SessionHost e o handler anterior convertia o erro em `409`.
+- PENDENTE — smoke real após reiniciar o processo `nexus web`; o processo atual
+  foi iniciado antes da recompilação.
+
+## 2026-09-08 — Rail inteligente e gestão de projetos
+
+- PASS — `cd web && bun run typecheck`.
+- PASS — `cd web && bun run lint:styles` e `bun run check:styles`.
+- PASS — `cd web && bun run test`: 62 arquivos / 313 testes.
+- PASS — `cd web && bun run build`.
+- PASS — `make quality` (inclui lint Go, testes Go e gates frontend); ESLint
+  manteve somente o warning preexistente de hook em `NexusWorkspaceApp.tsx`.
+- PENDENTE — screenshot/browser visual específico do rail nos cinco breakpoints;
+  a implementação foi revisada estaticamente, mas nenhum harness autenticado foi
+  executado nesta sessão.
+
 ## 2026-09-07 — Deep review fixes (commit 059bb5c)
 
 - `go test -count=1 ./...` — PASS (all packages)
@@ -751,6 +772,33 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
 ## Frontend gate — 2026-09-07T21:24:48Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
+
+## Premium shell visual pass — 2026-09-08
+
+- `npm run format:check` — PASS.
+- `npm run lint` — PASS com 0 erros; permanece somente o warning preexistente
+  de dependência do `useEffect` em `NexusWorkspaceApp.tsx:228`.
+- `npm run lint:styles` e `npm run check:styles` — PASS.
+- `npm run typecheck` — PASS.
+- `npm run test -- --run` — PASS: 62 arquivos, 313 testes.
+- `npm run build` — PASS.
+- `make quality` — PASS.
+- `git diff --check` — PASS.
+- Escopo visual: `NexusShell`, `ProjectRail` e `WorkspaceTaskbar`, com tokens,
+  foco visível, reduced motion e responsividade preservados. Screenshot/Axe
+  autenticado não foi repetido nesta execução por ausência de sessão de browser.
+- A tentativa do runner visual local compilou o bundle, mas ficou bloqueada no
+  bootstrap porque `maestro-visual-verify.mjs` procura `Bootstrap: ...?token=...`
+  e `nexus web --port 0 --listen 127.0.0.1 --no-open` atualmente imprime apenas
+  `URL: http://127.0.0.1:<porta>`.
+
+## Codex quota identity correction — 2026-09-08
+
+- Teste regressivo adicionado para garantir que o `QuotaView` de Codex exiba
+  `Codex`, mesmo quando a chave técnica do pool é `claude_gpt`.
+- `go test ./internal/core/quota ./internal/tui ./internal/app` — PASS.
+- `LOCAL_BIN=/home/desenvolvedor/.local/bin make install-local` — PASS; binário
+  local reinstalado com frontend e contrato de quota corrigidos.
 ## AGY — GNOME Keyring prompt-free (2026-09-08)
 
 - Execução interativa padrão não envolve `dbus-run-session`/`gnome-keyring-daemon`.

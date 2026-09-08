@@ -77,6 +77,13 @@ func BuildQuotaView(snap model.UsageSnapshot, account, plan string) QuotaView {
 	// Build ModelGroups in stable order.
 	for _, gKey := range groupKeys {
 		displayName := GroupDisplayName(gKey)
+		// Codex exposes a single GPT capacity pool, but the internal pool key
+		// is shared with AGY's Claude/GPT pool. Never leak that shared AGY label
+		// into Codex account surfaces: the provider identity is the truthful
+		// subject of this quota view.
+		if snap.ProviderID == "codex" {
+			displayName = "Codex"
+		}
 		// When there's only one group with key "" and no other groups,
 		// use the provider-specific model name as group display.
 		if !multiGroup && gKey == "" && snap.ModelName != "" {

@@ -11,16 +11,26 @@ import {
   TerminalSquare,
   Workflow,
   X,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import {
+  Button,
   IconButton,
   ContextMenu,
+  Dialog,
+  ConfirmDialog,
+  Input,
+  InlineAlert,
   contextMenuFromEvent,
   type ContextMenuPoint,
 } from '../../design-system';
 import { AddProjectModal } from './AddProjectModal';
 import type { Agent, Project } from '../../types';
 import { useTranslation } from 'react-i18next';
+import { nexus, NexusAPIError } from '../../nexus/api';
+import styles from './ProjectRail.module.scss';
+import { toast } from 'sonner';
 
 export const ProjectRail: React.FC<{
   projects: Project[];
@@ -29,6 +39,8 @@ export const ProjectRail: React.FC<{
   onClose: () => void;
   onSelect: (project: Project) => void;
   onCreated: (project: Project) => void;
+  onProjectUpdated?: (project: Project) => void;
+  onProjectDeleted?: (project: Project) => void;
   onOpenGlobal: (
     kind:
       | 'projects'
@@ -54,6 +66,8 @@ export const ProjectRail: React.FC<{
   onClose,
   onSelect,
   onCreated,
+  onProjectUpdated,
+  onProjectDeleted,
   onOpenGlobal,
   agents = [],
   onOpenAgent,
@@ -63,6 +77,12 @@ export const ProjectRail: React.FC<{
 }) => {
   const { t } = useTranslation();
   const [addOpen, setAddOpen] = useState(false);
+  const [renameProject, setRenameProject] = useState<Project | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [deleteProject, setDeleteProject] = useState<Project | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [railMenu, setRailMenu] = useState<
     | { kind: 'project'; project: Project; point: ContextMenuPoint }
     | { kind: 'agent'; agent: Agent; point: ContextMenuPoint }
@@ -146,19 +166,64 @@ export const ProjectRail: React.FC<{
   const optionalTools = [
     { id: 'overview', label: t('nav.overview'), icon: Home },
     { id: 'terminals', label: t('nav.terminals'), icon: TerminalSquare },
-    { id: 'maestro', label: 'Maestro', icon: Sparkles },
-    { id: 'work', label: 'Composer', icon: Layers },
-    { id: 'missions', label: 'Flow Runs', icon: Workflow },
+    { id: 'maestro', label: t('nav.maestro'), icon: Sparkles },
+    { id: 'work', label: t('nav.work'), icon: Layers },
+    { id: 'missions', label: t('nav.missions'), icon: Workflow },
     { id: 'resources', label: t('nav.resources'), icon: Gauge },
     { id: 'sessions', label: t('nav.sessions'), icon: History },
     { id: 'projects', label: t('projectManager.desktopsTitle'), icon: LayoutGrid },
     { id: 'settings', label: t('nav.settings'), icon: Settings },
   ] as const;
 
+  const openRename = (project: Project) => {
+    setRenameProject(project);
+    setRenameValue(project.name || '');
+    setRenameError(null);
+  };
+
+  const saveRename = async () => {
+    if (!renameProject) return;
+    const name = renameValue.trim();
+    if (!name) {
+      setRenameError(t('rail.renameRequired'));
+      return;
+    }
+    setRenameBusy(true);
+    setRenameError(null);
+    try {
+      const updated = await nexus.updateProject(renameProject.id, { name });
+      onProjectUpdated?.(updated);
+      setRenameProject(null);
+    } catch (error) {
+      setRenameError(error instanceof Error ? error.message : t('rail.renameError'));
+    } finally {
+      setRenameBusy(false);
+    }
+  };
+
+  const executeDelete = async () => {
+    if (!deleteProject) return;
+    setDeleteBusy(true);
+    try {
+      await nexus.deleteProject(deleteProject.id);
+      onProjectDeleted?.(deleteProject);
+      setDeleteProject(null);
+    } catch (error) {
+      setDeleteProject(null);
+      const message =
+        error instanceof NexusAPIError && error.status === 409
+          ? t('rail.deleteBlocked')
+          : t('rail.deleteError');
+      toast.error(message);
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
   return (
     <>
       <aside
-        className="nx-project-rail"
+        className={`${styles.rail} nx-project-rail`}
         data-open={open ? 'true' : 'false'}
         data-tour="projects"
         aria-label={t('rail.aria')}
@@ -186,10 +251,10 @@ export const ProjectRail: React.FC<{
             <input
               type="search"
               className="nx-project-rail__search-input"
-              placeholder={t('rail.filterPlaceholder', 'Filtrar projetos ou agentes...')}
+              placeholder={t('rail.filterPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              aria-label={t('rail.filterPlaceholder', 'Filtrar projetos ou agentes')}
+              aria-label={t('rail.filterPlaceholder')}
             />
           </div>
         )}
@@ -268,7 +333,7 @@ export const ProjectRail: React.FC<{
               aria-expanded={agentsExpanded}
             >
               <span className="nx-rail-chevron">{agentsExpanded ? '▾' : '▸'}</span>
-              <span>{t('rail.agents', 'Agentes')}</span>
+              <span>{t('rail.agents')}</span>
               <span className="nx-rail-count">({filteredAgents.length})</span>
             </button>
             <span className="nx-rail-header-actions" onClick={(e) => e.stopPropagation()}>
@@ -294,12 +359,12 @@ export const ProjectRail: React.FC<{
                   onContextMenu={(event) =>
                     setRailMenu({ kind: 'agent', agent, point: contextMenuFromEvent(event) })
                   }
-                  title={`${agent.name} · ${agent.role || 'developer'} (${agent.status})`}
+                  title={`${agent.name} · ${agent.role || t('agents.developer')} (${agent.status})`}
                 >
                   <span className="nx-status-dot" data-status={agent.status} />
                   <span className="nx-rail-item-copy">
                     <strong>{agent.name}</strong>
-                    <small>{agent.role || 'developer'}</small>
+                    <small>{agent.role || t('agents.developer')}</small>
                   </span>
                   <TerminalSquare size={12} className="nx-rail-agent-term-icon" />
                 </button>
@@ -328,7 +393,7 @@ export const ProjectRail: React.FC<{
               aria-expanded={toolsExpanded}
             >
               <span className="nx-rail-chevron">{toolsExpanded ? '▾' : '▸'}</span>
-              <span>{t('rail.tools', 'Ferramentas')}</span>
+              <span>{t('rail.tools')}</span>
             </button>
           </div>
 
@@ -340,7 +405,7 @@ export const ProjectRail: React.FC<{
                   key={item.id}
                   className="nx-rail-tool-btn"
                   onClick={() => {
-                    onOpenGlobal(item.id as any);
+                    onOpenGlobal(item.id);
                     onClose();
                   }}
                   title={item.label}
@@ -364,10 +429,27 @@ export const ProjectRail: React.FC<{
                   type: 'item',
                   id: 'open-project',
                   label: t('workspace.openProject'),
+                  icon: <LayoutGrid size={14} />,
                   onSelect: () => {
                     onSelect(railMenu.project);
                     onClose();
                   },
+                },
+                { type: 'separator', id: 'project-actions-separator' },
+                {
+                  type: 'item',
+                  id: 'rename-project',
+                  label: t('rail.rename'),
+                  icon: <Pencil size={14} />,
+                  onSelect: () => openRename(railMenu.project),
+                },
+                {
+                  type: 'item',
+                  id: 'delete-project',
+                  label: t('rail.delete'),
+                  icon: <Trash2 size={14} />,
+                  danger: true,
+                  onSelect: () => setDeleteProject(railMenu.project),
                 },
               ]
             : railMenu?.kind === 'agent'
@@ -399,6 +481,50 @@ export const ProjectRail: React.FC<{
           onCreated(project);
           setAddOpen(false);
         }}
+      />
+
+      <Dialog
+        open={Boolean(renameProject)}
+        onClose={() => setRenameProject(null)}
+        title={t('rail.renameTitle')}
+      >
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void saveRename();
+          }}
+        >
+          <label className="nx-field-label" htmlFor="project-rename-input">
+            {t('rail.name')}
+          </label>
+          <Input
+            id="project-rename-input"
+            value={renameValue}
+            onChange={setRenameValue}
+            autoFocus
+            maxLength={120}
+          />
+          {renameError && <InlineAlert tone="danger">{renameError}</InlineAlert>}
+          <div className="nx-dialog-actions">
+            <Button type="button" onClick={() => setRenameProject(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" tone="brand" disabled={renameBusy}>
+              {t('rail.rename')}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(deleteProject)}
+        title={t('rail.deleteTitle')}
+        description={t('rail.deleteDescription', {
+          name: deleteProject?.name || deleteProject?.id,
+        })}
+        confirmLabel={deleteBusy ? t('rail.deleting') : t('rail.delete')}
+        onCancel={() => setDeleteProject(null)}
+        onConfirm={() => void executeDelete()}
       />
     </>
   );

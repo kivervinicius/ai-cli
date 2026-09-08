@@ -1,5 +1,56 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-08 — Correção de Project Shell e diagnóstico de console
+
+### Causa
+- Os logs de `~/.local/share/ai-manager/logs/shell-*.log` mostraram que o
+  `409` mascarava `failed to start terminal backend: fork/exec /usr/bin/zsh:
+  no such file or directory`; o runtime terminava antes do handshake IPC.
+- `VM108...reportAllChanges` não existe no código ou bundle do Nexus e vem de
+  instrumentação/script do navegador, portanto não foi tratado como defeito do
+  produto.
+
+### Alterações
+- `ShellDriver` agora testa se o valor de `SHELL`/`COMSPEC` realmente executa
+  antes de selecioná-lo e recua para `bash`, `zsh` ou `sh` disponíveis.
+- Falha de inicialização do Project Shell agora responde `503 Service
+  Unavailable`, preservando o erro concreto, em vez de classificar qualquer
+  falha de boot como `409 Conflict`.
+- Adicionado teste de regressão para `SHELL` apontando para caminho inexistente.
+
+### Verificação
+- `go test ./internal/control/driver ./internal/control/web ./internal/nexus` — PASS.
+- Reiniciar o processo `nexus web` é necessário para carregar o binário corrigido.
+
+## 2026-09-08 — Rail inteligente e gestão simplificada de projetos
+
+### Alterações
+- Redistribuído o rail para 260px: Projects e Agents compartilham o espaço
+  disponível, seções colapsadas liberam espaço e Tools possui rolagem própria
+  sem `max-height` fixo de Projects.
+- Adicionado `ProjectRail.module.scss` para o token local de largura e mantido
+  o drawer sobreposto em telas menores.
+- Menu contextual de projetos agora oferece Abrir, Renomear e Remover. Rename
+  usa `PATCH`, remove usa `DELETE` com confirmação, e mensagens/estados novos
+  estão localizados em inglês, português e espanhol.
+- Após remover o projeto selecionado, o coordenador escolhe o próximo projeto
+  ou navega para `/projects`; respostas `409` são exibidas como erro localizado.
+
+### Verificação
+- `cd web && bun run typecheck` — PASS
+- `cd web && bun run lint` — PASS com 1 warning preexistente de dependência em
+  `NexusWorkspaceApp.tsx`
+- `cd web && bun run lint:styles` — PASS
+- `cd web && bun run check:styles` — PASS
+- `cd web && bun run test` — PASS, 62 arquivos / 313 testes
+- `cd web && bun run build` — PASS
+- `make quality` — PASS
+
+### Próximo
+Executar captura visual/browser do rail nos breakpoints 320, 390, 768, 1024 e
+1440px quando o harness visual autenticado estiver disponível; não houve commit
+ou push automático.
+
 ## 2026-09-07 — Deep review fixes + commit (059bb5c)
 
 ### Contexto
@@ -29,6 +80,39 @@ Push → CI same-SHA → release candidate.
 - Reexecutado `node web/scripts/verify-report.mjs`: 10/10 gates PASS.
 - Reexecutados `go test ./... -count=1`, testes do runner, Vitest (61 arquivos,
   311 testes), typecheck, lint de estilos, check de estilos e `git diff --check`.
+
+## 2026-09-08 — Premium shell visual pass
+
+- Aplicada a direção visual aprovada do `skill-premium-web-experience` no shell
+  autenticado: profundidade ambiental discreta, topbar/contexto/comandos com
+  foco mais nítido, rail de 260px com transição respeitando reduced motion e
+  taskbar integrada ao tratamento visual do shell.
+- A implementação ficou isolada em `NexusShell.module.scss`,
+  `ProjectRail.module.scss` e `WorkspaceTaskbar.module.scss`; não houve novo
+  CSS local, texto visível novo ou alteração de contrato/API.
+- Verificação: format check, ESLint (0 erros; 1 warning preexistente),
+  Stylelint, allowlist, typecheck, Vitest (62 arquivos/313 testes), build Web,
+  `make quality` e `git diff --check` passaram.
+- Não houve screenshot autenticado novo nesta execução; a validação visual
+  deve ser repetida no servidor após reiniciar a instância Nexus que serve a
+  porta local.
+- A tentativa com `node web/scripts/maestro-visual-verify.mjs` compilou o
+  frontend, mas o harness expirou esperando `Bootstrap: ...?token=...`; o
+  comando atual emite `URL: http://127.0.0.1:<porta>` sem esse prefixo. Isso é
+  incompatibilidade do harness com o contrato atual de bootstrap, não erro de
+  runtime do frontend.
+
+## 2026-09-08 — Codex quota identity correction
+
+- Corrigida a apresentação do `QuotaView` para não mostrar o grupo interno
+  `claude_gpt` como “Claude & GPT Models” em contas Codex. O cálculo continua
+  usando o mesmo pool e as mesmas janelas; somente o rótulo exibido passa a ser
+  `Codex`.
+- A correção alcança o TUI/widget de uso, CLI e superfícies Web que consomem o
+  mesmo contrato. Pools AGY continuam podendo mostrar Gemini e Claude/GPT,
+  porque ali a separação é real.
+- Verificação: `go test ./internal/core/quota ./internal/tui ./internal/app` e
+  `LOCAL_BIN=/home/desenvolvedor/.local/bin make install-local` passaram.
 - Auditoria remota confirmou o CI run `34155789469` no SHA candidato; Frontend,
   Windows e macOS falharam e Browser/Desktop/Snapshot foram pulados. Logs brutos
   exigem reautenticação do GitHub (`HTTP 403` com token inválido).

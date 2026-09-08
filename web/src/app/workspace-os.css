@@ -363,16 +363,15 @@ button {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  flex-shrink: 0;
-}
-.nx-rail-section-agents {
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 1 1 0;
   overflow: hidden;
+}
+.nx-rail-accordion-section[data-expanded="false"] {
+  flex: 0 0 auto;
 }
 .nx-rail-section-tools {
   margin-top: auto;
-  flex-shrink: 0;
+  flex: 0 0 auto;
 }
 .nx-rail-section-header {
   cursor: pointer;
@@ -432,10 +431,10 @@ button {
   display: grid;
   align-content: start;
   gap: 2px;
+  flex: 1 1 auto;
 }
 .nx-agents-list-scroll {
-  flex: 1;
-  min-height: 80px;
+  min-height: 0;
 }
 .nx-rail-item-btn {
   min-height: 30px;
@@ -515,8 +514,8 @@ button {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 3px;
-  max-height: 130px;
   overflow-y: auto;
+  max-height: min(28vh, 240px);
 }
 .nx-rail-tool-btn {
   height: 27px;
@@ -2806,12 +2805,11 @@ button {
   background: var(--nx-danger, #ef4444);
 }
 .nx-project-list--compact {
-  max-height: 160px;
-  flex: 0 0 auto;
+  max-height: none;
+  flex: 1 1 auto;
 }
 .nx-agents-list-scroll {
-  flex: 1;
-  min-height: 100px;
+  min-height: 0;
 }
 .nx-rail-agent-term-icon {
   color: var(--nx-subtle);

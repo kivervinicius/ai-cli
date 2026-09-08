@@ -418,6 +418,9 @@ func TestCodexLegacyQuotaPreservesRemainingAndGroup(t *testing.T) {
 	}
 
 	qv := BuildQuotaView(snap, "user@example.com", "Plus")
+	if len(qv.ModelGroups) != 1 || qv.ModelGroups[0].Name != "Codex" {
+		t.Fatalf("Codex quota group label=%q, want Codex", qv.ModelGroups[0].Name)
+	}
 	best, ok := qv.BestGroupRemaining()
 	if !ok || best != 70 {
 		t.Fatalf("BestGroupRemaining=%v ok=%v want 70 (min of 70/95, no phantom 0)", best, ok)

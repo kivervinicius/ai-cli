@@ -298,7 +298,10 @@ func (h *NexusHandler) handleProjectShell(w http.ResponseWriter, r *http.Request
 	}
 	sess, err := h.nexus.StartProjectShell(r.Context(), projectID)
 	if err != nil {
-		writeError(w, http.StatusConflict, err.Error())
+		// A shell launch failure is an unavailable local runtime, not a
+		// resource conflict. Preserve the concrete error for the UI while
+		// allowing clients to distinguish it from optimistic-concurrency 409s.
+		writeError(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"runtime": sess})

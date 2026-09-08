@@ -99,17 +99,21 @@ export const NexusShell: React.FC<{
   );
 
   return (
-    <div className={zenMode ? 'nx-os-shell nx-os-shell--zen' : 'nx-os-shell'}>
+    <div
+      className={
+        zenMode ? `nx-os-shell nx-os-shell--zen ${styles.shell}` : `nx-os-shell ${styles.shell}`
+      }
+    >
       <a href="#nexus-workspace" className="nx-skip-link">
         {t('shell.skip')}
       </a>
       {rail}
 
-      <div className="nx-os-main">
+      <div className={`nx-os-main ${styles.main}`}>
         <div className="nx-shell-chrome">
           {/* Top OS Header */}
-          <header className="nx-topbar">
-            <div className="nx-topbar__context">
+          <header className={`nx-topbar ${styles.topbar}`}>
+            <div className={`nx-topbar__context ${styles.context}`}>
               <IconButton
                 className="nx-mobile-menu"
                 label={t('shell.openProjects')}
@@ -121,7 +125,7 @@ export const NexusShell: React.FC<{
               {/* Clickable Project Switcher */}
               <button
                 type="button"
-                className="nx-topbar__project-btn"
+                className={`nx-topbar__project-btn ${styles.projectButton}`}
                 onClick={onOpenProjectManager}
                 title={t('shell.projectManagerShortcut', 'Open Project Manager (Ctrl+P)')}
               >
@@ -145,7 +149,7 @@ export const NexusShell: React.FC<{
             </div>
 
             {/* Right Status Controls */}
-            <div className="nx-topbar__status" data-tour="status">
+            <div className={`nx-topbar__status ${styles.status}`} data-tour="status">
               <div
                 className="nx-topbar-version-pill"
                 title={t('settings.nexusVersion', 'Nexus version')}
@@ -174,7 +178,7 @@ export const NexusShell: React.FC<{
               {/* Command Palette Trigger */}
               <button
                 type="button"
-                className="nx-command-trigger"
+                className={`nx-command-trigger ${styles.commandButton}`}
                 data-tour="command"
                 onClick={onCommand}
                 title={t('shell.searchShortcut', 'Search & Commands (Ctrl+K)')}
@@ -246,7 +250,7 @@ export const NexusShell: React.FC<{
         </div>
 
         {/* Workspace Canvas (Tabs inside stacks) */}
-        <main id="nexus-workspace" className="nx-workspace-host">
+        <main id="nexus-workspace" className={`nx-workspace-host ${styles.workspace}`}>
           {children}
         </main>
 

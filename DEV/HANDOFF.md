@@ -1,5 +1,41 @@
 # Handoff
 
+## Atualização 2026-09-08 — Correção do Project Shell
+
+O `409` observado ao abrir Project Shell foi rastreado aos logs do runtime:
+`fork/exec /usr/bin/zsh: no such file or directory`, seguido de timeout IPC.
+O status HTTP era enganoso porque o handler classificava toda falha de launch
+como conflito.
+
+O `ShellDriver` agora valida a execução do shell configurado e usa fallback para
+um shell disponível. O handler retorna `503` em falhas de boot, mantendo o erro
+real. Testes focados de driver, web e Nexus passaram.
+
+`VM108...reportAllChanges` é de um script/instrumentação do navegador (não está
+no bundle fonte do Nexus) e não foi alterado. Próxima ação: reiniciar o processo
+`nexus web`/binário em execução e abrir novamente o Project Shell; se falhar,
+usar a mensagem 503 e o log em `~/.local/share/ai-manager/logs/shell-*.log`.
+
+## Atualização 2026-09-08 — Rail inteligente e gestão simplificada de projetos
+
+### Estado atual
+O rail de projetos foi ajustado para uma composição adaptativa estilo VS Code:
+260px em desktop, Projects/Agents dividindo o espaço e Tools com scroll próprio.
+O menu contextual de projetos inclui Abrir, Renomear e Remover; renomeação e
+remoção usam os endpoints Nexus existentes. Exclusão do projeto atual seleciona
+o próximo item ou abre o Project Hub, e `409` por agentes ativos vira toast
+localizado.
+
+### Validação
+Typecheck, lint de estilos, allowlist, testes Vitest (313/313), build Web e
+`make quality` passaram. Existe apenas o warning React hook já conhecido em
+`NexusWorkspaceApp.tsx`.
+
+### Próxima ação exata
+Rodar o harness visual/browser autenticado nos viewports 320x568, 390x844,
+768x1024, 1024x768 e 1440x900 para confirmar ausência de overflow, truncamento,
+scroll duplicado e foco quebrado. Não criar commit/push automaticamente.
+
 ## Atualização 2026-09-07 — Deep review fixes + commit
 
 ### Alterações desta sessão
@@ -722,3 +758,36 @@ projeto, com prioridade Needs You, Continue/Recover, Terminal e Recent Work.
 O modelo é puro e coberto por testes. A integração de histórico de missões e o
 E2E de reabertura após reinício continuam pendentes e mantêm o P0-01 como
 CONDITIONAL.
+
+## Premium shell visual pass — 2026-09-08
+
+O shell autenticado recebeu o primeiro vertical slice visual do
+`skill-premium-web-experience`: topbar com contraste e estados de foco mais
+claros, ambiente de canvas com profundidade sutil, rail com largura de 260px e
+transição adaptativa, além de taskbar alinhada ao mesmo sistema visual. A
+implementação usa módulos SCSS e tokens `--nx-*`, sem texto novo e sem mudanças
+de API.
+
+Validações concluídas: format check, ESLint (somente warning preexistente),
+Stylelint, allowlist, typecheck, 62/313 testes Web, build e `make quality`.
+
+Próximo passo operacional: reiniciar a instância Nexus local após instalar o
+build atualizado e repetir o smoke visual autenticado nos breakpoints
+`320x568`, `390x844`, `768x1024`, `1024x768` e `1440x900`, incluindo Axe e
+checagem de overflow/foco.
+
+Nota de validação: o runner visual existente precisa ser alinhado ao contrato
+atual do comando `nexus web` (ele espera uma linha `Bootstrap` com token, mas o
+comando imprime `URL`); portanto a captura autenticada desta fatia ficou
+pendente por incompatibilidade do harness, não por falha observada no bundle.
+
+## Correção de identidade Codex no widget de quota — 2026-09-08
+
+O widget/TUI não deve interpretar a chave técnica `claude_gpt` como identidade
+do provedor. Para contas `codex`, a camada `QuotaView` agora apresenta `Codex`;
+as janelas de 5 horas e semanal continuam calculadas no mesmo pool. A
+apresentação compartilhada por AGY permanece detalhada como Gemini e Claude/GPT
+quando há grupos distintos.
+
+O binário foi recompilado e instalado em `/home/desenvolvedor/.local/bin/nexus`.
+Feche e reabra o widget/terminal para carregar a versão nova.

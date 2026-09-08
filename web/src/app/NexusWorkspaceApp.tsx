@@ -816,6 +816,18 @@ const WorkspaceCoordinator: React.FC<{
     }
   };
 
+  const handleProjectDeleted = (deleted: Project) => {
+    const remaining = data.projects.filter((entry) => entry.id !== deleted.id);
+    data.setProjects(remaining);
+    if (project.id !== deleted.id) return;
+    const next = remaining[0];
+    if (next) {
+      setProject(next);
+    } else {
+      navigate('/projects');
+    }
+  };
+
   const renderer = (
     <WorkspaceRenderer
       renderSurface={(surface) => (
@@ -1107,6 +1119,8 @@ const WorkspaceCoordinator: React.FC<{
         data.setProjects((current) => [created, ...current]);
         setProject(created);
       }}
+      onProjectUpdated={handleProjectUpdated}
+      onProjectDeleted={handleProjectDeleted}
       agents={data.agents}
       onOpenAgent={(agent) => terminal(agent)}
       onNewAgent={() => setNewAgentOpen(true)}

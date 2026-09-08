@@ -51,7 +51,7 @@ export const WorkspaceTaskbar: React.FC<{
 
   return (
     <div
-      className="nx-workspace-statusbar"
+      className={`nx-workspace-statusbar ${styles.statusbar}`}
       data-tour="taskbar"
       role="status"
       aria-label="Status Bar"
