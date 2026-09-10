@@ -23,10 +23,13 @@ conversation_summaries.db
 history.jsonl
 
 # Credentials, Keys & Secrets
-*token*
-*secret*
 *auth.json
-*keyring*
+*.token
+*.token.json
+*.secret
+*.secret.json
+*.key
+*.pem
 *.pass
 *google_accounts*
 *jetski*
@@ -42,6 +45,8 @@ scratch/
 tmp/
 .worktrees/
 .tempmediaStorage/
+/.omx/
+/.orquestrador/runtime/
 
 # OS and IDE Files
 .DS_Store
@@ -61,6 +66,11 @@ web/dist/
 # Bun is the packageManager (web/package.json); ignore npm lock churn.
 web/package-lock.json
 
+# Local binaries and test artifacts
+/loadtest
+.e2e-artifacts/
+coverage/
+
 # Local Yarn state; dependencies are managed by web/bun.lock.
 .pnp.*
 .yarn/*
@@ -68,7 +78,6 @@ web/package-lock.json
 !.yarn/plugins/
 !.yarn/releases/
 !.yarn/versions/
-yarn.lock
 yarn.lock
 
 # Ephemeral dated test/verification reports and gate status crumbs
