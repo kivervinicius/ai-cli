@@ -1,13 +1,24 @@
 #!/usr/bin/env bash
-set -e
+# IAPro Nexus installer (Linux / macOS) — zero-toolchain release path.
+# Usage:
+#   ./install.sh --version=vX.Y.Z
+#   ./install.sh --version=latest
+#   ./install.sh --build-from-source [--yes]
+set -euo pipefail
 
-REPO="kivervinicius/ai-cli"
+REPO="${NEXUS_RELEASE_REPO:-kivervinicius/ai-cli}"
 GITHUB_URL="https://github.com/${REPO}"
+GITHUB_API="https://api.github.com/repos/${REPO}"
 
 VERSION="${NEXUS_VERSION:-}"
 BUILD_FROM_SOURCE=false
 SOURCE_REF="${NEXUS_SOURCE_REF:-}"
 INSTALL_DESKTOP=true
+WITH_MAESTRO=false
+NO_PATH=false
+YES_MODE=false
+MAESTRO_EXIT=0
+
 for arg in "$@"; do
     case "$arg" in
         --version=*) VERSION="${arg#--version=}" ;;
@@ -15,15 +26,86 @@ for arg in "$@"; do
         --source-ref=*) SOURCE_REF="${arg#--source-ref=}" ;;
         --with-desktop) INSTALL_DESKTOP=true ;;
         --no-desktop) INSTALL_DESKTOP=false ;;
-        --with-maestro) ;;
+        --with-maestro) WITH_MAESTRO=true ;;
+        --no-path) NO_PATH=true ;;
+        --yes|-y) YES_MODE=true ;;
+        --help|-h)
+            cat <<'EOF'
+IAPro Nexus installer (zero-toolchain release path)
+
+  --version=vX.Y.Z|latest   Pin a release, or resolve the newest tag via GitHub API
+  --no-desktop              Skip native desktop artifact
+  --no-path                 Do not append ~/.local/bin to shell rc files
+  --with-maestro            Opt-in Maestro npm install
+  --build-from-source       Build with Go+Bun+make (dev path)
+  --source-ref=<ref>        Clone ref when building from source without a checkout
+  --yes                     Non-interactive toolchain install for source builds
+
+Environment:
+  NEXUS_VERSION, NEXUS_SOURCE_REF, NEXUS_RELEASE_REPO
+EOF
+            exit 0
+            ;;
         *) echo "Unknown option: $arg" >&2; exit 2 ;;
     esac
 done
 
 if [ -z "$VERSION" ] && [ "$BUILD_FROM_SOURCE" != true ]; then
-    echo "A version is required for verified installation: use --version=vX.Y.Z or NEXUS_VERSION." >&2
+    echo "A version is required for verified installation: use --version=vX.Y.Z, --version=latest, or NEXUS_VERSION." >&2
     echo "For an explicit source build, use --build-from-source from a checkout." >&2
     exit 2
+fi
+
+http_get() {
+    local url="$1"
+    local out="$2"
+    local attempt=1
+    while [ "$attempt" -le 3 ]; do
+        if command -v curl >/dev/null 2>&1; then
+            if curl -fsSL --connect-timeout 15 --max-time 120 "$url" -o "$out"; then
+                return 0
+            fi
+            local code
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 15 --max-time 30 "$url" || true)"
+            if [ "$code" = "403" ] || [ "$code" = "429" ]; then
+                echo "GitHub API rate limited (HTTP ${code}); retry ${attempt}/3..." >&2
+                sleep $((attempt * 2))
+            fi
+        elif command -v wget >/dev/null 2>&1; then
+            if wget -q -O "$out" "$url"; then
+                return 0
+            fi
+        else
+            echo "Need curl or wget to download releases." >&2
+            return 1
+        fi
+        attempt=$((attempt + 1))
+    done
+    return 1
+}
+
+resolve_latest_version() {
+    local tmp_json
+    tmp_json="$(mktemp)"
+    if ! http_get "${GITHUB_API}/releases/latest" "$tmp_json"; then
+        rm -f "$tmp_json"
+        echo "Could not resolve latest release tag from GitHub API." >&2
+        exit 1
+    fi
+    local tag
+    tag="$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$tmp_json" | head -n1)"
+    rm -f "$tmp_json"
+    if [ -z "$tag" ]; then
+        echo "GitHub API response did not contain a tag_name." >&2
+        exit 1
+    fi
+    # Integrity only: tag is resolved then assets are checksum-verified. Not strong authenticity.
+    echo "Resolved --version=latest to ${tag} (checksum integrity; not a signed pin)." >&2
+    printf '%s' "$tag"
+}
+
+if [ "$VERSION" = "latest" ]; then
+    VERSION="$(resolve_latest_version)"
 fi
 
 if [ -n "$VERSION" ] && ! printf '%s' "$VERSION" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$'; then
@@ -31,34 +113,26 @@ if [ -n "$VERSION" ] && ! printf '%s' "$VERSION" | grep -Eq '^v?[0-9]+\.[0-9]+\.
     exit 2
 fi
 
-echo "=== IAPro Nexus Installer (Pinned Release) ==="
+echo "=== IAPro Nexus Installer (Zero-Toolchain Release) ==="
+echo "Release repo: ${REPO}"
 
-# 1. Detect OS and Architecture
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 
 case "$OS" in
-    Linux)
-        OS_NAME="Linux"
-        ;;
-    Darwin)
-        OS_NAME="Darwin"
-        ;;
+    Linux) OS_NAME="Linux" ;;
+    Darwin) OS_NAME="Darwin" ;;
     *)
-        echo "Unsupported OS: $OS. Please install manually."
+        echo "Unsupported OS: $OS. Use install.ps1 on Windows." >&2
         exit 1
         ;;
 esac
 
 case "$ARCH" in
-    x86_64|amd64)
-        ARCH_NAME="x86_64"
-        ;;
-    arm64|aarch64)
-        ARCH_NAME="arm64"
-        ;;
+    x86_64|amd64) ARCH_NAME="x86_64" ;;
+    arm64|aarch64) ARCH_NAME="arm64" ;;
     *)
-        echo "Unsupported architecture: $ARCH. Please build from source."
+        echo "Unsupported architecture: $ARCH. Please build from source." >&2
         exit 1
         ;;
 esac
@@ -67,14 +141,6 @@ TARGET_DIR="${HOME}/.local/bin"
 mkdir -p "$TARGET_DIR"
 
 INSTALL_SUCCESS=0
-
-# 2. Download a versioned release binary and verify its published digest.
-ARCHIVE_NAME="nexus_${OS_NAME}_${ARCH_NAME}.tar.gz"
-VERSION="${VERSION#v}"
-DOWNLOAD_URL="${GITHUB_URL}/releases/download/v${VERSION}/${ARCHIVE_NAME}"
-CHECKSUMS_URL="${GITHUB_URL}/releases/download/v${VERSION}/checksums.txt"
-
-echo "Attempting to download Nexus v${VERSION}: ${ARCHIVE_NAME}..."
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -89,73 +155,136 @@ sha256_file() {
     fi
 }
 
-if [ -n "$VERSION" ] && command -v curl >/dev/null 2>&1; then
-    if curl -fsSL "$DOWNLOAD_URL" -o "${TMP_DIR}/${ARCHIVE_NAME}" && curl -fsSL "$CHECKSUMS_URL" -o "${TMP_DIR}/checksums.txt"; then
-        EXPECTED="$(awk -v name="$ARCHIVE_NAME" '$2 == name { print $1; exit }' "${TMP_DIR}/checksums.txt")"
-        ACTUAL="$(sha256_file "${TMP_DIR}/${ARCHIVE_NAME}")"
-        if [ -z "$EXPECTED" ] || [ "$EXPECTED" != "$ACTUAL" ]; then
-            echo "Release checksum verification failed for ${ARCHIVE_NAME}." >&2
-            exit 1
-        fi
-        tar -xzf "${TMP_DIR}/${ARCHIVE_NAME}" -C "$TMP_DIR"
-        if [ -f "${TMP_DIR}/nexus" ]; then
-            cp "${TMP_DIR}/nexus" "${TARGET_DIR}/nexus"
-            chmod +x "${TARGET_DIR}/nexus"
-            ln -sf "${TARGET_DIR}/nexus" "${TARGET_DIR}/ai"
-            INSTALL_SUCCESS=1
-        elif [ -f "${TMP_DIR}/ai" ]; then
-            cp "${TMP_DIR}/ai" "${TARGET_DIR}/nexus"
-            chmod +x "${TARGET_DIR}/nexus"
-            ln -sf "${TARGET_DIR}/nexus" "${TARGET_DIR}/ai"
-            INSTALL_SUCCESS=1
-        fi
+install_cli_from_dir() {
+    local dir="$1"
+    if [ -f "${dir}/nexus" ]; then
+        install -m 0755 "${dir}/nexus" "${TMP_DIR}/nexus.install"
+        mv -f "${TMP_DIR}/nexus.install" "${TARGET_DIR}/nexus"
+        ln -sf "${TARGET_DIR}/nexus" "${TARGET_DIR}/ai"
+        INSTALL_SUCCESS=1
+    elif [ -f "${dir}/ai" ]; then
+        install -m 0755 "${dir}/ai" "${TMP_DIR}/nexus.install"
+        mv -f "${TMP_DIR}/nexus.install" "${TARGET_DIR}/nexus"
+        ln -sf "${TARGET_DIR}/nexus" "${TARGET_DIR}/ai"
+        INSTALL_SUCCESS=1
     fi
-elif [ -n "$VERSION" ] && command -v wget >/dev/null 2>&1; then
-    if wget -q "$DOWNLOAD_URL" -O "${TMP_DIR}/${ARCHIVE_NAME}" && wget -q "$CHECKSUMS_URL" -O "${TMP_DIR}/checksums.txt"; then
-        EXPECTED="$(awk -v name="$ARCHIVE_NAME" '$2 == name { print $1; exit }' "${TMP_DIR}/checksums.txt")"
-        ACTUAL="$(sha256_file "${TMP_DIR}/${ARCHIVE_NAME}")"
-        if [ -z "$EXPECTED" ] || [ "$EXPECTED" != "$ACTUAL" ]; then
-            echo "Release checksum verification failed for ${ARCHIVE_NAME}." >&2
-            exit 1
-        fi
-        tar -xzf "${TMP_DIR}/${ARCHIVE_NAME}" -C "$TMP_DIR"
-        if [ -f "${TMP_DIR}/nexus" ]; then
-            cp "${TMP_DIR}/nexus" "${TARGET_DIR}/nexus"
-            chmod +x "${TARGET_DIR}/nexus"
-            ln -sf "${TARGET_DIR}/nexus" "${TARGET_DIR}/ai"
-            INSTALL_SUCCESS=1
-        elif [ -f "${TMP_DIR}/ai" ]; then
-            cp "${TMP_DIR}/ai" "${TARGET_DIR}/nexus"
-            chmod +x "${TARGET_DIR}/nexus"
-            ln -sf "${TARGET_DIR}/nexus" "${TARGET_DIR}/ai"
-            INSTALL_SUCCESS=1
-        fi
-    fi
-fi
+}
 
-# 3. Explicit source build only; never resolve a mutable latest ref implicitly.
-if [ "$INSTALL_SUCCESS" -eq 0 ] && [ "$BUILD_FROM_SOURCE" = true ]; then
-    if command -v go >/dev/null 2>&1; then
-        echo "Building from source via Go..."
-        if [ -f "./go.mod" ] && [ -d "./cmd/nexus" ]; then
-            go build -ldflags="-s -w" -o "${TARGET_DIR}/nexus" ./cmd/nexus
-            chmod +x "${TARGET_DIR}/nexus"
-            ln -sf "${TARGET_DIR}/nexus" "${TARGET_DIR}/ai"
-            INSTALL_SUCCESS=1
-        elif [ -n "$SOURCE_REF" ] && command -v git >/dev/null 2>&1; then
-            case "$SOURCE_REF" in *[!A-Za-z0-9._/-]*) echo "Invalid source ref." >&2; exit 2 ;; esac
-            echo "Cloning explicitly requested source ref ${SOURCE_REF}..."
-            git clone --depth 1 --branch "$SOURCE_REF" "${GITHUB_URL}.git" "${TMP_DIR}/repo"
-            (cd "${TMP_DIR}/repo" && go build -ldflags="-s -w" -o "${TARGET_DIR}/nexus" ./cmd/nexus)
-            chmod +x "${TARGET_DIR}/nexus"
-            ln -sf "${TARGET_DIR}/nexus" "${TARGET_DIR}/ai"
-            INSTALL_SUCCESS=1
-        else
-            echo "--build-from-source requires a Nexus checkout or --source-ref=<tag-or-commit>." >&2
-        fi
-    else
-        echo "--build-from-source requires Go >=1.25." >&2
+download_and_verify_archive() {
+    local archive_name="$1"
+    local version_plain="$2"
+    local download_url="${GITHUB_URL}/releases/download/v${version_plain}/${archive_name}"
+    local checksums_url="${GITHUB_URL}/releases/download/v${version_plain}/checksums.txt"
+    local archive_path="${TMP_DIR}/${archive_name}"
+    local checksums_path="${TMP_DIR}/checksums.txt"
+
+    echo "Downloading Nexus v${version_plain}: ${archive_name}..."
+    if ! http_get "$download_url" "$archive_path"; then
+        echo "Failed to download ${download_url}" >&2
+        return 1
     fi
+    if ! http_get "$checksums_url" "$checksums_path"; then
+        echo "Failed to download checksums.txt" >&2
+        return 1
+    fi
+    local expected actual
+    expected="$(awk -v name="$archive_name" '$2 == name { print $1; exit }' "$checksums_path")"
+    actual="$(sha256_file "$archive_path")"
+    if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
+        echo "Release checksum verification failed for ${archive_name}." >&2
+        return 1
+    fi
+    tar -xzf "$archive_path" -C "$TMP_DIR"
+    install_cli_from_dir "$TMP_DIR"
+}
+
+ensure_go() {
+    if command -v go >/dev/null 2>&1; then
+        return 0
+    fi
+    if [ "$YES_MODE" != true ]; then
+        echo "--build-from-source requires Go >=1.25. Install Go and re-run, or pass --yes to attempt package install." >&2
+        echo "  https://go.dev/dl/" >&2
+        return 1
+    fi
+    echo "Go not found; attempting package install (--yes)..."
+    if command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get update -y && sudo apt-get install -y golang-go
+    elif command -v dnf >/dev/null 2>&1; then
+        sudo dnf install -y golang
+    elif command -v brew >/dev/null 2>&1; then
+        brew install go
+    else
+        echo "No supported package manager for Go. Install from https://go.dev/dl/" >&2
+        return 1
+    fi
+    command -v go >/dev/null 2>&1
+}
+
+ensure_bun() {
+    if command -v bun >/dev/null 2>&1; then
+        return 0
+    fi
+    if [ "$YES_MODE" != true ]; then
+        echo "--build-from-source requires Bun >=1.3.9. Install Bun and re-run, or pass --yes." >&2
+        echo "  https://bun.sh" >&2
+        return 1
+    fi
+    echo "Bun not found; installing via official script (--yes)..."
+    curl -fsSL https://bun.sh/install | bash
+    # shellcheck disable=SC1090
+    [ -f "$HOME/.bun/bin/bun" ] && export PATH="$HOME/.bun/bin:$PATH"
+    command -v bun >/dev/null 2>&1
+}
+
+ensure_make_git() {
+    local missing=0
+    if ! command -v make >/dev/null 2>&1; then
+        echo "make is required for --build-from-source." >&2
+        missing=1
+    fi
+    if ! command -v git >/dev/null 2>&1; then
+        echo "git is required when cloning --source-ref or for make workflows." >&2
+        missing=1
+    fi
+    return "$missing"
+}
+
+VERSION_PLAIN="${VERSION#v}"
+
+if [ -n "$VERSION" ] && [ "$BUILD_FROM_SOURCE" != true ]; then
+    ARCHIVE_NAME="nexus_${OS_NAME}_${ARCH_NAME}.tar.gz"
+    if ! download_and_verify_archive "$ARCHIVE_NAME" "$VERSION_PLAIN"; then
+        echo "Installation failed: verified release artifact unavailable." >&2
+        exit 1
+    fi
+elif [ "$BUILD_FROM_SOURCE" = true ]; then
+    echo "Building from source (Go + Bun + make)..."
+    ensure_go || exit 1
+    ensure_bun || exit 1
+    ensure_make_git || exit 1
+
+    BUILD_DIR=""
+    if [ -f "./go.mod" ] && [ -d "./cmd/nexus" ]; then
+        BUILD_DIR="."
+    elif [ -n "$SOURCE_REF" ]; then
+        case "$SOURCE_REF" in *[!A-Za-z0-9._/-]*) echo "Invalid source ref." >&2; exit 2 ;; esac
+        echo "Cloning explicitly requested source ref ${SOURCE_REF}..."
+        git clone --depth 1 --branch "$SOURCE_REF" "${GITHUB_URL}.git" "${TMP_DIR}/repo"
+        BUILD_DIR="${TMP_DIR}/repo"
+    else
+        echo "--build-from-source requires a Nexus checkout or --source-ref=<tag-or-commit>." >&2
+        exit 1
+    fi
+
+    (
+        cd "$BUILD_DIR"
+        bun --cwd web install --frozen-lockfile
+        make build
+        install -m 0755 ./nexus "${TARGET_DIR}/nexus"
+    )
+    ln -sf "${TARGET_DIR}/nexus" "${TARGET_DIR}/ai"
+    INSTALL_SUCCESS=1
 fi
 
 if [ "$INSTALL_SUCCESS" -eq 0 ]; then
@@ -165,11 +294,16 @@ fi
 
 echo "✓ Successfully installed IAPro Nexus to ${TARGET_DIR}/nexus (with 'ai' alias)"
 
+if [ "$OS_NAME" = "Linux" ] && [ -n "$VERSION_PLAIN" ] && [ "$BUILD_FROM_SOURCE" != true ]; then
+    echo "Optional system packages (when published on the same release):"
+    echo "  # Debian/Ubuntu: sudo dpkg -i nexus_*_linux_amd64.deb"
+    echo "  # Fedora/RHEL:   sudo rpm -i nexus_*_linux_amd64.rpm"
+fi
+
 install_linux_desktop() {
     local source_binary="$1"
     local desktop_target="${TARGET_DIR}/nexus-desktop"
-    cp "$source_binary" "$desktop_target"
-    chmod +x "$desktop_target"
+    install -m 0755 "$source_binary" "$desktop_target"
 
     local applications_dir="${HOME}/.local/share/applications"
     mkdir -p "$applications_dir"
@@ -203,19 +337,30 @@ EOF
     echo "✓ Launcher created at ${desktop_dir}/IAPro Nexus.desktop"
 }
 
-# 3b. Install the native desktop shell when the release publishes it. The CLI
-# remains usable when a platform has no native desktop artifact or checksum.
-if [ "$INSTALL_DESKTOP" = true ]; then
+warn_webkitgtk() {
+    if [ "$OS_NAME" != "Linux" ]; then
+        return 0
+    fi
+    if ldconfig -p 2>/dev/null | grep -Eq 'libwebkit2gtk-4\.[01]'; then
+        return 0
+    fi
+    echo "⚠️  WebKitGTK not detected. Desktop may fail at runtime; CLI remains usable." >&2
+    if command -v apt-get >/dev/null 2>&1; then
+        echo "    sudo apt-get install -y libwebkit2gtk-4.1-0" >&2
+    elif command -v dnf >/dev/null 2>&1; then
+        echo "    sudo dnf install -y webkit2gtk4.1" >&2
+    fi
+}
+
+if [ "$INSTALL_DESKTOP" = true ] && [ -n "$VERSION_PLAIN" ]; then
     DESKTOP_ARCHIVE_NAME="nexus-desktop_${OS_NAME}_${ARCH_NAME}.tar.gz"
-    DESKTOP_DOWNLOAD_URL="${GITHUB_URL}/releases/download/v${VERSION}/${DESKTOP_ARCHIVE_NAME}"
-    DESKTOP_CHECKSUMS_URL="${GITHUB_URL}/releases/download/v${VERSION}/desktop-checksums.txt"
+    DESKTOP_DOWNLOAD_URL="${GITHUB_URL}/releases/download/v${VERSION_PLAIN}/${DESKTOP_ARCHIVE_NAME}"
+    DESKTOP_CHECKSUMS_URL="${GITHUB_URL}/releases/download/v${VERSION_PLAIN}/desktop-checksums.txt"
     DESKTOP_TMP="${TMP_DIR}/${DESKTOP_ARCHIVE_NAME}"
     DESKTOP_CHECKSUMS="${TMP_DIR}/desktop-checksums.txt"
 
     echo "Attempting to install the native IAPro Nexus Desktop shell..."
-    if command -v curl >/dev/null 2>&1 && \
-        curl -fsSL "$DESKTOP_DOWNLOAD_URL" -o "$DESKTOP_TMP" && \
-        curl -fsSL "$DESKTOP_CHECKSUMS_URL" -o "$DESKTOP_CHECKSUMS"; then
+    if http_get "$DESKTOP_DOWNLOAD_URL" "$DESKTOP_TMP" && http_get "$DESKTOP_CHECKSUMS_URL" "$DESKTOP_CHECKSUMS"; then
         DESKTOP_EXPECTED="$(awk -v name="$DESKTOP_ARCHIVE_NAME" '$2 == name || $2 == "native-artifacts/" name { print $1; exit }' "$DESKTOP_CHECKSUMS")"
         DESKTOP_ACTUAL="$(sha256_file "$DESKTOP_TMP")"
         if [ -z "$DESKTOP_EXPECTED" ] || [ "$DESKTOP_EXPECTED" != "$DESKTOP_ACTUAL" ]; then
@@ -225,12 +370,14 @@ if [ "$INSTALL_DESKTOP" = true ]; then
             DESKTOP_BINARY="${TMP_DIR}/nexus-desktop"
             if [ -x "$DESKTOP_BINARY" ]; then
                 install_linux_desktop "$DESKTOP_BINARY"
+                warn_webkitgtk
             fi
         fi
     elif [ "$BUILD_FROM_SOURCE" = true ]; then
         for source_desktop in "./nexus-desktop" "./cmd/nexus-desktop/build/bin/nexus-desktop"; do
             if [ -x "$source_desktop" ]; then
                 install_linux_desktop "$source_desktop"
+                warn_webkitgtk
                 break
             fi
         done
@@ -239,40 +386,28 @@ if [ "$INSTALL_DESKTOP" = true ]; then
     fi
 fi
 
-# 4. Check and install Maestro dependency (OPT-IN ONLY)
-WITH_MAESTRO=false
-for arg in "$@"; do
-    case "$arg" in
-        --with-maestro)
-            WITH_MAESTRO=true
-            ;;
-    esac
-done
-
 echo ""
 if [ "$WITH_MAESTRO" = true ]; then
     echo "Checking Orquestrador Maestro dependency (--with-maestro requested)..."
     if ! command -v orquestrador-maestro >/dev/null 2>&1 && ! command -v maestro >/dev/null 2>&1; then
         if command -v npm >/dev/null 2>&1; then
             echo "Installing Orquestrador Maestro CLI (@iapro/orquestrador-maestro-cli)..."
-            npm install -g @iapro/orquestrador-maestro-cli 2>/dev/null || {
-                echo "⚠️  Could not install @iapro/orquestrador-maestro-cli globally with npm. You can install it manually:"
-                echo "   npm install -g @iapro/orquestrador-maestro-cli"
-            }
+            if ! npm install -g @iapro/orquestrador-maestro-cli; then
+                echo "⚠️  Could not install @iapro/orquestrador-maestro-cli globally with npm." >&2
+                MAESTRO_EXIT=2
+            fi
         else
-            echo "⚠️  Node.js / npm not detected. Maestro will remain unavailable/degraded; Nexus will not fabricate Maestro advice or skills."
+            echo "⚠️  Node.js / npm not detected. Maestro unavailable; install npm then re-run with --with-maestro." >&2
+            MAESTRO_EXIT=2
         fi
     fi
 else
     echo "Maestro auto-install skipped (Nexus does not silently install third-party packages)."
-    echo "To install Maestro orchestration capabilities, run with '--with-maestro' or install manually:"
-    echo "  npm install -g @iapro/orquestrador-maestro-cli"
+    echo "To install Maestro, run with '--with-maestro' or: npm install -g @iapro/orquestrador-maestro-cli"
 fi
 
-# Link maestro and orquestrador binary aliases if orquestrador-maestro is available
 MAESTRO_BIN="$(command -v orquestrador-maestro 2>/dev/null || echo "")"
 if [ -z "$MAESTRO_BIN" ]; then
-    # Search nvm directories dynamically
     for nvm_bin in "$HOME"/.nvm/versions/node/*/bin/orquestrador-maestro; do
         if [ -x "$nvm_bin" ]; then
             MAESTRO_BIN="$nvm_bin"
@@ -280,23 +415,51 @@ if [ -z "$MAESTRO_BIN" ]; then
         fi
     done
 fi
-
 if [ -n "$MAESTRO_BIN" ]; then
     ln -sf "$MAESTRO_BIN" "${TARGET_DIR}/maestro"
     ln -sf "$MAESTRO_BIN" "${TARGET_DIR}/orquestrador"
     echo "✓ Linked Maestro binaries (${TARGET_DIR}/maestro, ${TARGET_DIR}/orquestrador)"
 fi
 
-# 5. Check PATH
+append_path_rc() {
+    local rc="$1"
+    local line='export PATH="$HOME/.local/bin:$PATH"'
+    touch "$rc"
+    if grep -Fqs '.local/bin' "$rc"; then
+        return 0
+    fi
+    printf '\n# IAPro Nexus\n%s\n' "$line" >> "$rc"
+    echo "✓ Added ~/.local/bin to PATH in ${rc}"
+}
+
 if [[ ":$PATH:" != *":$TARGET_DIR:"* ]]; then
     echo ""
-    echo "⚠️  Note: ${TARGET_DIR} is not in your PATH."
-    echo "Add it to your shell configuration:"
-    echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+    if [ "$NO_PATH" = true ]; then
+        echo "⚠️  ${TARGET_DIR} is not in PATH (--no-path). Add manually:"
+        echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+    else
+        case "${SHELL:-}" in
+            */zsh) append_path_rc "${HOME}/.zshrc" ;;
+            */bash|*) append_path_rc "${HOME}/.bashrc"
+                [ -f "${HOME}/.zshrc" ] && append_path_rc "${HOME}/.zshrc"
+                ;;
+        esac
+        export PATH="${TARGET_DIR}:$PATH"
+    fi
+fi
+
+echo ""
+if command -v nexus >/dev/null 2>&1 || [ -x "${TARGET_DIR}/nexus" ]; then
+    echo "Running nexus doctor (warnings do not fail install)..."
+    "${TARGET_DIR}/nexus" doctor || true
 fi
 
 echo ""
 echo "Quick Start:"
-echo "  nexus doctor            # Check provider & Maestro dependencies"
+echo "  nexus doctor            # Check provider & platform dependencies"
 echo "  nexus web               # Launch IAPro Nexus Workspace OS (Web UI)"
-echo "  nexus                   # Launch IAPro Nexus Workspace OS (Web UI, default)"
+echo ""
+echo "Note: --version=latest uses GitHub tag resolution + checksums.txt integrity only;"
+echo "it is not a cryptographically signed pin until the update manifest is wired here."
+
+exit "$MAESTRO_EXIT"

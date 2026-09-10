@@ -14,6 +14,27 @@ IAPro Nexus es una estación de trabajo local para trabajar con coding agents. O
 
 ## Empieza en minutos
 
+Camino recomendado (**zero-toolchain**): instala un binario de release. No requiere Go, Bun ni Node.
+
+**Linux / macOS:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.sh | bash -s -- --version=latest
+nexus doctor
+nexus web
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.ps1 -OutFile install.ps1
+.\install.ps1 -Version latest
+nexus doctor
+nexus web
+```
+
+### Desarrolladores (compilar desde el código)
+
 ```bash
 git clone https://github.com/kivervinicius/ai-cli.git
 cd ai-cli
@@ -38,6 +59,10 @@ Consulta la [matriz de plataformas](docs/operations/platform-support.md) antes d
 ## Explora
 
 - [Mapa de documentación](docs/README.md)
+- [Getting started (índice)](docs/getting-started/README.md)
+- [Instalación nativa](docs/getting-started/installation.md)
+- [Paquetes nativos](docs/getting-started/packages.md)
+- [Docker (compatibilidad)](docs/getting-started/docker-compat.md)
 - [Tour visual](docs/product/visual-tour.md)
 - [Flujo directo](docs/product/direct.md)
 - [Composer](docs/product/composer.md)

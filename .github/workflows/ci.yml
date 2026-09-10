@@ -556,6 +556,9 @@ jobs:
           go-version: '1.25.14'
           cache: true
 
+      - name: Install RPM tooling for nfpms
+        run: sudo apt-get update -y && sudo apt-get install -y rpm
+
       - name: Set up GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -566,7 +569,7 @@ jobs:
       - name: Verify Artifacts
         run: |
           ls -la dist/
-          ls dist/*.tar.gz dist/*.zip 2>/dev/null
+          ls dist/*.tar.gz dist/*.zip dist/*.deb dist/*.rpm 2>/dev/null
           test -f dist/checksums.txt && echo "checksums present"
           test -f dist/nexus_Linux_x86_64.tar.gz && echo "linux/amd64 OK"
           test -f dist/nexus_Linux_arm64.tar.gz && echo "linux/arm64 OK"
@@ -574,3 +577,102 @@ jobs:
           test -f dist/nexus_Darwin_arm64.tar.gz && echo "darwin/arm64 OK"
           test -f dist/nexus_Windows_x86_64.zip && echo "windows/amd64 OK"
           test -f dist/nexus_Windows_arm64.zip && echo "windows/arm64 OK"
+          test "$(find dist -maxdepth 1 -name '*.deb' | wc -l)" -ge 1 && echo "deb packages OK"
+          test "$(find dist -maxdepth 1 -name '*.rpm' | wc -l)" -ge 1 && echo "rpm packages OK"
+
+      - name: Upload snapshot dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-dist-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+
+  package-smoke-deb:
+    name: Smoke DEB install
+    runs-on: ubuntu-latest
+    needs: [snapshot]
+    steps:
+      - name: Download snapshot dist
+        uses: actions/download-artifact@v4
+        with:
+          name: snapshot-dist-${{ github.sha }}
+          path: dist
+      - name: Install DEB and run nexus version
+        run: |
+          set -euo pipefail
+          deb="$(find dist -maxdepth 1 -name '*_linux_amd64.deb' -o -name '*_linux_x86_64.deb' | head -n1)"
+          if [ -z "$deb" ]; then
+            deb="$(find dist -maxdepth 1 -name '*.deb' | head -n1)"
+          fi
+          test -n "$deb"
+          sudo dpkg -i "$deb" || sudo apt-get install -f -y
+          nexus version
+
+  package-smoke-rpm:
+    name: Smoke RPM install
+    runs-on: ubuntu-latest
+    needs: [snapshot]
+    container: fedora:41
+    steps:
+      - name: Download snapshot dist
+        uses: actions/download-artifact@v4
+        with:
+          name: snapshot-dist-${{ github.sha }}
+          path: dist
+      - name: Install RPM and run nexus version
+        run: |
+          set -euo pipefail
+          rpmfile="$(find dist -maxdepth 1 -name '*_linux_amd64.rpm' -o -name '*_linux_x86_64.rpm' | head -n1)"
+          if [ -z "$rpmfile" ]; then
+            rpmfile="$(find dist -maxdepth 1 -name '*.rpm' | head -n1)"
+          fi
+          test -n "$rpmfile"
+          dnf install -y "$rpmfile"
+          nexus version
+
+  nsis-windows:
+    name: Windows NSIS installer
+    runs-on: windows-latest
+    needs: [snapshot, desktop-windows]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Download snapshot dist
+        uses: actions/download-artifact@v4
+        with:
+          name: snapshot-dist-${{ github.sha }}
+          path: dist
+      - name: Download desktop Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-windows-${{ github.sha }}
+          path: native-artifacts
+      - name: Install NSIS
+        run: choco install nsis -y
+      - name: Stage installer payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p packaging/windows/payload
+          unzip -o dist/nexus_Windows_x86_64.zip -d packaging/windows/payload
+          # Desktop artifact may be zip or raw exe depending on CI upload.
+          if ls native-artifacts/nexus-desktop_Windows_x86_64.zip >/dev/null 2>&1; then
+            unzip -o native-artifacts/nexus-desktop_Windows_x86_64.zip -d packaging/windows/payload
+          elif ls native-artifacts/*.exe >/dev/null 2>&1; then
+            cp native-artifacts/*.exe packaging/windows/payload/
+          fi
+          test -f packaging/windows/payload/nexus.exe
+          ls -la packaging/windows/payload
+      - name: Build NSIS package
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/c/Program Files (x86)/NSIS:$PATH"
+          makensis packaging/windows/nexus.nsi
+          test -f packaging/windows/nexus-setup-Windows_x86_64.exe
+      - name: Upload NSIS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: nsis-windows-${{ github.sha }}
+          path: packaging/windows/nexus-setup-Windows_x86_64.exe
+          if-no-files-found: error

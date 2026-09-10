@@ -8,11 +8,40 @@ Projects, persistent agents, supervised terminal sessions, providers, worktrees 
 
 ![IAPro Nexus workspace](docs/assets/screenshots/workspace-overview.png)
 
+<p align="center"><img src="docs/assets/promo/promo-nexus-hero.png" alt="IAPro Nexus — local workstation for coding agents" width="720"></p>
+
 ## TL;DR
 
 IAPro Nexus is a local workstation for working with coding agents. It organizes projects, persistent agents, sessions, supervised terminals, providers, worktrees and usage/quota around one Core. The simplest path is: open a project, create an AI Session, choose a provider and work in the terminal. Composer, Flow, Mission and Maestro are progressive layers, not prerequisites for direct work.
 
 ## Start in minutes
+
+Recommended path (**zero-toolchain**): install a release binary. No Go, Bun, or Node required.
+
+**Linux / macOS:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.sh | bash -s -- --version=latest
+nexus doctor
+nexus web
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.ps1 -OutFile install.ps1
+.\install.ps1 -Version latest
+nexus doctor
+nexus web
+```
+
+`--version=latest` / `-Version latest` resolves the newest GitHub tag and verifies `checksums.txt` (integrity only; not a signed pin). Pin explicitly with `--version=vX.Y.Z`.
+
+Release installer prerequisites: `curl` or `wget`, `tar`, and `sha256sum`/`shasum` (Unix), or PowerShell (Windows). Native desktop may need WebView2 (Windows) or WebKitGTK (Linux).
+
+### Developers (build from source)
+
+Requirements: Go 1.25+ and Bun 1.3.9+.
 
 ```bash
 git clone https://github.com/kivervinicius/ai-cli.git
@@ -22,6 +51,8 @@ make build
 ./nexus doctor
 ./nexus web
 ```
+
+Or: `./install.sh --build-from-source [--yes]` / `.\install.ps1 -BuildFromSource`.
 
 Then follow **+ New → AI Session → provider → terminal**. You do not need Composer, Flow or Mission for direct work.
 
@@ -38,6 +69,10 @@ See the [platform support matrix](docs/operations/platform-support.md) before tr
 ## Explore
 
 - [Documentation map](docs/README.md)
+- [Getting started index](docs/getting-started/README.md)
+- [Native install (zero-toolchain)](docs/getting-started/installation.md)
+- [Native packages (DEB/RPM/NSIS)](docs/getting-started/packages.md)
+- [Docker compatibility](docs/getting-started/docker-compat.md)
 - [Visual tour](docs/product/visual-tour.md)
 - [Direct workflow](docs/product/direct.md)
 - [Composer](docs/product/composer.md)

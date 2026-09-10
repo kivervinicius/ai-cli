@@ -44,6 +44,9 @@ jobs:
             'Desktop Windows (Wails native build)'
             'Desktop macOS (Wails native build)'
             'GoReleaser Snapshot Build'
+            'Smoke DEB install'
+            'Smoke RPM install'
+            'Windows NSIS installer'
           )
           run_id=''
           for attempt in $(seq 1 60); do
@@ -163,7 +166,12 @@ jobs:
           gh run download "$CI_RUN_ID" --name "desktop-linux-${GITHUB_SHA}" --dir native-artifacts
           gh run download "$CI_RUN_ID" --name "desktop-windows-${GITHUB_SHA}" --dir native-artifacts
           gh run download "$CI_RUN_ID" --name "desktop-macos-${GITHUB_SHA}" --dir native-artifacts
+          gh run download "$CI_RUN_ID" --name "nsis-windows-${GITHUB_SHA}" --dir native-artifacts || true
           find native-artifacts -type f -maxdepth 2 -print
+          test -f native-artifacts/nexus-setup-Windows_x86_64.exe || {
+            echo "NSIS installer missing from same-SHA CI artifacts" >&2
+            exit 1
+          }
 
       - name: Generate native Desktop checksums
         run: |

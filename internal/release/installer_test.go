@@ -137,23 +137,23 @@ func TestInstallersRequirePinnedArtifactsOrExplicitSourceBuild(t *testing.T) {
 	}
 	shText, psText := string(sh), string(ps)
 
-	for _, forbidden := range []string{"releases/latest", "@latest", "git clone --depth 1 \"${GITHUB_URL}.git\""} {
+	for _, forbidden := range []string{"releases/latest/download", "@latest", "git clone --depth 1 \"${GITHUB_URL}.git\""} {
 		if strings.Contains(shText, forbidden) {
 			t.Errorf("install.sh must not use mutable source/artifact reference %q", forbidden)
 		}
 	}
-	for _, forbidden := range []string{"releases/latest", "@latest", "git clone --depth 1 \"$GithubUrl.git\""} {
+	for _, forbidden := range []string{"releases/latest/download", "@latest", "git clone --depth 1 \"$GithubUrl.git\""} {
 		if strings.Contains(psText, forbidden) {
 			t.Errorf("install.ps1 must not use mutable source/artifact reference %q", forbidden)
 		}
 	}
 
-	for _, required := range []string{"--version=", "--build-from-source", "checksums.txt", "sha256sum", "shasum -a 256"} {
+	for _, required := range []string{"--version=", "--build-from-source", "checksums.txt", "sha256sum", "shasum -a 256", "resolve_latest_version", "--no-path", "NEXUS_RELEASE_REPO", "make build"} {
 		if !strings.Contains(shText, required) {
 			t.Errorf("install.sh missing pinned/digest guard %q", required)
 		}
 	}
-	for _, required := range []string{"-Version", "-BuildFromSource", "checksums.txt", "Get-FileHash"} {
+	for _, required := range []string{"-Version", "-BuildFromSource", "checksums.txt", "Get-FileHash", "Resolve-LatestVersion", "NEXUS_RELEASE_REPO", "make build", "Ensure-Bun"} {
 		if !strings.Contains(psText, required) {
 			t.Errorf("install.ps1 missing pinned/digest guard %q", required)
 		}
@@ -161,6 +161,55 @@ func TestInstallersRequirePinnedArtifactsOrExplicitSourceBuild(t *testing.T) {
 	for _, required := range []string{"Ensure-GoCompiler", "winget", "GoLang.Go", "go.dev/dl"} {
 		if !strings.Contains(psText, required) {
 			t.Errorf("install.ps1 must install or explain the Go source-build dependency: missing %q", required)
+		}
+	}
+}
+
+func TestInstallerSupportsLatestIntegrityAndPathControls(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sh, err := os.ReadFile(filepath.Join(root, "install.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ps, err := os.ReadFile(filepath.Join(root, "install.ps1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	shText, psText := string(sh), string(ps)
+
+	for _, required := range []string{
+		`"$VERSION" = "latest"`,
+		"api.github.com/repos",
+		"checksum integrity",
+		"MAESTRO_EXIT=2",
+		"nexus doctor",
+		"append_path_rc",
+		"--yes",
+		"ensure_bun",
+		"WebKitGTK",
+		"--no-path",
+		"NEXUS_RELEASE_REPO",
+	} {
+		if !strings.Contains(shText, required) {
+			t.Errorf("install.sh missing contract element %q", required)
+		}
+	}
+	for _, required := range []string{
+		`Version -eq "latest"`,
+		"api.github.com/repos",
+		"checksum integrity",
+		"MaestroExit = 2",
+		"nexus doctor",
+		"Ensure-WebView2",
+		"Ensure-Bun",
+		"make build",
+		"NEXUS_RELEASE_REPO",
+	} {
+		if !strings.Contains(psText, required) {
+			t.Errorf("install.ps1 missing contract element %q", required)
 		}
 	}
 }

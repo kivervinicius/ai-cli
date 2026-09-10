@@ -9,7 +9,11 @@ mais simples e só depois apresenta Composer, Flow e Mission.
 | Quero… | Comece em |
 | --- | --- |
 | entender o produto | [Visão geral](product/overview.md) e [modelo mental](product/mental-model.md) |
-| ter meu primeiro resultado | [Getting Started](getting-started/installation.md) |
+| instalar no host (zero-toolchain) | [Instalação nativa](getting-started/installation.md) |
+| instalar via DEB/RPM/NSIS | [Pacotes nativos](getting-started/packages.md) |
+| rodar no Docker (CLI + Web) | [Docker compatibilidade](getting-started/docker-compat.md) |
+| mapa getting-started | [Getting Started](getting-started/README.md) |
+| ver ilustrações de instalação | [Visuais](getting-started/visuals.md) |
 | abrir um agente diretamente | [Fluxo Direct](product/direct.md) |
 | entender Web, Desktop e CLI | [Superfícies](product/surfaces.md) |
 | operar agentes e terminais | [Agentes](product/agents.md) e [terminais](product/terminals.md) |
@@ -39,6 +43,7 @@ Composer, Flow e Mission não são pré-requisitos para abrir uma sessão.
 - [Identidade de filesystem](architecture/filesystem-identity.md)
 - [Segurança](architecture/security.md)
 - [Atualizações](architecture/updates.md)
+- [ADR Docker host-parity](architecture/ADR-docker-compat-host-parity.md)
 - [Glossário](GLOSSARY.md)
 - [Guia editorial](STYLE_GUIDE.md)
 

@@ -1,5 +1,7 @@
 <p align="center"><img src="nexus-logo.png" alt="IAPro Nexus" width="340"></p>
 
+<p align="center"><img src="docs/assets/promo/promo-nexus-hero.png" alt="IAPro Nexus — workstation local para coding agents" width="720"></p>
+
 <h1 align="center">IAPro Nexus</h1>
 
 <p align="center"><strong>Uma workstation local para operar coding agents.</strong></p>
@@ -24,7 +26,32 @@ IAPro Nexus é uma workstation local para trabalhar com coding agents. Ele organ
 
 ## Comece em poucos minutos
 
-Requisitos: Go 1.25+ e Bun 1.3.9+ para compilar do código-fonte.
+Caminho recomendado (**zero-toolchain**): baixe um binário de release. Não precisa de Go, Bun nem Node.
+
+**Linux / macOS:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.sh | bash -s -- --version=latest
+nexus doctor
+nexus web
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/kivervinicius/ai-cli/main/install.ps1 -OutFile install.ps1
+.\install.ps1 -Version latest
+nexus doctor
+nexus web
+```
+
+`--version=latest` / `-Version latest` resolve a tag via API do GitHub e valida `checksums.txt` (integridade; ainda não é pinagem assinada). Para pinagem explícita use `--version=vX.Y.Z`.
+
+Pré-requisitos do instalador de release: `curl` ou `wget`, `tar` e `sha256sum`/`shasum` (Unix) ou PowerShell (Windows). Desktop nativo pode exigir WebView2 (Windows) ou WebKitGTK (Linux).
+
+### Desenvolvedores (compilar do fonte)
+
+Requisitos: Go 1.25+ e Bun 1.3.9+.
 
 ```bash
 git clone https://github.com/kivervinicius/ai-cli.git
@@ -34,6 +61,8 @@ make build
 ./nexus doctor
 ./nexus web
 ```
+
+Ou: `./install.sh --build-from-source [--yes]` / `.\install.ps1 -BuildFromSource`.
 
 Abra a URL de bootstrap exibida por `nexus web`. Ela usa loopback por padrão e autentica a sessão no navegador.
 
@@ -77,7 +106,13 @@ As imagens são capturas automatizadas do produto real e possuem origem registra
 
 ## Documentação
 
-- [Começar](docs/getting-started/installation.md)
+Guias de distribuição **separados**:
+
+- [Visuais (ajuda/divulgação)](docs/getting-started/visuals.md)
+- [Getting Started (índice)](docs/getting-started/README.md)
+- [Instalação nativa](docs/getting-started/installation.md)
+- [Pacotes DEB/RPM/NSIS](docs/getting-started/packages.md)
+- [Docker (compatibilidade)](docs/getting-started/docker-compat.md)
 - [Mapa por intenção](docs/README.md)
 - [Modelo mental](docs/product/mental-model.md)
 - [Providers e quota](docs/product/providers-and-usage.md)

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	stdruntime "runtime"
+	"strings"
 	"testing"
 
 	"github.com/kivervinicius/ai-cli/internal/core/model"
@@ -46,6 +47,8 @@ func TestBuildReportDoesNotClaimDesktopShellRuntimeWasVerified(t *testing.T) {
 }
 
 func TestBuildReportPlatformChecksAreEvidenceBound(t *testing.T) {
+	t.Setenv("NEXUS_DOCKER", "")
+	t.Setenv("NEXUS_COMPAT_DOCKER", "")
 	report := BuildReport("test", nil, nexusruntime.CredentialCapability{
 		Status:    nexusruntime.CredentialUnsupported,
 		Mechanism: "test",
@@ -60,6 +63,35 @@ func TestBuildReportPlatformChecksAreEvidenceBound(t *testing.T) {
 		if check.ID == "platform.webkitgtk" && stdruntime.GOOS != "linux" {
 			t.Fatalf("WebKitGTK check must not be emitted on %s", stdruntime.GOOS)
 		}
+	}
+}
+
+func TestBuildReportContainerSkipsNativeDesktopProbes(t *testing.T) {
+	t.Setenv("NEXUS_DOCKER", "1")
+	report := BuildReport("test", map[string]model.DetectionResult{
+		"claude": {Installed: true, Version: "fixture"},
+	}, nexusruntime.CredentialCapability{Status: nexusruntime.CredentialUnsupported, Mechanism: "test"})
+
+	var desktop, webview, runtimeCheck *Check
+	for i := range report.Checks {
+		c := &report.Checks[i]
+		switch c.ID {
+		case "desktop.shell":
+			desktop = c
+		case "platform.webview2":
+			webview = c
+		case "runtime.container":
+			runtimeCheck = c
+		}
+	}
+	if runtimeCheck == nil || runtimeCheck.Status != Pass {
+		t.Fatalf("expected runtime.container PASS, got %#v", runtimeCheck)
+	}
+	if desktop == nil || desktop.Status != Skipped || !strings.Contains(desktop.Summary, "N/A in container") {
+		t.Fatalf("desktop.shell must be N/A in container, got %#v", desktop)
+	}
+	if webview == nil || webview.Status != Skipped {
+		t.Fatalf("platform.webview2 must be SKIPPED in container, got %#v", webview)
 	}
 }
 

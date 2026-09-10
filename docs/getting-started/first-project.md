@@ -1,5 +1,7 @@
 # Primeiro projeto e primeira sessão
 
+Pré-requisito: Nexus instalado — [instalação nativa](installation.md), [pacotes](packages.md) ou [Docker](docker-compat.md).
+
 1. Inicie `nexus web` e abra a URL de bootstrap.
 2. Adicione uma pasta de projeto existente pelo seletor de Projects.
 3. Use **+ New → AI Session**.

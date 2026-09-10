@@ -59,31 +59,55 @@ func BuildReport(version string, detections map[string]model.DetectionResult, ca
 	report.Checks = append(report.Checks, checkDirectory("data_directory", config.DataDir), checkDirectory("config_directory", config.ConfigDir), checkDirectory("state_directory", config.StateDir))
 	report.Checks = append(report.Checks, Check{ID: "credentials.capability", Status: capabilityStatus(capability.Status), Summary: string(capability.Status) + " — " + capability.Mechanism, Remediation: capability.Reason})
 
-	// Platform runtime checks
-	switch stdruntime.GOOS {
-	case "windows":
-		report.Checks = append(report.Checks,
-			probeWindowsConPTY(),
-			probeWindowsWebView2(),
-		)
-	case "darwin":
-		report.Checks = append(report.Checks,
-			Check{ID: "platform.pty", Status: Pass, Summary: "Unix PTY supported on macOS"},
-			Check{ID: "platform.wkwebview", Status: Pass, Summary: "WKWebView is provided by macOS"},
-		)
-	case "linux":
-		report.Checks = append(report.Checks,
-			Check{ID: "platform.pty", Status: Pass, Summary: "Unix PTY supported on Linux"},
-			probeLinuxWebKitGTK(),
-		)
+	inContainer := runningInContainer()
+	if inContainer {
+		report.Checks = append(report.Checks, Check{
+			ID:      "runtime.container",
+			Status:  Pass,
+			Summary: "Docker/container compatibility layer detected (CLI + web headless)",
+		})
 	}
 
-	report.Checks = append(report.Checks, Check{
+	// Platform runtime checks
+	if inContainer {
+		report.Checks = append(report.Checks,
+			Check{ID: "platform.pty", Status: Pass, Summary: "Unix PTY available inside container"},
+			Check{ID: "platform.webview2", Status: Skipped, Summary: "N/A in container — WebView2 is a native Windows Desktop dependency"},
+			Check{ID: "platform.webkitgtk", Status: Skipped, Summary: "N/A in container — WebKitGTK is a native Desktop dependency"},
+			Check{ID: "platform.conpty", Status: Skipped, Summary: "N/A in container — ConPTY is a native Windows terminal dependency"},
+			Check{ID: "platform.wkwebview", Status: Skipped, Summary: "N/A in container — WKWebView is a native macOS Desktop dependency"},
+		)
+	} else {
+		switch stdruntime.GOOS {
+		case "windows":
+			report.Checks = append(report.Checks,
+				probeWindowsConPTY(),
+				probeWindowsWebView2(),
+			)
+		case "darwin":
+			report.Checks = append(report.Checks,
+				Check{ID: "platform.pty", Status: Pass, Summary: "Unix PTY supported on macOS"},
+				Check{ID: "platform.wkwebview", Status: Pass, Summary: "WKWebView is provided by macOS"},
+			)
+		case "linux":
+			report.Checks = append(report.Checks,
+				Check{ID: "platform.pty", Status: Pass, Summary: "Unix PTY supported on Linux"},
+				probeLinuxWebKitGTK(),
+			)
+		}
+	}
+
+	desktopCheck := Check{
 		ID:          "desktop.shell",
 		Status:      Skipped,
 		Summary:     "Wails Desktop shell requires a native desktop launch to verify",
 		Remediation: "run the native desktop smoke test on the target operating system",
-	})
+	}
+	if inContainer {
+		desktopCheck.Summary = "N/A in container — nexus-desktop/Wails is not part of the Docker compatibility layer"
+		desktopCheck.Remediation = "use native install.sh/install.ps1/NSIS for Desktop, or nexus web in the browser"
+	}
+	report.Checks = append(report.Checks, desktopCheck)
 
 	providerIDs := make([]string, 0, len(detections))
 	for id := range detections {
@@ -99,6 +123,21 @@ func BuildReport(version string, detections map[string]model.DetectionResult, ca
 		report.Checks = append(report.Checks, Check{ID: "provider." + id, Status: status, Summary: providerSummary(detection)})
 	}
 	return report
+}
+
+func runningInContainer() bool {
+	if os.Getenv("NEXUS_DOCKER") == "1" || os.Getenv("NEXUS_COMPAT_DOCKER") == "1" {
+		return true
+	}
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return true
+	}
+	data, err := os.ReadFile("/proc/1/cgroup")
+	if err != nil {
+		return false
+	}
+	body := string(data)
+	return strings.Contains(body, "docker") || strings.Contains(body, "containerd") || strings.Contains(body, "/kubepods/")
 }
 
 func probeWindowsConPTY() Check {
