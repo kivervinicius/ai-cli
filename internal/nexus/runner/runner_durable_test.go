@@ -548,7 +548,7 @@ type alwaysFailExecutor struct{ fakeExecutor }
 
 func (f *alwaysFailExecutor) Execute(context.Context, *MissionRun, *PackageRun, string) (ExecutionResult, error) {
 	f.executed++
-	return ExecutionResult{}, errors.New("synthetic provider failure")
+	return ExecutionResult{}, MarkDispatchNotSent(errors.New("synthetic provider failure"))
 }
 
 func TestMissionRunnerHonorsAutoRemediateDisabled(t *testing.T) {
@@ -586,7 +586,7 @@ type overnightAcceptanceExecutor struct {
 func (e *overnightAcceptanceExecutor) Execute(ctx context.Context, run *MissionRun, pkg *PackageRun, prompt string) (ExecutionResult, error) {
 	if !e.failedOnce {
 		e.failedOnce = true
-		return ExecutionResult{}, errors.New("injected overnight provider failure")
+		return ExecutionResult{}, MarkDispatchNotSent(errors.New("injected overnight provider failure"))
 	}
 	return e.globalRepairExecutor.Execute(ctx, run, pkg, prompt)
 }

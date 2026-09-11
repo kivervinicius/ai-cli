@@ -47,8 +47,13 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
-// Close closes the underlying database.
-func (s *Store) Close() error { return s.db.Close() }
+// Close flushes pending WAL pages and closes the underlying database.
+func (s *Store) Close() error {
+	// Checkpoint WAL to main database before closing so Windows does not
+	// leave a locked -wal file behind.
+	_, _ = s.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	return s.db.Close()
+}
 
 // DB exposes the underlying handle for advanced queries.
 func (s *Store) DB() *sql.DB { return s.db }

@@ -73,6 +73,12 @@ func stableErrorCode(status int, message string) string {
 		fragment string
 		code     string
 	}{
+		{"intervention_already_resolved", "INTERVENTION_ALREADY_RESOLVED"},
+		{"stale_intervention", "STALE_INTERVENTION"},
+		{"unknown_external_outcome", "UNKNOWN_EXTERNAL_OUTCOME"},
+		{"dispatch outcome is unknown", "UNKNOWN_EXTERNAL_OUTCOME"},
+		{"invalid_intervention_option", "INVALID_INTERVENTION_OPTION"},
+		{"intervention_policy_denied", "INTERVENTION_POLICY_DENIED"},
 		{"quota", "QUOTA_UNKNOWN"},
 		{"rate limit", "RATE_LIMITED"},
 	}

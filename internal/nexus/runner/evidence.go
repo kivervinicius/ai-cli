@@ -357,12 +357,38 @@ func (r *MissionRunner) ensureWorkReceipt(ctx context.Context, run *MissionRun, 
 }
 
 func (r *MissionRunner) saveRun(ctx context.Context, run *MissionRun) error {
+	if err := validateMissionRunLifecycle(run); err != nil {
+		return err
+	}
 	for i := range run.PackageRuns {
 		if err := r.ensureWorkReceipt(ctx, run, &run.PackageRuns[i]); err != nil {
 			return err
 		}
 	}
 	return r.repo.SaveRun(ctx, run)
+}
+
+func validateMissionRunLifecycle(run *MissionRun) error {
+	if run == nil {
+		return fmt.Errorf("mission run is required")
+	}
+	if run.State != StateBlockedNeedsUser {
+		return nil
+	}
+	if run.NeedsHuman == nil || run.NeedsHuman.ID == "" || run.NeedsHuman.Version < 1 || len(run.NeedsHuman.Options) == 0 {
+		return fmt.Errorf("BLOCKED_NEEDS_USER requires an actionable versioned human intervention")
+	}
+	for _, option := range run.NeedsHuman.Options {
+		if strings.TrimSpace(option.ID) == "" || strings.TrimSpace(string(option.Operation)) == "" {
+			return fmt.Errorf("BLOCKED_NEEDS_USER intervention contains an invalid option")
+		}
+		switch option.Operation {
+		case InterventionRetrySafePackage, InterventionReplanPackage, InterventionConfirmExternalOutcome:
+		default:
+			return fmt.Errorf("BLOCKED_NEEDS_USER intervention contains unsupported option %q", option.Operation)
+		}
+	}
+	return nil
 }
 
 // RenderContextCapsule produces the bounded prompt section supplied to the

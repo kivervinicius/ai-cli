@@ -34,4 +34,17 @@ func TestStableErrorCodeDoesNotTreatUnknownAsZero(t *testing.T) {
 	if got := stableErrorCode(http.StatusInternalServerError, "something failed"); got != "INTERNAL_ERROR" {
 		t.Fatalf("code = %q, want INTERNAL_ERROR", got)
 	}
+	for _, tc := range []struct {
+		message string
+		want    string
+	}{
+		{message: "INTERVENTION_ALREADY_RESOLVED: existing resolution", want: "INTERVENTION_ALREADY_RESOLVED"},
+		{message: "STALE_INTERVENTION: version mismatch", want: "STALE_INTERVENTION"},
+		{message: "provider dispatch outcome is unknown", want: "UNKNOWN_EXTERNAL_OUTCOME"},
+		{message: "INTERVENTION_POLICY_DENIED: unsafe retry", want: "INTERVENTION_POLICY_DENIED"},
+	} {
+		if got := stableErrorCode(http.StatusConflict, tc.message); got != tc.want {
+			t.Errorf("message %q: code = %q, want %q", tc.message, got, tc.want)
+		}
+	}
 }

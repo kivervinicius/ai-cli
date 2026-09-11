@@ -57,19 +57,22 @@ func (p *prodLauncher) Stop(runtimeID string) error {
 // Nexus is the product-level service bridging the durable store and the
 // control plane runtime layer.
 type Nexus struct {
-	mu            sync.RWMutex
-	st            *store.Store
-	launcher      Launcher
-	drivers       *driver.Registry
-	runtimeReg    *registry.Registry
-	runner        *runner.MissionRunner
-	runnerMu      sync.Mutex
-	submitPrompt  func(runtimeID, prompt string) error
-	maestroStatus func() MaestroStatus
-	workersMu     sync.Mutex
-	workers       map[string]*missionWorker
-	schedulerOnce sync.Once
-	quotaMonitor  *QuotaMonitorService
+	mu              sync.RWMutex
+	st              *store.Store
+	launcher        Launcher
+	drivers         *driver.Registry
+	runtimeReg      *registry.Registry
+	runner          *runner.MissionRunner
+	runnerMu        sync.Mutex
+	submitPrompt    func(runtimeID, prompt string) error
+	maestroStatus   func() MaestroStatus
+	workersMu       sync.Mutex
+	workers         map[string]*missionWorker
+	schedulerOnce   sync.Once
+	scheduleCancel  context.CancelFunc
+	quotaMonitor    *QuotaMonitorService
+	attentionOnce   sync.Once
+	attentionCenter *runner.AttentionCenter
 
 	// Runtime change observers (set by the web layer to avoid circular imports).
 	onRuntimeChanged func(agentID, oldRuntimeID, newRuntimeID, provider, profile, continuity string)
@@ -85,6 +88,34 @@ func (n *Nexus) Runner() *runner.MissionRunner {
 		n.runner = runner.NewMissionRunner(newStoreRunRepository(n.st), newNexusPackageExecutor(n))
 	}
 	return n.runner
+}
+
+// AttentionCenter returns the read-model query surface for mission attention items.
+func (n *Nexus) AttentionCenter() *runner.AttentionCenter {
+	n.attentionOnce.Do(func() {
+		n.attentionCenter = runner.NewAttentionCenter(newStoreRunRepository(n.st))
+	})
+	return n.attentionCenter
+}
+
+// ResolveMissionIntervention validates and persists a human decision for a
+// blocked mission, then resumes autonomous execution.
+func (n *Nexus) ResolveMissionIntervention(ctx context.Context, runID, interventionID string, version int, optionID, resolvedBy string) (*runner.MissionRun, error) {
+	run, _, err := n.ResolveMissionInterventionWithOutcome(ctx, runID, interventionID, version, optionID, resolvedBy)
+	return run, err
+}
+
+func (n *Nexus) ResolveMissionInterventionWithOutcome(ctx context.Context, runID, interventionID string, version int, optionID, resolvedBy string) (*runner.MissionRun, bool, error) {
+	run, created, err := n.Runner().ResolveInterventionWithOutcome(ctx, runID, interventionID, version, optionID, resolvedBy)
+	if err != nil {
+		return nil, false, err
+	}
+	if created {
+		n.restartMissionWorker(runID)
+	} else {
+		n.StartMissionWorker(runID)
+	}
+	return run, created, nil
 }
 
 // SetRuntimeObservers registers callbacks for runtime lifecycle events.
@@ -191,9 +222,7 @@ func (n *Nexus) controlDrivers() *driver.Registry {
 // replace the configured data directory. Production code should use Default.
 func ResetDefaultForTest() {
 	if defaultNexus != nil {
-		if defaultNexus.st != nil {
-			_ = defaultNexus.st.Close()
-		}
+		defaultNexus.Shutdown()
 		defaultNexus = nil
 	}
 	nexusOnce = sync.Once{}
@@ -217,6 +246,35 @@ func (n *Nexus) StopQuotaMonitor() {
 	n.mu.RUnlock()
 	if service != nil {
 		service.Stop()
+	}
+}
+
+// Shutdown gracefully stops all background services and releases resources.
+// It must be called once during process exit to avoid leaked SQLite handles
+// and orphaned goroutines.
+func (n *Nexus) Shutdown() {
+	n.StopQuotaMonitor()
+
+	// Stop the schedule loop goroutine.
+	if n.scheduleCancel != nil {
+		n.scheduleCancel()
+	}
+
+	// Cancel all active mission workers.
+	n.workersMu.Lock()
+	workers := make([]*missionWorker, 0, len(n.workers))
+	for _, w := range n.workers {
+		workers = append(workers, w)
+	}
+	n.workersMu.Unlock()
+	for _, w := range workers {
+		w.cancel()
+	}
+
+	// Close the SQLite store last, after all goroutines that reference it
+	// have been asked to stop.
+	if n.st != nil {
+		_ = n.st.Close()
 	}
 }
 

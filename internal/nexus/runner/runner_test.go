@@ -172,7 +172,7 @@ func (q *quotaFailExecutor) Allocate(ctx context.Context, run *MissionRun, pkg *
 func (q *quotaFailExecutor) Execute(ctx context.Context, run *MissionRun, pkg *PackageRun, prompt string) (ExecutionResult, error) {
 	if q.failFirst {
 		q.failFirst = false
-		return ExecutionResult{}, fmt.Errorf("provider status 429: rate limit and quota exhausted")
+		return ExecutionResult{}, MarkDispatchNotSent(fmt.Errorf("provider status 429: rate limit and quota exhausted"))
 	}
 	return q.fakeExecutor.Execute(ctx, run, pkg, prompt)
 }

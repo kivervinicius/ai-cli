@@ -1291,3 +1291,24 @@ execution; native smoke/test and same-SHA CI evidence remain pending.
 
 The cancellable IPC slice was then verified by `make quality-full`, which
 passed with exit 0 (Web 62/320; Go tests/race/vet/lint/build/security).
+
+## Handoff — Human Intervention / Resume P0 — 2026-09-11
+
+The P0 duplicate-external-side-effect path is closed locally. The durable
+runner contract is documented in
+`docs/validation/NEXUS_HUMAN_INTERVENTION_SAFETY_REPORT.md`, with the execution
+plan in `docs/superpowers/plans/2026-09-11-human-intervention-safety.md`.
+
+Key safety facts: unresolved dispatches remain
+`UNKNOWN_EXTERNAL_OUTCOME`; only an explicit typed reconciliation option can
+mark that package verified; safe retry requires a proven pre-dispatch failure;
+resolution and resume intent commit atomically in SQLite; duplicate semantic
+decisions do not create a second resume; stale/conflicting decisions have no
+business side effect; and worker generations cannot delete newer ownership.
+
+All scoped Go/Web gates passed. A later concurrent AGY worktree change makes
+three unrelated AGY fixtures fail in the global suite; that area was not
+modified here. The branch remains uncommitted and retains the pre-existing
+dirty worktree changes. This closes only the first promotion gate;
+Attention Center final UX, Project Intelligence, provider UX/failover and
+native platform evidence remain outside this campaign.

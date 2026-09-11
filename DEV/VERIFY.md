@@ -909,6 +909,22 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
   no Makefile.
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-11T11:33:07Z
+## Frontend gate — 2026-09-11T17:32:44Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
+
+## Human intervention / resume gate — 2026-09-11
+
+- `go test -count=1 ./internal/nexus/runner`: PASS.
+- `go test -race -count=1 ./internal/nexus/runner`: PASS.
+- `go test -race -count=50 ./internal/nexus/runner`: PASS.
+- `go test -race -count=1 ./internal/nexus`: PASS.
+- `go test -count=1 ./...`: latest rerun FAIL in three unrelated AGY fixtures;
+  Nexus/runner/store packages PASS. A prior full run passed before the
+  concurrent AGY implementation edit.
+- `go vet ./...`: PASS.
+- `npm --prefix web run quality:full`: PASS (66 suites / 336 tests, build).
+- `git diff --check` PASS; campaign Go files are gofmt-clean. Current unrelated
+  AGY/Windows terminal edits are not reformatted by this campaign.
+- Evidências de comportamento e restart estão em
+  `docs/validation/NEXUS_HUMAN_INTERVENTION_SAFETY_REPORT.md`.

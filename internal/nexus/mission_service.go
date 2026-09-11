@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kivervinicius/ai-cli/internal/control/ids"
 	"github.com/kivervinicius/ai-cli/internal/nexus/autonomyguard"
 	"github.com/kivervinicius/ai-cli/internal/nexus/maestrogates"
 	"github.com/kivervinicius/ai-cli/internal/nexus/runner"
@@ -25,6 +26,7 @@ type missionExecutionSnapshot struct {
 }
 
 type missionWorker struct {
+	id     string
 	cancel context.CancelFunc
 	done   chan struct{}
 }
@@ -388,33 +390,76 @@ func (n *Nexus) loadMissionSnapshot(run *runner.MissionRun) (*missionExecutionSn
 
 // StartMissionWorker starts at most one autonomous worker per run in this process.
 func (n *Nexus) StartMissionWorker(runID string) {
+	n.startMissionWorker(runID, false)
+}
+
+// restartMissionWorker performs an ownership handoff for a resolved run. The
+// old worker is canceled and joined before the new generation is registered;
+// its defer can therefore never remove the new owner.
+func (n *Nexus) restartMissionWorker(runID string) {
+	n.startMissionWorker(runID, true)
+}
+
+func (n *Nexus) startMissionWorker(runID string, replace bool) {
 	if strings.TrimSpace(runID) == "" {
 		return
 	}
-	n.workersMu.Lock()
-	if n.workers == nil {
-		n.workers = map[string]*missionWorker{}
-	}
-	if _, exists := n.workers[runID]; exists {
+	for {
+		n.workersMu.Lock()
+		if n.workers == nil {
+			n.workers = map[string]*missionWorker{}
+		}
+		existing := n.workers[runID]
+		if existing == nil {
+			ctx, cancel := context.WithCancel(context.Background())
+			worker := &missionWorker{id: "worker_" + runnerID(), cancel: cancel, done: make(chan struct{})}
+			n.workers[runID] = worker
+			n.workersMu.Unlock()
+			n.runMissionWorker(runID, ctx, worker)
+			return
+		}
+		if !replace {
+			n.workersMu.Unlock()
+			return
+		}
+		existing.cancel()
 		n.workersMu.Unlock()
+		select {
+		case <-existing.done:
+		case <-time.After(15 * time.Second):
+			return
+		}
+		n.workersMu.Lock()
+		current := n.workers[runID]
+		n.workersMu.Unlock()
+		if current == existing {
+			continue
+		}
+		// A different replacement already completed the handoff.
 		return
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	worker := &missionWorker{cancel: cancel, done: make(chan struct{})}
-	n.workers[runID] = worker
-	n.workersMu.Unlock()
+}
 
+func runnerID() string {
+	return ids.NewRuntimeID()
+}
+
+func (n *Nexus) runMissionWorker(runID string, ctx context.Context, worker *missionWorker) {
 	go func() {
 		defer func() {
-			n.workersMu.Lock()
-			if current := n.workers[runID]; current == worker {
-				delete(n.workers, runID)
-			}
-			n.workersMu.Unlock()
-			close(worker.done)
+			n.releaseMissionWorker(runID, worker)
 		}()
 		_, _ = n.Runner().RunToTerminal(ctx, runID)
 	}()
+}
+
+func (n *Nexus) releaseMissionWorker(runID string, worker *missionWorker) {
+	n.workersMu.Lock()
+	if current := n.workers[runID]; current == worker {
+		delete(n.workers, runID)
+	}
+	n.workersMu.Unlock()
+	close(worker.done)
 }
 
 // stopMissionWorker requests cancellation and waits briefly for the running

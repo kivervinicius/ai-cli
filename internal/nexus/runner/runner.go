@@ -2,6 +2,8 @@ package runner
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -11,6 +13,42 @@ import (
 )
 
 var ErrDispatchOutcomeUnknown = errors.New("provider dispatch outcome is unknown")
+var ErrInterventionAlreadyResolved = errors.New("INTERVENTION_ALREADY_RESOLVED")
+var ErrStaleIntervention = errors.New("STALE_INTERVENTION")
+var ErrInvalidInterventionOption = errors.New("INVALID_INTERVENTION_OPTION")
+var ErrInterventionPolicyDenied = errors.New("INTERVENTION_POLICY_DENIED")
+var ErrDispatchNotSent = errors.New("external dispatch was not sent")
+
+type dispatchOutcomeError struct {
+	outcome DispatchState
+	err     error
+}
+
+func (e *dispatchOutcomeError) Error() string { return e.err.Error() }
+func (e *dispatchOutcomeError) Unwrap() error { return e.err }
+
+// MarkDispatchNotSent lets an executor prove that the provider boundary was
+// never crossed. All other execution errors fail closed as unknown.
+func MarkDispatchNotSent(err error) error {
+	if err == nil {
+		return ErrDispatchNotSent
+	}
+	return &dispatchOutcomeError{outcome: DispatchFailedBeforeDispatch, err: fmt.Errorf("%w: %v", ErrDispatchNotSent, err)}
+}
+
+func dispatchOutcome(err error) DispatchState {
+	var classified *dispatchOutcomeError
+	if errors.As(err, &classified) && classified.outcome == DispatchFailedBeforeDispatch {
+		return DispatchFailedBeforeDispatch
+	}
+	return DispatchUnknownExternalOutcome
+}
+
+func InterventionIdempotencyKey(runID, interventionID string, version int, optionID string) string {
+	input := fmt.Sprintf("%s\x00%s\x00%d\x00%s", runID, interventionID, version, optionID)
+	sum := sha256.Sum256([]byte(input))
+	return "human-resolution-" + hex.EncodeToString(sum[:])
+}
 
 // MissionRunner is a deterministic, durable state machine. Provider-specific
 // work is delegated to PackageExecutor and every transition is persisted.
@@ -141,6 +179,15 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 	if run.State == StatePaused {
 		return run, false, fmt.Errorf("mission run is paused: %s", run.PausedReason)
 	}
+	if run.ResumeRequest != nil && run.ResumeRequest.Status == "PENDING" {
+		now := time.Now().UTC()
+		run.ResumeRequest.Status = "STARTED"
+		run.ResumeRequest.StartedAt = &now
+		run.UpdatedAt = now
+		if err := r.saveRun(ctx, run); err != nil {
+			return run, false, fmt.Errorf("claim durable mission resume: %w", err)
+		}
+	}
 
 	run.TotalIterations++
 	if run.TotalIterations > run.Contract.MaxTotalIterations {
@@ -156,12 +203,32 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 
 	pkg := nextPackage(run)
 	if pkg == nil {
-		run.State = StateBlockedNeedsUser
+		run.State = StateFailedNoProgress
+		run.PausedReason = "No package can progress safely; dependency graph has no actionable continuation."
 		run.UpdatedAt = time.Now().UTC()
 		_ = r.saveRun(ctx, run)
 		return run, false, fmt.Errorf("no runnable package; dependency graph is blocked")
 	}
 	run.CurrentPkgIndex = packageIndex(run, pkg.PackageID)
+	if pkg.State == StateExecuting && pkg.DispatchState == DispatchCompleted {
+		if pkg.AssignedRuntime == "" {
+			pkg.DispatchState = DispatchUnknownExternalOutcome
+			pkg.ErrorMessage = fmt.Sprintf("package %s has completed dispatch %s without runtime evidence; refusing duplicate provider execution", pkg.PackageID, pkg.DispatchID)
+			r.blockNeedsHuman(run, pkg, "DISPATCH_OUTCOME_UNKNOWN", pkg.ErrorMessage, "Reconcile the provider outcome before continuing.", []string{"Inspect provider runtime"})
+		} else {
+			// The provider operation is already known to have completed. Resume at
+			// testing/review; never enter executeOne for a completed dispatch.
+			pkg.State = StateTesting
+		}
+		run.UpdatedAt = time.Now().UTC()
+		if err := r.saveRun(ctx, run); err != nil {
+			return run, false, err
+		}
+		if run.State == StateBlockedNeedsUser {
+			return run, false, ErrDispatchOutcomeUnknown
+		}
+		return run, false, nil
+	}
 
 	opCtx := leaseCtx
 	cancelOperation := func() {}
@@ -328,11 +395,40 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 
 func (r *MissionRunner) blockNeedsHuman(run *MissionRun, pkg *PackageRun, reasonCode, summary, question string, actions []string) {
 	run.State = StateBlockedNeedsUser
+	taskID := ""
+	if pkg != nil {
+		taskID = pkg.PackageID
+	}
+	options := interventionOptions(reasonCode, pkg)
 	run.NeedsHuman = &HumanIntervention{
+		ID:         "intervention_" + ids.NewRuntimeID(),
 		ReasonCode: reasonCode, Summary: summary, Question: question,
-		Context: pkg.RemediationContext, RecommendedActions: append([]string(nil), actions...),
+		Context: interventionContext(pkg), RecommendedActions: append([]string(nil), actions...),
 		Impact:    "Only the affected task is paused; independent verified work is preserved.",
-		MissionID: run.ID, TaskID: pkg.PackageID, Source: "mission_runner", Timestamp: time.Now().UTC(),
+		MissionID: run.ID, TaskID: taskID, Source: "mission_runner", Timestamp: time.Now().UTC(),
+		Version: 1, Scope: "PACKAGE", Options: options,
+	}
+}
+
+func interventionContext(pkg *PackageRun) string {
+	if pkg == nil {
+		return ""
+	}
+	return pkg.RemediationContext
+}
+
+func interventionOptions(reasonCode string, pkg *PackageRun) []InterventionOption {
+	packageID := ""
+	if pkg != nil {
+		packageID = pkg.PackageID
+	}
+	switch reasonCode {
+	case "DISPATCH_OUTCOME_UNKNOWN":
+		return []InterventionOption{{ID: "confirm-external-completion", Operation: InterventionConfirmExternalOutcome, Label: "Confirm external completion", PackageID: packageID}}
+	case "NO_PROGRESS":
+		return []InterventionOption{{ID: "replan-package", Operation: InterventionReplanPackage, Label: "Replan package", PackageID: packageID}}
+	default:
+		return []InterventionOption{{ID: "replan-package", Operation: InterventionReplanPackage, Label: "Replan package", PackageID: packageID}}
 	}
 }
 
@@ -388,6 +484,10 @@ func (r *MissionRunner) markRemediation(run *MissionRun, pkg *PackageRun, retryF
 func (r *MissionRunner) completeRun(ctx context.Context, run *MissionRun) (*MissionRun, bool, error) {
 	now := time.Now().UTC()
 	run.State = StateCompletedVerified
+	if run.ResumeRequest != nil && run.ResumeRequest.Status != "COMPLETED" {
+		run.ResumeRequest.Status = "COMPLETED"
+		run.ResumeRequest.CompletedAt = &now
+	}
 	run.CompletedAt = &now
 	run.UpdatedAt = now
 	if err := r.saveRun(ctx, run); err != nil {
@@ -424,7 +524,7 @@ func (r *MissionRunner) verifyGlobalDefinition(ctx, operationCtx context.Context
 		}
 	}
 	if target == nil {
-		run.State = StateBlockedNeedsUser
+		run.State = StateFailedNoProgress
 		run.PausedReason = verificationFailureContext(results)
 		run.UpdatedAt = time.Now().UTC()
 		_ = r.saveRun(ctx, run)
@@ -467,7 +567,7 @@ func (r *MissionRunner) ResumeRun(ctx context.Context, runID string) (*MissionRu
 		return nil, err
 	}
 	defer func() { _ = r.repo.ReleaseLease(context.Background(), runID, r.owner, run.LeaseToken) }()
-	if run.State != StatePaused && run.State != StateBlockedNeedsUser {
+	if run.State != StatePaused {
 		return nil, fmt.Errorf("mission run %s cannot resume from %s", runID, run.State)
 	}
 	run.State = StateExecuting
@@ -477,6 +577,156 @@ func (r *MissionRunner) ResumeRun(ctx context.Context, runID string) (*MissionRu
 		return nil, err
 	}
 	return run, nil
+}
+
+// ResolveIntervention validates and persists a typed option for a blocked
+// mission. The optionID argument is deliberately closed over the intervention
+// options; the final argument is an audit actor, not an executable command.
+func (r *MissionRunner) ResolveIntervention(ctx context.Context, runID, interventionID string, version int, optionID, resolvedBy string) (*MissionRun, error) {
+	run, _, err := r.resolveIntervention(ctx, runID, interventionID, version, optionID, resolvedBy)
+	return run, err
+}
+
+// ResolveInterventionWithOutcome also tells the application layer whether a
+// new durable resume request was created. Duplicate requests must not replace
+// or restart a worker that already owns the continuation.
+func (r *MissionRunner) ResolveInterventionWithOutcome(ctx context.Context, runID, interventionID string, version int, optionID, resolvedBy string) (*MissionRun, bool, error) {
+	return r.resolveIntervention(ctx, runID, interventionID, version, optionID, resolvedBy)
+}
+
+func (r *MissionRunner) resolveIntervention(ctx context.Context, runID, interventionID string, version int, optionID, resolvedBy string) (*MissionRun, bool, error) {
+	run, err := r.repo.AcquireLease(ctx, runID, r.owner, r.leaseTTL)
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() { _ = r.repo.ReleaseLease(context.Background(), runID, r.owner, run.LeaseToken) }()
+
+	if run.NeedsHuman == nil {
+		return nil, false, fmt.Errorf("%w: mission run %s has no pending intervention", ErrStaleIntervention, runID)
+	}
+	if version < 1 || run.NeedsHuman.Version < 1 {
+		return nil, false, fmt.Errorf("%w: intervention version must be positive", ErrStaleIntervention)
+	}
+	key := InterventionIdempotencyKey(runID, interventionID, version, optionID)
+	if run.NeedsHuman.Resolved {
+		if run.NeedsHuman.ID != interventionID || run.NeedsHuman.Version != version {
+			return nil, false, fmt.Errorf("%w: current intervention is %s version %d", ErrStaleIntervention, run.NeedsHuman.ID, run.NeedsHuman.Version)
+		}
+		if run.NeedsHuman.Resolution != nil && run.NeedsHuman.Resolution.IdempotencyKey == key {
+			return run, false, nil
+		}
+		return run, false, fmt.Errorf("%w: existing resolution=%s", ErrInterventionAlreadyResolved, resolutionKey(run.NeedsHuman))
+	}
+	if run.State != StateBlockedNeedsUser {
+		return nil, false, fmt.Errorf("%w: mission run %s is not blocked (state=%s)", ErrStaleIntervention, runID, run.State)
+	}
+	if run.NeedsHuman.ID != interventionID {
+		return nil, false, fmt.Errorf("%w: expected intervention %s, got %s", ErrStaleIntervention, run.NeedsHuman.ID, interventionID)
+	}
+	if run.NeedsHuman.Version != version {
+		return nil, false, fmt.Errorf("%w: expected version %d, got %d", ErrStaleIntervention, run.NeedsHuman.Version, version)
+	}
+	option, ok := findInterventionOption(run.NeedsHuman.Options, optionID)
+	if !ok {
+		return nil, false, fmt.Errorf("%w: option %q is not offered by intervention %s", ErrInvalidInterventionOption, optionID, interventionID)
+	}
+	if !run.Contract.AllowsHumanOperation(option.Operation) {
+		return nil, false, fmt.Errorf("%w: operation %s is not allowed by the autonomy contract", ErrInterventionPolicyDenied, option.Operation)
+	}
+	if option.PackageID != "" && option.PackageID != run.NeedsHuman.TaskID {
+		return nil, false, fmt.Errorf("%w: option %q is outside intervention scope", ErrInvalidInterventionOption, optionID)
+	}
+	pkg := packageForIntervention(run, option)
+	if err := applyInterventionOption(run, pkg, option); err != nil {
+		return nil, false, err
+	}
+
+	now := time.Now().UTC()
+	run.NeedsHuman.Resolved = true
+	run.NeedsHuman.ResolvedAt = &now
+	if strings.TrimSpace(resolvedBy) == "" {
+		resolvedBy = "human"
+	}
+	run.NeedsHuman.ResolutionDecision = option.ID
+	run.NeedsHuman.ResolutionChosen = string(option.Operation)
+	run.NeedsHuman.Resolution = &InterventionResolution{
+		InterventionID: interventionID, Version: version, OptionID: option.ID,
+		IdempotencyKey: key, ResolvedAt: now, ResolvedBy: resolvedBy,
+	}
+	run.State = StateExecuting
+	run.PausedReason = ""
+	run.ResumeRequest = &MissionResumeRequest{ID: "resume_" + key, IdempotencyKey: key, Status: "PENDING", RequestedAt: now}
+	run.UpdatedAt = now
+
+	if committer, ok := r.repo.(InterventionCommitter); ok {
+		if err := committer.CommitInterventionResolution(ctx, run, run.NeedsHuman.Resolution); err != nil {
+			return nil, false, err
+		}
+	} else if err := r.saveRun(ctx, run); err != nil {
+		return nil, false, err
+	}
+	return run, true, nil
+}
+
+func resolutionKey(intervention *HumanIntervention) string {
+	if intervention != nil && intervention.Resolution != nil {
+		return intervention.Resolution.IdempotencyKey
+	}
+	return ""
+}
+
+func findInterventionOption(options []InterventionOption, optionID string) (InterventionOption, bool) {
+	for _, option := range options {
+		if option.ID == optionID {
+			return option, true
+		}
+	}
+	return InterventionOption{}, false
+}
+
+func packageForIntervention(run *MissionRun, option InterventionOption) *PackageRun {
+	packageID := option.PackageID
+	if packageID == "" && run.NeedsHuman != nil {
+		packageID = run.NeedsHuman.TaskID
+	}
+	for i := range run.PackageRuns {
+		if run.PackageRuns[i].PackageID == packageID {
+			return &run.PackageRuns[i]
+		}
+	}
+	return nil
+}
+
+func applyInterventionOption(run *MissionRun, pkg *PackageRun, option InterventionOption) error {
+	if pkg == nil {
+		return fmt.Errorf("%w: intervention package is missing", ErrInvalidInterventionOption)
+	}
+	switch option.Operation {
+	case InterventionConfirmExternalOutcome:
+		if pkg.DispatchState != DispatchUnknownExternalOutcome && pkg.DispatchState != DispatchIntent {
+			return fmt.Errorf("%w: external outcome for package %s is not awaiting reconciliation", ErrInvalidInterventionOption, pkg.PackageID)
+		}
+		pkg.DispatchState = DispatchUnknownExternalOutcome
+		pkg.State = StateVerified
+		if pkg.WorkReceipt == nil {
+			pkg.WorkReceipt = &WorkReceipt{ID: "receipt_" + ids.NewRuntimeID(), RunID: run.ID, StepID: pkg.PackageID, Status: "EXTERNAL_OUTCOME_CONFIRMED", Summary: "External outcome explicitly confirmed by a human.", StartedAt: pkg.StartedAt, CompletedAt: time.Now().UTC()}
+		}
+	case InterventionRetrySafePackage:
+		if pkg.State == StateVerified || (pkg.DispatchState != DispatchNone && pkg.DispatchState != DispatchFailedBeforeDispatch) {
+			return fmt.Errorf("%w: package %s is not proven safe to retry", ErrInterventionPolicyDenied, pkg.PackageID)
+		}
+		resetDispatch(pkg)
+		pkg.State = StateExecuting
+	case InterventionReplanPackage:
+		if pkg.State == StateVerified || pkg.DispatchState == DispatchIntent || pkg.DispatchState == DispatchUnknownExternalOutcome || pkg.DispatchState == DispatchFailed {
+			return fmt.Errorf("%w: package %s requires external outcome reconciliation before replanning", ErrInterventionPolicyDenied, pkg.PackageID)
+		}
+		resetDispatch(pkg)
+		pkg.State = StateExecuting
+	default:
+		return fmt.Errorf("%w: unsupported operation %s", ErrInvalidInterventionOption, option.Operation)
+	}
+	return nil
 }
 
 func (r *MissionRunner) CancelRun(ctx context.Context, runID, reason string) (*MissionRun, error) {
@@ -529,8 +779,13 @@ func (r *MissionRunner) RunToTerminal(ctx context.Context, runID string) (*Missi
 }
 
 func (r *MissionRunner) beginDispatch(ctx context.Context, run *MissionRun, pkg *PackageRun) error {
-	if pkg.DispatchState == DispatchIntent && pkg.DispatchID != "" {
-		return fmt.Errorf("%w: package %s has unresolved dispatch %s; refusing duplicate provider execution", ErrDispatchOutcomeUnknown, pkg.PackageID, pkg.DispatchID)
+	if pkg.DispatchState == DispatchIntent || pkg.DispatchState == DispatchUnknownExternalOutcome {
+		if pkg.DispatchState == DispatchIntent {
+			pkg.DispatchState = DispatchUnknownExternalOutcome
+			pkg.ErrorMessage = fmt.Sprintf("package %s has unresolved dispatch %s; refusing duplicate provider execution", pkg.PackageID, firstNonEmptyDispatchID(pkg.DispatchID))
+			_ = r.saveRun(ctx, run)
+		}
+		return fmt.Errorf("%w: package %s has unresolved dispatch %s; refusing duplicate provider execution", ErrDispatchOutcomeUnknown, pkg.PackageID, firstNonEmptyDispatchID(pkg.DispatchID))
 	}
 	now := time.Now().UTC()
 	pkg.DispatchID = "dispatch_" + ids.NewRuntimeID()
@@ -538,6 +793,13 @@ func (r *MissionRunner) beginDispatch(ctx context.Context, run *MissionRun, pkg 
 	pkg.DispatchStartedAt = &now
 	pkg.DispatchFinishedAt = nil
 	return r.saveRun(ctx, run)
+}
+
+func firstNonEmptyDispatchID(dispatchID string) string {
+	if dispatchID == "" {
+		return "<missing-id>"
+	}
+	return dispatchID
 }
 
 func finishDispatch(pkg *PackageRun, state DispatchState) {
@@ -562,12 +824,15 @@ func (r *MissionRunner) executeOne(ctx context.Context, run *MissionRun, pkg *Pa
 	}
 	outcome, err := r.executor.Execute(ctx, run, pkg, pkg.CompiledPrompt)
 	if err != nil {
-		finishDispatch(pkg, DispatchFailed)
+		finishDispatch(pkg, dispatchOutcome(err))
+		if pkg.DispatchState == DispatchUnknownExternalOutcome {
+			return fmt.Errorf("%w: %v", ErrDispatchOutcomeUnknown, err)
+		}
 		return fmt.Errorf("execution failed: %w", err)
 	}
 	if outcome.RuntimeID == "" {
-		finishDispatch(pkg, DispatchFailed)
-		return fmt.Errorf("executor returned no runtime evidence")
+		finishDispatch(pkg, DispatchUnknownExternalOutcome)
+		return fmt.Errorf("%w: executor returned no runtime evidence", ErrDispatchOutcomeUnknown)
 	}
 	pkg.AssignedRuntime = outcome.RuntimeID
 	finishDispatch(pkg, DispatchCompleted)
@@ -597,9 +862,9 @@ func (r *MissionRunner) executeParallelGroup(ctx context.Context, run *MissionRu
 	// Persist every dispatch intent before launching any provider goroutine.
 	for _, idx := range indexes {
 		pkg := &run.PackageRuns[idx]
-		if pkg.DispatchState == DispatchIntent && pkg.DispatchID != "" {
-			run.State = StateBlockedNeedsUser
-			pkg.ErrorMessage = fmt.Sprintf("package %s has unresolved dispatch %s; refusing duplicate provider execution", pkg.PackageID, pkg.DispatchID)
+		if pkg.DispatchState == DispatchIntent || pkg.DispatchState == DispatchUnknownExternalOutcome {
+			pkg.ErrorMessage = fmt.Sprintf("package %s has unresolved dispatch %s; refusing duplicate provider execution", pkg.PackageID, firstNonEmptyDispatchID(pkg.DispatchID))
+			r.blockNeedsHuman(run, pkg, "DISPATCH_OUTCOME_UNKNOWN", pkg.ErrorMessage, "Reconcile the provider outcome before continuing.", []string{"Inspect provider runtime"})
 			return fmt.Errorf("%w: %s", ErrDispatchOutcomeUnknown, pkg.ErrorMessage)
 		}
 		now := time.Now().UTC()
@@ -631,16 +896,24 @@ func (r *MissionRunner) executeParallelGroup(ctx context.Context, run *MissionRu
 		res := <-results
 		pkg := &run.PackageRuns[res.index]
 		if res.err != nil {
-			finishDispatch(pkg, DispatchFailed)
+			finishDispatch(pkg, dispatchOutcome(res.err))
+			if pkg.DispatchState == DispatchUnknownExternalOutcome {
+				if firstErr == nil {
+					r.blockNeedsHuman(run, pkg, "DISPATCH_OUTCOME_UNKNOWN", res.err.Error(), "Provider outcome is unknown after the dispatch boundary.", []string{"Inspect provider runtime"})
+					firstErr = fmt.Errorf("%w: %v", ErrDispatchOutcomeUnknown, res.err)
+				}
+				continue
+			}
 			if err := r.markRemediation(run, pkg, StateCompiling, "Execution failed: "+res.err.Error()); err != nil && firstErr == nil {
 				firstErr = err
 			}
 			continue
 		}
 		if res.outcome.RuntimeID == "" {
-			finishDispatch(pkg, DispatchFailed)
-			if err := r.markRemediation(run, pkg, StateCompiling, "executor returned no runtime evidence"); err != nil && firstErr == nil {
-				firstErr = err
+			finishDispatch(pkg, DispatchUnknownExternalOutcome)
+			if firstErr == nil {
+				r.blockNeedsHuman(run, pkg, "DISPATCH_OUTCOME_UNKNOWN", "executor returned no runtime evidence", "Provider outcome is unknown after the dispatch boundary.", []string{"Inspect provider runtime"})
+				firstErr = fmt.Errorf("%w: executor returned no runtime evidence", ErrDispatchOutcomeUnknown)
 			}
 			continue
 		}

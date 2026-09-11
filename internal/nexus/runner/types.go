@@ -12,10 +12,12 @@ type State string
 type DispatchState string
 
 const (
-	DispatchNone      DispatchState = ""
-	DispatchIntent    DispatchState = "INTENT"
-	DispatchCompleted DispatchState = "COMPLETED"
-	DispatchFailed    DispatchState = "FAILED"
+	DispatchNone                   DispatchState = ""
+	DispatchIntent                 DispatchState = "INTENT"
+	DispatchCompleted              DispatchState = "COMPLETED"
+	DispatchFailed                 DispatchState = "FAILED" // legacy; new failures must be classified below
+	DispatchFailedBeforeDispatch   DispatchState = "FAILED_BEFORE_DISPATCH"
+	DispatchUnknownExternalOutcome DispatchState = "UNKNOWN_EXTERNAL_OUTCOME"
 )
 
 const (
@@ -192,46 +194,92 @@ type PackageRun struct {
 	FinishedAt               *time.Time           `json:"finished_at,omitempty"`
 }
 
+// InterventionOperation is a closed set of operations that the core can
+// safely interpret. Transport clients submit an option ID, never an arbitrary
+// command or prose decision.
+type InterventionOperation string
+
+const (
+	InterventionRetrySafePackage       InterventionOperation = "RETRY_SAFE_PACKAGE"
+	InterventionReplanPackage          InterventionOperation = "REPLAN_PACKAGE"
+	InterventionConfirmExternalOutcome InterventionOperation = "CONFIRM_EXTERNAL_COMPLETION"
+)
+
+type InterventionOption struct {
+	ID        string                `json:"id"`
+	Operation InterventionOperation `json:"operation"`
+	Label     string                `json:"label"`
+	PackageID string                `json:"package_id,omitempty"`
+}
+
+type InterventionResolution struct {
+	InterventionID string    `json:"intervention_id"`
+	Version        int       `json:"version"`
+	OptionID       string    `json:"option_id"`
+	IdempotencyKey string    `json:"idempotency_key"`
+	ResolvedAt     time.Time `json:"resolved_at"`
+	ResolvedBy     string    `json:"resolved_by"`
+}
+
+type MissionResumeRequest struct {
+	ID             string     `json:"id"`
+	IdempotencyKey string     `json:"idempotency_key"`
+	Status         string     `json:"status"` // PENDING, STARTED, COMPLETED
+	RequestedAt    time.Time  `json:"requested_at"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+}
+
 // HumanIntervention is the durable, actionable contract surfaced whenever a
 // mission cannot safely continue autonomously. The summary/error string remains
 // available for legacy clients, but UI and recovery code can rely on these
 // structured fields instead of parsing prose.
 type HumanIntervention struct {
-	ReasonCode         string    `json:"reason_code"`
-	Summary            string    `json:"summary"`
-	Question           string    `json:"question"`
-	Context            string    `json:"context"`
-	RecommendedActions []string  `json:"recommended_actions"`
-	Impact             string    `json:"impact"`
-	MissionID          string    `json:"mission_id"`
-	TaskID             string    `json:"task_id"`
-	Source             string    `json:"source"`
-	Timestamp          time.Time `json:"timestamp"`
+	ID                 string                  `json:"id"`
+	ReasonCode         string                  `json:"reason_code"`
+	Summary            string                  `json:"summary"`
+	Question           string                  `json:"question"`
+	Context            string                  `json:"context"`
+	RecommendedActions []string                `json:"recommended_actions"`
+	Impact             string                  `json:"impact"`
+	MissionID          string                  `json:"mission_id"`
+	TaskID             string                  `json:"task_id"`
+	Source             string                  `json:"source"`
+	Timestamp          time.Time               `json:"timestamp"`
+	Version            int                     `json:"version"`
+	Scope              string                  `json:"scope"`
+	Options            []InterventionOption    `json:"options"`
+	Resolved           bool                    `json:"resolved"`
+	ResolvedAt         *time.Time              `json:"resolved_at,omitempty"`
+	ResolutionDecision string                  `json:"resolution_decision,omitempty"`
+	ResolutionChosen   string                  `json:"resolution_chosen,omitempty"`
+	Resolution         *InterventionResolution `json:"resolution,omitempty"`
 }
 
 type MissionRun struct {
-	ID                  string               `json:"id"`
-	PlanID              string               `json:"plan_id"`
-	PlanRevision        int                  `json:"plan_revision"`
-	ExecutionSnapshotID string               `json:"execution_snapshot_id,omitempty"`
-	ProjectID           string               `json:"project_id"`
-	Autonomous          bool                 `json:"autonomous,omitempty"`
-	Workspace           string               `json:"workspace"`
-	State               State                `json:"state"`
-	Contract            AutonomyContract     `json:"contract"`
-	CurrentPkgIndex     int                  `json:"current_pkg_index"` // compatibility/UI hint only
-	TotalIterations     int                  `json:"total_iterations"`
-	PackageRuns         []PackageRun         `json:"package_runs"`
-	LeaseOwner          string               `json:"lease_owner,omitempty"`
-	LeaseToken          string               `json:"lease_token,omitempty"`
-	LeaseExpiresAt      *time.Time           `json:"lease_expires_at,omitempty"`
-	HeartbeatAt         *time.Time           `json:"heartbeat_at,omitempty"`
-	PausedReason        string               `json:"paused_reason,omitempty"`
-	StartedAt           time.Time            `json:"started_at"`
-	UpdatedAt           time.Time            `json:"updated_at"`
-	CompletedAt         *time.Time           `json:"completed_at,omitempty"`
-	GlobalVerifications []VerificationResult `json:"global_verifications,omitempty"`
-	NeedsHuman          *HumanIntervention   `json:"needs_human,omitempty"`
+	ID                  string                `json:"id"`
+	PlanID              string                `json:"plan_id"`
+	PlanRevision        int                   `json:"plan_revision"`
+	ExecutionSnapshotID string                `json:"execution_snapshot_id,omitempty"`
+	ProjectID           string                `json:"project_id"`
+	Autonomous          bool                  `json:"autonomous,omitempty"`
+	Workspace           string                `json:"workspace"`
+	State               State                 `json:"state"`
+	Contract            AutonomyContract      `json:"contract"`
+	CurrentPkgIndex     int                   `json:"current_pkg_index"` // compatibility/UI hint only
+	TotalIterations     int                   `json:"total_iterations"`
+	PackageRuns         []PackageRun          `json:"package_runs"`
+	LeaseOwner          string                `json:"lease_owner,omitempty"`
+	LeaseToken          string                `json:"lease_token,omitempty"`
+	LeaseExpiresAt      *time.Time            `json:"lease_expires_at,omitempty"`
+	HeartbeatAt         *time.Time            `json:"heartbeat_at,omitempty"`
+	PausedReason        string                `json:"paused_reason,omitempty"`
+	StartedAt           time.Time             `json:"started_at"`
+	UpdatedAt           time.Time             `json:"updated_at"`
+	CompletedAt         *time.Time            `json:"completed_at,omitempty"`
+	GlobalVerifications []VerificationResult  `json:"global_verifications,omitempty"`
+	NeedsHuman          *HumanIntervention    `json:"needs_human,omitempty"`
+	ResumeRequest       *MissionResumeRequest `json:"resume_request,omitempty"`
 }
 
 type AllocationResult struct {

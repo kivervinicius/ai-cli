@@ -2,6 +2,7 @@ package nexus
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/kivervinicius/ai-cli/internal/control/events"
@@ -89,11 +90,19 @@ func (s *RunApplicationService) Step(ctx context.Context, runID string) (*RunSte
 	run, completed, err := s.nexus.Runner().ExecuteNextStep(ctx, runID)
 	if err != nil {
 		if run != nil {
+			if run.State == runner.StateBlockedNeedsUser && run.NeedsHuman != nil && (before == nil || before.NeedsHuman == nil || before.NeedsHuman.ID != run.NeedsHuman.ID) {
+				s.publishRunEvent(run, events.EventHumanInterventionCreated, "Human intervention created", map[string]any{
+					"intervention_id": run.NeedsHuman.ID, "version": run.NeedsHuman.Version, "reason": run.NeedsHuman.ReasonCode,
+				})
+			}
 			s.publishRunEvent(run, events.EventMissionFailed, "Mission step failed", map[string]any{
 				"run_id": runID, "error": security.Redact(err.Error()),
 			})
 		}
 		return nil, err
+	}
+	if before != nil && before.ResumeRequest != nil && before.ResumeRequest.Status == "PENDING" {
+		s.publishRunEvent(run, events.EventMissionResumed, "Mission resume started", map[string]any{"idempotency_key": before.ResumeRequest.IdempotencyKey})
 	}
 	if completed {
 		s.publishRunEvent(run, events.EventMissionCompleted, "Mission run completed", map[string]any{"run_id": runID})
@@ -156,6 +165,39 @@ func (s *RunApplicationService) Cancel(ctx context.Context, runID, reason string
 		s.publishRunEvent(run, events.EventMissionCanceled, "Mission run canceled", map[string]any{"reason": reason})
 	}
 	return run, err
+}
+
+func (s *RunApplicationService) ResolveIntervention(ctx context.Context, runID, interventionID string, version int, optionID, resolvedBy string) (*runner.MissionRun, error) {
+	if err := s.ready(ctx); err != nil {
+		return nil, err
+	}
+	run, created, err := s.nexus.ResolveMissionInterventionWithOutcome(ctx, runID, interventionID, version, optionID, resolvedBy)
+	if err != nil {
+		if errors.Is(err, runner.ErrStaleIntervention) {
+			if current, getErr := s.nexus.Runner().GetRun(ctx, runID); getErr == nil {
+				s.publishRunEvent(current, events.EventHumanInterventionStaleRejected, "Stale human intervention decision rejected", map[string]any{
+					"intervention_id": interventionID, "version": version, "option_id": security.Redact(optionID),
+				})
+			}
+		}
+		return nil, err
+	}
+	if err == nil && created {
+		s.publishRunEvent(run, events.EventHumanInterventionResolved, "Mission intervention resolved", map[string]any{
+			"intervention_id": interventionID, "version": version, "option_id": security.Redact(optionID),
+		})
+		if run.ResumeRequest != nil {
+			s.publishRunEvent(run, events.EventMissionResumeRequested, "Mission resume requested", map[string]any{"idempotency_key": run.ResumeRequest.IdempotencyKey})
+		}
+	}
+	return run, err
+}
+
+func (s *RunApplicationService) Attention(ctx context.Context) (*runner.AttentionGroup, error) {
+	if err := s.ready(ctx); err != nil {
+		return nil, err
+	}
+	return s.nexus.AttentionCenter().ListAttention(ctx)
 }
 
 func (s *RunApplicationService) publishRunEvent(run *runner.MissionRun, eventType events.EventType, summary string, data map[string]any) {

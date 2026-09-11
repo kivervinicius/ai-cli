@@ -3933,3 +3933,25 @@ build` PASS e Web reiniciado em HTTP 200.
 - O 409 de execução permanece condicionado a recurso/provider não disponível;
   o processo em execução usa `/home/desenvolvedor/.local/bin/nexus` iniciado
   antes do rebuild e deve ser reiniciado para novo smoke. Sem commit/push.
+
+## 2026-09-11 — P0 Human Intervention / Resume safety closure
+
+- Reproduzido o P0 com spy de provider: dispatch desconhecido após a fronteira
+  externa era emitido novamente ao resolver a intervenção; o teste falhou no
+  baseline e passou após a mudança.
+- O runner agora usa intervenção tipada, com ID/versão/opções fechadas,
+  resolução canônica, chave semântica determinística, validação de escopo e
+  AutonomyContract, além de conflito/stale fail-closed.
+- `INTENT` sem receipt de conclusão é promovido somente a
+  `UNKNOWN_EXTERNAL_OUTCOME`; resume não limpa `DispatchID` nem redispatcha.
+  Retry só aceita `FAILED_BEFORE_DISPATCH` comprovado.
+- SQLite ganhou commit transacional de run + resolução + eventos/outbox de
+  resume; recuperação reabre a decisão e executa uma continuação sem repetir
+  package concluído ou alterar packages paralelos.
+- Worker ownership agora é por geração com compare-and-delete e handoff
+  cancel/join; intervenção bloqueada exige pergunta versionada acionável.
+- Verificação escopada: runner normal/race, stress race 50x, Nexus normal/race,
+  `go vet ./...`, Web quality/full e `git diff --check` passaram. Uma execução
+  global anterior também passou; uma alteração concorrente posterior no AGY
+  deixou três fixtures AGY falhando, fora desta campanha.
+- Relatório detalhado: `docs/validation/NEXUS_HUMAN_INTERVENTION_SAFETY_REPORT.md`.

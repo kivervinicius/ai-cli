@@ -72,6 +72,8 @@ export const nexus = {
       body: JSON.stringify({ provider, profile }),
     }),
   listProjects: () => request<Project[]>('/api/v1/projects'),
+  listProjectSummaries: () =>
+    request<import('../types').ProjectAgentSummary[]>('/api/v1/projects/summaries'),
   createProject: (path: string, name?: string) =>
     request<Project>('/api/v1/projects', { method: 'POST', body: JSON.stringify({ path, name }) }),
   getProject: (id: string) =>
@@ -577,6 +579,25 @@ export const nexus = {
   stopTunnel: () =>
     request<import('../types').TunnelStatus>('/api/v1/tunnel/stop', { method: 'POST' }),
   getTunnelQR: () => request<{ url: string; bootstrap_url: string }>('/api/v1/tunnel/qr'),
+
+  // Attention Center
+  getAttention: () => request<import('../types').AttentionGroup>('/api/v1/attention'),
+  resolveIntervention: (
+    runId: string,
+    interventionId: string,
+    version: number,
+    optionId: string,
+    resolvedBy?: string,
+  ) =>
+    request<import('../types').MissionRun>(`/api/v1/runs/${runId}/resolve-intervention`, {
+      method: 'POST',
+      body: JSON.stringify({
+        intervention_id: interventionId,
+        version,
+        option_id: optionId,
+        resolved_by: resolvedBy,
+      }),
+    }),
 };
 
 export const nexusApi = nexus;

@@ -122,6 +122,28 @@ func (r *storeRunRepository) ReleaseLease(ctx context.Context, id, owner, token 
 	return nil
 }
 
+func (r *storeRunRepository) CommitInterventionResolution(ctx context.Context, run *runner.MissionRun, resolution *runner.InterventionResolution) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if r.st == nil || run == nil || resolution == nil {
+		return fmt.Errorf("mission intervention commit requires store, run and resolution")
+	}
+	payload, err := json.Marshal(run)
+	if err != nil {
+		return fmt.Errorf("marshal mission run intervention resolution: %w", err)
+	}
+	return r.st.CommitMissionInterventionResolution(store.MissionRunRecord{
+		ID: run.ID, PlanID: run.PlanID, ProjectID: run.ProjectID, State: string(run.State), PayloadJSON: string(payload),
+		LeaseOwner: run.LeaseOwner, LeaseToken: run.LeaseToken, LeaseExpiresAt: run.LeaseExpiresAt, HeartbeatAt: run.HeartbeatAt,
+		CreatedAt: run.StartedAt, UpdatedAt: run.UpdatedAt,
+	}, store.MissionInterventionResolutionRecord{
+		RunID: run.ID, InterventionID: resolution.InterventionID, Version: resolution.Version,
+		OptionID: resolution.OptionID, IdempotencyKey: resolution.IdempotencyKey, ResolvedAt: resolution.ResolvedAt,
+		ResolvedBy: resolution.ResolvedBy, ResumeStatus: "PENDING",
+	})
+}
+
 func decodeMissionRun(rec *store.MissionRunRecord) (*runner.MissionRun, error) {
 	if rec == nil {
 		return nil, runner.ErrRunNotFound

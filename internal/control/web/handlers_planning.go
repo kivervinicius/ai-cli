@@ -558,7 +558,11 @@ func (h *NexusHandler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Reason string `json:"reason"`
+		Reason         string `json:"reason"`
+		InterventionID string `json:"intervention_id"`
+		Version        int    `json:"version"`
+		OptionID       string `json:"option_id"`
+		ResolvedBy     string `json:"resolved_by"`
 	}
 	_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body)
 	var (
@@ -576,6 +580,12 @@ func (h *NexusHandler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 		run, err = h.runs.ReturnToMission(r.Context(), runID)
 	case "cancel":
 		run, err = h.runs.Cancel(r.Context(), runID, firstNonEmpty(body.Reason, "canceled by user"))
+	case "resolve-intervention":
+		if body.InterventionID == "" || body.OptionID == "" {
+			writeError(w, http.StatusBadRequest, "intervention_id, version and option_id are required")
+			return
+		}
+		run, err = h.runs.ResolveIntervention(r.Context(), runID, body.InterventionID, body.Version, body.OptionID, body.ResolvedBy)
 	case "step", "":
 		result, stepErr := h.runs.Step(r.Context(), runID)
 		err = stepErr
@@ -649,4 +659,19 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// handleAttentionCenter returns the aggregated attention items across all
+// mission runs, grouped by category (NeedsYou, Completed, Failed).
+func (h *NexusHandler) handleAttentionCenter(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	group, err := h.runs.Attention(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, group)
 }

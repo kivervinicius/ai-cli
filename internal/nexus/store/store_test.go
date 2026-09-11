@@ -146,6 +146,52 @@ func TestCanonicalPathValidation(t *testing.T) {
 	}
 }
 
+func TestListAgentSummaries(t *testing.T) {
+	s := openTestStore(t)
+	emptyProj, err := s.CreateProject(Project{Name: "Empty", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatalf("create empty project: %v", err)
+	}
+	activeProj, err := s.CreateProject(Project{Name: "Active", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatalf("create active project: %v", err)
+	}
+
+	working, err := s.CreateAgent(Agent{ProjectID: activeProj.ID, Name: "Worker", Status: "WORKING"})
+	if err != nil {
+		t.Fatalf("create working agent: %v", err)
+	}
+	if err := s.SetAgentStatus(working.ID, "WORKING"); err != nil {
+		t.Fatalf("set working status: %v", err)
+	}
+	if _, err := s.CreateAgent(Agent{ProjectID: activeProj.ID, Name: "Idle", Status: "STOPPED"}); err != nil {
+		t.Fatalf("create stopped agent: %v", err)
+	}
+
+	summaries, err := s.ListAgentSummaries()
+	if err != nil {
+		t.Fatalf("list agent summaries: %v", err)
+	}
+
+	byID := map[string]ProjectAgentSummary{}
+	for _, summary := range summaries {
+		byID[summary.ProjectID] = summary
+	}
+	if _, ok := byID[emptyProj.ID]; ok {
+		t.Fatalf("projects with zero agents must be omitted, found %s", emptyProj.ID)
+	}
+	got, ok := byID[activeProj.ID]
+	if !ok {
+		t.Fatalf("expected summary for active project %s", activeProj.ID)
+	}
+	if got.AgentCount != 2 {
+		t.Fatalf("expected agent_count 2, got %d", got.AgentCount)
+	}
+	if got.WorkingCount != 1 {
+		t.Fatalf("expected working_count 1, got %d", got.WorkingCount)
+	}
+}
+
 func TestAgentLifecycle(t *testing.T) {
 	s := openTestStore(t)
 	projDir := t.TempDir()

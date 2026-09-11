@@ -22,16 +22,24 @@ type RunRepository interface {
 	ReleaseLease(context.Context, string, string, string) error
 }
 
+// InterventionCommitter gives the application transaction a single durable
+// boundary for the run payload, canonical resolution and resume outbox intent.
+// Production SQLite and the memory test repository both implement it.
+type InterventionCommitter interface {
+	CommitInterventionResolution(context.Context, *MissionRun, *InterventionResolution) error
+}
+
 // MemoryRunRepository is test/dev only. Production Nexus injects the SQLite-backed adapter.
 type MemoryRunRepository struct {
-	mu       sync.Mutex
-	runs     map[string]*MissionRun
-	capsules map[string]*ContextCapsule
-	receipts map[string]*WorkReceipt
+	mu          sync.Mutex
+	runs        map[string]*MissionRun
+	capsules    map[string]*ContextCapsule
+	receipts    map[string]*WorkReceipt
+	resolutions map[string]*InterventionResolution
 }
 
 func NewMemoryRunRepository() *MemoryRunRepository {
-	return &MemoryRunRepository{runs: map[string]*MissionRun{}, capsules: map[string]*ContextCapsule{}, receipts: map[string]*WorkReceipt{}}
+	return &MemoryRunRepository{runs: map[string]*MissionRun{}, capsules: map[string]*ContextCapsule{}, receipts: map[string]*WorkReceipt{}, resolutions: map[string]*InterventionResolution{}}
 }
 
 func cloneRun(in *MissionRun) *MissionRun {
@@ -145,6 +153,42 @@ func (m *MemoryRunRepository) ReleaseLease(ctx context.Context, id, owner, token
 	}
 	r.LeaseOwner, r.LeaseToken, r.LeaseExpiresAt = "", "", nil
 	return nil
+}
+
+func (m *MemoryRunRepository) CommitInterventionResolution(ctx context.Context, run *MissionRun, resolution *InterventionResolution) error {
+	if err := contextErr(ctx); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if run == nil || resolution == nil || run.ID == "" || resolution.IdempotencyKey == "" {
+		return fmt.Errorf("mission intervention resolution is required")
+	}
+	current, ok := m.runs[run.ID]
+	if !ok {
+		return ErrRunNotFound
+	}
+	if current.LeaseToken != "" && current.LeaseToken != run.LeaseToken {
+		return ErrLeaseHeld
+	}
+	if existing := m.resolutions[resolution.IdempotencyKey]; existing != nil {
+		return nil
+	}
+	m.resolutions[resolution.IdempotencyKey] = cloneResolution(resolution)
+	copy := cloneRun(run)
+	copy.LeaseOwner, copy.LeaseToken, copy.LeaseExpiresAt, copy.HeartbeatAt = current.LeaseOwner, current.LeaseToken, current.LeaseExpiresAt, current.HeartbeatAt
+	m.runs[run.ID] = copy
+	return nil
+}
+
+func cloneResolution(in *InterventionResolution) *InterventionResolution {
+	if in == nil {
+		return nil
+	}
+	b, _ := json.Marshal(in)
+	var out InterventionResolution
+	_ = json.Unmarshal(b, &out)
+	return &out
 }
 
 func contextErr(ctx context.Context) error {

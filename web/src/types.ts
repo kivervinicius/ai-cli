@@ -211,6 +211,13 @@ export interface Project {
   last_opened_at?: string;
 }
 
+/** Lightweight per-project agent counts for the project rail outline. */
+export interface ProjectAgentSummary {
+  project_id: string;
+  agent_count: number;
+  working_count: number;
+}
+
 export interface Agent {
   id: string;
   project_id: string;
@@ -919,6 +926,17 @@ export interface MissionRun {
   updated_at: string;
   completed_at?: string;
   global_verifications?: VerificationResult[];
+  needs_human?: HumanIntervention;
+  resume_request?: MissionResumeRequest;
+}
+
+export interface MissionResumeRequest {
+  id: string;
+  idempotency_key: string;
+  status: 'PENDING' | 'STARTED' | 'COMPLETED' | string;
+  requested_at: string;
+  started_at?: string;
+  completed_at?: string;
 }
 
 export interface MissionSchedule {
@@ -999,4 +1017,66 @@ export interface TunnelStatus {
   cloudflared_installed: boolean;
   cloudflared_version?: string;
   error?: string;
+}
+
+export interface HumanIntervention {
+  id: string;
+  reason_code: string;
+  summary: string;
+  question: string;
+  context: string;
+  recommended_actions: string[];
+  impact: string;
+  mission_id: string;
+  task_id: string;
+  source: string;
+  timestamp: string;
+  version: number;
+  scope: string;
+  options: InterventionOption[];
+  resolved: boolean;
+  resolved_at?: string;
+  resolution_decision?: string;
+  resolution_chosen?: string;
+  resolution?: InterventionResolution;
+}
+
+export interface InterventionOption {
+  id: string;
+  operation: 'RETRY_SAFE_PACKAGE' | 'REPLAN_PACKAGE' | 'CONFIRM_EXTERNAL_COMPLETION' | string;
+  label: string;
+  package_id?: string;
+}
+
+export interface InterventionResolution {
+  intervention_id: string;
+  version: number;
+  option_id: string;
+  idempotency_key: string;
+  resolved_at: string;
+  resolved_by: string;
+}
+
+export type AttentionLevel = 'IGNORE' | 'IN_APP' | 'NOTIFY' | 'REQUIRE_USER';
+
+export interface AttentionItem {
+  mission_id: string;
+  project_id: string;
+  state: string;
+  level: AttentionLevel;
+  reason_code: string;
+  summary: string;
+  question: string;
+  impact: string;
+  recommended_actions: string[];
+  age_seconds: number;
+  intervention?: HumanIntervention;
+}
+
+export interface AttentionGroup {
+  needs_you: AttentionItem[];
+  completed: AttentionItem[];
+  failed: AttentionItem[];
+  all_items: AttentionItem[];
+  total_needs: number;
 }
