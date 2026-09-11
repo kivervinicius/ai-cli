@@ -30,6 +30,14 @@ Ambas utilizando:
 - A mesma versão Nexus, canal e Git SHA
 - Integração Maestro desacoplada e 100% opcional (sem instalação automática silenciosa)
 
+## Complemento ativo — separação terminal/controle (2026-09-11)
+
+O canal de entrada do terminal é byte-transparente e não reconhece comandos
+Nexus. Ações de status, eventos, stop, handoff, continue e detach usam RPCs
+tipados; `nexus control monitor [runtime-id]` é uma superfície TUI separada,
+somente leitura. Reconnect não relança runtimes; recuperação exige ação
+explícita.
+
 ## Aceitação
 
 ### Finalization autopilot status — 2026-09-07

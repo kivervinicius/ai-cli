@@ -86,6 +86,7 @@ type RuntimeSession struct {
 	ControlEndpoint      string             `json:"control_endpoint"`
 	ParentRuntimeID      string             `json:"parent_runtime_id,omitempty"`
 	HandoffType          string             `json:"handoff_type,omitempty"`
+	Continuity           string             `json:"continuity,omitempty"`
 	LineageID            string             `json:"lineage_id,omitempty"`
 	Labels               map[string]string  `json:"labels,omitempty"`
 	MachineID            string             `json:"machine_id,omitempty"`

@@ -20,6 +20,8 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/control/terminal"
+	"github.com/kivervinicius/ai-cli/internal/core/security"
+	"github.com/kivervinicius/ai-cli/internal/profile"
 )
 
 const MaxFrameSize = 64 * 1024 // 64 KB max frame
@@ -38,24 +40,21 @@ type Config struct {
 
 // SessionHost manages a single supervised process runtime and its IPC listener.
 type SessionHost struct {
-	mu                    sync.RWMutex
-	session               registry.RuntimeSession
-	registry              *registry.Registry
-	cfg                   Config
-	cmd                   *exec.Cmd
-	termBackend           terminal.Backend
-	ringBuffer            *RingBuffer
-	fanout                *BoundedFanout
-	listener              net.Listener
-	clients               map[net.Conn]bool
-	activeWriter          net.Conn
-	pendingControlCommand string
-	pendingRouterNotice   string
-	stopChan              chan struct{}
-	doneChan              chan struct{}
-	prefixRouter          *SlashPrefixRouter
-	detector              *AttentionDetector
-	stopOnce              sync.Once
+	mu           sync.RWMutex
+	session      registry.RuntimeSession
+	registry     *registry.Registry
+	cfg          Config
+	cmd          *exec.Cmd
+	termBackend  terminal.Backend
+	ringBuffer   *RingBuffer
+	fanout       *BoundedFanout
+	listener     net.Listener
+	clients      map[net.Conn]bool
+	activeWriter net.Conn
+	stopChan     chan struct{}
+	doneChan     chan struct{}
+	detector     *AttentionDetector
+	stopOnce     sync.Once
 }
 
 // NewSessionHost creates a new SessionHost for a given runtime.
@@ -74,17 +73,16 @@ func NewSessionHost(cfg Config) (*SessionHost, error) {
 	termBackend := terminal.NewBackend()
 
 	sh := &SessionHost{
-		session:      cfg.Session,
-		registry:     cfg.Registry,
-		cfg:          cfg,
-		cmd:          cmd,
-		termBackend:  termBackend,
-		ringBuffer:   NewRingBuffer(128 * 1024), // 128 KB terminal history
-		fanout:       NewBoundedFanout(256),
-		clients:      make(map[net.Conn]bool),
-		stopChan:     make(chan struct{}),
-		doneChan:     make(chan struct{}),
-		prefixRouter: NewSlashPrefixRouter(),
+		session:     cfg.Session,
+		registry:    cfg.Registry,
+		cfg:         cfg,
+		cmd:         cmd,
+		termBackend: termBackend,
+		ringBuffer:  NewRingBuffer(128 * 1024), // 128 KB terminal history
+		fanout:      NewBoundedFanout(256),
+		clients:     make(map[net.Conn]bool),
+		stopChan:    make(chan struct{}),
+		doneChan:    make(chan struct{}),
 	}
 
 	sh.detector = NewAttentionDetectorWithProject(
@@ -470,7 +468,6 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 	var promptWrite []byte
 	var forwardWrite []byte
 	var controlCmd string
-	var routerNotice string
 	skipResponse := false
 
 	switch req.Command {
@@ -479,7 +476,9 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 
 	case protocol.CmdStatus:
 		fanoutStats := sh.fanout.Stats()
-		resp, _ = protocol.NewResponse(protocol.StatusData{
+		quotaView := profile.GetQuotaView(sh.session.ProviderID, sh.session.ProfileID, "", "")
+		quotaPercent, _ := quotaView.Bottleneck()
+		status := protocol.StatusData{
 			RuntimeID:           sh.session.RuntimeID,
 			ProviderID:          sh.session.ProviderID,
 			ProfileID:           sh.session.ProfileID,
@@ -489,11 +488,24 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 			State:               string(sh.session.State),
 			StartupStage:        string(sh.session.StartupStage),
 			StageChangedAt:      sh.session.StageChangedAt,
-			LastFault:           string(sh.session.LastFault),
+			LastFault:           security.Redact(string(sh.session.LastFault)),
 			ControlLevel:        string(sh.session.ControlLevel),
 			StartedAt:           sh.session.StartedAt,
 			DroppedOutputChunks: fanoutStats.DroppedChunks,
-		})
+			AttentionReason:     sh.session.AttentionReason,
+			AttentionContext:    security.Redact(sh.session.AttentionContext),
+			AttentionKind:       sh.session.AttentionKind,
+			PromptKind:          sh.session.PromptKind,
+			Continuity:          sh.session.Continuity,
+			QuotaStatus:         quotaView.Status,
+			QuotaPercent:        quotaPercent,
+		}
+		resp, _ = protocol.NewResponse(status)
+		resp.RuntimeID = status.RuntimeID
+		resp.State = status.State
+		resp.Code = "STATUS_OK"
+		resp.Action = string(protocol.CmdStatus)
+		resp.Message = "runtime status"
 
 	case protocol.CmdAttach:
 		sh.clients[conn] = true
@@ -510,7 +522,7 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		if sh.activeWriter == conn {
 			sh.activeWriter = nil
 		}
-		resp, _ = protocol.NewResponse("detached")
+		resp = protocol.NewControlResponse(protocol.ControlResult{OK: true, Code: "DETACHED", RuntimeID: sh.session.RuntimeID, Action: string(protocol.CmdDetach), State: string(sh.session.State), Message: "detached"})
 
 	case protocol.CmdResize:
 		if req.Payload != nil {
@@ -525,14 +537,16 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		if req.Payload != nil {
 			var p protocol.InputPayload
 			if json.Unmarshal(req.Payload, &p) == nil && p.Data != "" {
+				// CmdInput is a byte transport. It must never pass through command
+				// recognition, ANSI filtering, or escape-sequence normalization.
 				forwardWrite = sh.collectAttachedInputLocked(conn, []byte(p.Data))
-				controlCmd = sh.pendingControlCommand
-				sh.pendingControlCommand = ""
-				routerNotice = sh.pendingRouterNotice
-				sh.pendingRouterNotice = ""
 			}
 		}
 		resp, _ = protocol.NewResponse("input_received")
+		resp.RuntimeID = sh.session.RuntimeID
+		resp.Action = string(protocol.CmdInput)
+		resp.Code = "INPUT_ACCEPTED"
+		resp.Message = "raw input forwarded"
 
 	case protocol.CmdSubmitPrompt:
 		var p protocol.SubmitPromptPayload
@@ -545,12 +559,98 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		resp, _ = protocol.NewResponse("prompt_submitted")
 
 	case protocol.CmdStop:
+		sh.session.State = registry.StateStopping
+		_ = sh.registry.UpdateState(sh.session.RuntimeID, registry.StateStopping)
 		go sh.Stop()
-		resp, _ = protocol.NewResponse("stopping")
+		resp = protocol.NewControlResponse(protocol.ControlResult{OK: true, Code: "STOP_REQUESTED", RuntimeID: sh.session.RuntimeID, Action: string(protocol.CmdStop), State: string(registry.StateStopping), Message: "stop requested", CorrelationID: sh.session.LineageID})
 
 	case protocol.CmdTerminate:
+		sh.session.State = registry.StateStopping
+		_ = sh.registry.UpdateState(sh.session.RuntimeID, registry.StateStopping)
 		go sh.Terminate()
-		resp, _ = protocol.NewResponse("terminated")
+		resp = protocol.NewControlResponse(protocol.ControlResult{OK: true, Code: "TERMINATE_REQUESTED", RuntimeID: sh.session.RuntimeID, Action: string(protocol.CmdTerminate), State: string(registry.StateStopping), Message: "terminate requested", CorrelationID: sh.session.LineageID})
+
+	case protocol.CmdEvents:
+		limit := 20
+		if req.Payload != nil {
+			var p protocol.EventsPayload
+			if json.Unmarshal(req.Payload, &p) == nil && p.Limit > 0 && p.Limit < 100 {
+				limit = p.Limit
+			}
+		}
+		history := events.DefaultBus().GetHistory(sh.session.RuntimeID, limit)
+		result := make([]protocol.EventData, 0, len(history))
+		for _, event := range history {
+			result = append(result, protocol.EventData{ID: event.ID, CorrelationID: event.CorrelationID, RuntimeID: event.RuntimeID, Provider: event.Provider, Profile: event.Profile, Type: string(event.Type), Summary: security.Redact(event.Summary), Timestamp: event.Timestamp})
+		}
+		resp, _ = protocol.NewResponse(result)
+		resp.RuntimeID = sh.session.RuntimeID
+		resp.Action = string(protocol.CmdEvents)
+		resp.Code = "EVENTS_OK"
+		resp.Message = "redacted event history"
+
+	case protocol.CmdUsage:
+		quotaView := profile.GetQuotaView(sh.session.ProviderID, sh.session.ProfileID, "", "")
+		percentLeft, _ := quotaView.Bottleneck()
+		usage := protocol.UsageData{RuntimeID: sh.session.RuntimeID, ProviderID: sh.session.ProviderID, ProfileID: sh.session.ProfileID, Status: quotaView.Status}
+		if !quotaView.FetchedAt.IsZero() {
+			usage.PercentLeft = percentLeft
+			usage.FetchedAtUnix = quotaView.FetchedAt.Unix()
+		}
+		resp, _ = protocol.NewResponse(usage)
+		resp.RuntimeID = sh.session.RuntimeID
+		resp.Action = string(protocol.CmdUsage)
+		resp.Code = "USAGE_OK"
+		resp.Message = "quota snapshot"
+
+	case protocol.CmdHandoff:
+		var p protocol.HandoffPayload
+		if req.Payload == nil || json.Unmarshal(req.Payload, &p) != nil || strings.TrimSpace(p.TargetProfile) == "" {
+			resp = protocol.NewErrorResponse("TARGET_PROFILE_REQUIRED")
+			break
+		}
+		if PerformAccountHandoff == nil {
+			resp = protocol.NewErrorResponse("HANDOFF_UNAVAILABLE")
+			break
+		}
+		target := strings.TrimSpace(p.TargetProfile)
+		sh.session.State = registry.StateHandoff
+		_ = sh.registry.UpdateState(sh.session.RuntimeID, registry.StateHandoff)
+		go func() {
+			if _, err := PerformAccountHandoff(context.Background(), sh.session.RuntimeID, target); err != nil {
+				sh.broadcast([]byte("\r\n[Nexus Control] Handoff failed: " + security.Redact(err.Error()) + "\r\n"))
+			}
+		}()
+		resp = protocol.NewControlResponse(protocol.ControlResult{OK: true, Code: "HANDOFF_REQUESTED", RuntimeID: sh.session.RuntimeID, Action: string(protocol.CmdHandoff), State: string(registry.StateHandoff), Message: "handoff requested", CorrelationID: sh.session.LineageID})
+
+	case protocol.CmdContinue:
+		var p protocol.ContinuePayload
+		if req.Payload == nil || json.Unmarshal(req.Payload, &p) != nil || strings.TrimSpace(p.TargetProvider) == "" {
+			resp = protocol.NewErrorResponse("TARGET_PROVIDER_REQUIRED")
+			break
+		}
+		if PerformContextHandoff == nil {
+			resp = protocol.NewErrorResponse("CONTINUE_UNAVAILABLE")
+			break
+		}
+		provider, profile := strings.TrimSpace(p.TargetProvider), strings.TrimSpace(p.TargetProfile)
+		sh.session.State = registry.StateHandoff
+		_ = sh.registry.UpdateState(sh.session.RuntimeID, registry.StateHandoff)
+		go func() {
+			if _, err := PerformContextHandoff(context.Background(), sh.session.RuntimeID, provider, profile); err != nil {
+				sh.broadcast([]byte("\r\n[Nexus Control] Context handoff failed: " + security.Redact(err.Error()) + "\r\n"))
+			}
+		}()
+		resp = protocol.NewControlResponse(protocol.ControlResult{OK: true, Code: "CONTINUE_REQUESTED", RuntimeID: sh.session.RuntimeID, Action: string(protocol.CmdContinue), State: string(registry.StateHandoff), Message: "context handoff requested", CorrelationID: sh.session.LineageID})
+
+	case protocol.CmdSlash:
+		var p protocol.SlashPayload
+		if req.Payload == nil || json.Unmarshal(req.Payload, &p) != nil || strings.TrimSpace(p.RawCommand) == "" {
+			resp = protocol.NewErrorResponse("RAW_COMMAND_REQUIRED")
+			break
+		}
+		controlCmd = p.RawCommand
+		resp = protocol.NewControlResponse(protocol.ControlResult{OK: true, Code: "COMMAND_ACCEPTED", RuntimeID: sh.session.RuntimeID, Action: string(protocol.CmdSlash), State: string(sh.session.State), Message: "explicit control command accepted"})
 
 	case protocol.CmdLeaseAcquire:
 		if _, attached := sh.clients[conn]; !attached {
@@ -568,6 +668,9 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 
 	default:
 		resp = protocol.NewErrorResponse(fmt.Sprintf("unknown command %q", req.Command))
+	}
+	if resp.CorrelationID == "" {
+		resp.CorrelationID = req.ID
 	}
 
 	_, isAttached := sh.clients[conn]
@@ -590,9 +693,6 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 		sh.handleControlCommandLocked(controlCmd)
 		sh.mu.Unlock()
 	}
-	if routerNotice != "" {
-		sh.broadcast([]byte("\r\n[Nexus] " + routerNotice + "\r\n"))
-	}
 	if skipResponse {
 		return
 	}
@@ -603,27 +703,14 @@ func (sh *SessionHost) handleRPCRequest(conn net.Conn, req protocol.Request) {
 func (sh *SessionHost) processAttachedInput(conn net.Conn, data []byte) {
 	sh.mu.Lock()
 	forward := sh.collectAttachedInputLocked(conn, data)
-	controlCmd := sh.pendingControlCommand
-	sh.pendingControlCommand = ""
-	routerNotice := sh.pendingRouterNotice
-	sh.pendingRouterNotice = ""
 	sh.mu.Unlock()
 
 	if len(forward) > 0 {
 		_, _ = sh.termBackend.Write(forward)
 	}
-	if controlCmd != "" {
-		sh.mu.Lock()
-		sh.handleControlCommandLocked(controlCmd)
-		sh.mu.Unlock()
-	}
-	if routerNotice != "" {
-		sh.broadcast([]byte("\r\n[Nexus] " + routerNotice + "\r\n"))
-	}
 }
 
 func (sh *SessionHost) collectAttachedInputLocked(conn net.Conn, data []byte) []byte {
-	var forward []byte
 	// Only active writer (or first attached client) can send input to child process
 	if sh.activeWriter != nil && sh.activeWriter != conn {
 		return nil
@@ -631,26 +718,9 @@ func (sh *SessionHost) collectAttachedInputLocked(conn net.Conn, data []byte) []
 	if sh.activeWriter == nil {
 		sh.activeWriter = conn
 	}
-
-	if bytes.Equal(data, []byte("\x1b[I")) || bytes.Equal(data, []byte("\x1b[O")) ||
-		bytes.Equal(data, []byte("[I")) || bytes.Equal(data, []byte("[O")) ||
-		bytes.Equal(data, []byte("\x1b[1;1R")) || bytes.Equal(data, []byte("[1;1R")) {
-		return nil
-	}
-
-	for _, b := range data {
-		out := sh.prefixRouter.ProcessByte(b)
-		if len(out.ForwardBytes) > 0 {
-			forward = append(forward, out.ForwardBytes...)
-		}
-		if out.Action == ActionControlCommand && out.ControlCmd != "" {
-			sh.pendingControlCommand = out.ControlCmd
-		}
-		if out.Action == ActionSuggestions && out.Suggestions != "" {
-			sh.pendingRouterNotice = "Nexus: " + out.Suggestions
-		}
-	}
-	return forward
+	// This is deliberately a byte-for-byte copy. Escape, control, UTF-8 and
+	// provider-specific keyboard sequences all belong to the child PTY.
+	return append([]byte(nil), data...)
 }
 
 func (sh *SessionHost) handleControlCommandLocked(cmd string) {

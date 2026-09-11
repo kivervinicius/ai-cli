@@ -54,14 +54,11 @@ export function nextBoundRuntimeId(current: string, incoming?: string): string {
   return next || (current || '').trim();
 }
 
-/** HTTP 404/host-down must recover the agent instead of looping "Reconnecting…". */
+/** Transport loss never relaunches a runtime; recovery is an explicit action. */
 export function shouldAutoRecoverAgentTerminal(openedOnce: boolean, lastError?: string): boolean {
-  const detail = (lastError || '').trim();
-  const lower = detail.toLowerCase();
-  if (lower.includes('authentication required') || lower.includes('invalid origin')) return false;
-  if (detail && isFatalTerminalAttachError(detail)) return true;
-  if (openedOnce) return false;
-  return true;
+  void openedOnce;
+  void lastError;
+  return false;
 }
 
 export function terminalAttachFailureMessage(detail?: string): string {

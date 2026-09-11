@@ -936,6 +936,27 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
 # Verification — 2026-09-11
 
+## Terminal input/control separation
+
+- PASS — `go test ./internal/control/host ./internal/control/protocol ./internal/control/tui -count=20`.
+- PASS — `go test -race ./internal/control/host ./internal/control/protocol ./internal/control/web ./internal/control/tui`.
+- PASS — `go test ./internal/control/web -run '^$'` (compile gate).
+- PASS — `npm --prefix web run typecheck`, focused `agentTerminalModel` tests and ESLint.
+- PASS — `npm --prefix web run test -- --run` (342 tests), `lint:styles` and production build.
+- PASS — `git diff --check`.
+- Added byte-for-byte regressions for Delete/arrows/Home/End/PageUp/PageDown,
+  isolated Escape, Ctrl+C, UTF-8, chunks, writer lease and literal `/nexus`.
+- The repeated Web package gate still has environmental pre-existing failures
+  requiring sudo to edit `/etc/hosts`; no new failure was observed in the
+  touched control contracts.
+
+## Independent release gate
+
+- Audited SHA: `c8747481fc04c65614b38b5c9d9da106f56858c3`.
+- Merge simulation and diff check passed; Windows/macOS/browser same-SHA evidence is absent.
+- Updater trust root and archive installation are P0 FAIL.
+- Verdict: `NO_GO_FOR_MERGE`; see `DEV/validation/FINAL_INDEPENDENT_VALIDATION.md`.
+
 ## Installer PATH alignment
 
 - PASS — `bash -n install.sh`

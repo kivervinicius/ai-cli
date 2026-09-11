@@ -97,6 +97,15 @@ export const nexus = {
       method: 'POST',
       body: JSON.stringify({ create_context: createContext }),
     }),
+  getProjectIntelligence: (projectId: string) =>
+    request<import('../types').ProjectIntelligenceView>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/project-intelligence`,
+    ),
+  requestProjectIntelligenceScan: (projectId: string) =>
+    request<import('../types').ProjectIntelligenceScan>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/project-intelligence/scans`,
+      { method: 'POST', body: '{}' },
+    ),
   listComposerSessions: (projectId: string) =>
     request<import('../types').ComposerSession[]>(
       `/api/v1/projects/${projectId}/composer-sessions`,

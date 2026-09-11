@@ -34,10 +34,9 @@ type RouterOutput struct {
 // canonical Nexus control prefix (/nexus, //nexus) and instantly forwarding
 // non-matching bytes to the child process.
 type SlashPrefixRouter struct {
-	state       PrefixState
-	prefixBuf   bytes.Buffer
-	commandBuf  bytes.Buffer
-	inputEscape bool
+	state      PrefixState
+	prefixBuf  bytes.Buffer
+	commandBuf bytes.Buffer
 }
 
 // NewSlashPrefixRouter creates an initialized SlashPrefixRouter.
@@ -50,7 +49,6 @@ func (r *SlashPrefixRouter) Reset() {
 	r.state = StateIdle
 	r.prefixBuf.Reset()
 	r.commandBuf.Reset()
-	r.inputEscape = false
 }
 
 func isPrefixOfKnown(s string) bool {
@@ -95,19 +93,9 @@ func strippedEscape(s string) string {
 
 // ProcessByte processes a single byte through the prefix state machine.
 func (r *SlashPrefixRouter) ProcessByte(b byte) RouterOutput {
-	// Terminal frontends may prepend CSI/Kitty keyboard sequences before the
-	// actual printable key. Do not let those sequences poison the line state
-	// and cause a following /nexus command to be forwarded to the provider.
-	if r.inputEscape {
-		if (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '~' {
-			r.inputEscape = false
-		}
-		return RouterOutput{Action: ActionNone}
-	}
-	if b == 0x1b {
-		r.inputEscape = true
-		return RouterOutput{Action: ActionNone}
-	}
+	// Deprecated compatibility parser for explicit CmdSlash callers only.
+	// SessionHost CmdInput never invokes this function; terminal bytes are
+	// forwarded byte-for-byte to the provider PTY.
 	if b == 0x03 || b == 0x15 { // Ctrl+C or Ctrl+U
 		r.Reset()
 		return RouterOutput{Action: ActionForwardBytes, ForwardBytes: []byte{b}}

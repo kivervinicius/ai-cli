@@ -57,13 +57,12 @@ describe('Agent terminal model', () => {
     expect(nextBoundRuntimeId('', 'rt_1')).toBe('rt_1');
   });
 
-  it('auto-recovers missing agent runtimes instead of looping reconnect', () => {
-    expect(shouldAutoRecoverAgentTerminal(false, '')).toBe(true);
+  it('never auto-recovers or creates a second runtime on transport loss', () => {
+    expect(shouldAutoRecoverAgentTerminal(false, '')).toBe(false);
     expect(shouldAutoRecoverAgentTerminal(false, 'agent has no active runtime: not live')).toBe(
-      true,
+      false,
     );
-    expect(shouldAutoRecoverAgentTerminal(true, 'Runtime host is not running (eof)')).toBe(true);
-    expect(shouldAutoRecoverAgentTerminal(true, '')).toBe(false);
+    expect(shouldAutoRecoverAgentTerminal(true, 'Runtime host is not running (eof)')).toBe(false);
     expect(shouldAutoRecoverAgentTerminal(false, 'authentication required')).toBe(false);
   });
   it('detects fatal attach errors that must stop reconnect loops', () => {

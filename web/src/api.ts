@@ -270,7 +270,9 @@ export const api = {
       body: JSON.stringify({ input }),
     }),
   stopRuntime: (id: string) =>
-    request<{ status: string }>(`/api/v1/runtimes/${id}/stop`, { method: 'POST' }),
+    request<import('./types').RuntimeControlResponse>(`/api/v1/runtimes/${id}/stop`, {
+      method: 'POST',
+    }),
   accountHandoff: (id: string, target: string) =>
     request<RuntimeSession>(`/api/v1/runtimes/${id}/handoff`, {
       method: 'POST',

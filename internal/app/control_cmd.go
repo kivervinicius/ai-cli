@@ -54,6 +54,12 @@ func controlCmd(args []string) error {
 			return attachRuntime(target)
 		}
 		return nil
+	case "monitor":
+		runtimeID := ""
+		if len(args) > 1 {
+			runtimeID = args[1]
+		}
+		return controltui.RunControlMonitor(context.Background(), runtimeID)
 	case "web":
 		return controlWebCmd(args[1:])
 	case "help", "-h", "--help":
@@ -92,6 +98,7 @@ USAGE:
 
 SUBCOMMANDS:
   (no args)                     Open interactive Bubble Tea Control Center
+  monitor [runtime-id]          Open read-only sidecar monitor (never attaches)
   start <provider> [--profile <name>] [args...]
                                 Start a supervised runtime session
   running [--json]              List active managed runtimes (alias: %s ps)

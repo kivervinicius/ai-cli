@@ -30,7 +30,6 @@ import {
   normalizeTerminalRole,
   nextBoundRuntimeId,
   runtimeIdFromRecoverResult,
-  shouldAutoRecoverAgentTerminal,
   shouldShowTerminalRecoverOverlay,
   terminalAttachFailureMessage,
   terminalReconnectDelay,
@@ -143,9 +142,6 @@ export const AgentTerminal: React.FC<{
   const [closing, setClosing] = useState(false);
   const [needsResourceSelection, setNeedsResourceSelection] = useState(false);
   const [connectingForMs, setConnectingForMs] = useState(0);
-  const autoRecoveredRef = useRef(false);
-  const onRecoverRef = useRef(onRecover);
-  onRecoverRef.current = onRecover;
   const liveChrome = usePtyLiveChromeOptional();
   const liveTitleKeyRef = useRef(liveTitleKey);
   liveTitleKeyRef.current = liveTitleKey;
@@ -199,7 +195,6 @@ export const AgentTerminal: React.FC<{
   const rebindTerminal = (nextRuntimeId?: string) => {
     const trimmed = (nextRuntimeId || '').trim();
     if (trimmed) setBoundRuntimeId(trimmed);
-    autoRecoveredRef.current = false;
     setNeedsResourceSelection(false);
     setMessage('');
     setConnection('CONNECTING');
@@ -221,7 +216,6 @@ export const AgentTerminal: React.FC<{
     const kickoffRef = { current: normalizeInitialPrompt(initialPrompt), sent: false };
     let lastError = '';
     let leased = false;
-    let recoverInFlight = false;
     let termInstance: Terminal | null = null;
     const redrawTimers: number[] = [];
     let openFrame: number | undefined;
@@ -460,48 +454,6 @@ export const AgentTerminal: React.FC<{
       }, delay);
     };
 
-    const recoverMissingRuntime = async (detail?: string) => {
-      stopReconnect = true;
-      if (reconnectTimer !== undefined) {
-        window.clearTimeout(reconnectTimer);
-        reconnectTimer = undefined;
-      }
-      if (recoverInFlight) return;
-      if (autoRecoveredRef.current) {
-        failPermanently(detail);
-        return;
-      }
-      recoverInFlight = true;
-      autoRecoveredRef.current = true;
-      setRecovering(true);
-      setConnection('CONNECTING');
-      setMessage(t('terminal.recoveringRuntime'));
-      try {
-        const result = onRecoverRef.current
-          ? await onRecoverRef.current()
-          : await recoverOrStartAgent(agentId);
-        if (disposed) return;
-        const nextId = runtimeIdFromRecoverResult(result);
-        setBoundRuntimeId(nextId);
-        stopReconnect = false;
-        reconnectAttempt = 0;
-        lastError = '';
-        leased = false;
-        setConnectNonce((n) => n + 1);
-      } catch (error) {
-        if (isRequiredResourceError(error)) {
-          setRecovering(false);
-          setNeedsResourceSelection(true);
-          setMessage(t('terminal.selectProvider'));
-          setConnection('ERROR');
-          return;
-        }
-        failPermanently(error instanceof Error ? error.message : detail);
-      } finally {
-        recoverInFlight = false;
-      }
-    };
-
     const connect = async () => {
       if (disposed || stopReconnect) return;
       setConnection('CONNECTING');
@@ -613,7 +565,10 @@ export const AgentTerminal: React.FC<{
             lastError = detail;
             setMessage(detail);
             if (isFatalTerminalAttachError(detail)) {
-              void recoverMissingRuntime(detail);
+              // A dead transport is not proof that the runtime should be
+              // relaunched. Recovery is only performed by the explicit
+              // Recover/Start action in the overlay.
+              failPermanently(detail);
               ws.close(1011, 'fatal attach error');
             }
           }
@@ -625,7 +580,7 @@ export const AgentTerminal: React.FC<{
       };
 
       ws.onerror = () => {
-        if (!disposed && !stopReconnect && !recoverInFlight) {
+        if (!disposed && !stopReconnect) {
           setMessage(t('terminal.transportError'));
         }
       };
@@ -633,14 +588,6 @@ export const AgentTerminal: React.FC<{
       ws.onclose = () => {
         if (wsRef.current === ws) wsRef.current = null;
         if (disposed || stopReconnect) return;
-        if (!leased) {
-          if (shouldAutoRecoverAgentTerminal(openedOnce, lastError)) {
-            void recoverMissingRuntime(lastError || 'agent has no active runtime');
-            return;
-          }
-          scheduleReconnect(lastError);
-          return;
-        }
         scheduleReconnect(lastError);
       };
     };

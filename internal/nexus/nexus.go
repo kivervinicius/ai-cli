@@ -57,22 +57,24 @@ func (p *prodLauncher) Stop(runtimeID string) error {
 // Nexus is the product-level service bridging the durable store and the
 // control plane runtime layer.
 type Nexus struct {
-	mu              sync.RWMutex
-	st              *store.Store
-	launcher        Launcher
-	drivers         *driver.Registry
-	runtimeReg      *registry.Registry
-	runner          *runner.MissionRunner
-	runnerMu        sync.Mutex
-	submitPrompt    func(runtimeID, prompt string) error
-	maestroStatus   func() MaestroStatus
-	workersMu       sync.Mutex
-	workers         map[string]*missionWorker
-	schedulerOnce   sync.Once
-	scheduleCancel  context.CancelFunc
-	quotaMonitor    *QuotaMonitorService
-	attentionOnce   sync.Once
-	attentionCenter *runner.AttentionCenter
+	mu                         sync.RWMutex
+	st                         *store.Store
+	launcher                   Launcher
+	drivers                    *driver.Registry
+	runtimeReg                 *registry.Registry
+	runner                     *runner.MissionRunner
+	runnerMu                   sync.Mutex
+	submitPrompt               func(runtimeID, prompt string) error
+	maestroStatus              func() MaestroStatus
+	workersMu                  sync.Mutex
+	workers                    map[string]*missionWorker
+	schedulerOnce              sync.Once
+	scheduleCancel             context.CancelFunc
+	quotaMonitor               *QuotaMonitorService
+	attentionOnce              sync.Once
+	attentionCenter            *runner.AttentionCenter
+	projectIntelligenceMu      sync.Mutex
+	projectIntelligenceRunning map[string]bool
 
 	// Runtime change observers (set by the web layer to avoid circular imports).
 	onRuntimeChanged func(agentID, oldRuntimeID, newRuntimeID, provider, profile, continuity string)
@@ -173,7 +175,7 @@ func Default() *Nexus {
 			// runtime features degrade gracefully instead of panicking.
 			st = nil
 		}
-		defaultNexus = &Nexus{st: st, launcher: &prodLauncher{l: launcher.Default()}, drivers: driver.DefaultRegistry(), runtimeReg: registry.DefaultRegistry(), workers: map[string]*missionWorker{}}
+		defaultNexus = &Nexus{st: st, launcher: &prodLauncher{l: launcher.Default()}, drivers: driver.DefaultRegistry(), runtimeReg: registry.DefaultRegistry(), workers: map[string]*missionWorker{}, projectIntelligenceRunning: map[string]bool{}}
 		defaultNexus.quotaMonitor = NewQuotaMonitorService(DefaultQuotaDropMonitor(), events.DefaultBus())
 		if st != nil {
 			events.DefaultBus().SetRecorder(func(e events.Event) {

@@ -366,7 +366,12 @@ func (h *APIHandler) handleRuntimeDetail(w http.ResponseWriter, r *http.Request)
 				return
 			}
 			_ = h.runtimes.MarkStopped(r.Context(), runtimeID)
-			writeJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok": true, "code": "STOP_REQUESTED", "runtime_id": runtimeID,
+				"action": "stop", "state": string(registry.StateStopped),
+				"message": "runtime stopped", "correlation_id": sess.LineageID,
+				"status": "stopped",
+			})
 			return
 
 		case "handoff":

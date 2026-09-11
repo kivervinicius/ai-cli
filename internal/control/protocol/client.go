@@ -176,6 +176,33 @@ func (c *Client) Status() (StatusData, error) {
 	return st, nil
 }
 
+// Events fetches a bounded, redacted event history without attaching to the
+// interactive terminal or acquiring its writer lease.
+func (c *Client) Events(limit int) ([]EventData, error) {
+	resp, err := c.Send(CmdEvents, EventsPayload{Limit: limit})
+	if err != nil {
+		return nil, err
+	}
+	var events []EventData
+	if err := json.Unmarshal(resp.Data, &events); err != nil {
+		return nil, err
+	}
+	return events, nil
+}
+
+// Usage fetches an honest, read-only quota snapshot.
+func (c *Client) Usage() (UsageData, error) {
+	resp, err := c.Send(CmdUsage, nil)
+	if err != nil {
+		return UsageData{}, err
+	}
+	var usage UsageData
+	if err := json.Unmarshal(resp.Data, &usage); err != nil {
+		return UsageData{}, err
+	}
+	return usage, nil
+}
+
 // Stop requests a graceful stop.
 func (c *Client) Stop() error {
 	_, err := c.Send(CmdStop, nil)
@@ -185,6 +212,24 @@ func (c *Client) Stop() error {
 // StopContext requests a graceful stop with cancellation support.
 func (c *Client) StopContext(ctx context.Context) error {
 	_, err := c.SendContext(ctx, CmdStop, nil)
+	return err
+}
+
+// Detach requests a non-destructive detach. It never stops the runtime.
+func (c *Client) Detach() error {
+	_, err := c.Send(CmdDetach, nil)
+	return err
+}
+
+// Handoff requests an explicit same-provider account handoff.
+func (c *Client) Handoff(targetProfile string) error {
+	_, err := c.Send(CmdHandoff, HandoffPayload{TargetProfile: targetProfile})
+	return err
+}
+
+// Continue requests an explicit cross-provider context handoff.
+func (c *Client) Continue(targetProvider, targetProfile string) error {
+	_, err := c.Send(CmdContinue, ContinuePayload{TargetProvider: targetProvider, TargetProfile: targetProfile})
 	return err
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -286,6 +287,40 @@ func TestSessionHost_CmdInputNoDeadlock(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("DEADLOCK DETECTED: CmdInput hung for >2s due to reentrant mutex lock")
+	}
+}
+
+func TestSessionHost_CmdInputForwardsTerminalBytesVerbatim(t *testing.T) {
+	sh := &SessionHost{
+		clients:      make(map[net.Conn]bool),
+		activeWriter: nil,
+	}
+	writer, peer := net.Pipe()
+	defer writer.Close()
+	defer peer.Close()
+
+	cases := []string{
+		"\x1b[3~", "\x1b[C", "\x1b[A", "\x1b[H", "\x1b[F",
+		"\x1b[5~", "\x1b[6~", "\x1b", "\x03", "\x1b[1;3u", "Olá 世界",
+	}
+	for _, input := range cases {
+		got := sh.collectAttachedInputLocked(writer, []byte(input))
+		if !bytes.Equal(got, []byte(input)) {
+			t.Fatalf("input %q was transformed to %q", input, got)
+		}
+	}
+}
+
+func TestSessionHost_CmdInputNeverRoutesSlashCommands(t *testing.T) {
+	sh := &SessionHost{clients: make(map[net.Conn]bool)}
+	writer, peer := net.Pipe()
+	defer writer.Close()
+	defer peer.Close()
+
+	input := []byte("/nexus stop\r")
+	got := sh.collectAttachedInputLocked(writer, input)
+	if !bytes.Equal(got, input) {
+		t.Fatalf("slash command input was intercepted: got %q", got)
 	}
 }
 

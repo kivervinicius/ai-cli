@@ -12,10 +12,13 @@ export type QuotaTruthState = 'confirmed' | 'exhausted' | 'stale' | 'unknown' | 
 
 export function quotaTruthState(resource: {
   available: boolean;
+  authenticated?: boolean;
   rate_limited?: boolean;
   avail_reasons?: { unknown_quota?: boolean; exhausted_windows?: string[]; rate_limited?: boolean };
   quota_view?: { status?: string; model_groups?: QuotaGroupLike[] };
 }): QuotaTruthState {
+  // Unauthenticated accounts (e.g. expired token) must never show confirmed quota.
+  if (resource.authenticated === false) return 'blocked';
   if (resource.rate_limited || resource.avail_reasons?.rate_limited) return 'blocked';
   if ((resource.avail_reasons?.exhausted_windows || []).length > 0) return 'exhausted';
   const status = String(resource.quota_view?.status || '').toUpperCase();

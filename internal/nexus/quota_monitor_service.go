@@ -165,6 +165,9 @@ func (s *QuotaMonitorService) check() {
 		}
 		account := profile.GetAccountInfo(p.Provider, p.Name)
 		if !account.Authenticated {
+			// Emit a degraded event so the UI and notifications surface
+			// which accounts need re-authentication (e.g. expired token).
+			s.emitDegraded(p.Provider+":"+p.Name, fmt.Sprintf("account not authenticated: %s", account.Status))
 			continue
 		}
 		snapshot := profile.GetUsageSnapshot(p.Provider, p.Name)

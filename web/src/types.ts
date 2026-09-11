@@ -36,6 +36,7 @@ export interface RuntimeSession {
   control_endpoint: string;
   parent_runtime_id?: string;
   handoff_type?: string;
+  continuity?: string;
   lineage_id?: string;
   started_at: string;
   attention_reason?: 'QUESTION' | 'APPROVAL' | 'TASK_COMPLETED' | 'WORKING' | 'IDLE' | 'ERROR';
@@ -47,6 +48,17 @@ export interface RuntimeSession {
   project_name?: string;
   last_task_summary?: string;
   dynamic_title?: string;
+}
+
+export interface RuntimeControlResponse {
+  ok: boolean;
+  code: string;
+  runtime_id: string;
+  action: 'stop' | 'detach' | 'handoff' | 'continue' | string;
+  state?: string;
+  message?: string;
+  correlation_id?: string;
+  status?: string;
 }
 
 export interface CapabilityEvidence {
@@ -496,6 +508,87 @@ export interface ContextReadiness {
   error?: string;
   hydrated_at?: string;
   updated_at?: string;
+}
+
+/**
+ * Static project-intelligence contracts. These types intentionally stay
+ * transport-agnostic until the Core scan/attempt service exposes a persisted
+ * API. They mirror the immutable snapshot produced by contextsnapshot and
+ * keep provenance visible to the UI rather than reducing facts to strings.
+ */
+export type ProjectContextSnapshotCompleteness = 'COMPLETE' | 'PARTIAL';
+
+export type ProjectFactValueType = 'STRING' | 'LIST' | 'MAP' | 'BOOL';
+export type ProjectFactBasis = 'OBSERVED' | 'DERIVED';
+export type ProjectFactConfidence = 'HIGH' | 'MEDIUM' | 'LOW';
+
+export type ProjectCodeIdentityState = 'CLEAN' | 'DIRTY' | 'UNBORN' | 'NON_GIT' | 'INCOMPLETE';
+
+export interface ProjectCodeIdentity {
+  repository_kind: string;
+  head_sha?: string;
+  branch?: string;
+  state: ProjectCodeIdentityState;
+  index_digest?: string;
+  worktree_digest?: string;
+  untracked_digest?: string;
+  submodules_digest?: string;
+  identity_digest: string;
+  complete: boolean;
+  warnings?: string[];
+}
+
+export interface ProjectFactProvenance {
+  source: string;
+  locator?: string;
+  extractor: string;
+  digest?: string;
+  observed_at: string;
+}
+
+export interface ProjectFact {
+  category: string;
+  key: string;
+  value_type: ProjectFactValueType;
+  value: unknown;
+  basis: ProjectFactBasis;
+  confidence: ProjectFactConfidence;
+  observed_at: string;
+  provenance: ProjectFactProvenance[];
+}
+
+export interface ProjectContextSnapshot {
+  id?: string;
+  project_id?: string;
+  canonical_path?: string;
+  scanner_version: string;
+  identity: ProjectCodeIdentity;
+  completeness: ProjectContextSnapshotCompleteness;
+  facts: ProjectFact[];
+  warnings?: string[];
+  observed_at: string;
+}
+
+export type ProjectIntelligenceScanState =
+  'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED';
+
+export interface ProjectIntelligenceScan {
+  id: string;
+  project_id: string;
+  identity_digest: string;
+  state: ProjectIntelligenceScanState;
+  scanner_version: string;
+  requested_at: string;
+  started_at?: string;
+  finished_at?: string;
+  error?: string;
+}
+
+export interface ProjectIntelligenceView {
+  project_id: string;
+  identity: ProjectCodeIdentity;
+  current_snapshot?: ProjectContextSnapshot;
+  current_scan?: ProjectIntelligenceScan;
 }
 
 export interface MaestroSkill {

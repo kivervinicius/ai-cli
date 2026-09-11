@@ -14,6 +14,7 @@ import type {
 import { nexus } from '../../nexus/api';
 import { ComposerSurface } from './ComposerSurface';
 import { composerGateForReadiness } from './composerModel';
+import { ProjectIntelligenceInspector } from './ProjectIntelligenceInspector';
 import styles from './WorkSurface.module.scss';
 
 const readinessTone = (state: ContextReadinessState) =>
@@ -172,6 +173,8 @@ export const WorkSurface: React.FC<{
           {t('work.flowMaterializeFailed', 'Falha ao materializar Flow')}: {flowError}
         </div>
       )}
+
+      <ProjectIntelligenceInspector projectId={project.id} />
 
       <div
         className="nx-composer-flow-region"

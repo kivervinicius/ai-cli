@@ -1,5 +1,21 @@
 # Handoff
 
+## Atualização 2026-09-11 — Entrada PTY separada do controle Nexus
+
+O caminho `CmdInput` do `SessionHost` está transparente byte a byte: não usa
+mais `SlashPrefixRouter`, não descarta ESC/CPR e não intercepta `/nexus`. O
+roteador permanece apenas como compatibilidade para `CmdSlash` explícito.
+
+O protocolo agora expõe respostas tipadas e `CmdEvents` com limite e resumo
+redigido. Foi adicionado `nexus control monitor [runtime-id]`, um sidecar TUI
+somente leitura que consulta status/eventos sem `Attach` nem writer lease.
+
+Reconnect e falha de attach não iniciam Recover/Start automaticamente; somente
+Recover/Start, Stop e fechamento confirmado alteram o lifecycle. Testes focados
+e race dos pacotes de controle passaram. O gate repetido Web ainda reproduz
+falhas ambientais preexistentes de sudo/fixtures; não declarar E2E nativo ou
+release multiplataforma a partir desta sessão.
+
 ## Atualização 2026-09-11 — Controle canônico Nexus
 
 O protocolo de comandos dentro de runtimes supervisionados foi padronizado em
@@ -1341,3 +1357,10 @@ Verificação: `bash -n install.sh`, `go test ./internal/release` e
 
 O instalador cria somente `nexus`; o alias `ai` não é mais preservado nem
 recriado durante a instalação.
+# 2026-09-11 — Auditoria independente final
+
+Candidate `c8747481fc04c65614b38b5c9d9da106f56858c3` terminou em
+`NO_GO_FOR_MERGE`: trust root placeholder, updater sem instalação segura de
+archive/health-check, browser visual não independente e ausência de evidência
+nativa/release same-SHA. Próxima ação: corrigir blockers e repetir CI nativo e
+esta auditoria no mesmo SHA.

@@ -228,18 +228,27 @@ func (a *Adapter) InspectAuth(ctx context.Context, p model.Profile) model.Accoun
 				} `json:"token"`
 			}
 			if json.Unmarshal(data, &tok) == nil && (tok.Token.AccessToken != "" || tok.Token.RefreshToken != "") {
-				// When the access_token is expired and there is no
-				// refresh_token to silently renew it, the profile is
-				// effectively unauthenticated. Marking it as such prevents
-				// the background QuotaMonitorService from invoking
-				// fetchLiveQuota, which would trigger browser opens that
-				// can never complete inside the 12s capture timeout.
-				if tok.Token.Expiry != "" && tok.Token.RefreshToken == "" {
+				// When the access_token is expired the profile is
+				// effectively unauthenticated regardless of whether a
+				// refresh_token exists. The background QuotaMonitorService
+				// must NOT invoke fetchLiveQuota because the AGY CLI will
+				// open the host browser for Google OAuth — which can never
+				// complete inside the 12s capture timeout and spams the
+				// user with auth prompts every ~60s.
+				if tok.Token.Expiry != "" {
 					if expTime, err := time.Parse(time.RFC3339Nano, tok.Token.Expiry); err == nil {
 						if time.Now().After(expTime) {
 							info.Status = "Token expired"
 							info.Health = model.HealthAuthRequired
 							info.Authenticated = false
+							// Resolve email from google_accounts.json so the
+							// UI can show which account needs re-auth.
+							if info.Email == "" {
+								info.Email = resolveEmailFromAccountsFile(home)
+							}
+							if info.Email == "" {
+								info.Email = p.Name
+							}
 							return info
 						}
 					}
@@ -296,6 +305,23 @@ func (a *Adapter) InspectAuth(ctx context.Context, p model.Profile) model.Accoun
 	}
 
 	return info
+}
+
+// resolveEmailFromAccountsFile reads the active email from google_accounts.json.
+// Returns "" when the file is missing or contains no active account.
+func resolveEmailFromAccountsFile(home string) string {
+	accountsFile := filepath.Join(home, ".gemini", "google_accounts.json")
+	data, err := os.ReadFile(accountsFile)
+	if err != nil {
+		return ""
+	}
+	var acc struct {
+		Active string `json:"active"`
+	}
+	if json.Unmarshal(data, &acc) == nil {
+		return acc.Active
+	}
+	return ""
 }
 
 func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnapshot {

@@ -3976,9 +3976,27 @@ build` PASS e Web reiniciado em HTTP 200.
   evitando overflow em arquivos ZIP maliciosos.
 - `go test ./internal/update ./internal/control/host ./internal/control/driver`,
   build do binário e `git diff --check` passaram.
+
+## 2026-09-11 — Separação de entrada PTY e controle Nexus
+
+- `SessionHost.CmdInput` agora encaminha os bytes diretamente ao PTY; o
+  `SlashPrefixRouter` ficou restrito a `CmdSlash` explícito e não filtra ESC,
+  CPR, Kitty/CSI, UTF-8 ou Ctrl+C.
+- O protocolo ganhou envelopes tipados (`code`, `runtime_id`, `action`,
+  `state`, `message`, `correlation_id`) e consultas `CmdEvents`/`CmdUsage`
+  limitadas e redigidas; Web stop retorna o mesmo contrato aditivo.
+- Adicionado `nexus control monitor [runtime-id]`, TUI sidecar somente leitura
+  por polling de status/eventos, sem `Attach`, input ou writer lease.
+- Reconnect/attach fatal no Web não relança runtime automaticamente; Recover/
+  Start permanece ação explícita.
+- Verificação: testes focados e race dos quatro pacotes de controle passaram;
+  typecheck/lint Web passaram. O gate `-count=20` reproduziu falhas ambientais
+  preexistentes em `internal/control/web` (sudo `/etc/hosts` e fixtures), sem
+  falha nos pacotes alterados.
 # 2026-09-11 — Installer follows first PATH-resolved Nexus
 
 - `install.sh` agora escolhe como `TARGET_DIR` o primeiro diretório do `PATH`
   que contém um executável `nexus`, alinhando a instalação com `type -a nexus`.
 - Sem binário existente, o fallback continua sendo `~/.local/bin`.
 - Verificação: `bash -n install.sh`, `go test ./internal/release` e `git diff --check`.
+- 2026-09-11 independent final audit: audited SHA `c8747481fc04c65614b38b5c9d9da106f56858c3`; found P0 trust-root placeholder and unsafe archive updater, with native/browser same-SHA evidence absent. Report: `DEV/validation/FINAL_INDEPENDENT_VALIDATION.md`. Verdict: `NO_GO_FOR_MERGE`.

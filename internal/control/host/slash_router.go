@@ -43,7 +43,9 @@ func StripANSI(str string) string {
 	return b.String()
 }
 
-// RouteSlashCommand inspects terminal input lines and intercepts canonical /nexus or :nexus commands.
+// RouteSlashCommand is a deprecated compatibility parser for explicit
+// CmdSlash control requests. It must never be called for CmdInput terminal
+// bytes; the PTY path is intentionally transparent.
 func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResult {
 	clean := StripANSI(input)
 	trimmed := strings.TrimSpace(clean)

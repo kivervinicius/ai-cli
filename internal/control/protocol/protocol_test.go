@@ -40,6 +40,23 @@ func TestProtocolSerialization(t *testing.T) {
 	}
 }
 
+func TestControlResponseHasStableEnvelope(t *testing.T) {
+	resp := NewControlResponse(ControlResult{
+		OK: true, Code: "STOP_REQUESTED", RuntimeID: "rt-1", Action: string(CmdStop),
+		State: "STOPPING", Message: "stop requested", CorrelationID: "lineage-1",
+	})
+	if !resp.OK || resp.Code != "STOP_REQUESTED" || resp.RuntimeID != "rt-1" || resp.Action != string(CmdStop) || resp.State != "STOPPING" || resp.CorrelationID != "lineage-1" {
+		t.Fatalf("unexpected control response: %+v", resp)
+	}
+	var payload ControlResult
+	if err := json.Unmarshal(resp.Data, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload != (ControlResult{OK: true, Code: "STOP_REQUESTED", RuntimeID: "rt-1", Action: string(CmdStop), State: "STOPPING", Message: "stop requested", CorrelationID: "lineage-1"}) {
+		t.Fatalf("unexpected response data: %+v", payload)
+	}
+}
+
 func TestSendContextInterruptsBlockedConnection(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer clientConn.Close()
