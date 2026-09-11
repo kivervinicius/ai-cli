@@ -121,7 +121,8 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 	pkg.Provider, pkg.Profile = selected.Provider, selected.Profile
 
 	if isFailover {
-		events.DefaultBus().Publish(events.NewEvent(
+		events.DefaultBus().Publish(events.NewEventWithCorrelation(
+			run.ID,
 			run.ID,
 			selected.Provider,
 			selected.Profile,
@@ -293,6 +294,31 @@ func (e *nexusPackageExecutor) Compile(ctx context.Context, run *runner.MissionR
 	compiled, err := compilePackagePromptFromExecutionSnapshot(ctx, &snapshot.Plan, pkg.PhaseID, pkg.PackageID)
 	if err != nil {
 		return runner.PromptArtifact{}, err
+	}
+	if strings.TrimSpace(pkg.AssignedAgent) != "" {
+		st, storeErr := e.n.OpenProject()
+		if storeErr != nil {
+			return runner.PromptArtifact{}, storeErr
+		}
+		agent, agentErr := st.GetAgent(pkg.AssignedAgent, run.ProjectID)
+		if agentErr != nil {
+			return runner.PromptArtifact{}, agentErr
+		}
+		cfg, cfgErr := currentAgentConfig(st, agent)
+		if cfgErr != nil {
+			return runner.PromptArtifact{}, cfgErr
+		}
+		for _, phase := range snapshot.Plan.Phases {
+			for _, target := range phase.Packages {
+				if target.ID == pkg.PackageID {
+					compiledForAgent, compileErr := compileTargetPackagePromptForAgent(ctx, &snapshot.Plan, &target, cfg.AgentSpec, uniqueStrings(append(append([]string(nil), target.MaestroGates...), target.MaestroSkills...)))
+					if compileErr != nil {
+						return runner.PromptArtifact{}, compileErr
+					}
+					compiled = compiledForAgent
+				}
+			}
+		}
 	}
 	content := strings.TrimSpace(compiled.SystemPrompt) + "\n\n" + strings.TrimSpace(compiled.UserPrompt)
 	if strings.TrimSpace(content) == "" {
@@ -550,13 +576,17 @@ func selectCurrentResource(accounts []ProviderAccount, cfg AgentConfig, req Task
 
 func currentAgentConfig(st *store.Store, agent store.Agent) (AgentConfig, error) {
 	if agent.CurrentRevisionID == "" {
-		return AgentConfig{}, nil
+		return NormalizeAgentSpec(agent, AgentConfig{}), nil
 	}
 	rev, err := st.GetRevision(agent.CurrentRevisionID)
 	if err != nil {
 		return AgentConfig{}, err
 	}
-	return ParseAgentConfig(rev.Config)
+	cfg, err := ParseAgentConfig(rev.Config)
+	if err != nil {
+		return AgentConfig{}, err
+	}
+	return NormalizeAgentSpec(agent, cfg), nil
 }
 
 func defaultRole(value, fallback string) string {

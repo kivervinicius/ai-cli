@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/control/driver"
@@ -20,6 +21,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/nexus/autonomyguard"
+	"github.com/kivervinicius/ai-cli/internal/nexus/intelligence"
 	"github.com/kivervinicius/ai-cli/internal/nexus/runner"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
@@ -68,7 +70,7 @@ func (n *Nexus) executeAgentPrompt(ctx context.Context, agentID, workspace, prom
 		}
 	}
 
-	d, err := driver.DefaultRegistry().Get(cfg.Provider)
+	d, err := n.controlDrivers().Get(cfg.Provider)
 	if err != nil {
 		return nil, err
 	}
@@ -76,6 +78,17 @@ func (n *Nexus) executeAgentPrompt(ctx context.Context, agentID, workspace, prom
 	caps := d.EffectiveCaps(ctx, profile)
 	if caps.Headless.Status != driver.CapabilitySupported || caps.SubmitPrompt.Status != driver.CapabilitySupported {
 		return nil, fmt.Errorf("provider %s:%s cannot execute autonomous prompt: headless=%s submit_prompt=%s", cfg.Provider, cfg.Profile, caps.Headless.Status, caps.SubmitPrompt.Status)
+	}
+	if cfg.AgentSpec.HasCustomBehavior() {
+		compiledContext, compileErr := intelligence.NewNexusEngine(nil).CompileExecutionContext(ctx, intelligence.ExecutionContextRequest{
+			Agent:   cfg.AgentSpec,
+			Task:    intelligence.WorkPackageContext{Title: "Direct Agent request", Goal: prompt, Role: cfg.AgentSpec.Role},
+			Runtime: intelligence.RuntimeConstraints{Provider: cfg.Provider, Model: cfg.Model, Workspace: workspace, Isolation: cfg.Isolation, Capabilities: []string{"headless", "submit_prompt"}},
+		})
+		if compileErr != nil {
+			return nil, fmt.Errorf("compile agent execution context: %w", compileErr)
+		}
+		prompt = compiledContext.SystemInstructions + "\n\n" + compiledContext.TaskInstructions
 	}
 	var kickoffArgs []string
 	if strings.EqualFold(cfg.Provider, "codex") {
@@ -168,7 +181,7 @@ func (n *Nexus) executeAgentPrompt(ctx context.Context, agentID, workspace, prom
 	n.notifyContinuity(agent.ID, "NEW_SESSION")
 	n.notifyAgentState(agent.ID, store.AgentWorking)
 
-	output, runErr := captureRuntimeOutput(ctx, sess.RuntimeID)
+	output, runErr := n.captureRuntimeOutput(ctx, sess.RuntimeID)
 	stoppedAt := time.Now().UTC()
 	_ = st.StopGeneration(generation.ID, stoppedAt)
 	agent.Status = store.AgentStopped
@@ -245,7 +258,7 @@ func missionProviderArgs(provider string, args []string, policy agentPromptPolic
 	}
 }
 
-func captureRuntimeOutput(ctx context.Context, runtimeID string) (string, error) {
+func (n *Nexus) captureRuntimeOutput(ctx context.Context, runtimeID string) (string, error) {
 	client, err := protocol.NewClient(runtimeID)
 	if err != nil {
 		return "", fmt.Errorf("attach to runtime output: %w", err)
@@ -265,7 +278,10 @@ func captureRuntimeOutput(ctx context.Context, runtimeID string) (string, error)
 		err  error
 	}
 	ch := make(chan readResult, 1)
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		data, readErr := io.ReadAll(client.Reader())
 		ch <- readResult{data: data, err: readErr}
 	}()
@@ -273,6 +289,8 @@ func captureRuntimeOutput(ctx context.Context, runtimeID string) (string, error)
 	select {
 	case <-ctx.Done():
 		_ = client.Close()
+		// Wait for the reader goroutine to finish after connection close.
+		wg.Wait()
 		return history, ctx.Err()
 	case rr := <-ch:
 		output := history + string(rr.data)
@@ -283,7 +301,7 @@ func captureRuntimeOutput(ctx context.Context, runtimeID string) (string, error)
 		// persisted cross-process, so reload and reject provider process failures.
 		deadline := time.Now().Add(2 * time.Second)
 		for time.Now().Before(deadline) {
-			if sess, ok := registry.DefaultRegistry().Get(runtimeID); ok {
+			if sess, ok := n.runtimeRegistry().Get(runtimeID); ok {
 				switch sess.State {
 				case registry.StateFailed:
 					return output, fmt.Errorf("provider process exited with failure")

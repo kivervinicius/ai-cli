@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kivervinicius/ai-cli/internal/nexus/intelligence"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
 
@@ -45,6 +46,19 @@ func TestAnalyzeImpactNoChange(t *testing.T) {
 	}
 	if impact.Mode != "" {
 		t.Errorf("no change should have empty mode, got %q", impact.Mode)
+	}
+}
+
+func TestAnalyzeImpactAgentSpecChangeRequiresNewSession(t *testing.T) {
+	current := AgentConfig{Provider: "claude", Profile: "default", AgentSpec: intelligence.AgentSpec{Role: "qa"}}
+	proposed := current
+	proposed.AgentSpec.Instructions = []string{"Collect evidence"}
+	impact := AnalyzeImpact(current, proposed)
+	if impact.Mode != ImpactNewSession || !impact.RequiresRestart || !impact.RequiresNewSess {
+		t.Fatalf("AgentSpec change must require a new session: %+v", impact)
+	}
+	if len(impact.ChangedFields) != 1 || impact.ChangedFields[0] != "agent_spec" {
+		t.Fatalf("unexpected changed fields: %v", impact.ChangedFields)
 	}
 }
 

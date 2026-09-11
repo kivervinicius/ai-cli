@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/kivervinicius/ai-cli/internal/control/driver"
 	"github.com/kivervinicius/ai-cli/internal/control/launcher"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
+	"github.com/kivervinicius/ai-cli/internal/nexus/intelligence"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
 
@@ -68,6 +71,19 @@ func openTestNexus(t *testing.T) *Nexus {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	return &Nexus{st: st, launcher: newMockLauncher()}
+}
+
+func TestNexusUsesInjectedControlDriverRegistry(t *testing.T) {
+	injected := driver.NewRegistry()
+	injected.Register(driver.NewFakeDriver())
+	n := &Nexus{drivers: injected}
+
+	if _, err := n.controlDrivers().Get("fake"); err != nil {
+		t.Fatalf("injected driver registry was not used: %v", err)
+	}
+	if _, err := n.controlDrivers().Get("codex"); err == nil {
+		t.Fatal("provider lookup leaked to the process-global registry")
+	}
 }
 
 func TestEffectiveAgentState(t *testing.T) {
@@ -168,6 +184,36 @@ func TestAskAgentReusesExistingAgentAndLiveRuntime(t *testing.T) {
 	agents, _ := st.ListAgents(proj.ID)
 	if len(agents) != 1 {
 		t.Fatalf("Ask created another Agent: %d", len(agents))
+	}
+}
+
+func TestAskAgentCompilesPersistentSpecializationForCustomAgent(t *testing.T) {
+	n := openTestNexus(t)
+	st, _ := n.OpenProject()
+	project, err := st.CreateProject(store.Project{Name: "QA", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, err := st.CreateAgent(store.Agent{ProjectID: project.ID, Name: "QA", Role: "qa"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.SafeApply(context.Background(), agent.ID, AgentConfig{
+		Provider: "fake", Profile: "default",
+		AgentSpec: intelligence.AgentSpec{Role: "qa", Instructions: []string{"Collect evidence before suggesting fixes"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.StartAgent(context.Background(), agent.ID, "fake", "default"); err != nil {
+		t.Fatal(err)
+	}
+	var submitted string
+	n.submitPrompt = func(_ string, prompt string) error { submitted = prompt; return nil }
+	if _, err := n.AskAgent(context.Background(), agent.ID, "reproduce the failure", false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(submitted, "Collect evidence before suggesting fixes") || !strings.Contains(submitted, "reproduce the failure") {
+		t.Fatalf("persistent specialization did not reach execution prompt: %q", submitted)
 	}
 }
 

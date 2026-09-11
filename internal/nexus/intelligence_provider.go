@@ -123,7 +123,7 @@ func (n *Nexus) cliIntelligenceProvider(ctx context.Context, projectID string, c
 	if prof.Disabled {
 		return nil, fmt.Errorf("intelligence profile %s:%s is disabled", providerID, profileName)
 	}
-	d, err := driver.DefaultRegistry().Get(providerID)
+	d, err := n.controlDrivers().Get(providerID)
 	if err != nil {
 		return nil, err
 	}

@@ -3,11 +3,65 @@ package nexus
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"testing"
 
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
+
+func TestComposerOperationsRejectCanceledContext(t *testing.T) {
+	n := openTestNexus(t)
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := st.CreateProject(store.Project{Name: "Composer Context", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := n.CreateComposerSession(context.Background(), project.ID, "Context contract")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	assertCanceled := func(name string, operation func() error) {
+		t.Helper()
+		if err := operation(); !errors.Is(err, context.Canceled) {
+			t.Fatalf("%s error = %v, want context canceled", name, err)
+		}
+	}
+	assertCanceled("create", func() error {
+		_, err := n.CreateComposerSessionWithPrompt(ctx, project.ID, "cancel", "")
+		return err
+	})
+	assertCanceled("list", func() error {
+		_, err := n.ListComposerSessions(ctx, project.ID)
+		return err
+	})
+	assertCanceled("get", func() error {
+		_, err := n.GetComposerSession(ctx, session.Session.ID)
+		return err
+	})
+	assertCanceled("turn", func() error {
+		_, err := n.AddComposerTurnExpected(ctx, session.Session.ID, store.ComposerUser, "cancel", 0)
+		return err
+	})
+	assertCanceled("skill", func() error {
+		_, err := n.UpdateComposerSkillState(ctx, session.Session.ID, "missing", store.ComposerSkillAccepted)
+		return err
+	})
+	assertCanceled("finalize", func() error {
+		_, err := n.FinalizeComposerSession(ctx, session.Session.ID, nil, true)
+		return err
+	})
+	assertCanceled("resolve", func() error {
+		_, err := n.ResolveComposerUnknownExpected(ctx, session.Session.ID, "missing", "answer", "ANSWERED", 0)
+		return err
+	})
+}
 
 func TestComposerFinalizationCreatesPromptWithoutWorkPlan(t *testing.T) {
 	n := openTestNexus(t)

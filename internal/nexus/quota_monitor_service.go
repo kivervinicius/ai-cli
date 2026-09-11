@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/control/events"
@@ -18,6 +19,8 @@ import (
 
 const quotaMonitorInterval = time.Minute
 const quotaMonitorLeaseTTL = 2 * quotaMonitorInterval
+
+var quotaLeaseSequence atomic.Uint64
 
 // QuotaMonitorService keeps quota alerts independent from any UI surface.
 // A single service belongs to one Nexus process and is stopped with its context.
@@ -47,7 +50,7 @@ func NewQuotaMonitorService(monitor *QuotaDropMonitor, bus *events.Bus) *QuotaMo
 		bus:        bus,
 		degraded:   make(map[string]bool),
 		leaseTTL:   quotaMonitorLeaseTTL,
-		leaseToken: fmt.Sprintf("%d-%d", os.Getpid(), time.Now().UnixNano()),
+		leaseToken: fmt.Sprintf("%d-%d-%d", os.Getpid(), time.Now().UnixNano(), quotaLeaseSequence.Add(1)),
 	}
 	if dir, err := config.StateDir(); err == nil {
 		if os.MkdirAll(dir, 0700) == nil {
@@ -172,6 +175,9 @@ func (s *QuotaMonitorService) check() {
 		s.clearDegraded(p.Provider + ":" + p.Name)
 		view := quota.BuildQuotaView(snapshot, account.Email, account.Plan)
 		acc := ProviderAccount{Provider: p.Provider, Profile: p.Name, DisplayName: account.Email, Authenticated: true, QuotaView: &view, QuotaRemaining: 0, QuotaTotal: 1, LastChecked: time.Now()}
+		if scope, scopeErr := profile.AccountScope(p.Provider, p.Name, account.Email); scopeErr == nil {
+			acc.Scope = scope
+		}
 		if remaining, ok := view.BestGroupRemaining(); ok {
 			acc.QuotaRemaining = remaining / 100
 		}

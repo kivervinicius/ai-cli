@@ -5,6 +5,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/quota"
 )
 
@@ -25,6 +26,7 @@ type ProviderAccount struct {
 	RateLimited    bool                `json:"rate_limited"`
 	CooldownUntil  *time.Time          `json:"cooldown_until,omitempty"`
 	Health         string              `json:"health"` // "healthy" | "degraded" | "unhealthy" | "unknown"
+	Scope          model.AccountScope  `json:"account_scope,omitempty"`
 	LastChecked    time.Time           `json:"last_checked"`
 }
 

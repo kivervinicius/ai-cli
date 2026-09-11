@@ -60,6 +60,82 @@ type PromptCompilationResult struct {
 	CompiledAt      time.Time `json:"compiled_at"`
 }
 
+// VerificationPolicy describes evidence requirements for an AgentSpec without
+// coupling the Agent identity to a provider or to a prompt string.
+type VerificationPolicy struct {
+	RequireEvidence bool `json:"require_evidence,omitempty"`
+	RequireTests    bool `json:"require_tests,omitempty"`
+}
+
+// AgentSpec is the durable behavioral specialization of an Agent. Provider
+// and runtime settings intentionally remain outside this type.
+type AgentSpec struct {
+	Role               string             `json:"role,omitempty"`
+	Instructions       []string           `json:"instructions,omitempty"`
+	Responsibilities   []string           `json:"responsibilities,omitempty"`
+	Capabilities       []string           `json:"capabilities,omitempty"`
+	Constraints        []string           `json:"constraints,omitempty"`
+	VerificationPolicy VerificationPolicy `json:"verification_policy,omitempty"`
+}
+
+func (s AgentSpec) HasCustomBehavior() bool {
+	return len(s.Instructions) > 0 || len(s.Responsibilities) > 0 || len(s.Capabilities) > 0 || len(s.Constraints) > 0 || s.VerificationPolicy.RequireEvidence || s.VerificationPolicy.RequireTests
+}
+
+type ProjectContext struct {
+	ProjectID string            `json:"project_id,omitempty"`
+	Facts     map[string]string `json:"facts,omitempty"`
+}
+
+type WorkPackageContext struct {
+	Title              string   `json:"title,omitempty"`
+	Goal               string   `json:"goal,omitempty"`
+	Priority           string   `json:"priority,omitempty"`
+	Role               string   `json:"role,omitempty"`
+	AcceptanceCriteria []string `json:"acceptance_criteria,omitempty"`
+	Constraints        []string `json:"constraints,omitempty"`
+}
+
+type MaestroGuidance struct {
+	Enabled      bool     `json:"enabled,omitempty"`
+	Instructions []string `json:"instructions,omitempty"`
+	Skills       []string `json:"skills,omitempty"`
+}
+
+type RuntimeConstraints struct {
+	Provider     string   `json:"provider,omitempty"`
+	Model        string   `json:"model,omitempty"`
+	Workspace    string   `json:"workspace,omitempty"`
+	Isolation    string   `json:"isolation,omitempty"`
+	Capabilities []string `json:"capabilities,omitempty"`
+}
+
+type ExecutionContextRequest struct {
+	Agent   AgentSpec          `json:"agent"`
+	Project ProjectContext     `json:"project"`
+	Task    WorkPackageContext `json:"task"`
+	Maestro MaestroGuidance    `json:"maestro"`
+	Runtime RuntimeConstraints `json:"runtime"`
+}
+
+type ContextSection struct {
+	Source  string `json:"source"`
+	Name    string `json:"name"`
+	Content string `json:"content"`
+}
+
+// CompiledExecutionContext keeps sections and provenance inspectable while
+// retaining rendered strings for provider adapters that accept text prompts.
+type CompiledExecutionContext struct {
+	SystemInstructions string           `json:"system_instructions"`
+	TaskInstructions   string           `json:"task_instructions"`
+	Context            []string         `json:"context,omitempty"`
+	Constraints        []string         `json:"constraints,omitempty"`
+	Skills             []string         `json:"skills,omitempty"`
+	AcceptanceCriteria []string         `json:"acceptance_criteria,omitempty"`
+	Sections           []ContextSection `json:"sections"`
+}
+
 // DecisionExplanation provides transparent reasoning for intelligence routing and plan optimizations.
 type DecisionExplanation struct {
 	Action     string    `json:"action"`

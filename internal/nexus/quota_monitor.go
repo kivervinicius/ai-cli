@@ -15,6 +15,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/notify"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/core/config"
+	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/quota"
 )
 
@@ -25,24 +26,25 @@ const (
 
 // QuotaNotificationAction represents an emitted alert action for an account.
 type QuotaNotificationAction struct {
-	Provider                string    `json:"provider"`
-	Profile                 string    `json:"profile"`
-	DisplayName             string    `json:"display_name"`
-	Kind                    string    `json:"kind"` // "QUOTA_LOW" | "QUOTA_EXHAUSTED"
-	RemainingPercent        float64   `json:"remaining_percent"`
-	Group                   string    `json:"group,omitempty"`
-	Window                  string    `json:"window,omitempty"`
-	DataStatus              string    `json:"data_status,omitempty"`
-	DataAge                 string    `json:"data_age,omitempty"`
-	ResetDesc               string    `json:"reset_desc,omitempty"`
-	Title                   string    `json:"title"`
-	Body                    string    `json:"body"`
-	RecommendedProvider     string    `json:"recommended_provider,omitempty"`
-	RecommendedProfile      string    `json:"recommended_profile,omitempty"`
-	RecommendedDisplayName  string    `json:"recommended_display_name,omitempty"`
-	RecommendedQuotaPercent float64   `json:"recommended_quota_percent,omitempty"`
-	AffectedRuntimeID       string    `json:"affected_runtime_id,omitempty"`
-	DeliveredAt             time.Time `json:"delivered_at"`
+	Provider                string             `json:"provider"`
+	Profile                 string             `json:"profile"`
+	DisplayName             string             `json:"display_name"`
+	Kind                    string             `json:"kind"` // "QUOTA_LOW" | "QUOTA_EXHAUSTED"
+	RemainingPercent        float64            `json:"remaining_percent"`
+	Group                   string             `json:"group,omitempty"`
+	Window                  string             `json:"window,omitempty"`
+	DataStatus              string             `json:"data_status,omitempty"`
+	DataAge                 string             `json:"data_age,omitempty"`
+	ResetDesc               string             `json:"reset_desc,omitempty"`
+	Title                   string             `json:"title"`
+	Body                    string             `json:"body"`
+	RecommendedProvider     string             `json:"recommended_provider,omitempty"`
+	RecommendedProfile      string             `json:"recommended_profile,omitempty"`
+	RecommendedDisplayName  string             `json:"recommended_display_name,omitempty"`
+	RecommendedQuotaPercent float64            `json:"recommended_quota_percent,omitempty"`
+	AffectedRuntimeID       string             `json:"affected_runtime_id,omitempty"`
+	DeliveredAt             time.Time          `json:"delivered_at"`
+	AccountScope            model.AccountScope `json:"account_scope,omitempty"`
 }
 
 // AccountQuotaState tracks the notification lifecycle per provider account.
@@ -211,7 +213,7 @@ func (m *QuotaDropMonitor) checkWindow(acc ProviderAccount, group string, window
 	// example, a countdown from "2h 00m" to "1h 59m"). It must not be part of
 	// the state identity, otherwise the same low-quota condition bypasses the
 	// anti-spam guard on every polling cycle.
-	key := fmt.Sprintf("%s:%s:%s:%s", acc.Provider, acc.Profile, group, window.Kind)
+	key := fmt.Sprintf("%s:%s:%s", accountKey(acc), group, window.Kind)
 	now := time.Now()
 	m.mu.Lock()
 	st := m.states[key]
@@ -238,7 +240,7 @@ func (m *QuotaDropMonitor) checkWindow(acc ProviderAccount, group string, window
 		st.LastNotifiedRatio = 0
 		m.persistLocked()
 		m.mu.Unlock()
-		action := &QuotaNotificationAction{Provider: acc.Provider, Profile: acc.Profile, DisplayName: displayName, Group: group, Window: window.Kind, DataStatus: acc.QuotaView.Status, DataAge: quota.FormatFreshness(acc.QuotaView.FetchedAt), Kind: string(events.EventQuotaExhausted), RemainingPercent: 0, ResetDesc: resetDesc, Title: fmt.Sprintf("Nexus · Quota Esgotada: %s", displayName), DeliveredAt: now}
+		action := &QuotaNotificationAction{Provider: acc.Provider, Profile: acc.Profile, AccountScope: acc.Scope, DisplayName: displayName, Group: group, Window: window.Kind, DataStatus: acc.QuotaView.Status, DataAge: quota.FormatFreshness(acc.QuotaView.FetchedAt), Kind: string(events.EventQuotaExhausted), RemainingPercent: 0, ResetDesc: resetDesc, Title: fmt.Sprintf("Nexus · Quota Esgotada: %s", displayName), DeliveredAt: now}
 		if alt := findBestAlternative(acc, pool); alt != nil {
 			action.RecommendedProvider = alt.Account.Provider
 			action.RecommendedProfile = alt.Account.Profile
@@ -247,7 +249,7 @@ func (m *QuotaDropMonitor) checkWindow(acc ProviderAccount, group string, window
 				action.RecommendedQuotaPercent = math.Round((alt.Account.QuotaRemaining / alt.Account.QuotaTotal) * 100)
 			}
 		}
-		action.AffectedRuntimeID = findActiveRuntime(acc.Provider, acc.Profile)
+		action.AffectedRuntimeID = findActiveRuntime(acc.Provider, acc.Profile, acc.Scope)
 		action.Body = fmt.Sprintf("A quota de %s (%s · %s) atingiu 0%%.", displayName, group, window.Kind)
 		if action.RecommendedDisplayName != "" {
 			action.Body += fmt.Sprintf(" Recomendado continuar com %s.", action.RecommendedDisplayName)
@@ -267,7 +269,7 @@ func (m *QuotaDropMonitor) checkWindow(acc ProviderAccount, group string, window
 			st.Exhausted = false
 			m.persistLocked()
 			m.mu.Unlock()
-			action := &QuotaNotificationAction{Provider: acc.Provider, Profile: acc.Profile, DisplayName: displayName, Group: group, Window: window.Kind, DataStatus: acc.QuotaView.Status, DataAge: quota.FormatFreshness(acc.QuotaView.FetchedAt), Kind: string(events.EventQuotaLow), RemainingPercent: pct, ResetDesc: resetDesc, Title: fmt.Sprintf("Nexus · Quota Baixa: %s", displayName), DeliveredAt: now}
+			action := &QuotaNotificationAction{Provider: acc.Provider, Profile: acc.Profile, AccountScope: acc.Scope, DisplayName: displayName, Group: group, Window: window.Kind, DataStatus: acc.QuotaView.Status, DataAge: quota.FormatFreshness(acc.QuotaView.FetchedAt), Kind: string(events.EventQuotaLow), RemainingPercent: pct, ResetDesc: resetDesc, Title: fmt.Sprintf("Nexus · Quota Baixa: %s", displayName), DeliveredAt: now}
 			action.Body = fmt.Sprintf("A quota de %s (%s · %s) caiu para %.0f%%.", displayName, group, window.Kind, pct)
 			m.dispatch(action)
 			return action
@@ -286,6 +288,13 @@ func (m *QuotaDropMonitor) CheckAccounts(accounts []ProviderAccount) []QuotaNoti
 		}
 	}
 	return actions
+}
+
+func accountKey(acc ProviderAccount) string {
+	if acc.Scope.Verifiable() {
+		return acc.Scope.Key()
+	}
+	return fmt.Sprintf("legacy/%s/%s", acc.Provider, acc.Profile)
 }
 
 // dispatch delivers the notification through the OS notifier and the internal event bus.
@@ -329,6 +338,9 @@ func (m *QuotaDropMonitor) dispatch(action *QuotaNotificationAction) {
 			"data_status":       action.DataStatus,
 			"data_age":          action.DataAge,
 		}
+		if action.AccountScope.Verifiable() {
+			data["account_scope"] = action.AccountScope
+		}
 		if action.RecommendedProvider != "" {
 			data["recommended_provider"] = action.RecommendedProvider
 			data["recommended_profile"] = action.RecommendedProfile
@@ -339,14 +351,15 @@ func (m *QuotaDropMonitor) dispatch(action *QuotaNotificationAction) {
 			data["affected_runtime_id"] = action.AffectedRuntimeID
 		}
 
-		m.eventBus.Publish(events.NewEvent(
+		event := events.NewEvent(
 			action.AffectedRuntimeID, // attaches runtimeID if an active runtime is affected
 			action.Provider,
 			action.Profile,
 			eventType,
 			action.Body,
 			data,
-		))
+		)
+		m.eventBus.Publish(event.WithAccountScope(action.AccountScope))
 	}
 }
 
@@ -371,7 +384,7 @@ func findBestAlternative(source ProviderAccount, pool []ProviderAccount) *Resour
 	return rec.Recommended
 }
 
-func findActiveRuntime(provider, profile string) string {
+func findActiveRuntime(provider, profile string, scope model.AccountScope) string {
 	reg := registry.DefaultRegistry()
 	if reg == nil {
 		return ""
@@ -381,6 +394,9 @@ func findActiveRuntime(provider, profile string) string {
 	var latestTime time.Time
 	for _, s := range sessions {
 		if strings.EqualFold(s.ProviderID, provider) && strings.EqualFold(s.ProfileID, profile) {
+			if scope.Verifiable() && s.AccountScope != scope {
+				continue
+			}
 			if s.State == registry.StateRunning || s.State == registry.StateWaiting || s.State == registry.StateStarting {
 				if s.StartedAt.After(latestTime) {
 					latestTime = s.StartedAt

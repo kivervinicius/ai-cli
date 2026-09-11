@@ -14,6 +14,9 @@ func TestQuotaMonitorLeaseAllowsOneCollectorAndRecovers(t *testing.T) {
 	second.leasePath = leasePath
 	first.leaseTTL = time.Minute
 	second.leaseTTL = time.Minute
+	if first.leaseToken == second.leaseToken {
+		t.Fatal("lease tokens must be unique within one process")
+	}
 
 	if !first.acquireOrRenewLease() {
 		t.Fatal("first collector should acquire the lease")

@@ -199,8 +199,18 @@ func (s *Selector) EvaluateAll(provider string, workspace string, candidates []m
 		}
 
 		snap := acc.Usage
+		scope := p.AccountScope
+		if !scope.Verifiable() {
+			scope = acc.AccountScope
+		}
 		if snap.ProviderID == "" || snap.ProfileID == "" {
-			snap, _ = s.quotaEng.GetCachedUsage(provider, p.Name)
+			if scope.Verifiable() {
+				snap, _ = s.quotaEng.GetCachedUsageForScope(scope)
+			} else {
+				// Compatibility for callers constructing in-memory profiles. All
+				// persisted profiles are backfilled with AccountScope by profile.List.
+				snap, _ = s.quotaEng.GetCachedUsage(provider, p.Name)
+			}
 		}
 		isExcluded := false
 		for _, ex := range excludeProfiles {
@@ -240,7 +250,14 @@ func (s *Selector) EvaluateAll(provider string, workspace string, candidates []m
 			continue
 		}
 
-		if isLimited, rec := s.cooldown.IsRateLimited(provider, p.Name); isLimited {
+		var isLimited bool
+		var rec *cooldown.Record
+		if scope.Verifiable() {
+			isLimited, rec = s.cooldown.IsRateLimitedForScope(scope)
+		} else {
+			isLimited, rec = s.cooldown.IsRateLimited(provider, p.Name)
+		}
+		if isLimited {
 			ev.Eligible = false
 			ev.RejectReason = fmt.Sprintf("rate limited until %s (%s)", rec.ResetAt.Format("15:04"), rec.Reason)
 			evals = append(evals, ev)

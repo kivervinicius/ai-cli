@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -138,43 +139,18 @@ func (e *NexusEngine) CompilePrompt(
 	facts map[string]string,
 	maestroSkills []string,
 ) (*PromptCompilationResult, error) {
-	var factsList []string
-	for k, v := range facts {
-		factsList = append(factsList, fmt.Sprintf("- **%s**: %s", k, v))
+	factsList := formatFacts(facts)
+	compiled, err := e.CompileExecutionContext(ctx, ExecutionContextRequest{
+		Agent:   AgentSpec{Role: pkg.Role},
+		Project: ProjectContext{Facts: facts},
+		Task:    WorkPackageContext{Title: pkg.Title, Goal: pkg.Goal, Priority: pkg.Priority, Role: pkg.Role, AcceptanceCriteria: append([]string(nil), pkg.Acceptance...)},
+		Maestro: MaestroGuidance{Enabled: len(maestroSkills) > 0, Skills: append([]string(nil), maestroSkills...)},
+	})
+	if err != nil {
+		return nil, err
 	}
-
-	var skillsList []string
-	for _, s := range maestroSkills {
-		skillsList = append(skillsList, "- "+s)
-	}
-
-	var acceptanceList []string
-	for _, a := range pkg.Acceptance {
-		acceptanceList = append(acceptanceList, "- [ ] "+a)
-	}
-
-	sysPrompt := fmt.Sprintf(`You are an autonomous AI engineering agent executing a structured WorkPackage.
-Role: %s
-Package: %s
-Priority: %s
-
-### Governance & Maestro Rules
-%s
-
-### Confirmed Architectural Facts
-%s
-
-You must strictly fulfill the acceptance criteria and produce reproducible verification evidence.`,
-		pkg.Role, pkg.Title, pkg.Priority, strings.Join(skillsList, "\n"), strings.Join(factsList, "\n"))
-
-	userPrompt := fmt.Sprintf(`## Objective
-%s
-
-## Acceptance Criteria
-%s
-
-Execute the required changes step-by-step. Validate with automated tests before completing.`,
-		pkg.Goal, strings.Join(acceptanceList, "\n"))
+	sysPrompt := compiled.SystemInstructions
+	userPrompt := compiled.TaskInstructions
 
 	estTokens := (len(sysPrompt) + len(userPrompt)) / 4
 
@@ -182,10 +158,68 @@ Execute the required changes step-by-step. Validate with automated tests before 
 		PackageTitle:    pkg.Title,
 		SystemPrompt:    sysPrompt,
 		UserPrompt:      userPrompt,
-		MaestroRules:    maestroSkills,
+		MaestroRules:    append([]string(nil), maestroSkills...),
 		AcceptanceGates: pkg.Acceptance,
 		Constraints:     factsList,
 		EstimatedTokens: estTokens,
 		CompiledAt:      time.Now().UTC(),
 	}, nil
+}
+
+func (e *NexusEngine) CompileExecutionContext(_ context.Context, req ExecutionContextRequest) (*CompiledExecutionContext, error) {
+	if strings.TrimSpace(req.Task.Title) == "" && strings.TrimSpace(req.Task.Goal) == "" {
+		return nil, errors.New("execution task is required")
+	}
+	facts := formatFacts(req.Project.Facts)
+	sections := []ContextSection{
+		{Source: "agent", Name: "persistent specialization", Content: formatAgentSpec(req.Agent)},
+		{Source: "task", Name: "work package role", Content: fmt.Sprintf("Role: %s\nTitle: %s\nGoal: %s", req.Task.Role, req.Task.Title, req.Task.Goal)},
+	}
+	if len(facts) > 0 {
+		sections = append(sections, ContextSection{Source: "project", Name: "project facts", Content: strings.Join(facts, "\n")})
+	}
+	if req.Maestro.Enabled && (len(req.Maestro.Instructions) > 0 || len(req.Maestro.Skills) > 0) {
+		sections = append(sections, ContextSection{Source: "maestro", Name: "optional guidance", Content: strings.Join(append(append([]string{}, req.Maestro.Instructions...), req.Maestro.Skills...), "\n")})
+	}
+	if req.Runtime.Provider != "" || req.Runtime.Model != "" || req.Runtime.Workspace != "" || req.Runtime.Isolation != "" || len(req.Runtime.Capabilities) > 0 {
+		runtimeContent := fmt.Sprintf("Provider: %s\nModel: %s\nWorkspace: %s\nIsolation: %s\nCapabilities: %s", req.Runtime.Provider, req.Runtime.Model, req.Runtime.Workspace, req.Runtime.Isolation, strings.Join(req.Runtime.Capabilities, ", "))
+		sections = append(sections, ContextSection{Source: "runtime", Name: "runtime constraints", Content: runtimeContent})
+	}
+
+	sectionText := make([]string, 0, len(sections))
+	for _, section := range sections {
+		sectionText = append(sectionText, fmt.Sprintf("[%s]\n%s", section.Source, section.Content))
+	}
+	system := fmt.Sprintf("You are an autonomous AI engineering agent executing a structured WorkPackage.\nPersistent specialization: %s\nTask role: %s\nPackage: %s\nPriority: %s\n\n%s\n\nProduce reproducible verification evidence.", req.Agent.Role, req.Task.Role, req.Task.Title, req.Task.Priority, strings.Join(sectionText, "\n\n"))
+	acceptance := make([]string, 0, len(req.Task.AcceptanceCriteria))
+	for _, item := range req.Task.AcceptanceCriteria {
+		acceptance = append(acceptance, "- [ ] "+item)
+	}
+	task := fmt.Sprintf("## Objective\n%s\n\n## Acceptance Criteria\n%s\n\nExecute the required changes step-by-step. Validate with automated tests before completing.", req.Task.Goal, strings.Join(acceptance, "\n"))
+	return &CompiledExecutionContext{
+		SystemInstructions: system,
+		TaskInstructions:   task,
+		Context:            facts,
+		Constraints:        append([]string(nil), req.Task.Constraints...),
+		Skills:             append([]string(nil), req.Maestro.Skills...),
+		AcceptanceCriteria: append([]string(nil), req.Task.AcceptanceCriteria...),
+		Sections:           sections,
+	}, nil
+}
+
+func formatFacts(facts map[string]string) []string {
+	keys := make([]string, 0, len(facts))
+	for key := range facts {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]string, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, fmt.Sprintf("- **%s**: %s", key, facts[key]))
+	}
+	return out
+}
+
+func formatAgentSpec(spec AgentSpec) string {
+	return fmt.Sprintf("Role: %s\nInstructions: %s\nResponsibilities: %s\nCapabilities: %s\nConstraints: %s\nVerification policy: require_evidence=%t; require_tests=%t", spec.Role, strings.Join(spec.Instructions, "; "), strings.Join(spec.Responsibilities, "; "), strings.Join(spec.Capabilities, "; "), strings.Join(spec.Constraints, "; "), spec.VerificationPolicy.RequireEvidence, spec.VerificationPolicy.RequireTests)
 }

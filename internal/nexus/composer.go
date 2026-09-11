@@ -94,7 +94,10 @@ func (n *Nexus) CreateComposerSession(ctx context.Context, projectID, goal strin
 	return n.CreateComposerSessionWithPrompt(ctx, projectID, goal, "")
 }
 
-func (n *Nexus) CreateComposerSessionWithPrompt(_ context.Context, projectID, goal, sourcePrompt string) (*ComposerSessionView, error) {
+func (n *Nexus) CreateComposerSessionWithPrompt(ctx context.Context, projectID, goal, sourcePrompt string) (*ComposerSessionView, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	st, err := n.OpenProject()
 	if err != nil {
 		return nil, err
@@ -157,7 +160,10 @@ func skillRelevantToComposer(skill MaestroSkillDesc, brief LivingBrief) bool {
 	return true
 }
 
-func (n *Nexus) GetComposerSession(_ context.Context, id string) (*ComposerSessionView, error) {
+func (n *Nexus) GetComposerSession(ctx context.Context, id string) (*ComposerSessionView, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	st, err := n.OpenProject()
 	if err != nil {
 		return nil, err
@@ -171,7 +177,10 @@ func (n *Nexus) GetComposerSession(_ context.Context, id string) (*ComposerSessi
 	return n.composeSessionView(st, *session, brief)
 }
 
-func (n *Nexus) ListComposerSessions(_ context.Context, projectID string) ([]store.ComposerSession, error) {
+func (n *Nexus) ListComposerSessions(ctx context.Context, projectID string) ([]store.ComposerSession, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	st, err := n.OpenProject()
 	if err != nil {
 		return nil, err
@@ -184,6 +193,9 @@ func (n *Nexus) AddComposerTurn(ctx context.Context, sessionID, role, content st
 }
 
 func (n *Nexus) AddComposerTurnExpected(ctx context.Context, sessionID, role, content string, expectedRevision int) (*ComposerSessionView, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	st, err := n.OpenProject()
 	if err != nil {
 		return nil, err
@@ -238,7 +250,10 @@ func (n *Nexus) AddComposerTurnExpected(ctx context.Context, sessionID, role, co
 	return n.persistComposerSessionExpected(st, session, brief, expectedRevision)
 }
 
-func (n *Nexus) UpdateComposerSkillState(_ context.Context, sessionID, skillID, state string) (*ComposerSessionView, error) {
+func (n *Nexus) UpdateComposerSkillState(ctx context.Context, sessionID, skillID, state string) (*ComposerSessionView, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	st, err := n.OpenProject()
 	if err != nil {
 		return nil, err
@@ -253,7 +268,10 @@ func (n *Nexus) UpdateComposerSkillState(_ context.Context, sessionID, skillID, 
 	return n.composeSessionView(st, *session, decodeComposerBrief(session.BriefJSON))
 }
 
-func (n *Nexus) FinalizeComposerSession(_ context.Context, sessionID string, selectedSkills []string, confirmGaps bool) (*store.PromptArtifact, error) {
+func (n *Nexus) FinalizeComposerSession(ctx context.Context, sessionID string, selectedSkills []string, confirmGaps bool) (*store.PromptArtifact, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	st, err := n.OpenProject()
 	if err != nil {
 		return nil, err
@@ -328,6 +346,9 @@ func (n *Nexus) FinalizeComposerSession(_ context.Context, sessionID string, sel
 // refresh after resolving unknowns). The session state is reset to allow
 // the new finalization pass to proceed even when it was previously finalized.
 func (n *Nexus) RefineComposerArtifact(ctx context.Context, sessionID, refinementGoal string) (*store.PromptArtifact, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	st, err := n.OpenProject()
 	if err != nil {
 		return nil, err
@@ -368,7 +389,10 @@ func (n *Nexus) ResolveComposerUnknown(_ context.Context, sessionID, unknownID, 
 	return n.ResolveComposerUnknownExpected(context.Background(), sessionID, unknownID, answer, status, 0)
 }
 
-func (n *Nexus) ResolveComposerUnknownExpected(_ context.Context, sessionID, unknownID, answer, status string, expectedRevision int) (*ComposerSessionView, error) {
+func (n *Nexus) ResolveComposerUnknownExpected(ctx context.Context, sessionID, unknownID, answer, status string, expectedRevision int) (*ComposerSessionView, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	st, err := n.OpenProject()
 	if err != nil {
 		return nil, err

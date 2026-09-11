@@ -87,7 +87,14 @@ func (e *Executor) RunWithFallback(
 		if failure.RetryAfter != nil && *failure.RetryAfter > 0 {
 			retryDur = *failure.RetryAfter
 		}
-		e.cooldown.RecordRateLimit(provider, currentProfileName, retryDur, failure.ResetAt, failure.Message)
+		currentScope := currentProfile.AccountScope
+		if currentScope.Verifiable() {
+			e.cooldown.RecordRateLimitForScope(currentScope, retryDur, failure.ResetAt, failure.Message)
+		} else {
+			// Compatibility for in-memory callers that have not gone through
+			// profile.List yet. Persisted profiles always carry a scope.
+			e.cooldown.RecordRateLimit(provider, currentProfileName, retryDur, failure.ResetAt, failure.Message)
+		}
 
 		// Collect already attempted profile names
 		var excluded []string

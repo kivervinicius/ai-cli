@@ -10,22 +10,33 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/control/driver"
 	"github.com/kivervinicius/ai-cli/internal/control/launcher"
+	"github.com/kivervinicius/ai-cli/internal/nexus/intelligence"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
 
 // AgentConfig is the persistent, revisioned configuration for an Agent (Gate 3).
 // It is stored as a JSON blob in agent_revisions.config.
 type AgentConfig struct {
-	Provider         string            `json:"provider"`
-	Profile          string            `json:"profile"`
-	Model            string            `json:"model,omitempty"`
-	Options          map[string]any    `json:"options,omitempty"`
-	Workspace        string            `json:"workspace,omitempty"`
-	Isolation        string            `json:"isolation,omitempty"`         // "project" | "global" | "none"
-	MaestroMode      string            `json:"maestro_mode,omitempty"`      // "OFF" | "ASSIST" | "ORCHESTRATE"
-	ContinuityPolicy string            `json:"continuity_policy,omitempty"` // "auto" | "native" | "new_session"
-	Environment      map[string]string `json:"environment,omitempty"`
-	Allocation       *AllocationPolicy `json:"allocation,omitempty"`
+	Provider         string                 `json:"provider"`
+	Profile          string                 `json:"profile"`
+	Model            string                 `json:"model,omitempty"`
+	Options          map[string]any         `json:"options,omitempty"`
+	Workspace        string                 `json:"workspace,omitempty"`
+	Isolation        string                 `json:"isolation,omitempty"`         // "project" | "global" | "none"
+	MaestroMode      string                 `json:"maestro_mode,omitempty"`      // "OFF" | "ASSIST" | "ORCHESTRATE"
+	ContinuityPolicy string                 `json:"continuity_policy,omitempty"` // "auto" | "native" | "new_session"
+	Environment      map[string]string      `json:"environment,omitempty"`
+	Allocation       *AllocationPolicy      `json:"allocation,omitempty"`
+	AgentSpec        intelligence.AgentSpec `json:"agent_spec,omitempty"`
+}
+
+// NormalizeAgentSpec preserves legacy agents whose only specialization was
+// stored in store.Agent.Role. It never invents instructions or capabilities.
+func NormalizeAgentSpec(agent store.Agent, cfg AgentConfig) AgentConfig {
+	if strings.TrimSpace(cfg.AgentSpec.Role) == "" {
+		cfg.AgentSpec.Role = strings.TrimSpace(agent.Role)
+	}
+	return cfg
 }
 
 // AllocationPolicy controls how provider resources are allocated to an agent.
@@ -165,6 +176,11 @@ func AnalyzeImpact(current, proposed AgentConfig) ConfigImpact {
 		impact.ChangedFields = append(impact.ChangedFields, "environment")
 		impact.RequiresRestart = true
 	}
+	if !reflect.DeepEqual(current.AgentSpec, proposed.AgentSpec) {
+		impact.ChangedFields = append(impact.ChangedFields, "agent_spec")
+		impact.RequiresRestart = true
+		impact.RequiresNewSess = true
+	}
 	if !reflect.DeepEqual(current.Allocation, proposed.Allocation) {
 		impact.ChangedFields = append(impact.ChangedFields, "allocation")
 	}
@@ -210,8 +226,10 @@ func (n *Nexus) SafeApply(ctx context.Context, agentID string, proposed AgentCon
 		rev, rerr := st.GetRevision(agent.CurrentRevisionID)
 		if rerr == nil {
 			current, _ = ParseAgentConfig(rev.Config)
+			current = NormalizeAgentSpec(agent, current)
 		}
 	}
+	proposed = NormalizeAgentSpec(agent, proposed)
 
 	// Analyze impact.
 	impact := AnalyzeImpact(current, proposed)
@@ -276,7 +294,7 @@ func (n *Nexus) SafeApply(ctx context.Context, agentID string, proposed AgentCon
 		copyGen := oldGen
 		previousGen = &copyGen
 	}
-	launchDecision, err := continuityForNextGeneration(ctx, proposed, previousGen)
+	launchDecision, err := n.continuityForNextGeneration(ctx, proposed, previousGen)
 	if err != nil {
 		return nil, fmt.Errorf("validate candidate continuity: %w", err)
 	}
@@ -411,7 +429,7 @@ func (n *Nexus) restorePreviousRuntime(ctx context.Context, st *store.Store, pro
 	if err != nil {
 		return err
 	}
-	continuity, err := continuityForNextGeneration(ctx, previousCfg, &previousGen)
+	continuity, err := n.continuityForNextGeneration(ctx, previousCfg, &previousGen)
 	if err != nil {
 		return err
 	}

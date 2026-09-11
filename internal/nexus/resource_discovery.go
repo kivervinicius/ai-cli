@@ -21,6 +21,19 @@ type ResourceAllocation struct {
 }
 
 func (n *Nexus) ListResources() ([]ProviderAccount, error) {
+	return n.ListResourcesContext(context.Background())
+}
+
+// ListResourcesContext discovers provider accounts using the caller's
+// cancellation context. ListResources remains the backwards-compatible
+// context-free facade used by existing CLI/domain callers.
+func (n *Nexus) ListResourcesContext(ctx context.Context) ([]ProviderAccount, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	profiles, err := profile.List()
 	if err != nil {
 		return nil, fmt.Errorf("list profiles: %w", err)
@@ -41,9 +54,9 @@ func (n *Nexus) ListResources() ([]ProviderAccount, error) {
 		}
 
 		capabilities := map[string]string{}
-		d, derr := driver.DefaultRegistry().Get(p.Provider)
+		d, derr := n.controlDrivers().Get(p.Provider)
 		if derr == nil {
-			det, detectErr := d.Detect(context.Background())
+			det, detectErr := d.Detect(ctx)
 			if detectErr == nil {
 				authenticated = det.Installed && acc.Authenticated
 				if !det.Installed {
@@ -52,7 +65,7 @@ func (n *Nexus) ListResources() ([]ProviderAccount, error) {
 					health = "auth_required"
 				}
 			}
-			capabilities = effectiveCapabilityMap(d.EffectiveCaps(context.Background(), p))
+			capabilities = effectiveCapabilityMap(d.EffectiveCaps(ctx, p))
 		} else {
 			health = "unavailable"
 		}
@@ -105,7 +118,7 @@ func (n *Nexus) ListResources() ([]ProviderAccount, error) {
 // AllocateResource validates an exact provider/profile choice against the
 // current discovery result and persists it as the Agent's current revision.
 func (n *Nexus) AllocateResource(ctx context.Context, agentID, provider, profileName string, policy SchedulerPolicy) (*ResourceAllocation, error) {
-	accounts, err := n.ListResources()
+	accounts, err := n.ListResourcesContext(ctx)
 	if err != nil {
 		return nil, err
 	}

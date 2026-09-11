@@ -23,7 +23,10 @@ func newStoreRunRepository(st *store.Store) runner.RunRepository {
 	return &storeRunRepository{st: st}
 }
 
-func (r *storeRunRepository) SaveRun(_ context.Context, run *runner.MissionRun) error {
+func (r *storeRunRepository) SaveRun(ctx context.Context, run *runner.MissionRun) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if r.st == nil {
 		return fmt.Errorf("nexus store unavailable")
 	}
@@ -49,7 +52,10 @@ func (r *storeRunRepository) SaveRun(_ context.Context, run *runner.MissionRun) 
 	})
 }
 
-func (r *storeRunRepository) GetRun(_ context.Context, id string) (*runner.MissionRun, error) {
+func (r *storeRunRepository) GetRun(ctx context.Context, id string) (*runner.MissionRun, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	rec, err := r.st.GetMissionRun(id)
 	if err != nil {
 		return nil, mapRunStoreError(err)
@@ -57,7 +63,10 @@ func (r *storeRunRepository) GetRun(_ context.Context, id string) (*runner.Missi
 	return decodeMissionRun(rec)
 }
 
-func (r *storeRunRepository) ListRuns(_ context.Context) ([]*runner.MissionRun, error) {
+func (r *storeRunRepository) ListRuns(ctx context.Context) ([]*runner.MissionRun, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	recs, err := r.st.ListMissionRuns()
 	if err != nil {
 		return nil, err
@@ -73,7 +82,10 @@ func (r *storeRunRepository) ListRuns(_ context.Context) ([]*runner.MissionRun, 
 	return out, nil
 }
 
-func (r *storeRunRepository) AcquireLease(_ context.Context, id, owner string, ttl time.Duration) (*runner.MissionRun, error) {
+func (r *storeRunRepository) AcquireLease(ctx context.Context, id, owner string, ttl time.Duration) (*runner.MissionRun, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	rec, err := r.st.AcquireMissionLease(id, owner, ttl)
 	if err != nil {
 		if isLeaseError(err) {
@@ -84,7 +96,10 @@ func (r *storeRunRepository) AcquireLease(_ context.Context, id, owner string, t
 	return decodeMissionRun(rec)
 }
 
-func (r *storeRunRepository) RenewLease(_ context.Context, id, owner, token string, ttl time.Duration) error {
+func (r *storeRunRepository) RenewLease(ctx context.Context, id, owner, token string, ttl time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := r.st.RenewMissionLease(id, owner, token, ttl); err != nil {
 		if isLeaseError(err) {
 			return runner.ErrLeaseHeld
@@ -94,7 +109,10 @@ func (r *storeRunRepository) RenewLease(_ context.Context, id, owner, token stri
 	return nil
 }
 
-func (r *storeRunRepository) ReleaseLease(_ context.Context, id, owner, token string) error {
+func (r *storeRunRepository) ReleaseLease(ctx context.Context, id, owner, token string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := r.st.ReleaseMissionLease(id, owner, token); err != nil {
 		if isLeaseError(err) {
 			return runner.ErrLeaseHeld
@@ -141,7 +159,10 @@ func isLeaseError(err error) bool {
 	return msg == "mission run lease held" || msg == "mission run lease fencing mismatch"
 }
 
-func (r *storeRunRepository) SaveContextCapsule(_ context.Context, capsule *runner.ContextCapsule) error {
+func (r *storeRunRepository) SaveContextCapsule(ctx context.Context, capsule *runner.ContextCapsule) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if capsule == nil {
 		return fmt.Errorf("context capsule is required")
 	}
@@ -161,7 +182,10 @@ func (r *storeRunRepository) SaveContextCapsule(_ context.Context, capsule *runn
 	capsule.ID = record.ID
 	return nil
 }
-func (r *storeRunRepository) GetContextCapsule(_ context.Context, runID, stepID string) (*runner.ContextCapsule, error) {
+func (r *storeRunRepository) GetContextCapsule(ctx context.Context, runID, stepID string) (*runner.ContextCapsule, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	record, err := r.st.GetFlowContextCapsule(runID, stepID)
 	if err != nil {
 		return nil, err
@@ -172,7 +196,10 @@ func (r *storeRunRepository) GetContextCapsule(_ context.Context, runID, stepID 
 	}
 	return &capsule, nil
 }
-func (r *storeRunRepository) SaveWorkReceipt(_ context.Context, receipt *runner.WorkReceipt) error {
+func (r *storeRunRepository) SaveWorkReceipt(ctx context.Context, receipt *runner.WorkReceipt) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if receipt == nil {
 		return fmt.Errorf("work receipt is required")
 	}
@@ -192,7 +219,10 @@ func (r *storeRunRepository) SaveWorkReceipt(_ context.Context, receipt *runner.
 	receipt.ID = record.ID
 	return nil
 }
-func (r *storeRunRepository) GetWorkReceipt(_ context.Context, runID, stepID string) (*runner.WorkReceipt, error) {
+func (r *storeRunRepository) GetWorkReceipt(ctx context.Context, runID, stepID string) (*runner.WorkReceipt, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	record, err := r.st.GetFlowWorkReceipt(runID, stepID)
 	if err != nil {
 		return nil, err

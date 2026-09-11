@@ -11,38 +11,12 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 
 	"sort"
+	"time"
 )
 
 // CreateWorkPlan creates a new structured engineering work plan.
 func (n *Nexus) CreateWorkPlan(ctx context.Context, projectID, title, description string, phases []store.PlanPhase, facts map[string]string) (*store.WorkPlan, error) {
-	st, err := n.OpenProject()
-	if err != nil {
-		return nil, err
-	}
-
-	if strings.TrimSpace(title) == "" {
-		return nil, fmt.Errorf("plan title is required")
-	}
-
-	plan := store.WorkPlan{
-		ProjectID:       projectID,
-		Title:           title,
-		Description:     description,
-		Phases:          phases,
-		StructuredFacts: facts,
-	}
-	for pi := range plan.Phases {
-		if plan.Phases[pi].ID == "" {
-			plan.Phases[pi].ID = "phase_" + ids.NewRuntimeID()
-		}
-		for wi := range plan.Phases[pi].Packages {
-			if plan.Phases[pi].Packages[wi].ID == "" {
-				plan.Phases[pi].Packages[wi].ID = "pkg_" + ids.NewRuntimeID()
-			}
-		}
-	}
-
-	return st.CreateWorkPlan(plan)
+	return NewPlanApplicationService(n).Create(ctx, projectID, title, description, phases, facts)
 }
 
 // MaterializePromptArtifactAsFlow creates a first-class Flow from the exact
@@ -106,47 +80,27 @@ func decodeStringArray(raw string) []string {
 
 // GetWorkPlan fetches a plan by ID.
 func (n *Nexus) GetWorkPlan(ctx context.Context, planID string) (*store.WorkPlan, error) {
-	st, err := n.OpenProject()
-	if err != nil {
-		return nil, err
-	}
-	return st.GetWorkPlan(planID)
+	return NewPlanApplicationService(n).Get(ctx, planID)
 }
 
 // ListWorkPlans lists all work plans for a project.
 func (n *Nexus) ListWorkPlans(ctx context.Context, projectID string) ([]store.WorkPlan, error) {
-	st, err := n.OpenProject()
-	if err != nil {
-		return nil, err
-	}
-	return st.ListWorkPlans(projectID)
+	return NewPlanApplicationService(n).List(ctx, projectID)
 }
 
 // UpdateWorkPlan updates a plan and records a new PlanRevision atomically.
 func (n *Nexus) UpdateWorkPlan(ctx context.Context, plan store.WorkPlan, changeSummary string) (*store.WorkPlan, *store.PlanRevision, error) {
-	st, err := n.OpenProject()
-	if err != nil {
-		return nil, nil, err
-	}
-	return st.UpdateWorkPlan(plan, changeSummary)
+	return NewPlanApplicationService(n).Update(ctx, plan, changeSummary)
 }
 
 // DeleteWorkPlan deletes a plan by ID.
 func (n *Nexus) DeleteWorkPlan(ctx context.Context, planID string) error {
-	st, err := n.OpenProject()
-	if err != nil {
-		return err
-	}
-	return st.DeleteWorkPlan(planID)
+	return NewPlanApplicationService(n).Delete(ctx, planID)
 }
 
 // ListPlanRevisions lists all historical revisions of a plan.
 func (n *Nexus) ListPlanRevisions(ctx context.Context, planID string) ([]store.PlanRevision, error) {
-	st, err := n.OpenProject()
-	if err != nil {
-		return nil, err
-	}
-	return st.ListPlanRevisions(planID)
+	return NewPlanApplicationService(n).Revisions(ctx, planID)
 }
 
 // CompilePackagePrompt compiles the exact scoped prompt for a single WorkPackage.
@@ -199,12 +153,29 @@ func (n *Nexus) compilePackagePromptFromPlan(ctx context.Context, plan *store.Wo
 }
 
 func compileTargetPackagePrompt(ctx context.Context, plan *store.WorkPlan, targetPkg *store.WorkPackage, validatedSkills []string) (*intelligence.PromptCompilationResult, error) {
-	engine := intelligence.NewNexusEngine(nil)
-	outline := intelligence.WorkPackageOutline{
-		Title: targetPkg.Title, Goal: targetPkg.Goal, Priority: targetPkg.Priority,
-		Dependencies: targetPkg.Dependencies, Role: targetPkg.Role, Acceptance: targetPkg.AcceptanceCriteria,
+	return compileTargetPackagePromptForAgent(ctx, plan, targetPkg, intelligence.AgentSpec{Role: targetPkg.Role}, validatedSkills)
+}
+
+func compileTargetPackagePromptForAgent(ctx context.Context, plan *store.WorkPlan, targetPkg *store.WorkPackage, agentSpec intelligence.AgentSpec, validatedSkills []string) (*intelligence.PromptCompilationResult, error) {
+	compiled, err := intelligence.NewNexusEngine(nil).CompileExecutionContext(ctx, intelligence.ExecutionContextRequest{
+		Agent:   agentSpec,
+		Project: intelligence.ProjectContext{Facts: plan.StructuredFacts},
+		Task:    intelligence.WorkPackageContext{Title: targetPkg.Title, Goal: targetPkg.Goal, Priority: targetPkg.Priority, Role: targetPkg.Role, AcceptanceCriteria: targetPkg.AcceptanceCriteria},
+		Maestro: intelligence.MaestroGuidance{Enabled: len(validatedSkills) > 0, Skills: append([]string(nil), validatedSkills...)},
+	})
+	if err != nil {
+		return nil, err
 	}
-	return engine.CompilePrompt(ctx, outline, plan.StructuredFacts, validatedSkills)
+	return &intelligence.PromptCompilationResult{
+		PackageTitle:    targetPkg.Title,
+		SystemPrompt:    compiled.SystemInstructions,
+		UserPrompt:      compiled.TaskInstructions,
+		MaestroRules:    append([]string(nil), validatedSkills...),
+		AcceptanceGates: append([]string(nil), targetPkg.AcceptanceCriteria...),
+		Constraints:     append([]string(nil), compiled.Context...),
+		EstimatedTokens: (len(compiled.SystemInstructions) + len(compiled.TaskInstructions)) / 4,
+		CompiledAt:      time.Now().UTC(),
+	}, nil
 }
 
 // compilePackagePromptFromExecutionSnapshot trusts only Maestro gates already
