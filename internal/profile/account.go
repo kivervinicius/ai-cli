@@ -17,23 +17,31 @@ type AccountInfo = model.AccountInfo
 func GetAccountInfo(providerName, name string) model.AccountInfo {
 	ctx := context.Background()
 	p := model.Profile{Provider: providerName, Name: name}
-
+	var info model.AccountInfo
 	switch providerName {
 	case "codex":
-		return codex.New().InspectAuth(ctx, p)
+		info = codex.New().InspectAuth(ctx, p)
 	case "agy":
-		return agy.New().InspectAuth(ctx, p)
+		info = agy.New().InspectAuth(ctx, p)
 	case "claude":
-		return claude.New().InspectAuth(ctx, p)
+		info = claude.New().InspectAuth(ctx, p)
 	case "opencode":
-		return opencode.New().InspectAuth(ctx, p)
+		info = opencode.New().InspectAuth(ctx, p)
 	case "gemini":
-		return gemini.New().InspectAuth(ctx, p)
+		info = gemini.New().InspectAuth(ctx, p)
 	default:
-		return model.AccountInfo{
+		info = model.AccountInfo{
 			Status:        "Unknown provider",
 			Health:        model.HealthUnknown,
 			Authenticated: false,
 		}
 	}
+
+	// Keep the opaque account boundary attached to every account inspection.
+	// An unauthenticated profile may have a stable local profile scope, but it
+	// must not be treated as verified identity by quota persistence/routing.
+	if scope, err := AccountScope(providerName, name, info.Email); err == nil {
+		info.AccountScope = scope
+	}
+	return info
 }

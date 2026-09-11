@@ -1,6 +1,8 @@
 package profile
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -12,7 +14,6 @@ func TestGetQuotaDetails(t *testing.T) {
 	tempData := t.TempDir()
 	t.Setenv("AI_CLI_DATA_DIR", tempData)
 	t.Setenv("AI_CLI_CONFIG_DIR", t.TempDir())
-
 	// Without cached data, quota must report UNKNOWN, NOT 100%
 	qAgy := GetQuotaDetails("agy", "test-profile-1", "Google AI Pro", "test@gmail.com")
 	if qAgy.Status != string(model.UsageUnknown) {
@@ -35,11 +36,25 @@ func TestGetUsageSnapshotPreservesStaleWindowsAsEstimatedAfterRefreshFailure(t *
 	tempData := t.TempDir()
 	t.Setenv("AI_CLI_DATA_DIR", tempData)
 	t.Setenv("AI_CLI_CONFIG_DIR", t.TempDir())
+	if _, err := Create("agy", "work"); err != nil {
+		t.Fatal(err)
+	}
+	home, _ := Home("agy", "work")
+	if err := os.MkdirAll(filepath.Join(home, ".gemini"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".gemini", "google_accounts.json"), []byte(`{"active":"work@example.test"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
 
 	remaining := 66.0
 	used := 34.0
 	eng := quota.NewEngine(time.Minute)
-	if err := eng.SaveUsage(model.UsageSnapshot{
+	scope, err := AccountScope("agy", "work", "work@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.SaveUsageForScope(scope, model.UsageSnapshot{
 		ProviderID: "agy",
 		ProfileID:  "work",
 		Status:     model.UsageLive,

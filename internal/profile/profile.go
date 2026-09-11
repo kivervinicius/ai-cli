@@ -84,6 +84,13 @@ func Create(provider, name string) (model.Profile, error) {
 	if err := os.WriteFile(filepath.Join(root, "profile.json"), append(b, '\n'), 0600); err != nil {
 		return p, err
 	}
+	if scope, scopeErr := AccountScope(provider, name, ""); scopeErr == nil {
+		p.AccountScope = scope
+		b, _ = json.MarshalIndent(p, "", "  ")
+		if err := os.WriteFile(filepath.Join(root, "profile.json"), append(b, '\n'), 0600); err != nil {
+			return p, err
+		}
+	}
 	return p, nil
 }
 
@@ -187,6 +194,11 @@ func List() ([]model.Profile, error) {
 			}
 			var p model.Profile
 			if json.Unmarshal(raw, &p) == nil {
+				// Backfill the opaque scope for legacy profile.json files. This is
+				// metadata-only and does not attribute any old quota snapshot.
+				if scope, scopeErr := AccountScope(p.Provider, p.Name, ""); scopeErr == nil {
+					p.AccountScope = scope
+				}
 				if cfg.Disabled[p.Provider] != nil && cfg.Disabled[p.Provider][p.Name] {
 					p.Disabled = true
 				}
@@ -228,6 +240,9 @@ func Get(provider, name string) (model.Profile, error) {
 	}
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return p, err
+	}
+	if scope, scopeErr := AccountScope(p.Provider, p.Name, ""); scopeErr == nil {
+		p.AccountScope = scope
 	}
 	cfg, _ := config.LoadConfig()
 	if cfg.Disabled[p.Provider] != nil && cfg.Disabled[p.Provider][p.Name] {

@@ -61,12 +61,30 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 	}
 
 	qEng := quota.NewEngine(5 * time.Minute)
-	lastKnown, hasLastKnown := qEng.GetLastKnownUsage(providerName, name)
+	expectedAccount := expectedProfileAccount(providerName, name)
+	scope, scopeOK := usageScope(providerName, name, expectedAccount)
+	var lastKnown model.UsageSnapshot
+	var hasLastKnown bool
+	if scopeOK {
+		lastKnown, hasLastKnown = qEng.GetLastKnownUsageForScope(scope)
+	}
+	if hasLastKnown && !snapshotBelongsToProfile(lastKnown, providerName, name, expectedAccount) {
+		lastKnown = model.UsageSnapshot{ProviderID: providerName, ProfileID: name, Status: model.UsageUnknown, Source: model.SourceNone}
+		hasLastKnown = false
+	}
 	if debug {
 		slog.Debug("loadUsageSnapshot: GetLastKnownUsage", "provider", providerName, "profile", name, "hasLastKnown", hasLastKnown, "lastKnownStatus", lastKnown.Status, "lastKnownFetchedAt", lastKnown.FetchedAt, "lastKnownWindows", len(lastKnown.Windows))
 	}
 
-	snap, found := qEng.GetCachedUsage(providerName, name)
+	var snap model.UsageSnapshot
+	var found bool
+	if scopeOK {
+		snap, found = qEng.GetCachedUsageForScope(scope)
+	}
+	if found && !snapshotBelongsToProfile(snap, providerName, name, expectedAccount) {
+		snap = model.UsageSnapshot{ProviderID: providerName, ProfileID: name, Status: model.UsageUnknown, Source: model.SourceNone}
+		found = false
+	}
 	if debug {
 		slog.Debug("loadUsageSnapshot: GetCachedUsage", "provider", providerName, "profile", name, "found", found, "snapStatus", snap.Status, "snapFetchedAt", snap.FetchedAt, "snapWindows", len(snap.Windows), "snapAccount", snap.Account)
 	}
@@ -75,7 +93,7 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 	// recorded account does not match the profile's authenticated email.
 	// This prevents stale cross-profile cache from being served.
 	if providerName == "agy" && found && snap.Account != "" {
-		authEmail := resolveAGYAuthenticatedEmail(name)
+		authEmail := expectedAccount
 		if debug {
 			slog.Debug("loadUsageSnapshot: AGY account check", "provider", providerName, "profile", name, "cacheAccount", snap.Account, "authEmail", authEmail)
 		}
@@ -109,7 +127,7 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 	}
 
 	ctx := context.Background()
-	p := model.Profile{Provider: providerName, Name: name}
+	p := model.Profile{Provider: providerName, Name: name, AccountScope: scope}
 	switch providerName {
 	case "codex":
 		snap = codex.New().GetUsage(ctx, p)
@@ -134,6 +152,9 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 			FetchedAt:  time.Now(),
 		}
 	}
+	if !snapshotBelongsToProfile(snap, providerName, name, expectedAccount) {
+		snap = model.UsageSnapshot{ProviderID: providerName, ProfileID: name, Status: model.UsageUnknown, Source: model.SourceNone, FetchedAt: time.Now()}
+	}
 
 	if debug {
 		slog.Debug("loadUsageSnapshot: after adapter", "provider", providerName, "profile", name, "status", snap.Status, "source", snap.Source, "fetchedAt", snap.FetchedAt, "windows", len(snap.Windows), "account", snap.Account)
@@ -153,8 +174,11 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 		} else {
 			// Persist only trustworthy data so the scheduler and other
 			// consumers read current quota instead of stale cache files.
-			eng := quota.NewEngine(5 * time.Minute)
-			_ = eng.SaveUsage(snap)
+			if scopeOK {
+				snap.AccountScope = scope
+				eng := quota.NewEngine(5 * time.Minute)
+				_ = eng.SaveUsageForScope(scope, snap)
+			}
 			if debug {
 				slog.Debug("loadUsageSnapshot: returning trustworthy adapter snapshot", "provider", providerName, "profile", name, "status", snap.Status)
 			}
@@ -170,17 +194,52 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 		lastKnown.ProfileID = name
 		lastKnown.Status = model.UsageEstimated
 		lastKnown.Error = fmt.Sprintf("live usage refresh failed; showing last known observation from %s", quota.FormatFreshness(lastKnown.FetchedAt))
-		_ = qEng.SaveUsage(lastKnown)
+		if scopeOK {
+			_ = qEng.SaveUsageForScope(scope, lastKnown)
+		}
 		if debug {
 			slog.Debug("loadUsageSnapshot: returning lastKnown as ESTIMATED", "provider", providerName, "profile", name, "lastKnownFetchedAt", lastKnown.FetchedAt, "lastKnownAccount", lastKnown.Account)
 		}
 		return lastKnown
 	}
-
 	if debug {
 		slog.Debug("loadUsageSnapshot: returning final snap", "provider", providerName, "profile", name, "status", snap.Status)
 	}
 	return snap
+}
+
+func expectedProfileAccount(providerName, profileName string) string {
+	if providerName == "agy" {
+		return resolveAGYAuthenticatedEmail(profileName)
+	}
+	return strings.TrimSpace(GetAccountInfo(providerName, profileName).Email)
+}
+
+func usageScope(providerName, profileName, identity string) (model.AccountScope, bool) {
+	identity = strings.TrimSpace(identity)
+	if identity == "" {
+		return model.AccountScope{}, false
+	}
+	scope, err := AccountScope(providerName, profileName, identity)
+	return scope, err == nil && scope.Verifiable()
+}
+
+func snapshotBelongsToProfile(snap model.UsageSnapshot, providerName, profileName, expectedAccount string) bool {
+	if snap.ProviderID != "" && snap.ProviderID != providerName {
+		return false
+	}
+	if snap.ProfileID != "" && snap.ProfileID != profileName {
+		return false
+	}
+	// A resolved account may only consume snapshots carrying the exact same
+	// identity scope. Legacy files without this metadata remain untrusted and
+	// must be refreshed before they can become account-owned usage.
+	if scope, ok := usageScope(providerName, profileName, expectedAccount); ok {
+		if snap.AccountScope != scope {
+			return false
+		}
+	}
+	return expectedAccount == "" || snap.Account == "" || strings.EqualFold(expectedAccount, snap.Account)
 }
 
 // GetQuotaDetails returns usage and quota metrics without fabricating 100% data.
