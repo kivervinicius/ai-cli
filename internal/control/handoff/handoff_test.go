@@ -7,8 +7,52 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kivervinicius/ai-cli/internal/control/driver"
+	"github.com/kivervinicius/ai-cli/internal/control/events"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 )
+
+func TestHandoffServiceUsesInjectedRuntimeRegistry(t *testing.T) {
+	owned := registry.NewRegistry("")
+	ownedRuntimeID := "handoff-owned-runtime-test"
+	if err := owned.Register(registry.RuntimeSession{
+		RuntimeID:         ownedRuntimeID,
+		ProviderID:        "fake",
+		ProfileID:         "work",
+		ProviderSessionID: "session-owned",
+		Workspace:         t.TempDir(),
+		State:             registry.StateRunning,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewService(Dependencies{
+		Registry: owned,
+		Drivers:  driver.NewRegistry(),
+	})
+	_, err := service.PerformAccountHandoff(context.Background(), ownedRuntimeID, "other:profile")
+	if err == nil || !strings.Contains(err.Error(), "matching provider") {
+		t.Fatalf("handoff did not resolve the injected runtime registry: %v", err)
+	}
+}
+
+func TestContextHandoffCompletedEventCorrelatesByLineage(t *testing.T) {
+	e := newContextHandoffCompletedEvent(
+		"lineage-context-123",
+		registry.RuntimeSession{RuntimeID: "runtime-source", ProviderID: "codex", ProfileID: "work"},
+		registry.RuntimeSession{RuntimeID: "runtime-target", ProviderID: "claude", ProfileID: "work"},
+		"checkpoint-1",
+	)
+	if e.CorrelationID != "lineage-context-123" {
+		t.Fatalf("expected lineage correlation, got %q", e.CorrelationID)
+	}
+	if e.Type != events.EventHandoffCompleted || e.RuntimeID != "runtime-target" {
+		t.Fatalf("unexpected context handoff event: %+v", e)
+	}
+	if e.Data["source_id"] != "runtime-source" || e.Data["checkpoint_id"] != "checkpoint-1" {
+		t.Fatalf("event data lost handoff identity: %+v", e.Data)
+	}
+}
 
 func TestAccountHandoffValidation(t *testing.T) {
 	reg := registry.DefaultRegistry()

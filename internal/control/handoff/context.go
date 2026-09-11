@@ -67,7 +67,13 @@ func FormatKickoffPrompt(cp WorkCheckpoint) string {
 
 // PerformContextHandoff creates a new session on a DIFFERENT provider using a captured WorkCheckpoint.
 func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider, targetProfile string) (*registry.RuntimeSession, error) {
-	reg := registry.DefaultRegistry()
+	return defaultService().PerformContextHandoff(ctx, sourceRuntimeID, targetProvider, targetProfile)
+}
+
+// PerformContextHandoff creates a new session using owned control-plane
+// dependencies.
+func (s *Service) PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider, targetProfile string) (*registry.RuntimeSession, error) {
+	reg := s.registry
 	source, ok := reg.Get(sourceRuntimeID)
 	if !ok {
 		return nil, fmt.Errorf("source runtime %q not found", sourceRuntimeID)
@@ -117,7 +123,7 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 	kickoffPrompt := FormatKickoffPrompt(cp)
 
 	// 4. Get Target Driver & Build Kickoff Command
-	d, err := driver.DefaultRegistry().Get(targetProvider)
+	d, err := s.drivers.Get(targetProvider)
 	if err != nil {
 		return nil, fmt.Errorf("target driver error: %w", err)
 	}
@@ -137,12 +143,10 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 		_ = client.Stop()
 		_ = client.Close()
 	}
-	stopDeadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(stopDeadline) {
-		if !registry.IsProcessAlive(source.PID) {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
+	waitForProcessStop(ctx, source.PID, 2*time.Second)
+	if err := ctx.Err(); err != nil {
+		_ = reg.UpdateState(sourceRuntimeID, registry.StateRunning)
+		return nil, fmt.Errorf("context handoff canceled before target start: %w", err)
 	}
 	_ = reg.UpdateState(sourceRuntimeID, registry.StateHandoff)
 
@@ -150,7 +154,7 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 	newRuntimeID := fmt.Sprintf("%s-continue-%s", targetProvider, ids.NewRuntimeID())
 	lineageID := fmt.Sprintf("lin-ctx-%s", ids.NewRuntimeID())
 
-	newSession, err := launcher.Default().Launch(ctx, launcher.LaunchOptions{
+	newSession, err := s.launcher.Launch(ctx, launcher.LaunchOptions{
 		RuntimeID:  newRuntimeID,
 		ProviderID: targetProvider,
 		ProfileID:  targetProfile,
@@ -183,16 +187,21 @@ func PerformContextHandoff(ctx context.Context, sourceRuntimeID, targetProvider,
 		slog.Warn("Failed to record lineage during context handoff", "err", err)
 	}
 
-	events.DefaultBus().Publish(events.NewEvent(
-		newSession.RuntimeID,
-		newSession.ProviderID,
-		newSession.ProfileID,
-		events.EventHandoffCompleted,
-		fmt.Sprintf("Context handoff completed from %s to %s", source.RuntimeID, newSession.RuntimeID),
-		map[string]any{"source_id": source.RuntimeID, "target_id": newSession.RuntimeID, "checkpoint_id": cp.CheckpointID},
-	))
+	events.DefaultBus().Publish(newContextHandoffCompletedEvent(lineageID, source, *newSession, cp.CheckpointID))
 
 	return newSession, nil
+}
+
+func newContextHandoffCompletedEvent(lineageID string, source, target registry.RuntimeSession, checkpointID string) events.Event {
+	return events.NewEventWithCorrelation(
+		lineageID,
+		target.RuntimeID,
+		target.ProviderID,
+		target.ProfileID,
+		events.EventHandoffCompleted,
+		fmt.Sprintf("Context handoff completed from %s to %s", source.RuntimeID, target.RuntimeID),
+		map[string]any{"source_id": source.RuntimeID, "target_id": target.RuntimeID, "checkpoint_id": checkpointID},
+	)
 }
 
 // ResolveTargetModel determines whether the source model can be safely used on the target provider.
