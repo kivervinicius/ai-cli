@@ -3,6 +3,7 @@
 package terminal
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -27,9 +28,11 @@ import (
 
 const (
 	procThreadAttributePseudoConsole = 0x00020016
+	procThreadAttributeHandleList    = 0x00020002
 	extendedStartupInfoPresent       = 0x00080000
 	createUnicodeEnvironment         = 0x00000400
 	stillActive                      = 0x00000103 // 259
+	numAttributesForConPTY           = 2
 )
 
 var (
@@ -181,9 +184,12 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 	// handles passed to CreatePseudoConsole to remain valid while the child is
 	// attached to the pseudo console.
 
-	// 4. Build the PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE attribute list.
+	// 4. Build the PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE and
+	// PROC_THREAD_ATTRIBUTE_HANDLE_LIST attribute lists. The handle list
+	// restricts the child to inheriting only the two pipe ends it needs,
+	// preventing leaked parent handles from attaching to the child's console.
 	var attrSize uintptr
-	procInitializeProcThreadAttributeList.Call(0, 1, 0, uintptr(unsafe.Pointer(&attrSize)))
+	procInitializeProcThreadAttributeList.Call(0, numAttributesForConPTY, 0, uintptr(unsafe.Pointer(&attrSize)))
 	if attrSize == 0 {
 		_ = closeHandle(hInRead)
 		_ = closeHandle(hOutWrite)
@@ -194,7 +200,7 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 	}
 	attrBuf := make([]byte, attrSize)
 	r, _, e = procInitializeProcThreadAttributeList.Call(
-		uintptr(unsafe.Pointer(&attrBuf[0])), 1, 0, uintptr(unsafe.Pointer(&attrSize)))
+		uintptr(unsafe.Pointer(&attrBuf[0])), numAttributesForConPTY, 0, uintptr(unsafe.Pointer(&attrSize)))
 	if r == 0 {
 		_ = closeHandle(hInRead)
 		_ = closeHandle(hOutWrite)
@@ -222,7 +228,25 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 		_ = closeHandle(hInWrite)
 		_ = closeHandle(hOutRead)
 		_ = closePseudoConsole(hPC)
-		return fmt.Errorf("UpdateProcThreadAttribute failed: %v", e)
+		return fmt.Errorf("UpdateProcThreadAttribute (pseudo console) failed: %v", e)
+	}
+
+	// Restrict handle inheritance to exactly the two pipe ends the child needs.
+	handleList := [2]uintptr{hInRead, hOutWrite}
+	r, _, e = procUpdateProcThreadAttribute.Call(
+		uintptr(unsafe.Pointer(&attrBuf[0])),
+		0,
+		procThreadAttributeHandleList,
+		uintptr(unsafe.Pointer(&handleList[0])),
+		unsafe.Sizeof(handleList[0])*uintptr(len(handleList)),
+		0, 0)
+	if r == 0 {
+		_ = closeHandle(hInRead)
+		_ = closeHandle(hOutWrite)
+		_ = closeHandle(hInWrite)
+		_ = closeHandle(hOutRead)
+		_ = closePseudoConsole(hPC)
+		return fmt.Errorf("UpdateProcThreadAttribute (handle list) failed: %v", e)
 	}
 
 	// 5. Launch the child attached to the pseudo console.
@@ -432,6 +456,18 @@ func (b *windowsBackend) Wait() error {
 		return errors.New("process still active")
 	}
 	return nil
+}
+
+func (b *windowsBackend) WaitContext(ctx context.Context) error {
+	done := make(chan error, 1)
+	go func() { done <- b.Wait() }()
+	select {
+	case <-ctx.Done():
+		_ = b.Kill()
+		return ctx.Err()
+	case err := <-done:
+		return err
+	}
 }
 
 func (b *windowsBackend) Signal(sig os.Signal) error {
