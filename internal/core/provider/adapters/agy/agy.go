@@ -228,6 +228,22 @@ func (a *Adapter) InspectAuth(ctx context.Context, p model.Profile) model.Accoun
 				} `json:"token"`
 			}
 			if json.Unmarshal(data, &tok) == nil && (tok.Token.AccessToken != "" || tok.Token.RefreshToken != "") {
+				// When the access_token is expired and there is no
+				// refresh_token to silently renew it, the profile is
+				// effectively unauthenticated. Marking it as such prevents
+				// the background QuotaMonitorService from invoking
+				// fetchLiveQuota, which would trigger browser opens that
+				// can never complete inside the 12s capture timeout.
+				if tok.Token.Expiry != "" && tok.Token.RefreshToken == "" {
+					if expTime, err := time.Parse(time.RFC3339Nano, tok.Token.Expiry); err == nil {
+						if time.Now().After(expTime) {
+							info.Status = "Token expired"
+							info.Health = model.HealthAuthRequired
+							info.Authenticated = false
+							return info
+						}
+					}
+				}
 				info.Authenticated = true
 				info.Status = "Authenticated"
 				info.Health = model.HealthHealthy
@@ -617,13 +633,20 @@ func (a *Adapter) fetchLiveQuota(ctx context.Context, p model.Profile) (model.Us
 		return model.UsageSnapshot{}, false
 	}
 	envOverrides := map[string]string{
-		"HOME":                   home,
-		"XDG_CONFIG_HOME":        filepath.Join(home, ".config"),
-		"XDG_CACHE_HOME":         filepath.Join(home, ".cache"),
-		"XDG_DATA_HOME":          filepath.Join(home, ".local", "share"),
-		"XDG_STATE_HOME":         filepath.Join(home, ".local", "state"),
-		"PATH":                   runtime.EnhancedPATH(internalBin, filepath.Dir(bin)),
-		"BROWSER":                filepath.Join(internalBin, "ai-browser"),
+		"HOME":            home,
+		"XDG_CONFIG_HOME": filepath.Join(home, ".config"),
+		"XDG_CACHE_HOME":  filepath.Join(home, ".cache"),
+		"XDG_DATA_HOME":   filepath.Join(home, ".local", "share"),
+		"XDG_STATE_HOME":  filepath.Join(home, ".local", "state"),
+		"PATH":            runtime.EnhancedPATH(internalBin, filepath.Dir(bin)),
+		// Quota probes are background, non-interactive operations. Setting
+		// BROWSER=false prevents the AGY CLI from opening the host browser for
+		// Google OAuth when the access_token has expired. Without this, an
+		// expired token triggers $BROWSER every ~60s (QuotaMonitorService tick)
+		// because the login can never complete inside the 12s capture timeout.
+		// When the token cannot be silently refreshed, the probe fails closed
+		// and the caller exposes UNKNOWN/last-known data instead.
+		"BROWSER":                "false",
 		"PYTHON_KEYRING_BACKEND": "keyring.backends.null.Keyring",
 	}
 	env := runtime.DisableSessionSecretService(runtime.EnvSet(os.Environ(), envOverrides))
@@ -735,27 +758,18 @@ func parseAgyQuotaOutput(output string) ([]model.UsageWindow, bool) {
 	return windows, true
 }
 
-// agyQuotaComplete requires at least one window from each independent family
-// (gemini and claude_gpt). The AGY CLI may omit 5h windows when the account
-// is exhausted or the CLI version doesn't report them, so requiring all 4
-// windows would cause valid partial data to be rejected and stale cache to be
-// served instead.
+// agyQuotaComplete accepts output as valid when at least one recognized
+// model-family window is present. The AGY CLI may omit entire families when
+// a group is exhausted, rate-limited, or when the account subscription does
+// not include that family. Requiring both families caused valid partial data
+// to be rejected and stale cache to be served instead.
 func agyQuotaComplete(windows []model.UsageWindow) bool {
-	groups := map[string]bool{
-		"gemini":     false,
-		"claude_gpt": false,
-	}
 	for _, w := range windows {
-		if _, ok := groups[w.Group]; ok {
-			groups[w.Group] = true
+		if w.Group == "gemini" || w.Group == "claude_gpt" {
+			return true
 		}
 	}
-	for _, present := range groups {
-		if !present {
-			return false
-		}
-	}
-	return true
+	return false
 }
 
 func formatAgyReset(raw string) string {

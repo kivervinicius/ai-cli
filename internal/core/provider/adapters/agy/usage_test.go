@@ -55,12 +55,16 @@ func TestParseAgyQuotaOutputTreatsPercentAsRemaining(t *testing.T) {
 	}
 }
 
-func TestParseAgyQuotaOutputRejectsIncompleteTSV(t *testing.T) {
+func TestParseAgyQuotaOutputAcceptsSingleFamilyTSV(t *testing.T) {
+	// Two Gemini lines only — valid since agyQuotaComplete accepts single-family.
 	out := "Gemini Models\tWeekly Limit Remaining\t65.47%\t2026-09-11T04:31:30Z\n" +
 		"Gemini Models\tFive Hour Limit Remaining\t0.00%\t2026-09-04T22:50:00Z\n"
 	windows, ok := parseAgyQuotaOutput(out)
-	if ok || windows != nil {
-		t.Fatalf("incomplete TSV must be rejected, ok=%v windows=%d", ok, len(windows))
+	if !ok || windows == nil {
+		t.Fatalf("single-family TSV must be accepted, ok=%v windows=%d", ok, len(windows))
+	}
+	if len(windows) != 2 {
+		t.Fatalf("expected 2 windows, got %d", len(windows))
 	}
 }
 
@@ -142,14 +146,14 @@ func TestAgyQuotaCompleteAcceptsMixedPartialWindows(t *testing.T) {
 	}
 }
 
-func TestAgyQuotaCompleteRejectsMissingGroup(t *testing.T) {
-	// Only gemini windows, no claude_gpt window.
+func TestAgyQuotaCompleteAcceptsSingleGroup(t *testing.T) {
+	// Only gemini windows — valid since agyQuotaComplete accepts single-family.
 	windows := []model.UsageWindow{
 		{Kind: "5h", Group: "gemini"},
 		{Kind: "weekly", Group: "gemini"},
 	}
-	if agyQuotaComplete(windows) {
-		t.Fatal("should reject when one group is entirely missing")
+	if !agyQuotaComplete(windows) {
+		t.Fatal("single known group should be accepted")
 	}
 }
 
@@ -200,13 +204,13 @@ func TestParseAgyQuotaOutputAcceptsOnlyWeeklyLines(t *testing.T) {
 	}
 }
 
-func TestParseAgyQuotaOutputRejectsSingleGroupOnly(t *testing.T) {
-	// Only gemini windows, no claude_gpt — should be rejected.
+func TestParseAgyQuotaOutputAcceptsSingleGroupOnly(t *testing.T) {
+	// Only gemini windows — valid since agyQuotaComplete accepts single-family.
 	out := "Gemini Models\tWeekly Limit Remaining\t50%\t2026-09-13T23:06:34Z\n" +
 		"Gemini Models\tFive Hour Limit Remaining\t100%\t2026-09-07T21:00:00Z\n"
 	windows, ok := parseAgyQuotaOutput(out)
-	if ok || windows != nil {
-		t.Fatalf("single-group output must be rejected, ok=%v windows=%d", ok, len(windows))
+	if !ok || windows == nil {
+		t.Fatalf("single-group output must be accepted, ok=%v windows=%d", ok, len(windows))
 	}
 }
 
