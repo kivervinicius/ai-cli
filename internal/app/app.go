@@ -35,6 +35,7 @@ import (
 	diagnostic "github.com/kivervinicius/ai-cli/internal/doctor"
 	"github.com/kivervinicius/ai-cli/internal/localization"
 	"github.com/kivervinicius/ai-cli/internal/nexus"
+	"github.com/kivervinicius/ai-cli/internal/nexus/runner"
 	"github.com/kivervinicius/ai-cli/internal/profile"
 	"github.com/kivervinicius/ai-cli/internal/release"
 	nexusruntime "github.com/kivervinicius/ai-cli/internal/runtime"
@@ -456,6 +457,7 @@ func usage() {
   %s attach <runtime-id>          Attach terminal to running runtime
   %s handoff <id> <target>        Same-provider account handoff
   %s continue <id> --with <prov>  Cross-provider context handoff
+  run "<goal>"                    Classify, route and execute a Nexus task
 
   %s <provider> [flags]           Launch provider with intelligent account selection
   %s <provider> --supervised      Launch through SessionHost; enables /nexus control
@@ -1576,6 +1578,17 @@ func runCmd(args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: %s run <provider> [profile] [--] [args...]", progName())
 	}
+	// Preserve the historical provider form while making the canonical Nexus
+	// task form executable: nexus run "corrija a UI React". The task form
+	// enters the same Flow -> AgentMatcher -> ResourceScheduler -> runtime
+	// pipeline used by the control plane.
+	if !isSupportedProvider(args[0]) && !strings.Contains(args[0], ":") {
+		if args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
+			fmt.Printf("usage: %s run <goal>\n       %s run <provider> [profile] [--] [args...]\n", progName(), progName())
+			return nil
+		}
+		return runGoalCmd(args)
+	}
 	prov := args[0]
 	prof := ""
 	rest := args[1:]
@@ -1588,6 +1601,63 @@ func runCmd(args []string) error {
 		rest = rest[1:]
 	}
 	return executeProviderWithSmartSelection(prov, prof, trimDashDash(rest))
+}
+
+func runGoalCmd(args []string) error {
+	goal := strings.TrimSpace(strings.Join(args, " "))
+	if goal == "" {
+		return fmt.Errorf("informe o objetivo da tarefa")
+	}
+
+	ctx := context.Background()
+	n := nexus.Default()
+	st, err := n.OpenProject()
+	if err != nil {
+		return err
+	}
+	projects, err := st.ListProjects()
+	if err != nil {
+		return err
+	}
+	if len(projects) == 0 {
+		return fmt.Errorf("nenhum projeto ativo; registre um projeto primeiro")
+	}
+	project := projects[0]
+	proposal, err := n.DecomposePromptIntoFlowProposal(ctx, nexus.FlowDecompositionRequest{
+		ProjectID:    project.ID,
+		Goal:         goal,
+		SourcePrompt: goal,
+	})
+	if err != nil {
+		return fmt.Errorf("classificar e decompor tarefa: %w", err)
+	}
+	flowPlan := nexus.WorkPlanFromFlow(proposal.Flow)
+	plan, err := n.CreateWorkPlan(ctx, project.ID, proposal.Title, proposal.Description, flowPlan.Phases, flowPlan.StructuredFacts)
+	if err != nil {
+		return fmt.Errorf("persistir plano da tarefa: %w", err)
+	}
+	run, err := n.StartMissionRun(ctx, plan.ID, "", runner.DefaultAutonomyContract(), false)
+	if err != nil {
+		return fmt.Errorf("iniciar tarefa: %w", err)
+	}
+	for {
+		updated, done, stepErr := n.Runner().ExecuteNextStep(ctx, run.ID)
+		if stepErr != nil {
+			return stepErr
+		}
+		run = updated
+		if done {
+			break
+		}
+	}
+	requirements := nexus.ClassifyTaskRequirements(goal)
+	out, _ := json.MarshalIndent(map[string]any{
+		"run":                    run,
+		"task_requirements":      requirements,
+		"requires_decomposition": requirements.RequiresDecomposition,
+	}, "", "  ")
+	fmt.Println(string(out))
+	return nil
 }
 
 func resumeCmd(args []string) error {

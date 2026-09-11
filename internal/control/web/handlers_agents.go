@@ -118,7 +118,7 @@ func (h *NexusHandler) handleAgentStart(w http.ResponseWriter, r *http.Request) 
 
 	provider, profile, err := h.nexus.ResolveStartParams(id, body.Provider, body.Profile)
 	if err != nil {
-		writeError(w, http.StatusConflict, err.Error())
+		writeAgentConflict(w, err)
 		return
 	}
 
@@ -185,7 +185,7 @@ func (h *NexusHandler) handleAgentAsk(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.nexus.AskAgent(r.Context(), id, compiled.CompiledPrompt, body.StartIfNeeded)
 	if err != nil {
-		writeError(w, http.StatusConflict, err.Error())
+		writeAgentConflict(w, err)
 		return
 	}
 
@@ -201,6 +201,15 @@ func (h *NexusHandler) handleAgentAsk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, result)
+}
+
+func writeAgentConflict(w http.ResponseWriter, err error) {
+	message := err.Error()
+	code := "CONFLICT"
+	if strings.Contains(message, "REQUIRED_RESOURCE_SELECTION") {
+		code = "REQUIRED_RESOURCE_SELECTION"
+	}
+	writeJSON(w, http.StatusConflict, map[string]string{"error": message, "code": code})
 }
 
 // handleAgentStop POST /api/v1/agents/{id}/stop

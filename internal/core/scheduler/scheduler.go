@@ -130,7 +130,11 @@ func (s *Selector) SelectBestProfile(ctx context.Context, provider string, works
 	if !hasQuotaEvidence {
 		lastUsed := selectedAt(provider)
 		sort.SliceStable(eligible, func(i, j int) bool {
-			return lastUsed[eligible[i].Profile.Name].Before(lastUsed[eligible[j].Profile.Name])
+			left, right := lastUsed[eligible[i].Profile.Name], lastUsed[eligible[j].Profile.Name]
+			if !left.Equal(right) {
+				return left.Before(right)
+			}
+			return eligible[i].Profile.Name < eligible[j].Profile.Name
 		})
 		best := eligible[0]
 		return &SelectionResult{SelectedProfile: &best.Profile, Reason: "quota UNKNOWN; LRU among healthy authenticated profiles", Evaluations: evals}, nil
@@ -143,7 +147,10 @@ func (s *Selector) SelectBestProfile(ctx context.Context, provider string, works
 		if iFresh != jFresh {
 			return iFresh
 		}
-		return eligible[i].Score > eligible[j].Score
+		if eligible[i].Score != eligible[j].Score {
+			return eligible[i].Score > eligible[j].Score
+		}
+		return eligible[i].Profile.Name < eligible[j].Profile.Name
 	})
 
 	best := eligible[0]

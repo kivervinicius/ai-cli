@@ -1,6 +1,6 @@
 # Definition of Done audit
 
-Updated: 2026-09-10 (after final local verification gate)
+Updated: 2026-09-11 (independent evolution corrective closure)
 
 This is an evidence audit of the consolidation campaign, not a release claim.
 Green local gates prove the touched tree on Linux; they do not prove native
@@ -18,7 +18,7 @@ platform behavior or that every architectural target has been extracted.
 | Runtime lifecycle | PASS for current application scope | `RunApplicationService` owns MissionRun start/list/control calls, `RuntimeApplicationService` owns raw runtime operations and injects handoff dependencies, launcher-owned registries are injected into SessionHost/attention updates, resource discovery and handoff process waits preserve request cancellation, and the registry exposes tested explicit state transitions. Deeper process supervision remains in control infrastructure. |
 | Events/observability | PASS for current runtime scope | Event bus and durable activity persist optional correlation IDs; SessionHost now emits explicit process facts plus `RUNTIME_STARTED`, `RUNTIME_STOPPED` or `RUNTIME_FAILED`, with ownership metadata when supplied. Provider-wide taxonomy remains incremental. |
 | Security | PASS for touched scope | Auth/CSRF, filesystem symlink traversal, redaction and security gate have evidence; native platform security remains unverified. |
-| Tests/gates | PASS on Linux | Fresh `make quality-full` exit 0 after runtime registry ownership injection and contextual resource discovery, in addition to typed Mission/resource/legacy contracts, runtime/event client contracts, lifecycle events, explicit state transitions, Windows hosts fallback compile fix, typed v1 responses, application boundaries, MissionRun timeline/ownership producers, context-handoff correlation, runtime-stop cancellation, stable CLI help formatting and warning-free frontend lint; Web 62/320; Go tests/race/vet/lint/build/security pass. `make web-verify` is also PASS 10/10. |
+| Tests/gates | PARTIAL on Linux | Fresh isolated Go tests, vet, lint, security, Web quality (330 tests), `make web-verify` 10/10 and build pass. The full uncached Go race command is long-running in this environment; focused race packages pass. |
 | Native matrix | PARTIAL | Local cross-builds verified CLI binaries for Windows amd64 and macOS amd64/arm64, plus `go test -c` for `internal/control/registry` on those targets. Native test/smoke execution and same-SHA CI evidence remain unavailable. |
 
 ## Remaining debt
@@ -26,7 +26,8 @@ platform behavior or that every architectural target has been extracted.
 - P0: none identified by the current local consolidation scope.
 - P1: complete runtime/process ownership isolation; extend event producers to
   provider/quota transitions where concrete evidence exists; obtain same-SHA
-  native CI evidence.
+  native CI evidence; complete the evolution E2E scenarios for matcher,
+  terminal follow-handoff and failover.
 - P2: complete generated CLI registry/contract matrix, typed DTO coverage for
   remaining endpoints, and optional absolute quota producers where providers
   expose them.

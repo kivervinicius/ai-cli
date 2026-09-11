@@ -221,5 +221,5 @@ func formatFacts(facts map[string]string) []string {
 }
 
 func formatAgentSpec(spec AgentSpec) string {
-	return fmt.Sprintf("Role: %s\nInstructions: %s\nResponsibilities: %s\nCapabilities: %s\nConstraints: %s\nVerification policy: require_evidence=%t; require_tests=%t", spec.Role, strings.Join(spec.Instructions, "; "), strings.Join(spec.Responsibilities, "; "), strings.Join(spec.Capabilities, "; "), strings.Join(spec.Constraints, "; "), spec.VerificationPolicy.RequireEvidence, spec.VerificationPolicy.RequireTests)
+	return fmt.Sprintf("Role: %s\nInstructions: %s\nResponsibilities: %s\nCapabilities: %s\nConstraints: %s\nDomains: %s\nStrengths: %s\nTags: %s\nVerification policy: require_evidence=%t; require_tests=%t", spec.Role, strings.Join(spec.Instructions, "; "), strings.Join(spec.Responsibilities, "; "), strings.Join(spec.Capabilities, "; "), strings.Join(spec.Constraints, "; "), strings.Join(spec.Domains, "; "), strings.Join(spec.Strengths, "; "), strings.Join(spec.Tags, "; "), spec.VerificationPolicy.RequireEvidence, spec.VerificationPolicy.RequireTests)
 }

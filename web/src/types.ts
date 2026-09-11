@@ -379,6 +379,9 @@ export interface AgentSpec {
   responsibilities?: string[];
   capabilities?: string[];
   constraints?: string[];
+  domains?: string[];
+  strengths?: string[];
+  tags?: string[];
   verification_policy?: {
     require_evidence?: boolean;
     require_tests?: boolean;

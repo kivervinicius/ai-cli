@@ -7,7 +7,13 @@ import (
 
 func TestCompileExecutionContext_ComposesPersistentAndTaskRolesWithProvenance(t *testing.T) {
 	compiled, err := NewNexusEngine(nil).CompileExecutionContext(context.Background(), ExecutionContextRequest{
-		Agent:   AgentSpec{Role: "senior developer", Instructions: []string{"Prefer small reversible changes"}},
+		Agent: AgentSpec{
+			Role:         "senior developer",
+			Instructions: []string{"Prefer small reversible changes"},
+			Domains:      []string{"software-engineering"},
+			Strengths:    []string{"systems-thinking"},
+			Tags:         []string{"persistent-specialist"},
+		},
 		Project: ProjectContext{ProjectID: "project-1", Facts: map[string]string{"branch": "main"}},
 		Task:    WorkPackageContext{Title: "Review release", Goal: "Review the release", Priority: "HIGH", Role: "reviewer", AcceptanceCriteria: []string{"evidence exists"}},
 		Maestro: MaestroGuidance{Enabled: true, Instructions: []string{"Use the configured quality gate"}},
@@ -22,7 +28,7 @@ func TestCompileExecutionContext_ComposesPersistentAndTaskRolesWithProvenance(t 
 	if !containsSection(compiled.Sections, "maestro", "quality gate") {
 		t.Fatalf("missing Maestro provenance: %#v", compiled.Sections)
 	}
-	if compiled.SystemInstructions == "" || compiled.TaskInstructions == "" || !contains(compiled.SystemInstructions, "Persistent specialization: senior developer") || !contains(compiled.SystemInstructions, "Task role: reviewer") {
+	if compiled.SystemInstructions == "" || compiled.TaskInstructions == "" || !contains(compiled.SystemInstructions, "Persistent specialization: senior developer") || !contains(compiled.SystemInstructions, "systems-thinking") || !contains(compiled.SystemInstructions, "persistent-specialist") || !contains(compiled.SystemInstructions, "Task role: reviewer") {
 		t.Fatalf("compiled context is incomplete: %#v", compiled)
 	}
 	if !containsSection(compiled.Sections, "runtime", "/workspace") || !containsSection(compiled.Sections, "runtime", "worktree") {

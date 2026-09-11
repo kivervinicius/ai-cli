@@ -14,7 +14,8 @@ import {
 } from 'lucide-react';
 import { Button, Card, Dialog, Input, Select } from '../../design-system';
 import { nexus } from '../../nexus/api';
-import type { Agent, Project } from '../../types';
+import { isRequiredResourceSelection } from '../../nexus/agentTerminalModel';
+import type { Agent, AgentSpec, Project } from '../../types';
 import styles from './NewAgentModal.module.scss';
 
 export interface AgentTypePreset {
@@ -26,6 +27,7 @@ export interface AgentTypePreset {
   defaultProvider: string;
   defaultMode: 'Safe' | 'YOLO';
   recommendedSkills: string[];
+  agentSpec: AgentSpec;
 }
 
 export const CANONICAL_AGENT_TYPES: AgentTypePreset[] = [
@@ -38,6 +40,18 @@ export const CANONICAL_AGENT_TYPES: AgentTypePreset[] = [
     defaultProvider: 'claude',
     defaultMode: 'Safe',
     recommendedSkills: ['skill-repo-health'],
+    agentSpec: {
+      role: 'generalist',
+      instructions: [
+        'Decomponha tarefas amplas antes de executar e coordene dependências com clareza.',
+      ],
+      responsibilities: ['Conectar decisões de produto, código, testes e documentação.'],
+      capabilities: ['analysis', 'implementation', 'coordination'],
+      domains: ['product', 'software-engineering'],
+      strengths: ['systems-thinking', 'coordination'],
+      tags: ['generalist', 'multi-area'],
+      verification_policy: { require_evidence: true, require_tests: true },
+    },
   },
   {
     id: 'backend-engineer',
@@ -48,6 +62,18 @@ export const CANONICAL_AGENT_TYPES: AgentTypePreset[] = [
     defaultProvider: 'codex',
     defaultMode: 'Safe',
     recommendedSkills: ['skill-database-migrations', 'skill-systematic-debugging'],
+    agentSpec: {
+      role: 'backend-engineer',
+      instructions: [
+        'Priorize contratos estáveis, validação de entrada e observabilidade no backend.',
+      ],
+      responsibilities: ['Projetar APIs, persistência e serviços server-side resilientes.'],
+      capabilities: ['go', 'rest_api', 'database'],
+      domains: ['backend', 'distributed-systems'],
+      strengths: ['api-design', 'reliability'],
+      tags: ['backend', 'server-side'],
+      verification_policy: { require_evidence: true, require_tests: true },
+    },
   },
   {
     id: 'frontend-engineer',
@@ -58,6 +84,18 @@ export const CANONICAL_AGENT_TYPES: AgentTypePreset[] = [
     defaultProvider: 'claude',
     defaultMode: 'Safe',
     recommendedSkills: ['skill-modern-ui-patterns', 'skill-frontend-ux-guardrails'],
+    agentSpec: {
+      role: 'frontend-engineer',
+      instructions: [
+        'Preserve acessibilidade, responsividade, i18n e os tokens visuais existentes.',
+      ],
+      responsibilities: ['Implementar interfaces React coesas e verificáveis.'],
+      capabilities: ['react', 'typescript', 'accessibility', 'ui'],
+      domains: ['frontend', 'web'],
+      strengths: ['ux', 'component-design'],
+      tags: ['frontend', 'react'],
+      verification_policy: { require_evidence: true, require_tests: true },
+    },
   },
   {
     id: 'qa-engineer',
@@ -68,6 +106,18 @@ export const CANONICAL_AGENT_TYPES: AgentTypePreset[] = [
     defaultProvider: 'codex',
     defaultMode: 'Safe',
     recommendedSkills: ['skill-webapp-testing', 'skill-verification-before-completion'],
+    agentSpec: {
+      role: 'qa-engineer',
+      instructions: [
+        'Reproduza falhas, cubra regressões e exija evidência observável antes de concluir.',
+      ],
+      responsibilities: ['Projetar testes unitários, integração, E2E e smoke tests.'],
+      capabilities: ['testing', 'e2e', 'regression_analysis'],
+      domains: ['quality', 'verification'],
+      strengths: ['reproduction', 'regression-detection'],
+      tags: ['qa', 'testing'],
+      verification_policy: { require_evidence: true, require_tests: true },
+    },
   },
   {
     id: 'code-reviewer',
@@ -78,6 +128,18 @@ export const CANONICAL_AGENT_TYPES: AgentTypePreset[] = [
     defaultProvider: 'claude',
     defaultMode: 'Safe',
     recommendedSkills: ['skill-saas-security-scan', 'skill-quality-gate'],
+    agentSpec: {
+      role: 'code-reviewer',
+      instructions: [
+        'Procure riscos, regressões e claims sem evidência; classifique severidade objetivamente.',
+      ],
+      responsibilities: ['Revisar diffs, segurança, compatibilidade e qualidade de implementação.'],
+      capabilities: ['code_review', 'security', 'risk_analysis'],
+      domains: ['quality', 'security'],
+      strengths: ['critical-reading', 'risk-classification'],
+      tags: ['review', 'security'],
+      verification_policy: { require_evidence: true, require_tests: true },
+    },
   },
   {
     id: 'devops-release',
@@ -88,6 +150,16 @@ export const CANONICAL_AGENT_TYPES: AgentTypePreset[] = [
     defaultProvider: 'agy',
     defaultMode: 'Safe',
     recommendedSkills: ['skill-release-engineering', 'skill-incident-response'],
+    agentSpec: {
+      role: 'devops-release',
+      instructions: ['Priorize reprodutibilidade, rollback seguro e observabilidade operacional.'],
+      responsibilities: ['Manter CI/CD, empacotamento, deploy e resposta operacional.'],
+      capabilities: ['ci_cd', 'docker', 'release', 'operations'],
+      domains: ['devops', 'release-engineering'],
+      strengths: ['automation', 'rollback-planning'],
+      tags: ['devops', 'release'],
+      verification_policy: { require_evidence: true, require_tests: true },
+    },
   },
   {
     id: 'data-analyst',
@@ -98,6 +170,16 @@ export const CANONICAL_AGENT_TYPES: AgentTypePreset[] = [
     defaultProvider: 'codex',
     defaultMode: 'Safe',
     recommendedSkills: ['skill-unified-analytics'],
+    agentSpec: {
+      role: 'data-analyst',
+      instructions: ['Declare a origem dos dados, incertezas e critérios usados nas conclusões.'],
+      responsibilities: ['Modelar consultas, métricas e análises reproduzíveis.'],
+      capabilities: ['sql', 'analytics', 'data_modeling'],
+      domains: ['data', 'analytics'],
+      strengths: ['measurement', 'evidence-based-analysis'],
+      tags: ['data', 'analytics'],
+      verification_policy: { require_evidence: true, require_tests: false },
+    },
   },
   {
     id: 'docs-writer',
@@ -108,6 +190,18 @@ export const CANONICAL_AGENT_TYPES: AgentTypePreset[] = [
     defaultProvider: 'claude',
     defaultMode: 'Safe',
     recommendedSkills: ['skill-adr', 'skill-deep-wiki'],
+    agentSpec: {
+      role: 'docs-writer',
+      instructions: [
+        'Escreva para o público correto, preserve histórico e diferencie fato de hipótese.',
+      ],
+      responsibilities: ['Produzir arquitetura, guias operacionais, ADRs e handoffs navegáveis.'],
+      capabilities: ['technical_writing', 'architecture_docs', 'documentation'],
+      domains: ['documentation', 'architecture'],
+      strengths: ['clarity', 'knowledge-organization'],
+      tags: ['docs', 'architecture'],
+      verification_policy: { require_evidence: true, require_tests: false },
+    },
   },
 ];
 
@@ -155,9 +249,10 @@ export const NewAgentModal: React.FC<{
     if (!name.trim()) return;
     setBusy(true);
     setError('');
+    let created: Agent | undefined;
     try {
       // 1. Create persistent agent in database
-      const created = await nexus.createAgent(project.id, name.trim(), selectedType.role);
+      created = await nexus.createAgent(project.id, name.trim(), selectedType.role);
 
       // 2. Configure revision with provider & adapter options
       const extraArgs: string[] = [];
@@ -183,13 +278,22 @@ export const NewAgentModal: React.FC<{
         profile: 'default',
         isolation: 'project',
         workspace: project.canonical_path || undefined,
+        agent_spec: selectedType.agentSpec,
         options: configOptions,
       });
 
       onCreated(created);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      if (created && isRequiredResourceSelection(message)) {
+        // The Agent is intentionally kept persistent. The terminal opens its
+        // resource picker so the user can allocate an available provider.
+        onCreated(created);
+        onClose();
+        return;
+      }
+      setError(message);
     } finally {
       setBusy(false);
     }

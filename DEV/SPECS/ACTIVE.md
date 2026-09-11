@@ -70,6 +70,24 @@ Decisões executivas e pendências de promoção: `DEV/DECISIONS/NEXUS_TERMINAL_
 
 ## Nexus Core consolidation status — 2026-09-10
 
+## Evolution corrective closure — 2026-09-11
+
+The independent audit and corrective work are tracked in
+[`docs/validation/EVOLUTION_FINAL_AUDIT.md`](../../docs/validation/EVOLUTION_FINAL_AUDIT.md)
+and [`docs/validation/EVOLUTION_FINAL_VALIDATION.md`](../../docs/validation/EVOLUTION_FINAL_VALIDATION.md).
+Persistent Agents now carry typed `AgentSpec` personality metadata from the
+Web presets into revision config and compiled execution context. The canonical
+`MatchAgents` path is used by Flow/Mission AUTO allocation, while provider
+resource capabilities remain owned by `ResourceScheduler`. Natural-language
+`nexus run "<goal>"` creates a classified Flow/WorkPlan and enters the same
+pipeline. A same-provider handoff reports `NATIVE_RESUME_UNVERIFIED` unless a
+provider-level confirmation exists; cross-provider handoff remains
+`CONTEXT_HANDOFF`.
+
+Local Linux gates are green in isolation, but the final verdict remains
+`NO-GO` until required PTY/failover E2E, authenticated live-provider evidence,
+same-SHA native Windows/macOS evidence and the full race gate are available.
+
 ## Account isolation slice — 2026-09-10
 
 Introduzido `model.AccountScope` com chave canônica

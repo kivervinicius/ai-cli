@@ -1,5 +1,24 @@
 # Handoff
 
+## Atualização 2026-09-11 — Correção final dos gaps de roteamento
+
+O caminho de execução foi corrigido para não confundir capabilities de recurso
+com personalidade de Agent: `MatchAgents` recebe somente especializações, e o
+rótulo legado `implementer` não sobrescreve a classificação detalhada de uma
+tarefa. `TaskRequirements` agora persiste a classificação natural nos Flow
+steps, e `nexus run "<objetivo>"` entra no pipeline Flow → AgentMatcher →
+ResourceScheduler → MissionRunner, mantendo `nexus run <provider>` compatível.
+
+O handoff same-provider conserva `AgentID`, `ProjectID` e `ProjectName` no
+runtime alvo. Como processo vivo e argumento `resume` não comprovam a sessão
+no provedor, o estado/evento agora é `NATIVE_RESUME_UNVERIFIED`; somente uma
+confirmação provider-level poderá elevar a `VERIFIED`. Cross-provider é
+explicitamente `CONTEXT_HANDOFF`.
+
+Validação focada passou. O relatório independente permanece `NO-GO` enquanto
+não houver E2E autenticado de PTY/failover, live providers, runner nativo
+Windows/macOS e conclusão do race completo.
+
 ## Atualização 2026-09-10 — Troca de projeto e efeitos visuais
 
 A troca de projeto não desmonta mais a tela inteira para exibir o splash. O
@@ -12,6 +31,26 @@ Verificação: typecheck, ESLint, Stylelint, 25 testes Web focados, build Web,
 `make build-desktop-wails` e HTTP 200 em `127.0.0.1:13000`. O binário desktop
 está rodando localmente. O ambiente VMware/Mesa não oferece aceleração 3D, então
 blur/efeitos GPU podem aparecer reduzidos durante o teste local.
+
+## Atualização 2026-09-11 — Auditoria independente e AgentSpec persistente
+
+A auditoria independente está registrada em
+`docs/validation/EVOLUTION_FINAL_AUDIT.md` e o fechamento final em
+`docs/validation/EVOLUTION_FINAL_VALIDATION.md`. O veredito permanece NO-GO:
+Interactive Continuity, Agent Routing Truth e Autonomous Resource Continuity
+não possuem toda a evidência E2E exigida; Windows/macOS e live providers estão
+UNVERIFIED.
+
+Os presets persistentes de Agent agora carregam `AgentSpec` completo no JSON de
+revisão, incluindo instruções, responsabilidades, capabilities, domains,
+strengths, tags e política de verificação. O 409 observado ao iniciar um Agent
+novo é compatível com `REQUIRED_RESOURCE_SELECTION`/provider indisponível; o
+servidor atualmente em execução é anterior ao último rebuild e precisa ser
+reiniciado antes do smoke definitivo.
+
+Próxima ação exata: reiniciar Nexus usando o binário deste worktree, capturar o
+body/status do POST de criação/início do Agent, selecionar um recurso disponível
+e executar o cenário E2E; depois repetir o race gate e os cenários de failover.
 
 ## Atualização 2026-09-10 — Investigação de janelas duplicadas no desktop
 

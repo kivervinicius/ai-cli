@@ -155,13 +155,16 @@ func (s *Service) PerformContextHandoff(ctx context.Context, sourceRuntimeID, ta
 	lineageID := fmt.Sprintf("lin-ctx-%s", ids.NewRuntimeID())
 
 	newSession, err := s.launcher.Launch(ctx, launcher.LaunchOptions{
-		RuntimeID:  newRuntimeID,
-		ProviderID: targetProvider,
-		ProfileID:  targetProfile,
-		Workspace:  source.Workspace,
-		Args:       extraArgs,
-		Model:      targetModel,
-		Standalone: false,
+		RuntimeID:   newRuntimeID,
+		AgentID:     source.AgentID,
+		ProjectID:   source.ProjectID,
+		ProjectName: source.ProjectName,
+		ProviderID:  targetProvider,
+		ProfileID:   targetProfile,
+		Workspace:   source.Workspace,
+		Args:        extraArgs,
+		Model:       targetModel,
+		Standalone:  false,
 	})
 	if err != nil {
 		// Rollback source state on target launch failure
@@ -172,6 +175,10 @@ func (s *Service) PerformContextHandoff(ctx context.Context, sourceRuntimeID, ta
 	newSession.ParentRuntimeID = source.RuntimeID
 	newSession.HandoffType = "context"
 	newSession.LineageID = lineageID
+	if newSession.Labels == nil {
+		newSession.Labels = map[string]string{}
+	}
+	newSession.Labels["continuity"] = "CONTEXT_HANDOFF"
 	_ = reg.Register(*newSession)
 
 	// 7. Record Lineage
@@ -200,7 +207,7 @@ func newContextHandoffCompletedEvent(lineageID string, source, target registry.R
 		target.ProfileID,
 		events.EventHandoffCompleted,
 		fmt.Sprintf("Context handoff completed from %s to %s", source.RuntimeID, target.RuntimeID),
-		map[string]any{"source_id": source.RuntimeID, "target_id": target.RuntimeID, "checkpoint_id": checkpointID},
+		map[string]any{"source_id": source.RuntimeID, "target_id": target.RuntimeID, "checkpoint_id": checkpointID, "continuity": "CONTEXT_HANDOFF"},
 	)
 }
 

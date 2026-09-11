@@ -1,5 +1,21 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-11 — Evolution corrective closure
+
+- Corrigido o caminho real de AgentMatcher: `headless` e `submit_prompt` são
+  gates do recurso/provedor e não podem invalidar a personalidade persistente
+  de um Agent.
+- A classificação natural agora persiste `TaskRequirements` nos Flow steps,
+  incluindo papel, domínio, capabilities, complexidade e
+  `RequiresDecomposition`; `nexus run "<objetivo>"` materializa e executa esse
+  pipeline, preservando a forma provider-native.
+- Handoff same-provider preserva Agent/Project/ProjectName no runtime alvo e
+  deixa de chamar confirmação local de processo/argumento de `VERIFIED`:
+  o estado é `NATIVE_RESUME_UNVERIFIED` até haver confirmação do provedor.
+- Scheduler ganhou desempate determinístico; testes focados passaram.
+- Sem commit ou push automático. O veredito de promoção continua NO-GO por
+  evidência E2E/native/live ainda indisponível.
+
 ## 2026-09-10 — AccountScope e isolamento inicial
 
 - Adicionado `model.AccountScope`, persistência de `account-scope.json` e
@@ -3900,3 +3916,20 @@ build` PASS e Web reiniciado em HTTP 200.
   foi validado, evitando persistir o fallback.
 - Verificação: typecheck, lint, Stylelint, 25 testes focados, build Web,
   `make build-desktop-wails` e smoke HTTP local passaram.
+
+## 2026-09-11 — Auditoria independente Evolution / corrective closure
+
+- Fase A congelada em `docs/validation/EVOLUTION_FINAL_AUDIT.md` e
+  `docs/validation/REGRESSION_DIFF.md`; o veredito inicial foi NO-GO por claims
+  históricas mais fortes que a evidência, documentos ausentes e gaps de E2E.
+- Corrigido o contrato de especialização persistente: presets de Agent agora
+  enviam `AgentSpec` com instruções, responsabilidades, capabilities, domains,
+  strengths, tags e política de verificação; o compilador Go preserva esses
+  campos no contexto efetivo.
+- Adicionado teste Web dos presets e regressão Go do contexto compilado.
+- Verificação fresca isolada: `go test ./...`, `go vet ./...`, `make security`,
+  `npm --prefix web run quality:full` (330 testes), `make web-verify` (10/10) e
+  `make build` passaram. `go test -race ./...` excedeu 300s.
+- O 409 de execução permanece condicionado a recurso/provider não disponível;
+  o processo em execução usa `/home/desenvolvedor/.local/bin/nexus` iniciado
+  antes do rebuild e deve ser reiniciado para novo smoke. Sem commit/push.

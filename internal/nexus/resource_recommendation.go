@@ -13,16 +13,26 @@ import (
 
 // TaskRequirements specifies what an intelligence or execution task demands (§Gate 5, Phase B).
 type TaskRequirements struct {
-	TaskKind             string         `json:"task_kind"` // "coding" | "planning" | "review" | "verify" | "refactor" | "security"
-	Role                 string         `json:"role"`      // "implementer" | "reviewer" | "architect" | "tester"
-	RequiredCapabilities []string       `json:"required_capabilities,omitempty"`
-	EstimatedTokens      int            `json:"estimated_tokens,omitempty"`
-	CurrentProvider      string         `json:"current_provider,omitempty"`
-	CurrentProfile       string         `json:"current_profile,omitempty"`
-	PreferProvider       string         `json:"prefer_provider,omitempty"`
-	ProjectPolicy        string         `json:"project_policy,omitempty"`
-	AgentPreference      string         `json:"agent_preference,omitempty"`
-	ProviderPriorities   map[string]int `json:"provider_priorities,omitempty"`
+	TaskKind              string         `json:"task_kind"` // "coding" | "planning" | "review" | "verify" | "refactor" | "security"
+	Role                  string         `json:"role"`      // "implementer" | "reviewer" | "architect" | "tester"
+	PreferredRoles        []string       `json:"preferred_roles,omitempty"`
+	AcceptableRoles       []string       `json:"acceptable_roles,omitempty"`
+	Domains               []string       `json:"domains,omitempty"`
+	RequiredCapabilities  []string       `json:"required_capabilities,omitempty"`
+	PreferredCapabilities []string       `json:"preferred_capabilities,omitempty"`
+	DesiredStrengths      []string       `json:"desired_strengths,omitempty"`
+	Constraints           []string       `json:"constraints,omitempty"`
+	EstimatedComplexity   string         `json:"estimated_complexity,omitempty"`
+	EstimatedTokens       int            `json:"estimated_tokens,omitempty"`
+	RequiresDecomposition bool           `json:"requires_decomposition,omitempty"`
+	Confidence            string         `json:"confidence,omitempty"`
+	Source                string         `json:"source,omitempty"`
+	CurrentProvider       string         `json:"current_provider,omitempty"`
+	CurrentProfile        string         `json:"current_profile,omitempty"`
+	PreferProvider        string         `json:"prefer_provider,omitempty"`
+	ProjectPolicy         string         `json:"project_policy,omitempty"`
+	AgentPreference       string         `json:"agent_preference,omitempty"`
+	ProviderPriorities    map[string]int `json:"provider_priorities,omitempty"`
 }
 
 // ResourceCandidate represents an evaluated provider account scored for a specific task.

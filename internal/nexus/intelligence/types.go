@@ -75,11 +75,14 @@ type AgentSpec struct {
 	Responsibilities   []string           `json:"responsibilities,omitempty"`
 	Capabilities       []string           `json:"capabilities,omitempty"`
 	Constraints        []string           `json:"constraints,omitempty"`
+	Domains            []string           `json:"domains,omitempty"`
+	Strengths          []string           `json:"strengths,omitempty"`
+	Tags               []string           `json:"tags,omitempty"`
 	VerificationPolicy VerificationPolicy `json:"verification_policy,omitempty"`
 }
 
 func (s AgentSpec) HasCustomBehavior() bool {
-	return len(s.Instructions) > 0 || len(s.Responsibilities) > 0 || len(s.Capabilities) > 0 || len(s.Constraints) > 0 || s.VerificationPolicy.RequireEvidence || s.VerificationPolicy.RequireTests
+	return len(s.Instructions) > 0 || len(s.Responsibilities) > 0 || len(s.Capabilities) > 0 || len(s.Constraints) > 0 || len(s.Domains) > 0 || len(s.Strengths) > 0 || len(s.Tags) > 0 || s.VerificationPolicy.RequireEvidence || s.VerificationPolicy.RequireTests
 }
 
 type ProjectContext struct {

@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -54,7 +53,10 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 		if strings.TrimSpace(pkg.AssignedAgent) != "" {
 			agent, err = st.GetAgent(pkg.AssignedAgent, run.ProjectID)
 		} else {
-			agent, err = createMissionAgent(st, run.ProjectID, pkg, "Mission · ")
+			agent, err = e.selectReusableAgent(st, run, pkg)
+			if err == store.ErrNotFound {
+				agent, err = createMissionAgent(st, run.ProjectID, pkg, "Mission · ")
+			}
 		}
 	case string(FlowAssignmentExisting):
 		if strings.TrimSpace(pkg.AssignedAgent) == "" {
@@ -67,7 +69,7 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 	case string(FlowAssignmentCreate):
 		agent, err = createMissionAgent(st, run.ProjectID, pkg, "Flow · ")
 	case string(FlowAssignmentAuto):
-		agent, err = e.selectReusableFlowAgent(st, run, pkg)
+		agent, err = e.selectReusableAgent(st, run, pkg)
 		if err == store.ErrNotFound {
 			agent, err = createMissionAgent(st, run.ProjectID, pkg, "Auto · ")
 		}
@@ -169,37 +171,62 @@ func createMissionAgent(st *store.Store, projectID string, pkg *runner.PackageRu
 	return st.CreateAgent(store.Agent{ProjectID: projectID, Name: prefix + name, Role: defaultRole(pkg.Role, "implementer")})
 }
 
-func (e *nexusPackageExecutor) selectReusableFlowAgent(st *store.Store, run *runner.MissionRun, pkg *runner.PackageRun) (store.Agent, error) {
+func (e *nexusPackageExecutor) selectReusableAgent(st *store.Store, run *runner.MissionRun, pkg *runner.PackageRun) (store.Agent, error) {
 	agents, err := st.ListAgents(run.ProjectID)
 	if err != nil {
 		return store.Agent{}, err
 	}
 	reserved := reservedAgentsInRun(run, pkg.PackageID)
-	role := strings.TrimSpace(pkg.Role)
-	eligible := make([]store.Agent, 0, len(agents))
+	candidates := make([]AgentMatchCandidate, 0, len(agents))
 	for _, candidate := range agents {
-		if candidate.Role == "reviewer" && role != "reviewer" {
-			continue
-		}
-		if candidate.Status != store.AgentStopped && candidate.Status != store.AgentRecoverable {
-			continue
-		}
 		if _, used := reserved[candidate.ID]; used {
 			continue
 		}
-		eligible = append(eligible, candidate)
-	}
-	sort.SliceStable(eligible, func(i, j int) bool {
-		iMatch, jMatch := role != "" && eligible[i].Role == role, role != "" && eligible[j].Role == role
-		if iMatch != jMatch {
-			return iMatch
+		cfg, cfgErr := currentAgentConfig(st, candidate)
+		if cfgErr != nil {
+			continue
 		}
-		return eligible[i].ID < eligible[j].ID
+		candidates = append(candidates, AgentMatchCandidate{Agent: candidate, Spec: cfg.AgentSpec})
+	}
+	requirements := missionTaskRequirements(pkg)
+	// A package's legacy Role is often the generic "implementer" label. It
+	// must not erase the richer classified roles persisted in TaskRequirements
+	// (for example frontend-engineer for a React task).
+	if len(requirements.PreferredRoles) == 0 && strings.TrimSpace(pkg.Role) != "" {
+		role := strings.TrimSpace(pkg.Role)
+		requirements.PreferredRoles = []string{role}
+		requirements.AcceptableRoles = []string{role, "fullstack-engineer", "generalist"}
+	}
+	match := MatchAgents(candidates, AgentMatchRequirements{
+		PreferredRoles:  requirements.PreferredRoles,
+		AcceptableRoles: requirements.AcceptableRoles,
+		Domains:         requirements.Domains,
+		// headless/submit_prompt are provider-resource capabilities, not
+		// persistent-Agent specializations. Passing them to the Agent matcher
+		// would reject every legacy/custom Agent whose AgentSpec correctly
+		// contains only behavioral capabilities.
+		RequiredCapabilities:  agentRequiredCapabilities(requirements.RequiredCapabilities),
+		PreferredCapabilities: requirements.PreferredCapabilities,
+		DesiredStrengths:      requirements.DesiredStrengths,
+		Constraints:           requirements.Constraints,
 	})
-	if len(eligible) == 0 {
+	if match.Recommended == nil {
 		return store.Agent{}, store.ErrNotFound
 	}
-	return eligible[0], nil
+	return match.Recommended.Agent, nil
+}
+
+func agentRequiredCapabilities(capabilities []string) []string {
+	result := make([]string, 0, len(capabilities))
+	for _, capability := range capabilities {
+		switch normalizeAgentTaxonomy(capability) {
+		case "headless", "submit-prompt":
+			continue
+		default:
+			result = append(result, capability)
+		}
+	}
+	return result
 }
 
 func reservedAgentsInRun(run *runner.MissionRun, exceptPackageID string) map[string]struct{} {
@@ -536,11 +563,21 @@ func missionTaskRequirements(pkg *runner.PackageRun) TaskRequirements {
 			if explicit.Role != "" {
 				req.Role = explicit.Role
 			}
+			req.PreferredRoles = append([]string(nil), explicit.PreferredRoles...)
+			req.AcceptableRoles = append([]string(nil), explicit.AcceptableRoles...)
+			req.Domains = append([]string(nil), explicit.Domains...)
+			req.EstimatedComplexity = explicit.EstimatedComplexity
 			req.EstimatedTokens = explicit.EstimatedTokens
+			req.RequiresDecomposition = explicit.RequiresDecomposition
+			req.Confidence = explicit.Confidence
+			req.Source = explicit.Source
 			req.PreferProvider = explicit.PreferProvider
 			req.AgentPreference = explicit.AgentPreference
 			req.ProjectPolicy = explicit.ProjectPolicy
 			req.RequiredCapabilities = mergeRequiredCapabilities(req.RequiredCapabilities, explicit.RequiredCapabilities)
+			req.PreferredCapabilities = append([]string(nil), explicit.PreferredCapabilities...)
+			req.DesiredStrengths = append([]string(nil), explicit.DesiredStrengths...)
+			req.Constraints = append([]string(nil), explicit.Constraints...)
 		}
 	}
 	return req

@@ -9,28 +9,29 @@ import (
 
 func TestHandoffStates_AllExist(t *testing.T) {
 	expected := map[HandoffState]bool{
-		HandoffRequested:       true,
-		HandoffPreflight:       true,
-		HandoffTargetValidated: true,
-		HandoffCheckpointed:    true,
-		HandoffSourceQuiesced:  true,
-		HandoffTargetStarting:  true,
-		HandoffTargetResumed:   true,
-		HandoffVerified:        true,
-		HandoffCompleted:       true,
-		HandoffRollback:        true,
-		HandoffRollingBack:     true,
-		HandoffRolledBack:      true,
-		HandoffFailedSafe:      true,
-		HandoffFailedUnsafe:    true,
+		HandoffRequested:            true,
+		HandoffPreflight:            true,
+		HandoffTargetValidated:      true,
+		HandoffCheckpointed:         true,
+		HandoffSourceQuiesced:       true,
+		HandoffTargetStarting:       true,
+		HandoffTargetResumed:        true,
+		HandoffContinuityUnverified: true,
+		HandoffVerified:             true,
+		HandoffCompleted:            true,
+		HandoffRollback:             true,
+		HandoffRollingBack:          true,
+		HandoffRolledBack:           true,
+		HandoffFailedSafe:           true,
+		HandoffFailedUnsafe:         true,
 	}
 	for state := range expected {
 		if string(state) == "" {
 			t.Errorf("empty string for state %v", state)
 		}
 	}
-	if len(expected) != 14 {
-		t.Errorf("expected 14 handoff states, got %d", len(expected))
+	if len(expected) != 15 {
+		t.Errorf("expected 15 handoff states, got %d", len(expected))
 	}
 }
 
@@ -46,6 +47,7 @@ func TestHandoffStateValues(t *testing.T) {
 		{HandoffSourceQuiesced, "SOURCE_QUIESCED"},
 		{HandoffTargetStarting, "TARGET_STARTING"},
 		{HandoffTargetResumed, "TARGET_RESUMED"},
+		{HandoffContinuityUnverified, "NATIVE_RESUME_UNVERIFIED"},
 		{HandoffVerified, "VERIFIED"},
 		{HandoffCompleted, "COMPLETED"},
 		{HandoffRollback, "ROLLBACK_REQUIRED"},
@@ -88,7 +90,7 @@ func TestHandoffStates_HappyPath(t *testing.T) {
 		HandoffSourceQuiesced,
 		HandoffTargetStarting,
 		HandoffTargetResumed,
-		HandoffVerified,
+		HandoffContinuityUnverified,
 		HandoffCompleted,
 	}
 	for i, state := range happyPath {

@@ -23,6 +23,9 @@ O código canônico utiliza o binário `nexus`, mantendo `ai` como alias transpa
 - [`docs/architecture/quota/account-isolation.md`](../docs/architecture/quota/account-isolation.md): fronteira canônica de estado por conta.
 - [`docs/architecture/quota/identity-scoping.md`](../docs/architecture/quota/identity-scoping.md): identidade persistida e versionamento de credencial.
 - [`docs/architecture/providers/registration-lifecycle.md`](../docs/architecture/providers/registration-lifecycle.md): separação entre instalação e registro.
+- [`docs/architecture/agent-routing.md`](../docs/architecture/agent-routing.md): matching canônico de Agents persistentes.
+- [`docs/architecture/resource-routing.md`](../docs/architecture/resource-routing.md): seleção de recursos e políticas do scheduler.
+- [`docs/architecture/session-continuity.md`](../docs/architecture/session-continuity.md): estados e limites de continuidade.
 - [`docs/architecture/quota/legacy-cache-migration.md`](../docs/architecture/quota/legacy-cache-migration.md): tratamento não destrutivo de cache legado.
 
 - [`NEXUS_V1_ARCHITECTURE.md`](NEXUS_V1_ARCHITECTURE.md): Arquitetura mestre do Workspace OS, runtimes e store.

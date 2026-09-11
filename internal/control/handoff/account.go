@@ -29,13 +29,17 @@ const (
 	HandoffSourceQuiesced  HandoffState = "SOURCE_QUIESCED"
 	HandoffTargetStarting  HandoffState = "TARGET_STARTING"
 	HandoffTargetResumed   HandoffState = "TARGET_RESUMED"
-	HandoffVerified        HandoffState = "VERIFIED"
-	HandoffCompleted       HandoffState = "COMPLETED"
-	HandoffRollback        HandoffState = "ROLLBACK_REQUIRED"
-	HandoffRollingBack     HandoffState = "ROLLING_BACK"
-	HandoffRolledBack      HandoffState = "ROLLED_BACK"
-	HandoffFailedSafe      HandoffState = "FAILED_SAFE"
-	HandoffFailedUnsafe    HandoffState = "FAILED_UNSAFE"
+	// HandoffContinuityUnverified means the runtime and resume arguments were
+	// verified locally, but the provider did not expose a confirmation channel.
+	// HandoffVerified is reserved for a future provider-level acknowledgement.
+	HandoffContinuityUnverified HandoffState = "NATIVE_RESUME_UNVERIFIED"
+	HandoffVerified             HandoffState = "VERIFIED"
+	HandoffCompleted            HandoffState = "COMPLETED"
+	HandoffRollback             HandoffState = "ROLLBACK_REQUIRED"
+	HandoffRollingBack          HandoffState = "ROLLING_BACK"
+	HandoffRolledBack           HandoffState = "ROLLED_BACK"
+	HandoffFailedSafe           HandoffState = "FAILED_SAFE"
+	HandoffFailedUnsafe         HandoffState = "FAILED_UNSAFE"
 )
 
 // Transaction encapsulates the context and state of an account handoff attempt.
@@ -158,6 +162,9 @@ func (s *Service) PerformAccountHandoff(ctx context.Context, sourceRuntimeID, ta
 
 	targetSession, err := s.launcher.Launch(ctx, launcher.LaunchOptions{
 		RuntimeID:         newRuntimeID,
+		AgentID:           source.AgentID,
+		ProjectID:         source.ProjectID,
+		ProjectName:       source.ProjectName,
 		ProviderID:        targetProvider,
 		ProfileID:         targetProfile,
 		ProviderSessionID: source.ProviderSessionID,
@@ -188,8 +195,12 @@ func (s *Service) PerformAccountHandoff(ctx context.Context, sourceRuntimeID, ta
 	targetSession.ParentRuntimeID = source.RuntimeID
 	targetSession.HandoffType = "account"
 	targetSession.LineageID = lineageID
+	if targetSession.Labels == nil {
+		targetSession.Labels = map[string]string{}
+	}
+	targetSession.Labels["continuity"] = string(HandoffContinuityUnverified)
 	_ = reg.Register(*targetSession)
-	tx.State = HandoffVerified
+	tx.State = HandoffContinuityUnverified
 
 	// 10. Record Lineage
 	if err := RecordLineage(LineageRecord{
@@ -214,7 +225,7 @@ func (s *Service) PerformAccountHandoff(ctx context.Context, sourceRuntimeID, ta
 		targetSession.ProfileID,
 		events.EventHandoffCompleted,
 		fmt.Sprintf("Account handoff completed from %s to %s", source.RuntimeID, targetSession.RuntimeID),
-		map[string]any{"source_id": source.RuntimeID, "target_id": targetSession.RuntimeID, "session_id": targetSession.ProviderSessionID},
+		map[string]any{"source_id": source.RuntimeID, "target_id": targetSession.RuntimeID, "session_id": targetSession.ProviderSessionID, "continuity": string(HandoffContinuityUnverified)},
 	))
 
 	return targetSession, nil

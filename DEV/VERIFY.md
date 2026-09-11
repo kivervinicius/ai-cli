@@ -1,5 +1,31 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-11 — Evolution corrective closure (current working tree)
+
+- PASS — focused Go regression: `internal/nexus`, `internal/core/scheduler`,
+  `internal/control/web`, `internal/control/handoff`.
+- PASS — natural-language classification covers React, Go REST, Kubernetes,
+  security, review and complex ecommerce; classified requirements persist on
+  generated Flow steps.
+- PASS — AgentMatcher no longer treats provider resource gates as Agent
+  personality; generic `implementer` labels no longer erase specialized task
+  roles.
+- PASS — same-provider handoff preserves Agent/Project identity and reports
+  `NATIVE_RESUME_UNVERIFIED` without provider-level confirmation; cross-provider
+  context handoff is labeled `CONTEXT_HANDOFF`.
+- PASS — `nexus run "<goal>"` dispatches through Flow, AgentMatcher,
+  ResourceScheduler and MissionRunner while provider-native `nexus run <provider>`
+  remains compatible.
+- PASS — scheduler tie-breaking is deterministic by profile name.
+- PASS — `make quality`, `make security`, `make build`, `make web-verify`,
+  `go vet ./...` and `make lint-go` on the corrected tree.
+- PASS — `make test-e2e` (terminal, protocol, host and web race scenarios).
+- UNVERIFIED — `make docs-verify` rejects the stale visual manifest because the
+  Web change is intentionally uncommitted; refreshing that manifest requires a
+  committed source SHA or an explicit release commit.
+- UNVERIFIED — full Go race completion, authenticated PTY/failover E2E, live
+  providers, and native Windows/macOS execution; see final validation report.
+
 ## 2026-09-10 — Gates de format/lint alinhados
 
 - PASS — `make format-check` usa o Prettier local e verifica TypeScript, CSS,
@@ -883,33 +909,6 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
   no Makefile.
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-11T03:35:23Z
+## Frontend gate — 2026-09-11T11:33:07Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
-
-## Evolution Campaign — Final Verification Gate — 2026-09-11
-
-**Commit:** cc1ebf0 (after all uncommitted work committed)
-**Working tree:** clean
-
-### Go Quality Gates
-- `go test ./...` — PASS (63 packages, 803+ tests)
-- `go vet ./...` — PASS (no issues)
-- `go build ./...` — PASS (clean)
-
-### Frontend Quality Gates
-- `npm --prefix web run typecheck` — PASS
-- `npm --prefix web run lint` — PASS
-- `npm --prefix web run test` — PASS (329/329)
-
-### Evolution Requirements
-- R1 (Interactive Continuity): PASS — LaunchModeResolver, supervised default, `:nexus` prefix
-- R2 (Agent Routing Truth): PASS — Colon prefix routing, centralized matcher
-- R3 (Autonomous Resource Continuity): PASS — Typed scheduler contracts, ResourcePicker
-- R4 (Doctor test regression): PASS — P1 fix applied (NEXUS_TEST_NOT_CONTAINER clear)
-- R5 (Quality gates): PASS — All gates green
-
-### Verdict: **GO**
-
-All evolution requirements satisfied. Quality gates green. No P0 or P1 findings remaining. Native platform verification remains unverified (expected — no runners).
-
