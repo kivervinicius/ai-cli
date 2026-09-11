@@ -43,6 +43,7 @@ func registerControlRoutes(mux *http.ServeMux, deps routeDependencies) {
 func registerNexusRoutes(mux *http.ServeMux, deps routeDependencies) {
 	s, h := deps.server, deps.nexusHandler
 	mux.HandleFunc("/api/v1/projects", s.authMiddleware(h.handleProjectsList))
+	mux.HandleFunc("/api/v1/projects/summaries", s.authMiddleware(h.handleProjectSummaries))
 	mux.HandleFunc("/api/v1/projects/", s.routeProject(h))
 	mux.HandleFunc("/api/v1/agents/", s.routeAgent(h))
 	mux.HandleFunc("/api/v1/resources", s.authMiddleware(h.handleResourcesList))
@@ -78,6 +79,7 @@ func registerMissionRoutes(mux *http.ServeMux, deps routeDependencies) {
 	mux.HandleFunc("/api/v1/runs/", s.routeRun(h))
 	mux.HandleFunc("/api/v1/schedules", s.authMiddleware(h.handleMissionSchedules))
 	mux.HandleFunc("/api/v1/missions/", s.routeMission(h))
+	mux.HandleFunc("/api/v1/attention", s.authMiddleware(h.handleAttentionCenter))
 }
 
 func registerSystemRoutes(mux *http.ServeMux, deps routeDependencies) {

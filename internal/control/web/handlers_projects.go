@@ -43,6 +43,21 @@ func (h *NexusHandler) handleProjectsList(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// handleProjectSummaries GET /api/v1/projects/summaries
+// Returns lightweight per-project agent counts for the project rail outline.
+func (h *NexusHandler) handleProjectSummaries(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	list, err := h.agents.ListSummaries(r.Context())
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
 // handleProjectDetail GET/PATCH/DELETE /api/v1/projects/{id}
 func (h *NexusHandler) handleProjectDetail(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/projects/"), "/")

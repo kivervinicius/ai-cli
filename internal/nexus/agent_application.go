@@ -54,6 +54,14 @@ func (s *AgentApplicationService) List(ctx context.Context, projectID string) ([
 	return agents, nil
 }
 
+func (s *AgentApplicationService) ListSummaries(ctx context.Context) ([]store.ProjectAgentSummary, error) {
+	st, err := s.store(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return st.ListAgentSummaries()
+}
+
 func (s *AgentApplicationService) Create(ctx context.Context, projectID, name, role string) (store.Agent, error) {
 	st, err := s.store(ctx)
 	if err != nil {

@@ -24,6 +24,11 @@ func (s *Server) routeProject(h *NexusHandler) http.HandlerFunc {
 				return
 			}
 		}
+		// Collection endpoint (no project id): /api/v1/projects/summaries
+		if strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/projects/"), "/") == "summaries" {
+			h.handleProjectSummaries(w, r)
+			return
+		}
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/events"):
 			h.handleProjectEvents(w, r)

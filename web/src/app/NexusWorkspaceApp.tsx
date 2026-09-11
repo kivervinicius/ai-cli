@@ -1130,8 +1130,18 @@ const WorkspaceCoordinator: React.FC<{
       }}
       onProjectUpdated={handleProjectUpdated}
       onProjectDeleted={handleProjectDeleted}
-      agents={data.agents}
-      onOpenAgent={(agent) => terminal(agent)}
+      onOpenAgent={(agent) => {
+        const target = data.projects.find((entry) => entry.id === agent.project_id);
+        if (target && target.id !== project.id) {
+          setProject(target);
+          window.setTimeout(() => terminal(agent), 0);
+          return;
+        }
+        terminal(agent);
+      }}
+      onOpenAttention={(targetProject, item) => {
+        navigate(buildProjectRoute(targetProject.id, 'missions', item.mission_id));
+      }}
       onNewAgent={() => setNewAgentOpen(true)}
       onNewAISession={openNewAISession}
       onProjectShell={() => {

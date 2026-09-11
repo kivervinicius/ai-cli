@@ -60,7 +60,7 @@
   --nx-topbar: 46px;
   --nx-project-nav: 38px;
   --nx-taskbar: 38px;
-  --nx-rail: 232px;
+  --nx-rail: 260px;
   --nx-touch-min: 32px;
   --nx-safe-top: env(safe-area-inset-top, 0px);
   --nx-safe-right: env(safe-area-inset-right, 0px);
@@ -142,7 +142,7 @@
   --nx-topbar: 42px;
   --nx-project-nav: 36px;
   --nx-taskbar: 36px;
-  --nx-rail: 216px;
+  --nx-rail: 240px;
   --nx-density-pad-card: 8px 12px;
   --nx-density-pad-btn: 3px 8px;
   --nx-density-btn-h: 28px;
@@ -155,7 +155,7 @@
   --nx-topbar: 52px;
   --nx-project-nav: 44px;
   --nx-taskbar: 44px;
-  --nx-rail: 256px;
+  --nx-rail: 280px;
   --nx-density-pad-card: 16px 20px;
   --nx-density-pad-btn: 7px 14px;
   --nx-density-btn-h: 36px;
@@ -2305,12 +2305,12 @@ button {
     display: none;
   }
 }
-@media (max-width: 1400px) {
+@media (max-width: 1279px) {
   .nx-project-rail {
     position: fixed;
     inset: 0 auto 0 0;
-    width: 260px;
-    flex: 0 0 260px;
+    width: var(--nx-rail, 260px);
+    flex: 0 0 var(--nx-rail, 260px);
     transform: translateX(-102%);
     transition: transform 0.18s ease-in-out;
     box-shadow: 20px 0 60px rgba(0, 0, 0, 0.4);

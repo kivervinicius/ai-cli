@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Gauge,
   History,
@@ -22,11 +22,12 @@ import {
   ConfirmDialog,
   Input,
   InlineAlert,
-  contextMenuFromEvent,
   type ContextMenuPoint,
 } from '../../design-system';
 import { AddProjectModal } from './AddProjectModal';
-import type { Agent, Project } from '../../types';
+import { ProjectTreeItem } from './ProjectTreeItem';
+import { useProjectRailOutline } from './useProjectRailOutline';
+import type { Agent, AttentionItem, Project } from '../../types';
 import { useTranslation } from 'react-i18next';
 import { nexus, NexusAPIError } from '../../nexus/api';
 import styles from './ProjectRail.module.scss';
@@ -54,8 +55,8 @@ export const ProjectRail: React.FC<{
       | 'missions'
       | 'terminals',
   ) => void;
-  agents?: Agent[];
   onOpenAgent?: (agent: Agent) => void;
+  onOpenAttention?: (project: Project, item: AttentionItem) => void;
   onNewAgent?: () => void;
   onNewAISession?: () => void;
   onProjectShell?: () => void;
@@ -69,13 +70,14 @@ export const ProjectRail: React.FC<{
   onProjectUpdated,
   onProjectDeleted,
   onOpenGlobal,
-  agents = [],
   onOpenAgent,
-  onNewAgent,
+  onOpenAttention,
+  onNewAgent: _onNewAgent,
   onNewAISession: _onNewAISession,
   onProjectShell: _onProjectShell,
 }) => {
   const { t } = useTranslation();
+  const outline = useProjectRailOutline();
   const [addOpen, setAddOpen] = useState(false);
   const [renameProject, setRenameProject] = useState<Project | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -89,18 +91,9 @@ export const ProjectRail: React.FC<{
     | null
   >(null);
 
-  // Collapsible Accordion Sections with LocalStorage Persistence
   const [projectsExpanded, setProjectsExpanded] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('nx_rail_projects_open');
-      return saved !== null ? saved === 'true' : true;
-    } catch {
-      return true;
-    }
-  });
-  const [agentsExpanded, setAgentsExpanded] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('nx_rail_agents_open');
       return saved !== null ? saved === 'true' : true;
     } catch {
       return true;
@@ -115,7 +108,6 @@ export const ProjectRail: React.FC<{
     }
   });
 
-  // Inline filter query
   const [searchQuery, setSearchQuery] = useState('');
 
   const toggleProjects = () => {
@@ -123,17 +115,9 @@ export const ProjectRail: React.FC<{
       const next = !prev;
       try {
         localStorage.setItem('nx_rail_projects_open', String(next));
-      } catch {}
-      return next;
-    });
-  };
-
-  const toggleAgents = () => {
-    setAgentsExpanded((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem('nx_rail_agents_open', String(next));
-      } catch {}
+      } catch {
+        /* ignore */
+      }
       return next;
     });
   };
@@ -143,25 +127,40 @@ export const ProjectRail: React.FC<{
       const next = !prev;
       try {
         localStorage.setItem('nx_rail_tools_open', String(next));
-      } catch {}
+      } catch {
+        /* ignore */
+      }
       return next;
     });
   };
 
   const q = searchQuery.trim().toLowerCase();
-  const filteredProjects = q
-    ? projects.filter(
-        (p) =>
-          (p.name || p.id).toLowerCase().includes(q) ||
-          (p.canonical_path || '').toLowerCase().includes(q),
-      )
-    : projects;
-
-  const filteredAgents = q
-    ? agents.filter(
-        (a) => (a.name || '').toLowerCase().includes(q) || (a.role || '').toLowerCase().includes(q),
-      )
-    : agents;
+  const filteredProjects = useMemo(() => {
+    if (!q) return projects;
+    return projects.filter((project) => {
+      const nameHit =
+        (project.name || project.id).toLowerCase().includes(q) ||
+        (project.canonical_path || '').toLowerCase().includes(q);
+      if (nameHit) return true;
+      const agents = outline.agentsByProject.get(project.id) ?? [];
+      if (
+        agents.some(
+          (agent) =>
+            (agent.name || '').toLowerCase().includes(q) ||
+            (agent.role || '').toLowerCase().includes(q),
+        )
+      ) {
+        return true;
+      }
+      const attention = outline.attentionByProject.get(project.id);
+      const attentionItems = [...(attention?.needsYou ?? []), ...(attention?.failed ?? [])];
+      return attentionItems.some(
+        (item) =>
+          (item.summary || '').toLowerCase().includes(q) ||
+          (item.question || '').toLowerCase().includes(q),
+      );
+    });
+  }, [projects, q, outline.agentsByProject, outline.attentionByProject]);
 
   const optionalTools = [
     { id: 'overview', label: t('nav.overview'), icon: Home },
@@ -169,11 +168,17 @@ export const ProjectRail: React.FC<{
     { id: 'maestro', label: t('nav.maestro'), icon: Sparkles },
     { id: 'work', label: t('nav.work'), icon: Layers },
     { id: 'missions', label: t('nav.missions'), icon: Workflow },
+    { id: 'agents', label: t('nav.agents'), icon: TerminalSquare },
     { id: 'resources', label: t('nav.resources'), icon: Gauge },
     { id: 'sessions', label: t('nav.sessions'), icon: History },
     { id: 'projects', label: t('projectManager.desktopsTitle'), icon: LayoutGrid },
     { id: 'settings', label: t('nav.settings'), icon: Settings },
   ] as const;
+
+  const selectProject = (project: Project) => {
+    onSelect(project);
+    onClose();
+  };
 
   const openRename = (project: Project) => {
     setRenameProject(project);
@@ -245,8 +250,7 @@ export const ProjectRail: React.FC<{
           </IconButton>
         </div>
 
-        {/* Compact Search Filter for Rail when user has multiple items */}
-        {(projects.length > 3 || agents.length > 3 || searchQuery) && (
+        {(projects.length > 3 || searchQuery) && (
           <div className="nx-project-rail__search-wrap">
             <input
               type="search"
@@ -259,7 +263,6 @@ export const ProjectRail: React.FC<{
           </div>
         )}
 
-        {/* Projects Accordion Section */}
         <div
           className="nx-rail-accordion-section"
           data-expanded={projectsExpanded ? 'true' : 'false'}
@@ -283,104 +286,53 @@ export const ProjectRail: React.FC<{
           </div>
 
           {projectsExpanded && (
-            <div className="nx-project-list nx-rail-scrollable nx-project-list--compact">
-              {filteredProjects.map((project) => (
-                <button
-                  type="button"
-                  key={project.id}
-                  className="nx-rail-item-btn"
-                  data-active={selected?.id === project.id ? 'true' : 'false'}
-                  onClick={() => {
-                    onSelect(project);
-                    onClose();
-                  }}
-                  onContextMenu={(event) =>
-                    setRailMenu({ kind: 'project', project, point: contextMenuFromEvent(event) })
-                  }
-                  title={project.canonical_path}
-                >
-                  <span className="nx-project-avatar nx-rail-avatar-compact">
-                    {(project.name || 'PR').slice(0, 2).toUpperCase()}
-                  </span>
-                  <span className="nx-rail-item-copy">
-                    <strong>{project.name || project.id}</strong>
-                    <small>{project.default_branch || 'main'}</small>
-                  </span>
-                  {selected?.id === project.id && <span className="nx-project-active-dot" />}
-                </button>
-              ))}
+            <div
+              className="nx-project-list nx-rail-scrollable nx-project-list--compact"
+              role="tree"
+              aria-label={t('rail.projects')}
+            >
+              {filteredProjects.map((project) => {
+                const expanded = outline.expandedIds.has(project.id);
+                return (
+                  <ProjectTreeItem
+                    key={project.id}
+                    project={project}
+                    selected={selected?.id === project.id}
+                    expanded={expanded}
+                    summary={outline.summaryMap.get(project.id)}
+                    attention={outline.attentionByProject.get(project.id)}
+                    agents={outline.agentsByProject.get(project.id) ?? []}
+                    agentsLoading={outline.loadingAgents.has(project.id)}
+                    onToggleExpand={() => {
+                      outline.toggleExpanded(project.id);
+                    }}
+                    onSelect={() => selectProject(project)}
+                    onOpenAgent={(agent) => {
+                      onOpenAgent?.(agent);
+                      onClose();
+                    }}
+                    onOpenAttention={(item) => {
+                      onOpenAttention?.(project, item);
+                      onClose();
+                    }}
+                    onProjectContextMenu={(proj, point) =>
+                      setRailMenu({ kind: 'project', project: proj, point })
+                    }
+                    onAgentContextMenu={(agent, point) =>
+                      setRailMenu({ kind: 'agent', agent, point })
+                    }
+                  />
+                );
+              })}
               {filteredProjects.length === 0 && (
                 <p className="nx-rail-empty-msg">
-                  {searchQuery
-                    ? t('rail.noProjectsFound', 'Nenhum projeto encontrado')
-                    : t('rail.empty')}
+                  {searchQuery ? t('rail.noProjectsFound') : t('rail.empty')}
                 </p>
               )}
             </div>
           )}
         </div>
 
-        {/* Agents Accordion Section (Primary Workload) */}
-        <div
-          className="nx-rail-accordion-section nx-rail-section-agents"
-          data-expanded={agentsExpanded ? 'true' : 'false'}
-        >
-          <div className="nx-project-rail__heading nx-rail-section-header">
-            <button
-              type="button"
-              className="nx-rail-header-label"
-              onClick={toggleAgents}
-              aria-expanded={agentsExpanded}
-            >
-              <span className="nx-rail-chevron">{agentsExpanded ? '▾' : '▸'}</span>
-              <span>{t('rail.agents')}</span>
-              <span className="nx-rail-count">({filteredAgents.length})</span>
-            </button>
-            <span className="nx-rail-header-actions" onClick={(e) => e.stopPropagation()}>
-              {onNewAgent && (
-                <IconButton label={t('agents.new', 'Novo Agente')} onClick={onNewAgent}>
-                  <Plus size={13} />
-                </IconButton>
-              )}
-            </span>
-          </div>
-
-          {agentsExpanded && (
-            <div className="nx-project-list nx-rail-scrollable nx-agents-list-scroll">
-              {filteredAgents.map((agent) => (
-                <button
-                  type="button"
-                  key={agent.id}
-                  className="nx-rail-item-btn"
-                  onClick={() => {
-                    if (onOpenAgent) onOpenAgent(agent);
-                    onClose();
-                  }}
-                  onContextMenu={(event) =>
-                    setRailMenu({ kind: 'agent', agent, point: contextMenuFromEvent(event) })
-                  }
-                  title={`${agent.name} · ${agent.role || t('agents.developer')} (${agent.status})`}
-                >
-                  <span className="nx-status-dot" data-status={agent.status} />
-                  <span className="nx-rail-item-copy">
-                    <strong>{agent.name}</strong>
-                    <small>{agent.role || t('agents.developer')}</small>
-                  </span>
-                  <TerminalSquare size={12} className="nx-rail-agent-term-icon" />
-                </button>
-              ))}
-              {filteredAgents.length === 0 && (
-                <p className="nx-rail-empty-msg">
-                  {searchQuery
-                    ? t('rail.noAgentsFound', 'Nenhum agente com esse filtro.')
-                    : t('rail.noAgentsYet', 'Nenhum agente ainda.')}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Secondary Tools Accordion Section (Collapsible & Compact Grid) */}
         <div
           className="nx-rail-accordion-section nx-rail-section-tools"
           data-expanded={toolsExpanded ? 'true' : 'false'}
@@ -430,10 +382,15 @@ export const ProjectRail: React.FC<{
                   id: 'open-project',
                   label: t('workspace.openProject'),
                   icon: <LayoutGrid size={14} />,
-                  onSelect: () => {
-                    onSelect(railMenu.project);
-                    onClose();
-                  },
+                  onSelect: () => selectProject(railMenu.project),
+                },
+                {
+                  type: 'item',
+                  id: 'expand-project',
+                  label: outline.expandedIds.has(railMenu.project.id)
+                    ? t('rail.collapseProject')
+                    : t('rail.expandProject'),
+                  onSelect: () => outline.toggleExpanded(railMenu.project.id),
                 },
                 { type: 'separator', id: 'project-actions-separator' },
                 {
@@ -459,7 +416,7 @@ export const ProjectRail: React.FC<{
                     id: 'open-agent',
                     label: t('workspace.openAgent'),
                     onSelect: () => {
-                      if (onOpenAgent) onOpenAgent(railMenu.agent);
+                      onOpenAgent?.(railMenu.agent);
                       onClose();
                     },
                   },
@@ -480,6 +437,7 @@ export const ProjectRail: React.FC<{
         onCreated={(project) => {
           onCreated(project);
           setAddOpen(false);
+          void outline.refreshOutline();
         }}
       />
 

@@ -76,6 +76,38 @@ func (s *Store) ListAgents(projectID string) ([]Agent, error) {
 	return out, rows.Err()
 }
 
+// ProjectAgentSummary is a lightweight per-project agent count for the project rail.
+type ProjectAgentSummary struct {
+	ProjectID    string `json:"project_id"`
+	AgentCount   int    `json:"agent_count"`
+	WorkingCount int    `json:"working_count"`
+}
+
+// ListAgentSummaries returns agent_count and working_count grouped by project.
+// Projects with zero agents are omitted; the client merges against the project list.
+func (s *Store) ListAgentSummaries() ([]ProjectAgentSummary, error) {
+	rows, err := s.db.Query(`
+		SELECT project_id,
+			COUNT(*) AS agent_count,
+			SUM(CASE WHEN status = 'WORKING' THEN 1 ELSE 0 END) AS working_count
+		FROM agents
+		GROUP BY project_id
+		ORDER BY project_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []ProjectAgentSummary{}
+	for rows.Next() {
+		var summary ProjectAgentSummary
+		if err := rows.Scan(&summary.ProjectID, &summary.AgentCount, &summary.WorkingCount); err != nil {
+			return nil, err
+		}
+		out = append(out, summary)
+	}
+	return out, rows.Err()
+}
+
 // UpdateAgent patches mutable agent fields by ID (project scoped).
 func (s *Store) UpdateAgent(a Agent) error {
 	a.UpdatedAt = time.Now().UTC()
