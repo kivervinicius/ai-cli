@@ -1,5 +1,32 @@
 # Handoff
 
+## Atualização 2026-09-10 — Troca de projeto e efeitos visuais
+
+A troca de projeto não desmonta mais a tela inteira para exibir o splash. O
+shell permanece montado, preservando o fundo, chrome e efeitos visuais; um
+indicador discreto aparece no canvas até o layout autenticado chegar. A
+persistência fica bloqueada durante o carregamento para não gravar o fallback
+temporário no projeto remoto.
+
+Verificação: typecheck, ESLint, Stylelint, 25 testes Web focados, build Web,
+`make build-desktop-wails` e HTTP 200 em `127.0.0.1:13000`. O binário desktop
+está rodando localmente. O ambiente VMware/Mesa não oferece aceleração 3D, então
+blur/efeitos GPU podem aparecer reduzidos durante o teste local.
+
+## Atualização 2026-09-10 — Investigação de janelas duplicadas no desktop
+
+O desktop Wails foi compilado e iniciado de fato. Ele anexou ao Web Core em
+`127.0.0.1:13000`. Uma segunda execução foi tentada e terminou sem criar outro
+processo persistente, confirmando que `SingleInstanceLock` está funcionando.
+
+A interação visual não pôde ser acompanhada neste ambiente porque WebKit/Mesa
+reportou falhas de aceleração VMware/EGL/DRI e não expôs uma janela ao inspector
+X11. O código possui somente dois caminhos explícitos de janela externa
+(`target="_blank"` no link externo e fallback `window.open`); as janelas do
+Workspace são painéis internos, não novas janelas nativas. Próximo teste deve
+ser feito em uma sessão gráfica nativa funcional, clicando especificamente na
+ação que dispara a duplicação.
+
 ## Atualização 2026-09-10 — Configuração de qualidade corrigida
 
 O `Makefile` foi alinhado aos scripts do frontend: os gates agora usam os

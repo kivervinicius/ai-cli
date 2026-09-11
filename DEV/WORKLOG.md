@@ -3881,3 +3881,22 @@ build` PASS e Web reiniciado em HTTP 200.
 - Atualizado o lint-staged para incluir SCSS e usar os binários locais.
 - Validação: `make format-check`, `make lint-styles` e `make lint-frontend`
   passaram; ESLint reporta somente o warning preexistente.
+## 2026-09-10 — Execução nativa para investigar janelas duplicadas
+
+- `make build-desktop-wails` passou e gerou o binário Wails Linux.
+- O desktop iniciou anexando ao Core Web existente em `127.0.0.1:13000`.
+- A segunda execução foi bloqueada pela `SingleInstanceLock`; não houve dois
+  processos desktop persistentes.
+- A UI nativa não ficou inspecionável por falhas VMware/Mesa de EGL/DRI. Não foi
+  aplicada correção sem reproduzir a interação exata.
+## 2026-09-10 — UX da troca de projeto
+
+- Causa: `NexusWorkspaceSession` retornava uma tela splash de viewport inteiro
+  enquanto `getProject` carregava o layout, desmontando o shell e seus efeitos.
+- Correção: o `WorkspaceProvider` agora inicia com fallback isolado do novo
+  projeto, hidrata o layout remoto quando disponível e exibe apenas um status
+  discreto no canvas.
+- Segurança: `saveLayout` permanece desabilitado enquanto o layout ainda não
+  foi validado, evitando persistir o fallback.
+- Verificação: typecheck, lint, Stylelint, 25 testes focados, build Web,
+  `make build-desktop-wails` e smoke HTTP local passaram.

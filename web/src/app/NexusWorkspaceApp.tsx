@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { LoaderCircle } from 'lucide-react';
 import { api, initSession, rotateSession, type BrowserSession } from '../api';
 import { setNexusCSRF, nexus } from '../nexus/api';
 import { ThemeProvider } from '../design-system';
@@ -25,6 +26,7 @@ import { ProjectHub } from '../features/projects/ProjectHub';
 import type { NexusCommand } from './commands/registry';
 import type { DirectSessionRequest } from '../features/work/DirectSessionLauncher';
 import { NexusShell } from './NexusShell';
+import shellStyles from './NexusShell.module.scss';
 import { WorkspaceSurfaceHost } from './WorkspaceSurfaceHost';
 
 const CommandPalette = React.lazy(() =>
@@ -267,10 +269,6 @@ const NexusWorkspaceSession: React.FC<{
     );
   }
 
-  if (!layoutReady && !popoutSurface) {
-    return <NexusSplashScreen stage="loading" />;
-  }
-
   const initial = popoutSurface ? serializeWorkspace(createWorkspace(popoutSurface)) : layout;
 
   return (
@@ -280,7 +278,7 @@ const NexusWorkspaceSession: React.FC<{
       initialLayout={initial}
       initialRevision={layoutRevision}
       saveLayout={
-        popoutSurface
+        !layoutReady || popoutSurface
           ? undefined
           : (next, revision) => nexus.saveLayout(selected.id, next, revision)
       }
@@ -1183,7 +1181,19 @@ const WorkspaceCoordinator: React.FC<{
             {shellError}
           </div>
         )}
-        {renderer}
+        <div className={shellStyles.workspaceContent} aria-busy={!layoutReady}>
+          {renderer}
+          {!layoutReady && !popout && (
+            <div className={shellStyles.projectSwitchStatus} role="status" aria-live="polite">
+              <LoaderCircle
+                className={shellStyles.projectSwitchIcon}
+                size={14}
+                aria-hidden="true"
+              />
+              <span>{t('app.switchingProject', 'Carregando projeto…')}</span>
+            </div>
+          )}
+        </div>
       </NexusShell>
 
       {palette && (
