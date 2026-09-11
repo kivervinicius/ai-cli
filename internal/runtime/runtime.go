@@ -295,11 +295,13 @@ func InternalBinDir() (string, error) {
 		return binDir, nil
 	}
 
-	for _, name := range []string{"ai-browser", "xdg-open"} {
-		dst := filepath.Join(binDir, name)
-		_ = os.Remove(dst)
-		_ = os.Symlink(selfExe, dst)
-	}
+	// Create ai-browser shim (entry point for $BROWSER calls from agy/gemini).
+	// Do NOT create an xdg-open symlink — it would shadow the real system
+	// xdg-open in PATH and cause infinite recursion when browser.Open()
+	// resolves "xdg-open" back to the nexus binary.
+	dst := filepath.Join(binDir, "ai-browser")
+	_ = os.Remove(dst)
+	_ = os.Symlink(selfExe, dst)
 
 	return binDir, nil
 }

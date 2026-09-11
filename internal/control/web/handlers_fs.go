@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/kivervinicius/ai-cli/internal/browser"
 )
 
 // FSEntry represents a directory entry on the host filesystem.
@@ -701,7 +703,13 @@ func (h *NexusHandler) handleProjectOpenOS(w http.ResponseWriter, r *http.Reques
 		case "windows":
 			cmd = exec.Command("explorer", path)
 		default: // linux/unix
-			cmd = exec.Command("xdg-open", path)
+			// Resolve real system xdg-open to avoid symlink recursion
+			// when running as a browser-helper shim.
+			if xdg := browser.ResolveXdgOpen(); xdg != "" {
+				cmd = exec.Command(xdg, path)
+			} else {
+				cmd = exec.Command("xdg-open", path)
+			}
 		}
 
 	case "terminal":
@@ -749,7 +757,12 @@ func (h *NexusHandler) handleProjectOpenOS(w http.ResponseWriter, r *http.Reques
 		} else if ed := os.Getenv("EDITOR"); ed != "" {
 			cmd = exec.Command(ed, path)
 		} else {
-			cmd = exec.Command("xdg-open", path)
+			// Resolve real system xdg-open to avoid symlink recursion.
+			if xdg := browser.ResolveXdgOpen(); xdg != "" {
+				cmd = exec.Command(xdg, path)
+			} else {
+				cmd = exec.Command("xdg-open", path)
+			}
 		}
 
 	default:

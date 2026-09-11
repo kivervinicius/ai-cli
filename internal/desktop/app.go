@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/kivervinicius/ai-cli/internal/browser"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -193,8 +194,9 @@ func (a *App) OpenExternal(url string) error {
 		cmd = "open"
 		args = []string{url}
 	default:
-		cmd = "xdg-open"
-		args = []string{url}
+		// Route through browser.Open to avoid xdg-open symlink recursion
+		// when running as a browser-helper shim (ai-browser/xdg-open).
+		return browser.Open([]string{url})
 	}
 	return exec.Command(cmd, args...).Start()
 }
