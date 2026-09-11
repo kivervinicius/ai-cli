@@ -60,6 +60,7 @@ async function main() {
   });
 
   let bootstrapUrl = '';
+  let urlResolved = false;
   const portPromise = new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       clearInterval(poll);
@@ -79,13 +80,15 @@ async function main() {
       const candidate = String(result.stdout || '').trim();
       if (!/#nexus_bootstrap=[a-f0-9]+$/i.test(candidate)) return false;
       clearTimeout(timer);
+      clearInterval(poll);
       bootstrapUrl = candidate;
+      urlResolved = true;
       resolve(candidate);
       return true;
     };
 
     const poll = setInterval(() => {
-      if (resolveFromListenState()) clearInterval(poll);
+      if (!urlResolved) resolveFromListenState();
     }, 100);
 
     let output = '';
@@ -93,11 +96,11 @@ async function main() {
       output += chunk.toString();
       serverOutput += chunk.toString();
       const match = output.match(/Bootstrap:\s*(http:\/\/127\.0\.0\.1:\d+\/\?token=[a-f0-9]+)/i);
-      if (match) {
-        clearTimeout(timer);
-        clearInterval(poll);
-        bootstrapUrl = match[1];
-        resolve(bootstrapUrl);
+      if (match && !urlResolved) {
+        // Do NOT resolve from stdout alone — it lacks the #nexus_bootstrap
+        // hash fragment that initSession() needs. Wait for `nexus web url`
+        // to provide the full URL with the bootstrap token.
+        console.log(`  (stdout bootstrap URL detected, waiting for nexus web url for hash token...)`);
       }
     });
 

@@ -118,14 +118,28 @@ jobs:
       - name: Build current Nexus binary
         run: go build -o nexus ./cmd/nexus
 
-      - name: Run browser verification
-        id: browser-verification
+      - name: Run browser E2E
+        id: browser-e2e
         continue-on-error: true
         working-directory: web
         run: |
           set -o pipefail
           bun run test:e2e 2>&1 | tee "$RUNNER_TEMP/nexus-browser-e2e.log"
+
+      - name: Run browser a11y
+        id: browser-a11y
+        continue-on-error: true
+        working-directory: web
+        run: |
+          set -o pipefail
           bun run test:a11y 2>&1 | tee "$RUNNER_TEMP/nexus-browser-a11y.log"
+
+      - name: Run browser visual
+        id: browser-visual
+        continue-on-error: true
+        working-directory: web
+        run: |
+          set -o pipefail
           bun run test:visual 2>&1 | tee "$RUNNER_TEMP/nexus-browser-visual.log"
 
       - name: Upload browser diagnostics
@@ -133,12 +147,18 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: browser-diagnostics-${{ github.sha }}
-          path: ${{ runner.temp }}/nexus-browser-*.log
+          path: |
+            ${{ runner.temp }}/nexus-browser-*.log
+            .tempmediaStorage/e2e-failure-diagnostics.json
+            .tempmediaStorage/e2e-failure.png
           if-no-files-found: ignore
 
       - name: Assert browser verification
         if: always()
-        run: test '${{ steps.browser-verification.outcome }}' = success
+        run: |
+          test '${{ steps.browser-e2e.outcome }}' = success
+          test '${{ steps.browser-a11y.outcome }}' = success
+          test '${{ steps.browser-visual.outcome }}' = success
 
   test-linux:
     name: Linux E2E (Go ${{ matrix.go }})
