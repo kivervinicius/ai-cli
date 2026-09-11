@@ -28,22 +28,22 @@ docs-verify:
 	@node scripts/docs-verify.mjs
 
 lint-frontend:
-	@cd web && npx eslint src
+	@cd web && ./node_modules/.bin/eslint src
 
 lint-styles:
-	@cd web && npx stylelint "src/**/*.css"
+	@cd web && ./node_modules/.bin/stylelint "src/**/*.{css,scss}"
 
 lint-styles-fix:
-	@cd web && npx stylelint "src/**/*.css" --fix
+	@cd web && ./node_modules/.bin/stylelint "src/**/*.{css,scss}" --fix
 
 lint-fix:
-	@cd web && npx eslint src --fix
+	@cd web && ./node_modules/.bin/eslint src --fix
 
 typecheck:
-	@cd web && npx tsc --noEmit
+	@cd web && ./node_modules/.bin/tsc --noEmit
 
 test-frontend:
-	@cd web && npx vitest run
+	@cd web && ./node_modules/.bin/vitest run
 
 test-go:
 	@go test -v ./...
@@ -57,11 +57,11 @@ race:
 # ─── Formatting ─────────────────────────────────────────────────────
 
 format:
-	@cd web && npx prettier --write "src/**/*.{ts,tsx,css,json}"
+	@cd web && ./node_modules/.bin/prettier --write "src/**/*.{ts,tsx,css,scss,json}"
 	@gofmt -w -s .
 
 format-check:
-	@cd web && npx prettier --check "src/**/*.{ts,tsx,json}"
+	@cd web && ./node_modules/.bin/prettier --check "src/**/*.{ts,tsx,css,scss,json}"
 	@test -z "$$(gofmt -l . | grep -v .worktrees)" || (gofmt -l . | grep -v .worktrees && exit 1)
 
 # ─── Go linting ─────────────────────────────────────────────────────

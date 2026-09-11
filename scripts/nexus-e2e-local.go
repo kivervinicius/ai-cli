@@ -39,7 +39,7 @@ type apiClient struct {
 
 func main() {
 	start := flag.Bool("start", false, "start a local Nexus process on --port and clean it up")
-	port := flag.Int("port", 3000, "Nexus HTTP port when --start is used")
+	port := flag.Int("port", 13000, "Nexus HTTP port when --start is used")
 	keep := flag.Bool("keep", false, "keep generated project/data artifacts (diagnostics only)")
 	browser := flag.Bool("browser", false, "run the token-safe Chromium smoke after startup")
 	safeApply := flag.Bool("safe-apply", false, "verify a real restart-style Safe Apply and terminal reconnect")

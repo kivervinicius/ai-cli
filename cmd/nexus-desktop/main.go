@@ -130,7 +130,7 @@ func main() {
 			WindowIsTranslucent:  false,
 			About: &mac.AboutInfo{
 				Title:   "IAPro Nexus",
-				Message: "Autonomous AI Orchestrator & Workspace OS",
+				Message: "Autonomous AI Orchestrator and Workspace OS",
 			},
 		},
 		Linux: &linux.Options{

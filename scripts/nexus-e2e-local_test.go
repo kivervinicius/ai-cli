@@ -7,21 +7,21 @@ import (
 )
 
 func TestFindBootstrapRequiresTokenAndRedactsNothingInReturnedValue(t *testing.T) {
-	bootstrap := findBootstrap("URL: http://127.0.0.1:3000\nBootstrap: http://127.0.0.1:3000/?token=abc123\n")
+	bootstrap := findBootstrap("URL: http://127.0.0.1:13000\nBootstrap: http://127.0.0.1:13000/?token=abc123\n")
 	if bootstrap == "" || !strings.Contains(bootstrap, "token=abc123") {
 		t.Fatalf("bootstrap URL was not detected: %q", bootstrap)
 	}
-	if got := findBootstrap("Bootstrap: http://127.0.0.1:3000/\n"); got != "" {
+	if got := findBootstrap("Bootstrap: http://127.0.0.1:13000/\n"); got != "" {
 		t.Fatalf("accepted tokenless bootstrap URL: %q", got)
 	}
 }
 
 func TestParseBootstrapURLAcceptsPersistedFragmentToken(t *testing.T) {
-	got := parseBootstrapURL("http://127.0.0.1:3000/#nexus_bootstrap=abc123")
+	got := parseBootstrapURL("http://127.0.0.1:13000/#nexus_bootstrap=abc123")
 	if got == "" || !strings.Contains(got, "#nexus_bootstrap=abc123") {
 		t.Fatalf("persisted bootstrap URL was not accepted: %q", got)
 	}
-	if got := parseBootstrapURL("http://127.0.0.1:3000/"); got != "" {
+	if got := parseBootstrapURL("http://127.0.0.1:13000/"); got != "" {
 		t.Fatalf("accepted tokenless URL: %q", got)
 	}
 }
