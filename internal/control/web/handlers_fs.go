@@ -532,19 +532,31 @@ func (h *NexusHandler) handleFSScan(w http.ResponseWriter, r *http.Request) {
 }
 
 // isWithinAllowedRoots checks whether path falls inside a safe directory.
-// Allowed roots are: user home dir, /tmp, and any ancestor containing .git
-// or AGENTS.md (project workspace markers).
+// Allowed roots are: user home dir, the OS temporary directory, /tmp for
+// compatibility, and any ancestor containing .git or AGENTS.md (project
+// workspace markers).
 func isWithinAllowedRoots(path string) bool {
 	abs, err := filepath.Abs(filepath.Clean(path))
 	if err != nil {
 		return false
 	}
+	// Resolve the nearest existing ancestor before checking policy. A lexical
+	// /tmp or home prefix is insufficient when an attacker places a symlink
+	// inside that prefix which points at a protected directory.
+	realPath, err := resolveExistingAncestor(abs)
+	if err != nil {
+		return false
+	}
+	abs = realPath
 
-	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(abs, home+string(filepath.Separator)) {
+	if home, err := os.UserHomeDir(); err == nil && pathWithin(home, abs) {
 		return true
 	}
 
-	if strings.HasPrefix(abs, "/tmp"+string(filepath.Separator)) || abs == "/tmp" {
+	if tempDir := os.TempDir(); pathWithin(tempDir, abs) {
+		return true
+	}
+	if pathWithin("/tmp", abs) {
 		return true
 	}
 
@@ -565,6 +577,31 @@ func isWithinAllowedRoots(path string) bool {
 	}
 
 	return false
+}
+
+func pathWithin(root, path string) bool {
+	cleanRoot := filepath.Clean(root)
+	if resolvedRoot, err := resolveExistingAncestor(cleanRoot); err == nil {
+		cleanRoot = resolvedRoot
+	}
+	rel, err := filepath.Rel(cleanRoot, filepath.Clean(path))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func resolveExistingAncestor(path string) (string, error) {
+	candidate := filepath.Clean(path)
+	for {
+		if _, err := os.Lstat(candidate); err == nil {
+			return filepath.EvalSymlinks(candidate)
+		} else if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := filepath.Dir(candidate)
+		if parent == candidate {
+			return "", os.ErrNotExist
+		}
+		candidate = parent
+	}
 }
 
 // handleFSMkdir POST /api/v1/fs/mkdir
@@ -670,7 +707,18 @@ func (h *NexusHandler) handleProjectOpenOS(w http.ResponseWriter, r *http.Reques
 	case "terminal":
 		term := os.Getenv("TERMINAL")
 		if term != "" {
-			cmd = exec.Command(term)
+			// Allowlist of known-safe terminal binaries to prevent arbitrary
+			// command execution if an attacker influences the process environment.
+			allowedTerminals := map[string]bool{
+				"x-terminal-emulator": true, "gnome-terminal": true, "konsole": true,
+				"xfce4-terminal": true, "alacritty": true, "kitty": true, "xterm": true,
+				"iterm2": true, "wezterm": true, "foot": true, "st": true,
+				"Terminal.app": true, "wt.exe": true, "cmd.exe": true,
+			}
+			base := filepath.Base(term)
+			if allowedTerminals[base] {
+				cmd = exec.Command(term)
+			}
 		} else if runtime.GOOS == "darwin" {
 			cmd = exec.Command("open", "-a", "Terminal", path)
 		} else if runtime.GOOS == "windows" {

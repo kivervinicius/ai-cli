@@ -27,12 +27,18 @@ type TerminalMessage struct {
 }
 
 type TerminalHub struct {
-	auth *AuthManager
+	auth     *AuthManager
+	registry *registry.Registry
 }
 
-func NewTerminalHub(auth *AuthManager) *TerminalHub {
+func NewTerminalHub(auth *AuthManager, registries ...*registry.Registry) *TerminalHub {
+	reg := registry.DefaultRegistry()
+	if len(registries) > 0 && registries[0] != nil {
+		reg = registries[0]
+	}
 	return &TerminalHub{
-		auth: auth,
+		auth:     auth,
+		registry: reg,
 	}
 }
 
@@ -42,7 +48,7 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 		return
 	}
 
-	reg := registry.DefaultRegistry()
+	reg := h.registry
 	sess, exists := reg.Get(runtimeID)
 	if !exists {
 		writeError(w, http.StatusNotFound, "runtime not found")

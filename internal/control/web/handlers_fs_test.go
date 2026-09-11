@@ -190,6 +190,14 @@ func TestIsWithinAllowedRootsProjectWorkspace(t *testing.T) {
 	}
 }
 
+func TestIsWithinAllowedRootsOSTempDirectory(t *testing.T) {
+	tempRoot := os.TempDir()
+	child := filepath.Join(tempRoot, "nexus-allowed-root", "nested")
+	if !isWithinAllowedRoots(child) {
+		t.Fatalf("expected OS temp directory child %q to be allowed", child)
+	}
+}
+
 func TestFSMkdirRejectsOutsideAllowedRoots(t *testing.T) {
 	auth, _, _ := NewAuthManager("127.0.0.1", "")
 	handler := NewNexusHandler(auth)
@@ -202,6 +210,24 @@ func TestFSMkdirRejectsOutsideAllowedRoots(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 for path outside allowed roots, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestFSMkdirRejectsSymlinkEscape(t *testing.T) {
+	link := filepath.Join(t.TempDir(), "workspace-link")
+	if err := os.Symlink("/etc", link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	auth, _, _ := NewAuthManager("127.0.0.1", "")
+	handler := NewNexusHandler(auth)
+	bodyBytes, _ := json.Marshal(map[string]string{"path": filepath.Join(link, "nexus-escape")})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/fs/mkdir", strings.NewReader(string(bodyBytes)))
+	w := httptest.NewRecorder()
+
+	handler.handleFSMkdir(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for symlink escape, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
