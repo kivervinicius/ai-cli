@@ -259,72 +259,10 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 		return rollSnap
 	}
 
-	root, _ := config.ProfileRoot(string(a.ID()), p.Name)
-	home, _ := config.ProfileHome(string(a.ID()), p.Name)
-
-	candidates := []string{}
-	if root != "" {
-		candidates = append(candidates, filepath.Join(root, "quota.json"), filepath.Join(root, "usage.json"))
-	}
-	if home != "" {
-		candidates = append(candidates, filepath.Join(home, "usage.json"), filepath.Join(home, "quota.json"))
-	}
-
-	for _, file := range candidates {
-		data, err := os.ReadFile(file)
-		if err != nil {
-			continue
-		}
-
-		var s model.UsageSnapshot
-		if json.Unmarshal(data, &s) == nil && s.Status != "" && len(s.Windows) > 0 {
-			return s
-		}
-
-		var leg struct {
-			ModelName string `json:"model_name"`
-			FiveHour  struct {
-				PercentLeft float64 `json:"percent_left"`
-				ResetTime   string  `json:"reset_time"`
-			} `json:"five_hour"`
-			Weekly struct {
-				PercentLeft float64 `json:"percent_left"`
-				ResetTime   string  `json:"reset_time"`
-			} `json:"weekly"`
-		}
-		if json.Unmarshal(data, &leg) == nil && (leg.FiveHour.PercentLeft > 0 || leg.Weekly.PercentLeft > 0 || leg.FiveHour.ResetTime != "" || leg.Weekly.ResetTime != "") {
-			p5h := leg.FiveHour.PercentLeft
-			u5h := 100.0 - p5h
-			pWk := leg.Weekly.PercentLeft
-			uWk := 100.0 - pWk
-
-			return model.UsageSnapshot{
-				ProviderID: string(a.ID()),
-				ProfileID:  p.Name,
-				Status:     model.UsageCached,
-				Source:     model.SourceLocalFiles,
-				ModelName:  leg.ModelName,
-				FetchedAt:  fileModTime(file),
-				Windows: []model.UsageWindow{
-					{
-						Kind:             "5h",
-						Group:            "claude_gpt",
-						RemainingPercent: &p5h,
-						UsedPercent:      &u5h,
-						ResetDescription: leg.FiveHour.ResetTime,
-					},
-					{
-						Kind:             "weekly",
-						Group:            "claude_gpt",
-						RemainingPercent: &pWk,
-						UsedPercent:      &uWk,
-						ResetDescription: leg.Weekly.ResetTime,
-					},
-				},
-			}
-		}
-	}
-
+	// Persisted observations are loaded by profile.GetUsageSnapshot through the
+	// quota engine, which applies freshness and account-identity checks. Do not
+	// read usage.json here: doing so would let an untrusted cached LIVE snapshot
+	// bypass those checks after a shared rollout was rejected.
 	return snap
 }
 
@@ -365,7 +303,7 @@ func (a *Adapter) getUsageFromRollouts(ctx context.Context, p model.Profile) (mo
 		if _, err := os.Stat(realDir); err != nil {
 			continue
 		}
-		sharedHost := hostSessions != "" && config.FilesystemPathWithin(hostSessions, realDir)
+		sharedHost := hostSessions != "" && (config.FilesystemPathWithin(hostSessions, realDir) || config.FilesystemPathsEquivalent(dir, hostSessions))
 		_ = filepath.Walk(realDir, func(path string, fi os.FileInfo, err error) error {
 			if err != nil || fi == nil || fi.IsDir() {
 				return nil
@@ -477,11 +415,13 @@ func (a *Adapter) getUsageFromRollouts(ctx context.Context, p model.Profile) (mo
 		f.Close()
 
 		// Account matching for shared ~/.codex/sessions (often symlinked from every
-		// profile home): modern rollouts rarely embed the email, so claim them only
-		// when this profile owns the current host Codex login.
+		// profile home): modern rollouts rarely embed the email, so a shared rollout
+		// must be attributed exclusively to the account that owns the host login.
+		// Do not let the profile-local symlink make the same host rollout eligible
+		// for every account.
 		isProfilePath := profileHome != "" && config.FilesystemPathWithin(profileHome, rf.path)
 		belongs := matchedAccount || isProfilePath
-		if !belongs && rf.sharedHost {
+		if rf.sharedHost {
 			belongs = targetEmail != "" && hostAuthEmail != "" && strings.EqualFold(targetEmail, hostAuthEmail)
 		}
 		if !belongs {
@@ -575,13 +515,6 @@ func readCodexAuthEmail(authPath string) string {
 		return ""
 	}
 	return strings.TrimSpace(claims.Email)
-}
-
-func fileModTime(path string) time.Time {
-	if st, err := os.Stat(path); err == nil {
-		return st.ModTime()
-	}
-	return time.Time{}
 }
 
 func formatCodexResetTime(epochSec int64) string {

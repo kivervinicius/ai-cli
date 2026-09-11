@@ -2,6 +2,7 @@ package codex
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -141,6 +142,66 @@ func TestCodexSharedHostRolloutsMatchHostAuthEmail(t *testing.T) {
 	other := adapter.GetUsage(context.Background(), model.Profile{Provider: "codex", Name: "gmail"})
 	if other.Source == model.SourceObservation {
 		t.Fatalf("gmail must not inherit host rollouts owned by omega auth")
+	}
+}
+
+func TestCodexSharedHostRolloutsThroughProfileSymlinkStayAccountScoped(t *testing.T) {
+	dataDir := t.TempDir()
+	cfgDir := t.TempDir()
+	hostHome := t.TempDir()
+	t.Setenv("NEXUS_DATA_DIR", dataDir)
+	t.Setenv("AI_MANAGER_DATA_DIR", dataDir)
+	t.Setenv("AI_CLI_DATA_DIR", dataDir)
+	t.Setenv("NEXUS_CONFIG_DIR", cfgDir)
+	t.Setenv("AI_MANAGER_CONFIG_DIR", cfgDir)
+	t.Setenv("AI_CLI_CONFIG_DIR", cfgDir)
+	t.Setenv("HOME", hostHome)
+	t.Setenv("AI_REAL_HOME", hostHome)
+
+	hostSessions := filepath.Join(hostHome, ".codex", "sessions", "2026", "09", "10")
+	if err := os.MkdirAll(hostSessions, 0700); err != nil {
+		t.Fatal(err)
+	}
+	hostAuth := `{"tokens":{"id_token":"eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6Im93bmVyQGV4YW1wbGUuY29tIn0.sig"}}`
+	if err := os.WriteFile(filepath.Join(hostHome, ".codex", "auth.json"), []byte(hostAuth), 0600); err != nil {
+		t.Fatal(err)
+	}
+	rollout := `{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":12,"resets_at":1788556157}}}}`
+	if err := os.WriteFile(filepath.Join(hostSessions, "rollout-shared.jsonl"), []byte(rollout), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	profiles := []struct {
+		name  string
+		email string
+	}{
+		{name: "owner", email: "owner@example.com"},
+		{name: "other", email: "other@example.com"},
+	}
+	for _, profile := range profiles {
+		home := filepath.Join(dataDir, "profiles", "codex", profile.name, "home")
+		if err := os.MkdirAll(home, 0700); err != nil {
+			t.Fatal(err)
+		}
+		// Keep the JWT payload simple and valid for InspectAuth.
+		payload := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"email":%q}`, profile.email)))
+		auth := `{"tokens":{"id_token":"header.` + payload + `.sig"}}`
+		if err := os.WriteFile(filepath.Join(home, "auth.json"), []byte(auth), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(hostHome, ".codex", "sessions"), filepath.Join(home, "sessions")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	adapter := New()
+	owner := adapter.GetUsage(context.Background(), model.Profile{Provider: "codex", Name: "owner"})
+	if owner.Status != model.UsageLive || len(owner.Windows) != 1 {
+		t.Fatalf("owner should receive the shared rollout, got status=%s windows=%d", owner.Status, len(owner.Windows))
+	}
+	other := adapter.GetUsage(context.Background(), model.Profile{Provider: "codex", Name: "other"})
+	if other.Status == model.UsageLive || other.Source == model.SourceObservation {
+		t.Fatalf("other profile must not inherit the shared rollout, got status=%s source=%s", other.Status, other.Source)
 	}
 }
 

@@ -49,3 +49,18 @@ func TestProviderRegistry(t *testing.T) {
 		t.Fatalf("unexpected detection results: %+v", detections)
 	}
 }
+
+func TestProviderRegistryNormalizesRegisteredIDs(t *testing.T) {
+	reg := NewRegistry()
+	provider := &mock.FakeProvider{
+		ProviderID:   model.ProviderID("CoDeX"),
+		ProviderName: "Codex",
+	}
+	if err := reg.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := reg.Get("codex")
+	if !ok || got != provider {
+		t.Fatalf("registered provider was not normalized for lookup: ok=%v provider=%v", ok, got)
+	}
+}

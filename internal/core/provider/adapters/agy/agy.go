@@ -302,7 +302,10 @@ func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnap
 		slog.Debug("AGY GetUsage: trying live fetch", "profile", p.Name)
 	}
 	if live, ok := a.fetchLiveQuota(ctx, p); ok {
-		_ = quota.NewEngine(quota.DefaultTTL).SaveUsage(live)
+		if p.AccountScope.Verifiable() {
+			live.AccountScope = p.AccountScope
+			_ = quota.NewEngine(quota.DefaultTTL).SaveUsageForScope(p.AccountScope, live)
+		}
 		if debug {
 			slog.Debug("AGY GetUsage: returning live snapshot", "profile", p.Name, "status", live.Status, "windows", len(live.Windows))
 		}
@@ -326,7 +329,10 @@ func (a *Adapter) RefreshUsage(ctx context.Context, p model.Profile) model.Usage
 		slog.Debug("AGY RefreshUsage: trying live fetch first", "profile", p.Name)
 	}
 	if live, ok := a.fetchLiveQuota(ctx, p); ok {
-		_ = quota.NewEngine(quota.DefaultTTL).SaveUsage(live)
+		if p.AccountScope.Verifiable() {
+			live.AccountScope = p.AccountScope
+			_ = quota.NewEngine(quota.DefaultTTL).SaveUsageForScope(p.AccountScope, live)
+		}
 		if debug {
 			slog.Debug("AGY RefreshUsage: returning live snapshot", "profile", p.Name, "status", live.Status, "windows", len(live.Windows))
 		}
