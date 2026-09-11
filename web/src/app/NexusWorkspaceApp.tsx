@@ -165,6 +165,7 @@ const NexusWorkspaceSession: React.FC<{
   const location = useLocation();
   const navigate = useNavigate();
   const data = useNexusData();
+  const { refreshAgents } = data;
 
   const parsedRoute = useMemo(
     () => parseRouteLocation(location.pathname, location.search),
@@ -206,7 +207,7 @@ const NexusWorkspaceSession: React.FC<{
     setLayoutReady(false);
     setSelectedId(selectedProjectId);
     window.localStorage.setItem(selectedProjectKey, selectedProjectId);
-    void data.refreshAgents(selectedProjectId);
+    void refreshAgents(selectedProjectId);
     nexus
       .getProject(selectedProjectId)
       .then((detail) => {
@@ -225,7 +226,7 @@ const NexusWorkspaceSession: React.FC<{
     return () => {
       cancelled = true;
     };
-  }, [data.refreshAgents, selectedProjectId]);
+  }, [refreshAgents, selectedProjectId]);
 
   useEffect(() => {
     if (data.loading) return;
@@ -348,7 +349,7 @@ const WorkspaceCoordinator: React.FC<{
     return () => {
       mounted = false;
     };
-  }, [project.id, palette]);
+  }, [project.id]); // eslint-disable-line react-hooks/exhaustive-deps -- palette is UI state, not a data dependency
 
   const open = useCallback(
     (surface: WorkspaceSurface, updateUrl = true) => {
@@ -513,14 +514,14 @@ const WorkspaceCoordinator: React.FC<{
       },
       {
         id: 'new-ai-session',
-        label: 'New AI Session',
+        label: t('commands.newAiSession', { defaultValue: 'New AI Session' }),
         group: t('commands.project'),
         keywords: ['agent', 'session', 'direct', 'create', 'terminal'],
         run: openNewAISession,
       },
       {
         id: 'project-shell',
-        label: 'New Terminal',
+        label: t('commands.newTerminal', { defaultValue: 'New Terminal' }),
         group: t('commands.project'),
         keywords: ['shell', 'terminal', 'bash', 'powershell'],
         run: () => void shell(),
@@ -550,14 +551,14 @@ const WorkspaceCoordinator: React.FC<{
       ]),
       {
         id: 'work',
-        label: 'Open Composer',
+        label: t('commands.openComposer', { defaultValue: 'Open Composer' }),
         group: t('commands.project'),
         keywords: ['composer', 'prompt', 'goal', 'plan'],
         run: () => openKind('work'),
       },
       {
         id: 'plan',
-        label: 'Open Flow Runs history',
+        label: t('commands.openFlowRuns', { defaultValue: 'Open Flow Runs history' }),
         group: t('commands.project'),
         keywords: ['flow', 'mission', 'history', 'runs'],
         run: () => openKind('missions'),
@@ -621,44 +622,50 @@ const WorkspaceCoordinator: React.FC<{
       ...[
         {
           id: 'preset-automatic',
-          label: 'Layout: Automatic (Smart)',
-          group: 'Layout Presets',
+          label: t('layoutPreset.automatic', { defaultValue: 'Layout: Automatic (Smart)' }),
+          group: t('layoutPreset.group', { defaultValue: 'Layout Presets' }),
           preset: 'automatic' as const,
         },
         {
           id: 'preset-terminal-focus',
-          label: 'Layout: Terminal Focus (68/32)',
-          group: 'Layout Presets',
+          label: t('layoutPreset.terminalFocus', {
+            defaultValue: 'Layout: Terminal Focus (68/32)',
+          }),
+          group: t('layoutPreset.group', { defaultValue: 'Layout Presets' }),
           preset: 'terminal-focus' as const,
         },
         {
           id: 'preset-two-columns',
-          label: 'Layout: Two Columns (50/50)',
-          group: 'Layout Presets',
+          label: t('layoutPreset.twoColumns', { defaultValue: 'Layout: Two Columns (50/50)' }),
+          group: t('layoutPreset.group', { defaultValue: 'Layout Presets' }),
           preset: 'two-columns' as const,
         },
         {
           id: 'preset-three-columns',
-          label: 'Layout: Three Columns (33/33/33)',
-          group: 'Layout Presets',
+          label: t('layoutPreset.threeColumns', {
+            defaultValue: 'Layout: Three Columns (33/33/33)',
+          }),
+          group: t('layoutPreset.group', { defaultValue: 'Layout Presets' }),
           preset: 'three-columns' as const,
         },
         {
           id: 'preset-terminal-chat',
-          label: 'Layout: Terminal + Chat',
-          group: 'Layout Presets',
+          label: t('layoutPreset.terminalChat', { defaultValue: 'Layout: Terminal + Chat' }),
+          group: t('layoutPreset.group', { defaultValue: 'Layout Presets' }),
           preset: 'terminal-chat' as const,
         },
         {
           id: 'preset-terminal-flow',
-          label: 'Layout: Terminal + Flow',
-          group: 'Layout Presets',
+          label: t('layoutPreset.terminalFlow', { defaultValue: 'Layout: Terminal + Flow' }),
+          group: t('layoutPreset.group', { defaultValue: 'Layout Presets' }),
           preset: 'terminal-flow' as const,
         },
         {
           id: 'preset-focus-mode',
-          label: 'Layout: Focus Mode (Active window)',
-          group: 'Layout Presets',
+          label: t('layoutPreset.focusMode', {
+            defaultValue: 'Layout: Focus Mode (Active window)',
+          }),
+          group: t('layoutPreset.group', { defaultValue: 'Layout Presets' }),
           preset: 'focus-mode' as const,
         },
         {

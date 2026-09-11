@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NexusAPIError, nexusApi } from './api';
+import { NexusAPIError, nexusApi, setNexusCSRF } from './api';
 
 describe('nexus API request errors', () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
     vi.stubGlobal('fetch', vi.fn());
+    setNexusCSRF('');
   });
 
   it('preserves status and structured clarification payload on 409', async () => {
     const payload = {
       error: 'clarification_required',
+      code: 'CONFLICT',
       clarification: {
         id: 'clr-1',
         project_id: 'proj-1',
@@ -46,7 +48,45 @@ describe('nexus API request errors', () => {
       expect(apiError.status).toBe(409);
       expect(apiError.payload.clarification.id).toBe('clr-1');
       expect(apiError.message).toBe('clarification_required');
+      expect(apiError.code).toBe('CONFLICT');
     }
+  });
+
+  it('uses the shared transport CSRF state', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ status: 'ok' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    setNexusCSRF('nexus-shared-csrf');
+
+    await nexusApi.prepareContext('project-1', true);
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.get('X-CSRF-Token')).toBe('nexus-shared-csrf');
+  });
+});
+
+describe('system metadata API', () => {
+  it('loads version and capability metadata through the Nexus client boundary', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          apiVersion: 'v1',
+          serverVersion: 'dev',
+          build: {},
+          providers: ['codex'],
+          capabilities: { codex: { terminal: true } },
+        }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(nexusApi.getSystemInfo()).resolves.toMatchObject({
+      apiVersion: 'v1',
+      providers: ['codex'],
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/v1/system/info');
   });
 });
 
@@ -104,6 +144,49 @@ describe('mission manual-control API routes', () => {
     vi.stubGlobal('fetch', fetchMock);
     await nexusApi.returnToMission('run-1');
     expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/runs/run-1/return-to-mission');
+  });
+});
+
+describe('mission CRUD API contracts', () => {
+  it('keeps mission list and detail payloads typed at the client boundary', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ missions: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({ mission: { id: 'mission-1' }, tasks: [], assignments: [], stats: {} }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(nexusApi.listMissions('project-1')).resolves.toEqual({ missions: [] });
+    await expect(nexusApi.getMission('mission-1')).resolves.toMatchObject({
+      mission: { id: 'mission-1' },
+      tasks: [],
+      assignments: [],
+    });
+  });
+});
+
+describe('resource allocation API contracts', () => {
+  it('preserves the scheduler decision and persistence result', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          decision: { policy: 'MANUAL', score: 1, explain_path: [] },
+          persisted: true,
+        }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(nexusApi.selectResource('agent-1', 'codex', 'work')).resolves.toMatchObject({
+      decision: { policy: 'MANUAL', score: 1 },
+      persisted: true,
+    });
   });
 });
 

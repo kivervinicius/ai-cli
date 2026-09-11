@@ -3,25 +3,11 @@ import { AlertTriangle, CheckCircle2, RefreshCw, Sparkles } from 'lucide-react';
 import { Badge, Button, Card, EmptyState, InlineAlert, Spinner } from '../design-system';
 import { nexus } from './api';
 import { useTranslation } from 'react-i18next';
-interface MaestroStatus {
-  available: boolean;
-  mode: string;
-  capabilities?: { version: string; modes: string[]; skills: string[] };
-  error?: string;
-}
-interface Recommendation {
-  id: string;
-  type: string;
-  title: string;
-  description: string;
-  apply: string;
-  why: string;
-  risk: string;
-}
+import type { MaestroRecommendation, MaestroStatus } from '../types';
 export const MaestroPage: React.FC<{ projectId: string }> = ({ projectId }) => {
   const { t } = useTranslation();
   const [status, setStatus] = useState<MaestroStatus | null>(null);
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [recommendations, setRecommendations] = useState<MaestroRecommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [advising, setAdvising] = useState(false);
   const loadStatus = useCallback(async () => {

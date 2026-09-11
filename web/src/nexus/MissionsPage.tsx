@@ -4,34 +4,7 @@ import { Badge, Button, Card, EmptyState, Input, Spinner } from '../design-syste
 import { nexus } from './api';
 import { translateStatus } from '../i18n';
 import { useTranslation } from 'react-i18next';
-interface Mission {
-  id: string;
-  project_id: string;
-  name: string;
-  description: string;
-  status: string;
-  goal: string;
-  scope: string;
-  risk_level: string;
-  created_at: string;
-  updated_at: string;
-}
-interface MissionTask {
-  id: string;
-  mission_id: string;
-  name: string;
-  description: string;
-  status: string;
-  kind: string;
-  priority: number;
-}
-interface MissionStats {
-  total: number;
-  pending: number;
-  active: number;
-  completed: number;
-  failed: number;
-}
+import type { Mission, MissionStats, MissionTask } from '../types';
 const statusTone = (status: string) =>
   status === 'COMPLETED'
     ? 'success'

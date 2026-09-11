@@ -78,8 +78,18 @@ export interface ProviderInfo {
   id: string;
   installed: boolean;
   version: string;
+  registration_state?: string;
+  binary_path?: string;
   control_level: string;
   capabilities: EffectiveCapabilities;
+}
+
+export interface NexusSystemInfo {
+  apiVersion: string;
+  serverVersion: string;
+  build: Record<string, string>;
+  providers: string[];
+  capabilities: Record<string, Record<string, unknown>>;
 }
 
 export interface ProfileInfo {
@@ -89,6 +99,19 @@ export interface ProfileInfo {
   plan?: string;
   authenticated: boolean;
   is_default: boolean;
+}
+
+export interface RegisteredProfile {
+  provider: string;
+  name: string;
+  created_at?: string;
+  account_scope?: {
+    provider_id: string;
+    profile_id: string;
+    account_id: string;
+    identity_version: string;
+    credential_scope?: string;
+  };
 }
 
 export interface ProviderAccount {
@@ -130,8 +153,29 @@ export interface ProviderAccount {
   };
 }
 
+export interface SchedulerRejection {
+  account: ProviderAccount;
+  reason: string;
+}
+
+export interface SchedulerDecision {
+  selected: ProviderAccount;
+  policy: string;
+  reason: string;
+  score: number;
+  rejected?: SchedulerRejection[];
+  explain_path: string[];
+}
+
+export interface ResourceAllocation {
+  decision: SchedulerDecision;
+  impact?: ConfigImpact;
+  persisted: boolean;
+}
+
 export interface EventRecord {
   id: string;
+  correlation_id?: string;
   runtime_id: string;
   provider_id?: string;
   profile_id?: string;
@@ -139,7 +183,7 @@ export interface EventRecord {
   profile?: string;
   type: string;
   summary: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   timestamp: string;
 }
 
@@ -173,6 +217,93 @@ export interface Agent {
   created_at: string;
   updated_at: string;
   last_started_at?: string;
+}
+
+export interface Mission {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string;
+  status: string;
+  goal: string;
+  scope: string;
+  risk_level: string;
+  config: string;
+  created_at: string;
+  updated_at: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface MissionTask {
+  id: string;
+  mission_id: string;
+  name: string;
+  description: string;
+  status: string;
+  kind: string;
+  priority: number;
+  dependencies: string;
+  config: string;
+  result: string;
+  created_at: string;
+  updated_at: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface MissionAssignment {
+  id: string;
+  mission_id: string;
+  task_id: string;
+  agent_id: string;
+  status: string;
+  assigned_at: string;
+  completed_at?: string;
+}
+
+export interface MissionStats {
+  total: number;
+  pending: number;
+  active: number;
+  completed: number;
+  failed: number;
+}
+
+export interface MissionDetail {
+  mission: Mission;
+  tasks: MissionTask[];
+  assignments: MissionAssignment[];
+  stats: MissionStats;
+}
+
+export interface MissionCreateInput {
+  name: string;
+  description?: string;
+  goal?: string;
+  scope?: string;
+  risk_level?: string;
+}
+
+export interface MissionPatch {
+  name?: string;
+  description?: string;
+  status?: string;
+  goal?: string;
+  scope?: string;
+  risk_level?: string;
+}
+
+export interface MissionTaskInput {
+  name: string;
+  description?: string;
+  kind?: string;
+  priority?: number;
+}
+
+export interface MissionAssignmentInput {
+  task_id: string;
+  agent_id: string;
 }
 
 export interface RuntimeGeneration {
@@ -222,7 +353,7 @@ export interface AgentConfig {
   provider: string;
   profile: string;
   model?: string;
-  options?: Record<string, any>;
+  options?: Record<string, unknown>;
   workspace?: string;
   isolation?: string;
   maestro_mode?: string;
@@ -233,6 +364,19 @@ export interface AgentConfig {
     max_concurrent?: number;
     quota_preserve?: boolean;
     cooldown_seconds?: number;
+  };
+  agent_spec?: AgentSpec;
+}
+
+export interface AgentSpec {
+  role?: string;
+  instructions?: string[];
+  responsibilities?: string[];
+  capabilities?: string[];
+  constraints?: string[];
+  verification_policy?: {
+    require_evidence?: boolean;
+    require_tests?: boolean;
   };
 }
 
@@ -362,6 +506,44 @@ export interface MaestroCatalog {
   operational: CatalogSkill[];
   library: CatalogSkill[];
   counts: { operational: number; library: number; copies: number };
+}
+
+export interface MaestroStatus {
+  available: boolean;
+  mode: string;
+  capabilities?: {
+    version: string;
+    modes: string[];
+    skills: MaestroSkill[];
+    gates?: string[];
+    processes?: string[];
+  };
+  last_check?: string;
+  error?: string;
+}
+
+export interface MaestroRecommendation {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  apply: string;
+  why: string;
+  risk: string;
+  gates?: string[];
+  skills?: string[];
+  verify?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface MaestroAdvice {
+  version?: string;
+  mode?: string;
+  required?: MaestroRecommendation[];
+  recommended?: MaestroRecommendation[];
+  optional?: MaestroRecommendation[];
+  explanation?: string;
+  degraded?: boolean;
 }
 
 export interface SkillSyncPreview {
@@ -800,4 +982,13 @@ export interface FlowDecompositionProposal {
   flow: import('./features/work/flowModel').FlowDraftModel;
   reasoning: string;
   maestro_advice?: string;
+}
+
+export interface TunnelStatus {
+  active: boolean;
+  url?: string;
+  bootstrap_url?: string;
+  cloudflared_installed: boolean;
+  cloudflared_version?: string;
+  error?: string;
 }

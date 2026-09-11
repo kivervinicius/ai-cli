@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { api, initSession } from './api';
+import { api, initSession, request, setCSRFToken } from './api';
 import { setPlatformBridge, type PlatformBridge, WebBridge } from './platform';
 
 describe('api request layer', () => {
@@ -7,6 +7,21 @@ describe('api request layer', () => {
     vi.unstubAllGlobals();
     vi.stubGlobal('fetch', vi.fn());
     setPlatformBridge(new WebBridge());
+    setCSRFToken('');
+  });
+
+  it('exposes the shared request transport and CSRF setter for domain clients', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ status: 'ok' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    setCSRFToken('shared-csrf');
+
+    await request('/api/v1/shared-contract', { method: 'POST', body: '{}' });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.get('X-CSRF-Token')).toBe('shared-csrf');
   });
 
   it('throws on non-ok responses', async () => {
@@ -23,6 +38,23 @@ describe('api request layer', () => {
     await expect(api.getWorkspaces()).rejects.toThrow('authentication required');
   });
 
+  it('preserves stable API error codes for the shared request layer', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        json: () => Promise.resolve({ error: 'project not found', code: 'PROJECT_NOT_FOUND' }),
+      }),
+    );
+
+    await expect(api.getWorkspaces()).rejects.toMatchObject({
+      status: 404,
+      code: 'PROJECT_NOT_FOUND',
+    });
+  });
+
   it('sends JSON bodies on state-changing calls', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -36,6 +68,23 @@ describe('api request layer', () => {
     expect(url).toBe('/api/v1/runtimes/rt-1/stop');
     expect(init.method).toBe('POST');
     expect(init.headers.get('Content-Type')).toBe('application/json');
+  });
+
+  it('keeps the runtime detail capability contract typed and nullable', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          session: { runtime_id: 'rt-1', workspace: '/tmp', state: 'RUNNING' },
+          capabilities: null,
+        }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(api.getRuntime('rt-1')).resolves.toMatchObject({
+      session: { runtime_id: 'rt-1' },
+      capabilities: null,
+    });
   });
 
   it('includes CSRF token header after session bootstrap', async () => {

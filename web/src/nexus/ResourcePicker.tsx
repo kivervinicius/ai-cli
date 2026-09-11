@@ -7,7 +7,9 @@ import { useTranslation } from 'react-i18next';
 import styles from './ResourcePicker.module.scss';
 import { quotaTruthState } from '../features/work/directSessionModel';
 
-interface QuotaWindow {
+import type { ProviderAccount, SchedulerDecision } from '../types';
+
+interface DisplayQuotaWindow {
   kind: string;
   label: string;
   remaining: number;
@@ -16,55 +18,9 @@ interface QuotaWindow {
   bar: string;
 }
 
-interface QuotaModelGroup {
+interface DisplayQuotaModelGroup {
   name: string;
-  windows: QuotaWindow[];
-}
-
-interface AvailReasons {
-  exhausted_windows?: string[];
-  rate_limited?: boolean;
-  unknown_quota?: boolean;
-  auth_required?: boolean;
-  all_ok?: boolean;
-}
-
-interface QuotaView {
-  provider: string;
-  profile: string;
-  account: string;
-  plan: string;
-  status: string;
-  source: string;
-  model_groups: QuotaModelGroup[];
-  fetched_at: string;
-  available: boolean;
-  avail_reasons: AvailReasons;
-}
-
-interface ProviderAccount {
-  id: string;
-  provider: string;
-  profile: string;
-  display_name: string;
-  authenticated: boolean;
-  is_default: boolean;
-  available: boolean;
-  avail_reasons?: AvailReasons;
-  quota_view?: QuotaView;
-  quota_remaining: number;
-  quota_total: number;
-  rate_limited: boolean;
-  health: string;
-}
-
-interface SchedulerDecision {
-  selected: ProviderAccount | null;
-  policy: string;
-  reason: string;
-  score: number;
-  rejected: { account: ProviderAccount; reason: string }[];
-  explain_path: string[];
+  windows: DisplayQuotaWindow[];
 }
 
 interface Props {
@@ -82,7 +38,7 @@ const healthTone = (health: string) =>
         ? 'danger'
         : 'default';
 
-const QuotaBar: React.FC<{ w: QuotaWindow }> = ({ w }) => (
+const QuotaBar: React.FC<{ w: DisplayQuotaWindow }> = ({ w }) => (
   <span className="nx-resource-account__quota-row">
     <span className="nx-resource-account__quota-label">{w.label}</span>
     <Progress value={w.remaining} label={`${Math.round(w.remaining)}%`} />
@@ -90,8 +46,22 @@ const QuotaBar: React.FC<{ w: QuotaWindow }> = ({ w }) => (
   </span>
 );
 
-const groupAvailable = (group: QuotaModelGroup) =>
+const groupAvailable = (group: DisplayQuotaModelGroup) =>
   group.windows.some((w) => w.kind !== 'unknown' && w.remaining > 0);
+
+function displayQuotaGroups(account: ProviderAccount): DisplayQuotaModelGroup[] {
+  return (account.quota_view?.model_groups || []).map((group, index) => ({
+    name: group.name || group.key || `Quota ${index + 1}`,
+    windows: (group.windows || []).map((window) => ({
+      kind: window.kind || 'unknown',
+      label: window.label || window.kind || 'quota',
+      remaining: typeof window.remaining === 'number' ? window.remaining : 0,
+      reset_desc: window.reset_desc || '',
+      status: window.status || 'UNKNOWN',
+      bar: window.status || 'UNKNOWN',
+    })),
+  }));
+}
 
 export const ResourcePicker: React.FC<Props> = ({ agentId, preferProvider, onSelected }) => {
   const { t } = useTranslation();
@@ -156,9 +126,9 @@ export const ResourcePicker: React.FC<Props> = ({ agentId, preferProvider, onSel
             </h3>
             {providerAccounts.map((account) => {
               const selected = decision?.selected?.id === account.id;
-              const qv = account.quota_view;
-              const hasGroups = qv && qv.model_groups && qv.model_groups.length > 0;
-              const multiGroups = qv && qv.model_groups && qv.model_groups.length > 1;
+              const groups = displayQuotaGroups(account);
+              const hasGroups = groups.length > 0;
+              const multiGroups = groups.length > 1;
               const quotaState = quotaTruthState(account);
 
               return (
@@ -214,7 +184,7 @@ export const ResourcePicker: React.FC<Props> = ({ agentId, preferProvider, onSel
                     </span>
                     <span className="nx-resource-account__quota">
                       {hasGroups ? (
-                        qv!.model_groups.map((group, gi) => (
+                        groups.map((group, gi) => (
                           <span key={gi} className="nx-resource-account__group">
                             {multiGroups && group.name && (
                               <span className="nx-resource-account__group-heading">

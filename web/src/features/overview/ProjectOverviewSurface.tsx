@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ArrowUpCircle, Play, RotateCcw, TerminalSquare } from 'lucide-react';
 import { Badge, Button, Card, Dialog, EmptyState } from '../../design-system';
 import { nexus } from '../../nexus/api';
+import { runtimeIdFromRecoverResult } from '../../nexus/agentTerminalModel';
 import { ResourcePicker } from '../../nexus/ResourcePicker';
 import { ProjectCreateActions } from '../projects/ProjectCreateActions';
 import type { Agent, MissionRun, Project, RuntimeSession } from '../../types';
@@ -96,10 +97,7 @@ export const ProjectOverviewSurface: React.FC<{
     try {
       const res = await (onRecoverAgent ? onRecoverAgent(agent) : nexus.recoverAgent(agent.id));
       await refreshAgents?.();
-      const runtimeId =
-        res && typeof res === 'object' && 'runtime' in res
-          ? (res as any).runtime?.runtime_id
-          : undefined;
+      const runtimeId = runtimeIdFromRecoverResult(res);
       onOpenAgent(agent, runtimeId);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

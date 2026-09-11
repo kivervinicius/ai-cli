@@ -1,4 +1,11 @@
-import { Workspace, RuntimeSession, ProviderInfo, ProfileInfo, EventRecord } from './types';
+import {
+  Workspace,
+  RuntimeSession,
+  ProviderInfo,
+  ProfileInfo,
+  EventRecord,
+  EffectiveCapabilities,
+} from './types';
 import { isDesktopApp, getPlatformBridge } from './platform';
 
 let csrfToken = '';
@@ -12,9 +19,33 @@ export type BrowserSession = {
   idle_timeout?: number;
 };
 
+export type APIErrorPayload = {
+  error?: string;
+  code?: string;
+  [key: string]: unknown;
+};
+
+export class NexusRequestError<TPayload extends APIErrorPayload = APIErrorPayload> extends Error {
+  readonly status: number;
+  readonly code: string | undefined;
+  readonly payload: TPayload;
+
+  constructor(status: number, payload: TPayload, message: string) {
+    super(message);
+    this.name = 'NexusRequestError';
+    this.status = status;
+    this.code = payload.code;
+    this.payload = payload;
+  }
+}
+
 export function setDesktopAuth(token: string, baseUrl = '') {
   desktopAuthToken = token;
   desktopBaseUrl = baseUrl.replace(/\/+$/, '');
+}
+
+export function setCSRFToken(token: string) {
+  csrfToken = token;
 }
 
 export function getDesktopAuthToken(): string {
@@ -176,7 +207,7 @@ export async function rotateSession(): Promise<BrowserSession> {
   return data;
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
   headers.set('Accept', 'application/json');
 
@@ -195,8 +226,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(targetUrl, { ...options, headers });
   if (!res.ok) {
     if (res.status === 401) notifySessionExpired();
-    const errBody = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(errBody.error || `HTTP ${res.status}`);
+    const errBody = (await res.json().catch(() => ({ error: res.statusText }))) as APIErrorPayload;
+    throw new NexusRequestError(res.status, errBody, errBody.error || `HTTP ${res.status}`);
   }
   return res.json();
 }
@@ -214,7 +245,9 @@ export const api = {
     }),
   getRuntimes: () => request<RuntimeSession[]>('/api/v1/runtimes'),
   getRuntime: (id: string) =>
-    request<{ session: RuntimeSession; capabilities: any }>(`/api/v1/runtimes/${id}`),
+    request<{ session: RuntimeSession; capabilities: EffectiveCapabilities | null }>(
+      `/api/v1/runtimes/${id}`,
+    ),
   startRuntime: (
     provider: string,
     profile: string,

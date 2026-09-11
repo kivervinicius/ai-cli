@@ -194,8 +194,10 @@ export const InAppNotificationCenter: React.FC<{
         <ContextDrawer
           open={drawerOpen}
           onClose={onCloseDrawer}
-          title="Central de Atenção & Notificações"
-          description="Radar em tempo real dos terminais e histórico de alertas do sistema"
+          title={t('notifications.title', { defaultValue: 'Attention & Notifications Center' })}
+          description={t('notifications.description', {
+            defaultValue: 'Real-time radar of terminals and system alert history',
+          })}
           width={440}
         >
           <div className="nx-notification-drawer">
@@ -209,7 +211,7 @@ export const InAppNotificationCenter: React.FC<{
                 onClick={() => setActiveTab('radar')}
               >
                 <Radio size={13} />
-                <span>Radar de Atenção</span>
+                <span>{t('notifications.radarTab', { defaultValue: 'Attention Radar' })}</span>
                 {totalNeeds > 0 && (
                   <span className="nx-notification-drawer__badge">{totalNeeds}</span>
                 )}
@@ -221,7 +223,10 @@ export const InAppNotificationCenter: React.FC<{
                 className={`nx-notification-drawer__tab ${activeTab === 'notifications' ? 'nx-notification-drawer__tab--active' : ''}`}
                 onClick={() => setActiveTab('notifications')}
               >
-                <span>Notificações ({history.length})</span>
+                <span>
+                  {t('notifications.notificationsTab', { defaultValue: 'Notifications' })} (
+                  {history.length})
+                </span>
               </button>
             </div>
 
@@ -231,14 +236,20 @@ export const InAppNotificationCenter: React.FC<{
                 {radarGroups.length === 0 ? (
                   <div className="nx-notification-drawer__empty">
                     <Radio size={24} />
-                    <p>Nenhum terminal ou agente em execução no momento.</p>
+                    <p>
+                      {t('notifications.noRuntimesRunning', {
+                        defaultValue: 'No terminals or agents running at the moment.',
+                      })}
+                    </p>
                   </div>
                 ) : (
                   radarGroups.map((group) => (
                     <section key={group.projectId} className="nx-attention-radar__group">
                       <header>
                         <strong>{group.projectName}</strong>
-                        {group.projectId === focusedProjectId && <span>atual</span>}
+                        {group.projectId === focusedProjectId && (
+                          <span>{t('common.current', { defaultValue: 'current' })}</span>
+                        )}
                       </header>
                       <ul>
                         {group.items.map((item) => {
@@ -288,7 +299,11 @@ export const InAppNotificationCenter: React.FC<{
               <div className="nx-notification-drawer__panel">
                 {history.length === 0 ? (
                   <div className="nx-notification-drawer__empty">
-                    <p>Nenhuma notificação registrada nesta sessão.</p>
+                    <p>
+                      {t('notifications.noNotifications', {
+                        defaultValue: 'No notifications recorded in this session.',
+                      })}
+                    </p>
                   </div>
                 ) : (
                   history.map((notif) => (

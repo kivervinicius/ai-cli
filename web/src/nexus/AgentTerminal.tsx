@@ -453,7 +453,7 @@ export const AgentTerminal: React.FC<{
       }
       const delay = terminalReconnectDelay(reconnectAttempt++);
       setConnection('CONNECTING');
-      setMessage(`Reconnecting Agent terminal in ${delay}ms…`);
+      setMessage(t('terminal.reconnecting', { delay }));
       reconnectTimer = window.setTimeout(() => {
         reconnectTimer = undefined;
         connect();
@@ -475,7 +475,7 @@ export const AgentTerminal: React.FC<{
       autoRecoveredRef.current = true;
       setRecovering(true);
       setConnection('CONNECTING');
-      setMessage('Runtime do agente ausente — recuperando…');
+      setMessage(t('terminal.recoveringRuntime'));
       try {
         const result = onRecoverRef.current
           ? await onRecoverRef.current()
@@ -492,7 +492,7 @@ export const AgentTerminal: React.FC<{
         if (isRequiredResourceError(error)) {
           setRecovering(false);
           setNeedsResourceSelection(true);
-          setMessage('Selecione um provedor/conta para iniciar o runtime deste agente.');
+          setMessage(t('terminal.selectProvider'));
           setConnection('ERROR');
           return;
         }
@@ -549,7 +549,11 @@ export const AgentTerminal: React.FC<{
         setRecovering(false);
         setConnection('CONNECTED');
         setModeAction((current) => (current === 'Restarting' ? 'Ready' : current));
-        setMessage((current) => (current === 'Reiniciando runtime…' ? 'Pronto' : ''));
+        setMessage((current) =>
+          current === t('terminal.restartingRuntime')
+            ? t('common.ready', { defaultValue: 'Ready' })
+            : '',
+        );
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'lease_acquire' }));
         }
@@ -588,7 +592,7 @@ export const AgentTerminal: React.FC<{
             }
             maybeSendKickoff();
           } else if (payload.type === 'runtime_changed') {
-            setMessage('Runtime generation changed — rebinding terminal…');
+            setMessage(t('terminal.rebinding'));
             ws.close(1012, 'runtime generation changed');
           } else if (payload.type === 'title' && payload.data) {
             const next = String(payload.data).trim();
@@ -622,7 +626,7 @@ export const AgentTerminal: React.FC<{
 
       ws.onerror = () => {
         if (!disposed && !stopReconnect && !recoverInFlight) {
-          setMessage('Terminal transport error — reconnecting…');
+          setMessage(t('terminal.transportError'));
         }
       };
 
@@ -733,7 +737,7 @@ export const AgentTerminal: React.FC<{
   const handleManualStartOrRecover = async () => {
     setRecovering(true);
     setNeedsResourceSelection(false);
-    setMessage('Iniciando runtime do agente…');
+    setMessage(t('terminal.startingRuntime'));
     try {
       let nextRuntimeId = '';
       if (onRecover) {
@@ -747,7 +751,7 @@ export const AgentTerminal: React.FC<{
     } catch (e) {
       if (isRequiredResourceError(e)) {
         setNeedsResourceSelection(true);
-        setMessage('Selecione um provedor/conta para iniciar o runtime deste agente.');
+        setMessage(t('terminal.selectProvider'));
         setConnection('ERROR');
       } else {
         setMessage(e instanceof Error ? e.message : String(e));
@@ -760,7 +764,7 @@ export const AgentTerminal: React.FC<{
 
   const handleResourceSelected = async () => {
     setRecovering(true);
-    setMessage('Iniciando runtime com o recurso selecionado…');
+    setMessage(t('terminal.startingWithResource'));
     try {
       const result = await nexus.startAgent(agentId);
       rebindTerminal(runtimeIdFromRecoverResult(result));
@@ -781,7 +785,7 @@ export const AgentTerminal: React.FC<{
     setDeleteConfirmOpen(false);
     if (!onDelete || deleting) return;
     setDeleting(true);
-    setMessage('Removendo agente…');
+    setMessage(t('terminal.removingAgent'));
     try {
       await onDelete();
     } catch (e) {
