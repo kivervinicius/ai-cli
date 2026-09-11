@@ -13,6 +13,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/nexus"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 	"github.com/kivervinicius/ai-cli/internal/profile"
+	"github.com/kivervinicius/ai-cli/internal/testutil"
 )
 
 func captureStdout(f func() error) (string, error) {
@@ -154,10 +155,7 @@ func setupTestEnvironment(t *testing.T) (binDir, testOut string) {
 	t.Setenv("AI_TEST_OUT", testOut)
 
 	writeExe := func(name, body string) {
-		p := filepath.Join(binDir, name)
-		if err := os.WriteFile(p, []byte("#!/bin/sh\n"+body+"\n"), 0755); err != nil {
-			t.Fatal(err)
-		}
+		testutil.WriteFakeBinaryWithScript(t, binDir, name, body)
 	}
 
 	writeExe("codex", `if [ -n "$AI_TEST_OUT" ]; then
@@ -388,10 +386,7 @@ func TestPerformSystemUpdateDoesNotClaimNexusBinaryUpdated(t *testing.T) {
 	binDir := t.TempDir()
 	writeExecutable := func(name, body string) {
 		t.Helper()
-		path := filepath.Join(binDir, name)
-		if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body+"\n"), 0755); err != nil {
-			t.Fatal(err)
-		}
+		testutil.WriteFakeBinaryWithScript(t, binDir, name, body)
 	}
 	writeExecutable("npm", "exit 0")
 	writeExecutable("orquestrador-maestro", "if [ \"$1\" = \"version\" ]; then echo 0.1.0; fi")

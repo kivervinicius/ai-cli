@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
+
+	"github.com/kivervinicius/ai-cli/internal/testutil"
 )
 
 func TestMaestroCapabilitiesMergeProfileAndCanonicalCatalog(t *testing.T) {
@@ -61,14 +62,8 @@ func TestMaestroUnavailableNeverFabricatesAdvice(t *testing.T) {
 }
 
 func TestMaestroAdviseFailureNeverFallsBackToSyntheticRecommendations(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell fixture")
-	}
-	bin := filepath.Join(t.TempDir(), "maestro")
-	script := "#!/bin/sh\nif [ \"$1\" = \"version\" ] || [ \"$1\" = \"--version\" ]; then echo 1.2.3; exit 0; fi\nexit 2\n"
-	if err := os.WriteFile(bin, []byte(script), 0700); err != nil {
-		t.Fatal(err)
-	}
+	script := "if [ \"$1\" = \"version\" ] || [ \"$1\" = \"--version\" ]; then echo 1.2.3; exit 0; fi\nexit 2\n"
+	bin := testutil.WriteFakeBinaryWithScript(t, t.TempDir(), "maestro", script)
 	c := &MaestroClient{status: MaestroStatus{Available: true, Mode: MaestroAssist, Capabilities: &MaestroCapability{Version: "1.2.3"}}, maestroBin: bin}
 	resp, err := c.GetAdvice(AdviceContext{ProjectID: "p1"}, "ship product")
 	if err == nil {

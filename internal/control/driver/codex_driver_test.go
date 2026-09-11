@@ -9,6 +9,7 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
+	"github.com/kivervinicius/ai-cli/internal/testutil"
 )
 
 func TestCodexDriverBuildCommandIsolatesHome(t *testing.T) {
@@ -24,10 +25,7 @@ func TestCodexDriverBuildCommandIsolatesHome(t *testing.T) {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	codexPath := filepath.Join(binDir, "codex")
-	if err := os.WriteFile(codexPath, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testutil.WriteFakeBinary(t, binDir, "codex", "")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	d := &CodexDriver{}
