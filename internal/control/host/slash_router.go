@@ -43,13 +43,13 @@ func StripANSI(str string) string {
 	return b.String()
 }
 
-// RouteSlashCommand inspects terminal input lines and intercepts /nexus or /ai commands with live usage data.
+// RouteSlashCommand inspects terminal input lines and intercepts /nexus/:nexus or /ai/:ai commands with live usage data.
 func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResult {
 	clean := StripANSI(input)
 	trimmed := strings.TrimSpace(clean)
 
-	// 1. Check for escape prefix "//nexus" or "//ai"
-	if strings.HasPrefix(trimmed, "//nexus") {
+	// 1. Check for escape prefix ("//nexus", "//ai", "::nexus", "::ai")
+	if strings.HasPrefix(trimmed, "//nexus") || strings.HasPrefix(trimmed, "::nexus") {
 		escaped := "/nexus" + trimmed[7:]
 		if strings.HasSuffix(input, "\n") {
 			escaped += "\n"
@@ -59,7 +59,7 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 			ForwardToProcess: escaped,
 		}
 	}
-	if strings.HasPrefix(trimmed, "//ai") {
+	if strings.HasPrefix(trimmed, "//ai") || strings.HasPrefix(trimmed, "::ai") {
 		escaped := "/ai" + trimmed[4:]
 		if strings.HasSuffix(input, "\n") {
 			escaped += "\n"
@@ -70,9 +70,9 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 		}
 	}
 
-	// 2. Check for reserved "/nexus" or "/ai" command
-	isNexus := strings.HasPrefix(trimmed, "/nexus")
-	isAI := strings.HasPrefix(trimmed, "/ai")
+	// 2. Check for reserved control prefix ("/nexus", "/ai", ":nexus", ":ai")
+	isNexus := strings.HasPrefix(trimmed, "/nexus") || strings.HasPrefix(trimmed, ":nexus")
+	isAI := strings.HasPrefix(trimmed, "/ai") || strings.HasPrefix(trimmed, ":ai")
 	if !isNexus && !isAI {
 		// Normal input: forward untouched
 		return SlashResult{
@@ -84,6 +84,12 @@ func RouteSlashCommand(input string, session registry.RuntimeSession) SlashResul
 	prefix := "/nexus"
 	if isAI && !isNexus {
 		prefix = "/ai"
+	}
+	// Use the actual prefix from input for display consistency
+	if strings.HasPrefix(trimmed, ":nexus") {
+		prefix = ":nexus"
+	} else if strings.HasPrefix(trimmed, ":ai") {
+		prefix = ":ai"
 	}
 
 	// It is a slash command: intercept completely

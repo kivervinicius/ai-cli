@@ -51,13 +51,43 @@ func (r *SlashPrefixRouter) Reset() {
 }
 
 func isPrefixOfKnown(s string) bool {
-	targets := []string{"/nexus", "/ai", "//nexus", "//ai"}
+	targets := []string{"/nexus", "/ai", "//nexus", "//ai", ":nexus", ":ai", "::nexus", "::ai"}
 	for _, t := range targets {
 		if strings.HasPrefix(t, s) {
 			return true
 		}
 	}
 	return false
+}
+
+// isControlPrefix reports whether the trimmed, lowercased prefix should be
+// intercepted as a Nexus control command (not forwarded to the child).
+func isControlPrefix(s string) bool {
+	switch s {
+	case "/nexus", "/ai", ":nexus", ":ai":
+		return true
+	}
+	return false
+}
+
+// isEscapePrefix reports whether the prefix is a double-delimiter escape
+// (e.g. "//nexus", "::ai") that should forward the single-delimiter form
+// to the child process.
+func isEscapePrefix(s string) bool {
+	switch s {
+	case "//nexus", "//ai", "::nexus", "::ai":
+		return true
+	}
+	return false
+}
+
+// strippedEscape removes one leading delimiter from an escape prefix.
+// "//nexus" → "/nexus", "::ai" → ":ai"
+func strippedEscape(s string) string {
+	if len(s) >= 2 && s[0] == s[1] && (s[0] == '/' || s[0] == ':') {
+		return s[1:]
+	}
+	return s
 }
 
 // ProcessByte processes a single byte through the prefix state machine.
@@ -69,7 +99,7 @@ func (r *SlashPrefixRouter) ProcessByte(b byte) RouterOutput {
 
 	switch r.state {
 	case StateIdle:
-		if b == '/' {
+		if b == '/' || b == ':' {
 			r.state = StateBuffering
 			r.prefixBuf.WriteByte(b)
 			return RouterOutput{Action: ActionNone}
@@ -83,7 +113,7 @@ func (r *SlashPrefixRouter) ProcessByte(b byte) RouterOutput {
 	case StateBuffering:
 		if b == '\t' {
 			trimmedPrefix := strings.ToLower(strings.TrimSpace(r.prefixBuf.String()))
-			if trimmedPrefix == "/nexus" || trimmedPrefix == "/ai" {
+			if isControlPrefix(trimmedPrefix) {
 				r.state = StateControlCommand
 				r.commandBuf.Reset()
 				r.commandBuf.WriteString(r.prefixBuf.String())
@@ -95,7 +125,7 @@ func (r *SlashPrefixRouter) ProcessByte(b byte) RouterOutput {
 		// Check if delimiter encountered
 		if b == ' ' || b == '\t' || b == '\r' || b == '\n' {
 			trimmedPrefix := strings.ToLower(strings.TrimSpace(r.prefixBuf.String()))
-			if trimmedPrefix == "/nexus" || trimmedPrefix == "/ai" {
+			if isControlPrefix(trimmedPrefix) {
 				// Confirmed command prefix
 				r.state = StateControlCommand
 				r.commandBuf.Reset()
@@ -111,19 +141,11 @@ func (r *SlashPrefixRouter) ProcessByte(b byte) RouterOutput {
 				return RouterOutput{Action: ActionNone}
 			}
 
-			if trimmedPrefix == "//nexus" {
+			if isEscapePrefix(trimmedPrefix) {
 				r.state = StatePassthrough
-				out := append([]byte("/nexus"), b)
-				r.prefixBuf.Reset()
-				if b == '\r' || b == '\n' {
-					r.state = StateIdle
-				}
-				return RouterOutput{Action: ActionForwardBytes, ForwardBytes: out}
-			}
-
-			if trimmedPrefix == "//ai" {
-				r.state = StatePassthrough
-				out := append([]byte("/ai"), b)
+				// Strip one leading delimiter: "//" → "/", "::" → ":"
+				stripped := strippedEscape(trimmedPrefix)
+				out := append([]byte(stripped), b)
 				r.prefixBuf.Reset()
 				if b == '\r' || b == '\n' {
 					r.state = StateIdle

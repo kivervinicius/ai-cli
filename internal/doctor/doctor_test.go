@@ -68,6 +68,7 @@ func TestBuildReportPlatformChecksAreEvidenceBound(t *testing.T) {
 }
 
 func TestBuildReportContainerSkipsNativeDesktopProbes(t *testing.T) {
+	t.Setenv("NEXUS_TEST_NOT_CONTAINER", "")
 	t.Setenv("NEXUS_DOCKER", "1")
 	report := BuildReport("test", map[string]model.DetectionResult{
 		"claude": {Installed: true, Version: "fixture"},

@@ -265,10 +265,18 @@ func interactiveTUI() error {
 }
 
 func executeProviderWithSmartSelection(provName, explicitProfile string, args []string) error {
-	if hasProviderLaunchFlag(args, "--supervised") {
-		return executeProviderSupervised(provName, explicitProfile, removeProviderLaunchFlag(args, "--supervised"))
+	resolver := NewLaunchModeResolver(LaunchModeInput{
+		Args:       args,
+		StdinIsTTY: IsTerminal(),
+	})
+	result := resolver.ResolveWithReason()
+
+	switch result.Mode {
+	case LaunchModeSupervised:
+		return executeProviderSupervised(provName, explicitProfile, resolver.StripControlFlags())
+	case LaunchModeDirect:
+		args = resolver.StripControlFlags()
 	}
-	args = removeProviderLaunchFlag(args, "--direct")
 
 	// Keep quota monitoring alive for the lifetime of direct provider commands,
 	// including nexus agy/codex/cursor invocations.
