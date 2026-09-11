@@ -887,3 +887,29 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
 
+## Evolution Campaign — Final Verification Gate — 2026-09-11
+
+**Commit:** cc1ebf0 (after all uncommitted work committed)
+**Working tree:** clean
+
+### Go Quality Gates
+- `go test ./...` — PASS (63 packages, 803+ tests)
+- `go vet ./...` — PASS (no issues)
+- `go build ./...` — PASS (clean)
+
+### Frontend Quality Gates
+- `npm --prefix web run typecheck` — PASS
+- `npm --prefix web run lint` — PASS
+- `npm --prefix web run test` — PASS (329/329)
+
+### Evolution Requirements
+- R1 (Interactive Continuity): PASS — LaunchModeResolver, supervised default, `:nexus` prefix
+- R2 (Agent Routing Truth): PASS — Colon prefix routing, centralized matcher
+- R3 (Autonomous Resource Continuity): PASS — Typed scheduler contracts, ResourcePicker
+- R4 (Doctor test regression): PASS — P1 fix applied (NEXUS_TEST_NOT_CONTAINER clear)
+- R5 (Quality gates): PASS — All gates green
+
+### Verdict: **GO**
+
+All evolution requirements satisfied. Quality gates green. No P0 or P1 findings remaining. Native platform verification remains unverified (expected — no runners).
+
