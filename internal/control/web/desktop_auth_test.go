@@ -10,7 +10,7 @@ import (
 )
 
 func TestDesktopBootstrapRequiresDesktopOrigin(t *testing.T) {
-	auth, _, err := NewAuthManager("127.0.0.1", "3000")
+	auth, _, err := NewAuthManager("127.0.0.1", "13000")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,12 +23,12 @@ func TestDesktopBootstrapRequiresDesktopOrigin(t *testing.T) {
 
 	srv := &Server{
 		auth: auth,
-		url:  "http://127.0.0.1:3000",
+		url:  "http://127.0.0.1:13000",
 	}
 
 	// 1. Request without Origin or Referer -> Must be rejected with 403 Forbidden
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/desktop/bootstrap", nil)
-	req.Host = "127.0.0.1:3000"
+	req.Host = "127.0.0.1:13000"
 	rec := httptest.NewRecorder()
 
 	srv.handleDesktopBootstrap(rec, req)
@@ -47,7 +47,7 @@ func TestDesktopBootstrapRequiresDesktopOrigin(t *testing.T) {
 		"http://evil.com",
 	} {
 		reqBad := httptest.NewRequest(http.MethodGet, "/api/v1/desktop/bootstrap", nil)
-		reqBad.Host = "127.0.0.1:3000"
+		reqBad.Host = "127.0.0.1:13000"
 		reqBad.Header.Set("Origin", badOrigin)
 		recBad := httptest.NewRecorder()
 		srv.handleDesktopBootstrap(recBad, reqBad)
@@ -56,7 +56,7 @@ func TestDesktopBootstrapRequiresDesktopOrigin(t *testing.T) {
 		}
 
 		reqBadRef := httptest.NewRequest(http.MethodGet, "/api/v1/desktop/bootstrap", nil)
-		reqBadRef.Host = "127.0.0.1:3000"
+		reqBadRef.Host = "127.0.0.1:13000"
 		reqBadRef.Header.Set("Referer", badOrigin+"/index.html")
 		recBadRef := httptest.NewRecorder()
 		srv.handleDesktopBootstrap(recBadRef, reqBadRef)
@@ -67,7 +67,7 @@ func TestDesktopBootstrapRequiresDesktopOrigin(t *testing.T) {
 
 	// 3. Request with Origin wails://wails -> Must succeed
 	reqDesktop := httptest.NewRequest(http.MethodGet, "/api/v1/desktop/bootstrap", nil)
-	reqDesktop.Host = "127.0.0.1:3000"
+	reqDesktop.Host = "127.0.0.1:13000"
 	reqDesktop.Header.Set("Origin", "wails://wails")
 	recDesktop := httptest.NewRecorder()
 
@@ -81,7 +81,7 @@ func TestDesktopBootstrapRequiresDesktopOrigin(t *testing.T) {
 
 	// 4. Request with invalid Origin and valid Referer -> Must be rejected with 403 Forbidden (Origin takes precedence)
 	reqConflict := httptest.NewRequest(http.MethodGet, "/api/v1/desktop/bootstrap", nil)
-	reqConflict.Host = "127.0.0.1:3000"
+	reqConflict.Host = "127.0.0.1:13000"
 	reqConflict.Header.Set("Origin", "wails://evil.com")
 	reqConflict.Header.Set("Referer", "wails://wails/index.html")
 	recConflict := httptest.NewRecorder()
@@ -92,7 +92,7 @@ func TestDesktopBootstrapRequiresDesktopOrigin(t *testing.T) {
 
 	// 5. Request with valid Referer and no Origin -> Must succeed (positive fallback path)
 	reqRefererOnly := httptest.NewRequest(http.MethodGet, "/api/v1/desktop/bootstrap", nil)
-	reqRefererOnly.Host = "127.0.0.1:3000"
+	reqRefererOnly.Host = "127.0.0.1:13000"
 	reqRefererOnly.Header.Set("Referer", "wails://wails/index.html")
 	recRefererOnly := httptest.NewRecorder()
 	srv.handleDesktopBootstrap(recRefererOnly, reqRefererOnly)
@@ -105,7 +105,7 @@ func TestDesktopBootstrapRequiresDesktopOrigin(t *testing.T) {
 }
 
 func TestDesktopSessionRevocationAndExpiry(t *testing.T) {
-	auth, _, err := NewAuthManager("127.0.0.1", "3000")
+	auth, _, err := NewAuthManager("127.0.0.1", "13000")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestDesktopSessionRevocationAndExpiry(t *testing.T) {
 
 	// Verify desktop request authenticates
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces", nil)
-	req.Host = "127.0.0.1:3000"
+	req.Host = "127.0.0.1:13000"
 	req.Header.Set("Origin", "wails://wails")
 
 	authed := auth.AuthenticateRequest(req)
@@ -155,7 +155,7 @@ func TestDesktopSessionRevocationAndExpiry(t *testing.T) {
 }
 
 func TestDesktopSessionReplacementCleansOldSession(t *testing.T) {
-	auth, _, err := NewAuthManager("127.0.0.1", "3000")
+	auth, _, err := NewAuthManager("127.0.0.1", "13000")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestDesktopSessionReplacementCleansOldSession(t *testing.T) {
 	auth.SetDesktopSession(first)
 
 	reqFirst := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces", nil)
-	reqFirst.Host = "127.0.0.1:3000"
+	reqFirst.Host = "127.0.0.1:13000"
 	reqFirst.Header.Set("Authorization", "Bearer "+first.ID)
 	if auth.AuthenticateRequest(reqFirst) == nil {
 		t.Fatal("first desktop session should be authenticated")
@@ -187,7 +187,7 @@ func TestDesktopSessionReplacementCleansOldSession(t *testing.T) {
 
 	// Second session must be active
 	reqSecond := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces", nil)
-	reqSecond.Host = "127.0.0.1:3000"
+	reqSecond.Host = "127.0.0.1:13000"
 	reqSecond.Header.Set("Authorization", "Bearer "+second.ID)
 	if auth.AuthenticateRequest(reqSecond) == nil {
 		t.Fatal("new desktop session must be authenticated")
@@ -195,7 +195,7 @@ func TestDesktopSessionReplacementCleansOldSession(t *testing.T) {
 }
 
 func TestServerShutdownRevokesDesktopSession(t *testing.T) {
-	auth, _, err := NewAuthManager("127.0.0.1", "3000")
+	auth, _, err := NewAuthManager("127.0.0.1", "13000")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -323,7 +323,7 @@ func (a *AuthManager) ExchangeBootstrapToken(token string) (*Session, bool) {
 
 func isLoopbackHost(host string) bool {
 	host = strings.TrimSpace(host)
-	if host == "" || strings.EqualFold(host, "localhost") {
+	if host == "" || strings.EqualFold(host, "localhost") || host == nexusHostname {
 		return true
 	}
 	ip := net.ParseIP(host)

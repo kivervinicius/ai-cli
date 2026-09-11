@@ -3,7 +3,7 @@ package web
 import "testing"
 
 func TestExchangeBootstrapTokenReusableOnLoopback(t *testing.T) {
-	auth, token, err := NewAuthManager("127.0.0.1", "3000")
+	auth, token, err := NewAuthManager("127.0.0.1", "13000")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +25,7 @@ func TestExchangeBootstrapTokenReusableOnLoopback(t *testing.T) {
 }
 
 func TestExchangeBootstrapTokenOneTimeOnPrivateBind(t *testing.T) {
-	auth, token, err := NewAuthManager("192.168.1.10", "3000")
+	auth, token, err := NewAuthManager("192.168.1.10", "13000")
 	if err != nil {
 		t.Fatal(err)
 	}

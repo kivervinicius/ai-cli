@@ -11,22 +11,23 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/control/originpolicy"
-	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/nexus"
 )
 
 // DefaultPort is the default TCP port for the Web Control Center when no
 // --port flag or NEXUS_WEB_PORT environment variable is provided.
-const DefaultPort = 3000
+const DefaultPort = 13000
 
 type ServerOptions struct {
-	Host   string
-	Port   int
-	NoOpen bool
-	Remote bool
+	Host       string
+	Port       int
+	NoOpen     bool
+	Remote     bool
+	TunnelHost string // public hostname of Cloudflare Quick Tunnel (e.g., xxx.trycloudflare.com)
 }
 
 type Server struct {
@@ -38,6 +39,27 @@ type Server struct {
 	bootstrap  string
 	url        string
 	pid        int
+	hostname   string // registered /etc/hosts entry (empty if none)
+	loopback   bool   // true when bound to localhost/127.0.0.1
+	tunnelHost string // Cloudflare Quick Tunnel public hostname
+	tunnel     *tunnelManager
+	tunnelMu   sync.Mutex
+}
+
+func (s *Server) tunnelManager() *tunnelManager {
+	s.tunnelMu.Lock()
+	defer s.tunnelMu.Unlock()
+	if s.tunnel == nil {
+		s.tunnel = &tunnelManager{}
+	}
+	return s.tunnel
+}
+
+// cookieSecure returns the Secure flag for session cookies. Non-loopback
+// binds (e.g. --remote on a private IP) set Secure to protect cookies
+// traversing the network in plaintext.
+func (s *Server) cookieSecure() bool {
+	return !s.loopback
 }
 
 func NewServer(opts ServerOptions) (*Server, error) {
@@ -77,7 +99,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	api := NewAPIHandler(auth)
 	nexusHandler := NewNexusHandler(auth)
 	nexusHandler.setHostFilesystemEnabled(hostFilesystemEnabled(opts.Host))
-	terminalHub := NewTerminalHub(auth)
+	terminalHub := NewTerminalHub(auth, nexus.Default().RuntimeRegistry())
 
 	s := &Server{
 		listener:  l,
@@ -87,69 +109,12 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		bootstrap: bootstrapToken,
 		url:       fmt.Sprintf("http://%s:%d", opts.Host, tcpAddr.Port),
 		pid:       os.Getpid(),
+		loopback:  loopback,
+		tunnel:    &tunnelManager{},
 	}
 
 	mux := http.NewServeMux()
-
-	// REST API Routes
-	mux.HandleFunc("/api/v1/health", api.handleHealth)
-	mux.HandleFunc("/api/v1/session", api.handleSession)
-	mux.HandleFunc("/api/v1/auth/bootstrap", s.handleAuthBootstrap)
-	mux.HandleFunc("/api/v1/desktop/bootstrap", s.handleDesktopBootstrap)
-	mux.HandleFunc("/api/v1/session/rotate", s.authMiddleware(s.handleSessionRotate))
-	mux.HandleFunc("/api/v1/session/logout", s.authMiddleware(s.handleSessionLogout))
-	mux.HandleFunc("/api/v1/workspaces", s.authMiddleware(api.handleWorkspaces))
-	mux.HandleFunc("/api/v1/runtimes", s.authMiddleware(api.handleRuntimes))
-	mux.HandleFunc("/api/v1/runtimes/", s.routeRuntime)
-	mux.HandleFunc("/api/v1/providers", s.authMiddleware(api.handleProviders))
-	mux.HandleFunc("/api/v1/profiles", s.authMiddleware(api.handleProfiles))
-	mux.HandleFunc("/api/v1/events", s.authMiddleware(api.handleEvents))
-
-	// Nexus Product API Routes (Project-first / Agent-first)
-	mux.HandleFunc("/api/v1/projects", s.authMiddleware(nexusHandler.handleProjectsList))
-	mux.HandleFunc("/api/v1/projects/", s.routeProject(nexusHandler))
-	mux.HandleFunc("/api/v1/agents/", s.routeAgent(nexusHandler))
-
-	// Resource Scheduler (Gate 5)
-	mux.HandleFunc("/api/v1/resources", s.authMiddleware(nexusHandler.handleResourcesList))
-	mux.HandleFunc("/api/v1/resources/select", s.authMiddleware(nexusHandler.handleResourceSelect))
-	mux.HandleFunc("/api/v1/resources/recommend", s.authMiddleware(nexusHandler.handleResourceRecommend))
-
-	// Maestro Assist (Gate 6)
-	mux.HandleFunc("/api/v1/maestro", s.authMiddleware(nexusHandler.handleMaestroStatus))
-	mux.HandleFunc("/api/v1/maestro/advice", s.authMiddleware(nexusHandler.handleMaestroAdvice))
-	mux.HandleFunc("/api/v1/maestro/catalog", s.authMiddleware(nexusHandler.handleMaestroCatalog))
-	mux.HandleFunc("/api/v1/maestro/sync/preview", s.authMiddleware(nexusHandler.handleMaestroSyncPreview))
-	mux.HandleFunc("/api/v1/maestro/sync", s.authMiddleware(nexusHandler.handleMaestroSync))
-
-	// WorkPlans & Intelligence (Phase C & D)
-	mux.HandleFunc("/api/v1/intelligence", s.authMiddleware(nexusHandler.handleIntelligence))
-	mux.HandleFunc("/api/v1/intelligence/probe", s.authMiddleware(nexusHandler.handleIntelligenceProbe))
-	mux.HandleFunc("/api/v1/clarifications/", s.authMiddleware(nexusHandler.handleClarification))
-	mux.HandleFunc("/api/v1/composer-sessions/", s.authMiddleware(nexusHandler.handleComposerSession))
-	mux.HandleFunc("/api/v1/prompt-artifacts/", s.authMiddleware(nexusHandler.handlePromptArtifact))
-	mux.HandleFunc("/api/v1/flows/decompose", s.authMiddleware(nexusHandler.handleFlowDecompose))
-	mux.HandleFunc("/api/v1/plans/", s.routePlan(nexusHandler))
-
-	// Autonomous Mission Runs (Phase F & H)
-	mux.HandleFunc("/api/v1/runs", s.authMiddleware(nexusHandler.handleRunsList))
-	mux.HandleFunc("/api/v1/runs/", s.routeRun(nexusHandler))
-	mux.HandleFunc("/api/v1/schedules", s.authMiddleware(nexusHandler.handleMissionSchedules))
-
-	// Missions (Gate 7 Beta)
-	mux.HandleFunc("/api/v1/missions/", s.routeMission(nexusHandler))
-
-	// System status is shared; Nexus updates and Maestro maintenance remain
-	// separate explicit operations.
-	mux.HandleFunc("/api/v1/system/doctor", s.authMiddleware(nexusHandler.handleSystemDoctor))
-	mux.HandleFunc("/api/v1/system/updates", s.authMiddleware(nexusHandler.handleSystemUpdates))
-	mux.HandleFunc("/api/v1/maestro/update", s.authMiddleware(nexusHandler.handleMaestroUpdate))
-
-	// OS Filesystem & Discovery Routes
-	mux.HandleFunc("/api/v1/fs/browse", s.authMiddleware(nexusHandler.handleFSBrowse))
-	mux.HandleFunc("/api/v1/fs/scan", s.authMiddleware(nexusHandler.handleFSScan))
-	mux.HandleFunc("/api/v1/fs/inspect", s.authMiddleware(nexusHandler.handleFSInspect))
-	mux.HandleFunc("/api/v1/fs/mkdir", s.authMiddleware(nexusHandler.handleFSMkdir))
+	registerRoutes(mux, routeDependencies{server: s, api: api, nexusHandler: nexusHandler})
 
 	// Static Files & SPA Routing
 	distFS, distErr := DistFileSystem()
@@ -201,6 +166,20 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		fmt.Fprintf(os.Stderr, "nexus web: failed to write listen state: %v\n", err)
 	}
 
+	// Register nexus.dev in /etc/hosts for local name resolution.
+	// Failure is non-fatal: the server remains usable via IP.
+	if err := EnsureNexusHostsEntry(); err != nil {
+		fmt.Fprintf(os.Stderr, "nexus web: could not register nexus.dev in /etc/hosts: %v\n", err)
+	} else {
+		s.hostname = nexusHostname
+	}
+
+	// Register Cloudflare tunnel host for origin validation.
+	if opts.TunnelHost != "" {
+		s.tunnelHost = opts.TunnelHost
+		originpolicy.RegisterTunnelHost(opts.TunnelHost)
+	}
+
 	return s, nil
 }
 
@@ -219,7 +198,7 @@ func (s *Server) handleSessionRotate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to rotate session")
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: next.ID, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
+	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: next.ID, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: s.cookieSecure()})
 	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "csrf_token": next.CSRFToken, "expires_at": next.ExpiresAt, "idle_timeout": int(sessionIdleTTL.Seconds())})
 }
 
@@ -234,7 +213,7 @@ func (s *Server) handleSessionLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.auth.RevokeSession(sess.ID)
-	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: -1, Expires: time.Unix(1, 0)})
+	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: -1, Expires: time.Unix(1, 0), Secure: s.cookieSecure()})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -322,65 +301,6 @@ func (s *Server) routeRuntime(w http.ResponseWriter, r *http.Request) {
 	s.authMiddleware(s.api.handleRuntimeDetail)(w, r)
 }
 
-// routeProject dispatches project detail, layout, and agents sub-routes.
-func (s *Server) routeProject(h *NexusHandler) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !s.auth.ValidateOrigin(r) {
-			writeError(w, http.StatusForbidden, "invalid origin")
-			return
-		}
-		sess := s.auth.AuthenticateRequest(r)
-		if sess == nil {
-			writeError(w, http.StatusUnauthorized, "authentication required")
-			return
-		}
-		// CSRF enforcement for all mutating methods (P0-2).
-		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
-			csrf := r.Header.Get(csrfHeaderName)
-			if csrf == "" || csrf != sess.CSRFToken {
-				writeError(w, http.StatusForbidden, "invalid CSRF token")
-				return
-			}
-		}
-		switch {
-		case strings.HasSuffix(r.URL.Path, "/events"):
-			h.handleProjectEvents(w, r)
-		case strings.HasSuffix(r.URL.Path, "/layout"):
-			h.handleProjectLayout(w, r)
-		case strings.HasSuffix(r.URL.Path, "/agents"):
-			if r.Method == http.MethodGet {
-				h.handleAgentsList(w, r)
-			} else {
-				h.handleAgentCreate(w, r)
-			}
-		case strings.HasSuffix(r.URL.Path, "/missions"):
-			if r.Method == http.MethodGet {
-				h.handleMissionsList(w, r)
-			} else {
-				h.handleMissionCreate(w, r)
-			}
-		case strings.HasSuffix(r.URL.Path, "/plans"):
-			h.handleProjectPlans(w, r)
-		case strings.HasSuffix(r.URL.Path, "/composer-sessions"):
-			h.handleProjectComposerSessions(w, r)
-		case strings.HasSuffix(r.URL.Path, "/context/prepare"):
-			h.handleProjectContextPrepare(w, r)
-		case strings.HasSuffix(r.URL.Path, "/context"):
-			h.handleProjectContext(w, r)
-		case strings.HasSuffix(r.URL.Path, "/shell"):
-			h.handleProjectShell(w, r)
-		case strings.HasSuffix(r.URL.Path, "/open-os"):
-			h.handleProjectOpenOS(w, r)
-		case strings.HasSuffix(r.URL.Path, "/git/branches"):
-			h.handleProjectGitBranches(w, r)
-		case strings.HasSuffix(r.URL.Path, "/git/checkout"):
-			h.handleProjectGitCheckout(w, r)
-		default:
-			h.handleProjectDetail(w, r)
-		}
-	}
-}
-
 // routePlan dispatches plan detail, compile, and run routes.
 func (s *Server) routePlan(h *NexusHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -445,90 +365,6 @@ func (s *Server) routeRun(h *NexusHandler) http.HandlerFunc {
 }
 
 // routeAgent dispatches agent detail, actions, and the agent-scoped terminal WS.
-func (s *Server) routeAgent(h *NexusHandler) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !s.auth.ValidateOrigin(r) {
-			writeError(w, http.StatusForbidden, "invalid origin")
-			return
-		}
-		sess := s.auth.AuthenticateRequest(r)
-		if sess == nil {
-			writeError(w, http.StatusUnauthorized, "authentication required")
-			return
-		}
-		// CSRF enforcement for all mutating methods (P0-2).
-		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
-			csrf := r.Header.Get(csrfHeaderName)
-			if csrf == "" || csrf != sess.CSRFToken {
-				writeError(w, http.StatusForbidden, "invalid CSRF token")
-				return
-			}
-		}
-
-		path := strings.TrimPrefix(r.URL.Path, "/api/v1/agents/")
-		parts := strings.Split(path, "/")
-
-		// WebSocket terminal: /api/v1/agents/:id/terminal[?runtime_id=…]
-		if len(parts) == 2 && parts[1] == "terminal" && r.Method == http.MethodGet {
-			agentID := parts[0]
-			runtimeID := strings.TrimSpace(r.URL.Query().Get("runtime_id"))
-			if runtimeID != "" {
-				rtSess, ok := registry.DefaultRegistry().Get(runtimeID)
-				if !ok || !rtSess.HostLive() {
-					// Fallback: check if the agent has a fresher live runtime generation
-					if freshID, err := h.resolveAgentRuntimeID(agentID); err == nil && freshID != "" {
-						runtimeID = freshID
-					} else {
-						writeError(w, http.StatusNotFound, "runtime not found: "+runtimeID)
-						return
-					}
-				}
-			} else {
-				var err error
-				runtimeID, err = h.resolveAgentRuntimeID(agentID)
-				if err != nil {
-					writeError(w, http.StatusNotFound, "agent has no active runtime: "+err.Error())
-					return
-				}
-			}
-			s.terminal.HandleWebSocket(w, r, agentID, runtimeID)
-			return
-		}
-
-		if len(parts) >= 2 {
-			switch parts[1] {
-			case "start":
-				h.handleAgentStart(w, r)
-				return
-			case "stop":
-				h.handleAgentStop(w, r)
-				return
-			case "recover":
-				h.handleAgentRecover(w, r)
-				return
-			case "ask":
-				h.handleAgentAsk(w, r)
-				return
-			case "config":
-				if len(parts) >= 3 {
-					switch parts[2] {
-					case "apply":
-						h.handleAgentConfigApply(w, r)
-						return
-					case "impact":
-						h.handleAgentConfigImpact(w, r)
-						return
-					}
-				}
-				h.handleAgentConfigGet(w, r)
-				return
-			}
-		}
-		h.handleAgentDetail(w, r)
-	}
-}
-
-// routeMission dispatches mission tasks and assignments sub-routes.
 func (s *Server) routeMission(h *NexusHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !s.auth.ValidateOrigin(r) {
@@ -653,6 +489,7 @@ func (s *Server) handleAuthBootstrap(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
+		Secure:   s.cookieSecure(),
 	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"authenticated": true,
@@ -678,6 +515,7 @@ func (s *Server) handleDesktopBootstrap(w http.ResponseWriter, r *http.Request) 
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
+		Secure:   s.cookieSecure(),
 	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"serverUrl":     s.url,
@@ -689,6 +527,32 @@ func (s *Server) handleDesktopBootstrap(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	removeListenState(s.pid)
+	if tunnel := s.tunnelManager(); tunnel != nil {
+		tunnel.mu.Lock()
+		active := tunnel.tunnel
+		tunnel.tunnel = nil
+		tunnel.starting = false
+		startCancel := tunnel.startCancel
+		tunnel.startCancel = nil
+		tunnel.mu.Unlock()
+		if startCancel != nil {
+			startCancel()
+		}
+		if active != nil {
+			if host := extractTunnelHost(active.URL); host != "" {
+				originpolicy.UnregisterTunnelHost(host)
+			}
+			_ = active.Stop()
+		}
+	}
+	if s.hostname != "" {
+		if err := RemoveHostsEntry(s.hostname, nexusIP); err != nil {
+			fmt.Fprintf(os.Stderr, "nexus web: could not remove %s from /etc/hosts: %v\n", s.hostname, err)
+		}
+	}
+	if s.tunnelHost != "" {
+		originpolicy.UnregisterTunnelHost(s.tunnelHost)
+	}
 	if s.auth != nil {
 		if sess := s.auth.GetDesktopSession(); sess != nil {
 			s.auth.RevokeSession(sess.ID)

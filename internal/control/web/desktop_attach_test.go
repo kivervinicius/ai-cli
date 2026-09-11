@@ -26,7 +26,7 @@ func TestAttachLoopbackSessionReusesWebSession(t *testing.T) {
 
 func TestAttachLoopbackSessionRejectsDifferentBootstrapOrigin(t *testing.T) {
 	sess, err := AttachLoopbackSession(ListenState{
-		URL:            "http://127.0.0.1:3000",
+		URL:            "http://127.0.0.1:13000",
 		BootstrapToken: "local",
 		Loopback:       true,
 	})
