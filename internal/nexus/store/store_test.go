@@ -44,6 +44,39 @@ func TestStoreOpenMigratesIdempotently(t *testing.T) {
 	}
 }
 
+func TestEventCorrelationMigrationIsIdempotent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "event-correlation.db")
+	s1, err := Open(path)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	version, err := s1.SchemaVersion()
+	if err != nil {
+		t.Fatalf("schema version: %v", err)
+	}
+	if version < 15 {
+		t.Fatalf("expected correlation migration, got schema version %d", version)
+	}
+	var columnCount int
+	if err := s1.DB().QueryRow(`SELECT COUNT(*) FROM pragma_table_info('events_metadata') WHERE name='correlation_id'`).Scan(&columnCount); err != nil {
+		t.Fatalf("inspect correlation column: %v", err)
+	}
+	if columnCount != 1 {
+		t.Fatalf("expected one correlation column, got %d", columnCount)
+	}
+	_ = s1.Close()
+
+	s2, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen store: %v", err)
+	}
+	defer s2.Close()
+	version2, _ := s2.SchemaVersion()
+	if version2 != version {
+		t.Fatalf("schema version changed after reopen: %d -> %d", version, version2)
+	}
+}
+
 func TestProjectCRUD(t *testing.T) {
 	s := openTestStore(t)
 	dir := t.TempDir()
