@@ -1,5 +1,314 @@
 # Handoff
 
+## Atualização 2026-09-10 — Configuração de qualidade corrigida
+
+O `Makefile` foi alinhado aos scripts do frontend: os gates agora usam os
+binários locais instalados, formatam/verificam SCSS e o Stylelint cobre CSS e
+SCSS. O lint-staged também foi corrigido para usar os binários locais e incluir
+SCSS. Verificados com `make format-check`, `make lint-styles` e
+`make lint-frontend`; todos passaram, com apenas o warning ESLint preexistente.
+
+## Atualização 2026-09-10 — Fechamento dos caminhos restantes
+
+AGY deixou de gravar snapshots live por chave de provider/perfil sem identidade;
+`BatchFetch` segue a mesma regra e o launcher só usa quota AGY com escopo
+verificável. `RuntimeSession` agora transporta `AccountScope`, e o monitor só
+associa runtime afetado quando o escopo coincide. Snapshots legados continuam
+em quarentena lógica, sem atribuição automática. Perfis `PENDING_AUTH` também
+não são considerados verificáveis: o ID local é reservado, mas o escopo só é
+ativado após identidade autenticada.
+
+Verificação: `go test ./...`, `make quality-full`, `go vet ./...`, `make
+lint-go` e `git diff HEAD --check` passaram após este último patch. O gate
+reportou apenas o warning preexistente de diretiva ESLint não utilizada; não
+houve commit/push.
+
+## Atualização 2026-09-10 — Correções pós-review
+
+Foram corrigidos os bloqueadores do review local: lifecycle do tunnel sem
+cancelamento prematuro, readiness com tratamento de erro, manager por Server,
+backfill seguro de AccountScope, cache last-known scoped, uso de scope em
+scheduler/cooldown/telemetria/eventos, persistência de escopo em eventos,
+registry de runtime injetado, estado de instalações preservado e discovery da
+TUI desacelerado. A tela Web de remote access agora usa i18n e contrato de
+perfil tipado.
+
+Verificação atual: `go test ./...`, `go test -race ./...`, `go vet ./...`,
+typecheck/build/test Web, Prettier e `git diff HEAD --check` passaram. Ainda
+é necessário repetir os gates completos do Make e validar o tunnel real; a
+execução nativa Windows/macOS continua não verificada. Não houve commit/push.
+
+## Atualização 2026-09-10 — AccountScope / próximo passo
+
+Foi implementada a base de isolamento por conta: `AccountScope` tipado,
+persistência e versionamento de identidade, APIs scoped de quota, cooldown e
+monitor com chave canônica, além de eventos/notificações com escopo. Snapshots
+legados sem identidade não são migrados nem atribuídos nas APIs novas.
+
+Verificação: testes focados, `go test -race ./...` e `git diff --check` PASS.
+O registry de instalação e os comandos `providers status/register` foram
+implementados, conectados ao fluxo de perfil isolado e ao estado `PENDING_AUTH`.
+TUI, API e cliente Web agora exibem/operam o lifecycle de instalação e registro;
+o registro sob demanda fica em `PENDING_AUTH` e usa perfil isolado.
+O boundary de quota para execução efêmera já impede persistência quando
+`managed=false`. Próxima ação exata: conectar um comando de uso único a HOME
+temporário, marcando `UNMANAGED_EPHEMERAL` e evitando também eventos/status de
+conta.
+
+## Atualização 2026-09-10 — Verificação final da consolidação
+
+O último ciclo eliminou o warning conhecido de `NexusWorkspaceApp` usando a
+referência estável `refreshAgents`, removeu `fileModTime` órfão do adapter Codex
+e corrigiu o contrato de formatação do help CLI/tunnel (53 placeholders e
+argumentos alinhados, spelling corrigido). Nenhum comportamento público foi
+redesenhado.
+
+Verificação atual: `make quality-full` PASS (exit 0; Web 62/320; Go tests,
+race, vet, lint, build e security); `make web-verify` PASS 10/10; `make
+lint-go` PASS 0 issues; testes focados de `internal/app` e
+`internal/control/web` PASS; smoke `nexus --help` e `nexus doctor --json` PASS;
+`git diff --check` PASS. O worktree continua deliberadamente dirty e sem
+commit/push automático.
+
+A Definition of Done local está coberta para Linux e para o escopo tocado. A
+matriz nativa Windows/macOS continua `NOT VERIFIED` (há cross-build, mas não
+execução nativa/same-SHA CI nesta sessão); permanecem P1 de isolamento mais
+profundo de process supervision e taxonomia provider/quota, e P2 de registry
+CLI gerado/DTOs restantes. Próxima ação recomendada: promover o worktree por
+CI same-SHA nativo antes de qualquer claim multiplataforma ou release.
+
+O SHA publicado `bfc90fc98acd700c165c8e7df26ac3d3670dce54` possui o run remoto
+[34472251335](https://github.com/kivervinicius/ai-cli/actions/runs/34472251335).
+Esse run falhou nos asserts remotos de Windows/macOS/browser e Desktop macOS;
+os logs detalhados não estão acessíveis com a autenticação local atual. O
+rerun de jobs falhos foi tentado e retornou HTTP 401 (`gh` token inválido).
+Reautenticar `gh` é requisito externo antes de repetir o CI same-SHA; não houve
+commit, push ou alteração de workflow nesta tentativa.
+
+Após reautenticação, o rerun foi executado no mesmo SHA (attempt 2) e terminou
+com falhas reproduzidas. Os artefatos mostram: quota monitor/lease e testes de
+lease do host no Windows; allowed-roots/filesystem em Windows/macOS; race/Web
+no macOS; assert do build Wails macOS após aviso de ampersand-escape; e browser
+sem `.nx-os-shell` dentro de 10s. Linux/frontend/security/Desktop Windows
+passaram. O próximo trabalho técnico deve ser um ciclo de debugging por
+cluster, começando pelo contrato de allowed-roots compartilhado por Windows e
+macOS; não declarar suporte nativo nem fazer release antes de novo same-SHA.
+
+Esse primeiro cluster já foi corrigido localmente: `allowed-roots` usa a raiz
+temporária do SO e canonicaliza a raiz comparada; quota leases usam sequência
+atômica para evitar colisão de `UnixNano` no Windows. Testes Web/Nexus completos,
+race focado, lint Go e diff check passaram. Ainda não há novo CI same-SHA porque
+essas mudanças não foram commitadas/publicadas.
+
+O gate global local após o slice foi interrompido por alteração staged alheia
+ao slice em `install.sh`/`install.ps1`: o teste de release rejeita
+`@iapro/orquestrador-maestro-cli@latest`. Essa falha permanece classificada como
+pre-existing e não foi mascarada nem modificada.
+
+## Atualização 2026-09-10 — Isolamento de quota Codex
+
+O diagnóstico de quota repetida encontrou duas falhas no caminho Codex:
+rollouts compartilhados por symlink eram candidatos para qualquer conta, e o
+adapter lia `usage.json` diretamente como `LIVE`, bypassando a validação do
+quota engine. Agora rollouts compartilhados exigem correspondência com o
+login do host; snapshots locais são tratados pelo cache central, que valida
+provider/perfil/e-mail e frescor.
+
+Regressão adicionada em `internal/core/provider/adapters/codex/usage_test.go`.
+Testes dos pacotes Codex/profile/quota/Nexus e vet passaram. O próximo passo é
+reconstruir/reiniciar o processo Web e conferir a tela Usage/ResourcePicker;
+arquivos `usage.json` já contaminados historicamente podem permanecer com a
+mesma janela até uma observação autêntica substituir o cache. Windows/macOS
+continuam sem execução nativa nesta sessão.
+
+## Atualização 2026-09-10 — Contratos tipados do Resource Scheduler
+
+`ResourcePicker` agora consome `ProviderAccount` e `SchedulerDecision` de
+`web/src/types.ts`; o facade usa `ResourceAllocation` para a resposta de
+seleção. A quota continua parcial/defensiva: a UI cria defaults de exibição,
+mas não converte ausência em quota conhecida.
+
+Verificação: `npm --prefix web run test -- --run src/nexus/api.test.ts` 12/12,
+typecheck PASS e `make quality-full` PASS (Web 62/320; Go/race/vet/lint/build/
+security PASS). O warning ESLint de `NexusWorkspaceApp.tsx:228` continua
+preexistente. Próxima ação: auditoria final requisito-a-requisito, mantendo
+pendentes os itens P1/P2 já documentados.
+
+## Atualização 2026-09-10 — Contratos Web legados tipados
+
+Os últimos `any` de produção no facade foram removidos dos contratos de Agent
+Config revisions, Maestro status/advice e input de WorkPlan. Extensões abertas
+continuam modeladas como `unknown`/records, sem fabricar estrutura inexistente.
+
+Verificação final: typecheck PASS, testes focados 14/14 e `make quality-full`
+PASS (Web 62/320; Go/race/vet/lint/build/security PASS). O warning ESLint de
+`NexusWorkspaceApp.tsx:228` permanece preexistente. A campanha ainda mantém
+P1/P2 e a matriz nativa como pendências documentadas em `docs/refactoring`.
+
+## Atualização 2026-09-10 — Ownership do registry de runtime
+
+O `SessionHost` agora recebe e usa o registry proprietário do Launcher/control
+host para persistência de estado, startup e atenção. O singleton só é usado
+como fallback de compatibilidade quando o construtor legado não fornece um
+registry.
+
+Verificação: `TestSessionHostUsesConfiguredRegistryOwnership` e os pacotes
+host/launcher/app passaram. O próximo corte P1 continua sendo a fronteira
+mais profunda entre process supervision, provider discovery e eventos; não há
+claim nativo Windows/macOS nesta sessão.
+
+## Atualização 2026-09-10 — Cancelamento de resource discovery
+
+O caminho Web de resources agora mantém o `context.Context` até as operações
+de detecção/capabilities dos providers; o método sem contexto continua como
+fachada compatível para callers antigos. `AllocateResource` também usa o
+caminho cancelável.
+
+## Atualização 2026-09-10 — Registry de providers injetável
+
+O Core deixou de depender diretamente do registry global de drivers nos
+caminhos de discovery, continuidade, execução autônoma e intelligence. O
+`Nexus` default injeta o registry de produção; construções legadas usam
+fallback compatível.
+
+Verificação: teste dedicado de isolamento e `go test ./internal/nexus/...`
+passaram. O gate integrado precisa ser repetido após esta alteração.
+
+Verificação: testes de contexto e `go test` dos pacotes control/app/nexus
+passaram. O próximo gate deve ser `make quality-full` antes de qualquer nova
+decisão arquitetural.
+
+## Atualização 2026-09-10 — Transporte HTTP compartilhado dos clientes Web/Desktop
+
+A auditoria dos consumidores encontrou duas implementações de `fetch` com
+duplicação de autenticação desktop, base URL, CSRF, expiração de sessão e
+erros. `web/src/api.ts` agora expõe o transporte tipado; `web/src/nexus/api.ts`
+mantém a fachada de domínio e reutiliza esse transporte. `NexusAPIError`
+continua exportado como alias compatível.
+
+Testes focados: Web API + Nexus API 17/17 e typecheck PASS. Gate Web completo:
+`npm --prefix web run quality:full` PASS, com 62/317 e o warning ESLint já
+conhecido. Próxima ação: repetir `make quality-full` e então auditar a matriz
+CLI/Web/Desktop sem criar outro transporte paralelo.
+
+A auditoria CLI também corrigiu o help principal: `paths`, `rename`, `export` e
+`issue-report` eram despachados mas não documentados. O teste de contrato passou
+no ciclo red/green. `make quality-full` passou novamente com Web 62/317,
+Go/race/vet, lint, build e security. Próxima ação: revisar os contratos de
+provider/quota contra o registry existente, sem introduzir uma interface
+monolítica ou novos scrapers. A auditoria encontrou e corrigiu a assimetria de
+casing no `internal/core/provider.Registry`; `go test ./internal/core/provider/...`
+passou. Próxima ação: repetir o gate integrado e auditar a evidência de Usage/
+Quota (`UNKNOWN`, source e observedAt) contra os adapters atuais.
+
+Essa auditoria foi concluída: o modelo agora representa valores absolutos
+opcionais e confiança, sem scraping novo. `make quality-full` passou novamente;
+smoke `go run ./cmd/nexus --help` e `go run ./cmd/nexus doctor` também passou.
+O próximo corte deve ser a auditoria final requisito-a-requisito, não uma nova
+abstração especulativa.
+
+Essa auditoria foi registrada em `docs/refactoring/definition-of-done-audit.md`.
+Ela mantém a campanha aberta: runtime/MissionRun, timeline de eventos e
+evidência nativa permanecem P1/NOT VERIFIED apesar dos gates Linux verdes.
+
+Nesta continuação, os caminhos HTTP de MissionRun passaram por
+`internal/nexus/run_application.go`, e ContextCapsule/WorkReceipt passaram a
+respeitar cancelamento em memória e SQLite. Focados de Nexus/Web passaram.
+Também foi adicionada correlation ID opcional ao EventBus e à persistência de
+atividade (`0015_event_correlation.sql`), com propagação para o mapper Web e
+uso concreto em failover de MissionRun e handoff. O gate integrado seguinte
+passou com exit 0. A auditoria encontrou e corrigiu uma assimetria: o handoff
+de contexto agora também correlaciona o evento pelo `lineage_id`; a taxonomia
+compatível está documentada em `docs/architecture/events.md`. Próxima ação
+exata: isolar o próximo contrato de runtime/processo apenas se houver uma
+interface concreta e testável; evidência nativa Windows/macOS continua
+pendente. O gate integrado posterior (`make quality-full`) passou com exit 0;
+o stop HTTP também passou a respeitar cancelamento durante o wait de reap.
+
+O próximo boundary extraído foi `RuntimeApplicationService`: list/start,
+detail/capabilities, cleanup/delete/title, stop/respond/handoff e `WaitForExit`
+já não são montados diretamente pelo `APIHandler`. IPC, launcher e provider
+mechanics continuam dependências explícitas do serviço, sem duplicar lifecycle.
+O gate integrado após essa extração passou com exit 0.
+
+O `RunApplicationService` também publica eventos correlacionados de lifecycle
+MissionRun e redige erros antes de persistir/emitir. O gate integrado posterior
+passou com exit 0; a próxima revisão deve auditar produtores de runtime/host
+que ainda não têm correlation IDs de operação maior. A projeção agora inclui
+ownership de projeto/agente quando o run fornece esses dados.
+
+## Atualização 2026-09-10 — Contrato de cancelamento do MissionRun
+
+A auditoria do fluxo de runs encontrou uma lacuna concreta: os métodos de
+`RunRepository` recebiam `context.Context`, mas o repositório em memória e o
+adapter SQLite ignoravam cancelamentos antes de leituras, gravações e leases.
+Ambas as implementações agora verificam `ctx.Err()`; testes cobrem o contrato
+com contexto cancelado sem alterar estado.
+
+Verificação focada: `go test ./internal/nexus/runner ./internal/nexus` PASS.
+Próxima ação exata: executar novamente `make quality-full` após esta correção.
+
+## Atualização 2026-09-10 — Boundary de aplicação para Missions
+
+`MissionApplicationService` foi adicionado para o CRUD de Missions, detalhe
+com tarefas/assignments, criação de tarefas e atribuição de agentes. Os
+handlers HTTP de Missions agora usam esse contrato; a execução viva de
+`MissionRun` continua no runner existente, sem duplicar lifecycle de runtime.
+
+Durante os testes foi corrigida uma falha real no store: timestamps de Missions
+eram persistidos como texto SQLite e lidos diretamente como `time.Time`. A
+leitura agora normaliza timestamps nullable com RFC3339Nano, preservando o
+contrato JSON e cobrindo o fluxo com testes de aplicação e HTTP.
+
+Verificação: `go test ./internal/nexus ./internal/control/web` PASS;
+`make quality-full` PASS, com Web 62/315, Go/race/vet, lint, build e security.
+Linux verificado; Windows/macOS continuam `NOT VERIFIED`.
+
+Próxima ação exata: auditar o contrato HTTP de `MissionRun`/runs e só extrair
+um boundary de aplicação se houver duplicação concreta de regra no transporte.
+
+## Atualização 2026-09-10 — Composer application boundary
+
+`ComposerApplicationService` foi adicionado e conectado aos handlers Web de
+sessões Composer. O serviço centraliza o contrato de transporte para criar,
+listar, obter, adicionar turnos, alterar skills, finalizar, refinar e resolver
+unknowns. As regras permanecem no Core/Nexus por enquanto, evitando duplicação
+enquanto inteligência e Maestro ainda são dependências cruzadas.
+
+Também foi corrigido o descarte de `context.Context` nas operações públicas de
+Composer. O teste `TestComposerOperationsRejectCanceledContext` cobre criação,
+listagem, leitura, turno, skill, finalização e resolução.
+
+Verificação focada: `go test ./internal/nexus ./internal/control/web` PASS;
+`make quality-full` PASS, com Web 62/315, Go/race/vet, lint, build e security.
+
+Próxima ação exata: executar `make quality-full`, depois auditar contratos Web
+de Composer e decidir se a lógica de persistência pode ser extraída sem copiar
+as regras de inteligência/Composer.
+
+## Atualização 2026-09-10 — Correções do deep review
+
+Foram corrigidos os achados prioritários: `nexus plan run` agora processa o
+run; mudanças de `AgentSpec` exigem nova sessão; workspace/isolation aparecem
+na compilação de contexto; e o tipo Web aceita `agent_spec`. Gates Go e Web
+passaram. Não houve commit ou push. A pendência arquitetural restante é
+congelar a especialização do Agent no snapshot imutável de cada MissionRun.
+
+## Atualização 2026-09-10 — Higiene do índice Git
+
+A branch foi auditada para separar fonte/documentação de estado local e artefatos
+gerados. `.omx/`, `.superpowers/`, `.orquestrador/runtime/` e o binário gerado
+`loadtest` foram removidos do índice, permanecendo no checkout local quando
+aplicável. O `.gitignore` passou a cobrir esses caminhos e deixou de ignorar
+falsamente os arquivos-fonte `web/src/styles/_tokens.scss` e
+`internal/update/keyring.go`.
+
+Validação concluída com `git ls-files -ci --exclude-standard`,
+`git diff --check` e `git diff --cached --check`. As alterações de código já
+existentes (`internal/control/web/*`) e documentos novos do worktree foram
+preservados. Próxima ação: revisar o diff e criar o commit manualmente se a
+limpeza estiver aprovada; não houve commit ou push automático.
+
 ## Atualização 2026-09-08 — Correção do Project Shell
 
 O `409` observado ao abrir Project Shell foi rastreado aos logs do runtime:
@@ -791,3 +1100,128 @@ quando há grupos distintos.
 
 O binário foi recompilado e instalado em `/home/desenvolvedor/.local/bin/nexus`.
 Feche e reabra o widget/terminal para carregar a versão nova.
+
+## Handoff — consolidação Nexus Core — 2026-09-10
+
+Adicionados route composition em `internal/control/web/routes.go`, metadata
+contratual em `GET /api/v1/system/info`, cliente/tipos Web correspondentes e
+documentação em `docs/architecture/` e `docs/refactoring/`. O handler
+monolítico ainda existe; sua extração deve continuar somente por domínio, com
+testes de contrato antes de cada movimento.
+
+Verificação fresca: `go test ./...`, `go vet ./...`, `go test -race ./...`,
+`make lint-go`, `make security`, `bun run quality:full` e `bun run verify`
+passaram. O único aviso é o hook React já conhecido. Linux foi verificado;
+Windows/macOS permanecem `NOT VERIFIED`. O worktree tinha deleções/staging
+pré-existentes em `.omx`, `.superpowers`, `loadtest` e mudanças em `DEV/`; não
+reverter nem incluir esses artefatos.
+
+Projects/Agents, Resources, Planning, Intelligence, Missions, Git e Maestro
+foram extraídos para arquivos próprios do transporte, e o dispatch de
+Projects/Agents foi removido de `server.go`, sem alterar receivers, rotas ou
+payloads. `handlers_nexus.go` ficou restrito a wiring comum e doctor.
+O isolamento de `nexus.Default()` em testes também foi corrigido para permitir
+race detector confiável quando o diretório SQLite é temporário.
+Verificação final desta etapa: `make quality-full` e `go test -race ./...`
+passaram; frontend 62/314 e segurança passaram.
+
+Projects e Resources agora possuem boundaries de aplicação no Core. Erros HTTP
+preservam o campo `error` e acrescentam `code`; `mkdir` resolve ancestrais reais
+para impedir escape por symlink. O help do CLI tem teste de cobertura dos
+comandos despachados.
+
+Agents CRUD/detail também foi movido para `agent_application.go`; start/stop/
+recover/config continuam explicitamente no agregado por atravessarem o runtime.
+
+O transporte Web agora usa contratos Go nomeados para erro estável, metadata do
+servidor e detalhe de runtime (`internal/control/web/api_contracts.go`), sem
+alterar os campos JSON consumidos por Web/Desktop. A correlação de processo com
+MissionRun ficou explicitamente deferred porque o launcher não recebe run ID;
+não foi criado um campo especulativo em RuntimeSession/Host.
+
+O lifecycle do runtime, porém, já é observável sem essa correlação: o
+`SessionHost` publica fatos de processo e eventos Nexus distintos
+(`RUNTIME_STARTED`, `RUNTIME_STOPPED`, `RUNTIME_FAILED`), preservando lineage e
+ownership quando o launcher os fornece.
+
+Também foi corrigido um erro de compilação multiplataforma no fallback Windows
+de `internal/control/web/hosts.go`; a variável de erro agora permanece válida
+fora do escopo do `if` e o gate Linux completo passou depois da correção.
+
+O consumidor Web também não usa mais `any` nos contratos de runtime detail e
+event data: capabilities são `EffectiveCapabilities | null` e payloads de
+evento são `Record<string, unknown>`.
+
+Mission CRUD agora também usa DTOs nomeados compartilhados (`Mission`,
+`MissionDetail`, `MissionTask`, `MissionAssignment` e inputs correspondentes),
+reduzindo a divergência entre o Core e o cliente Web.
+
+WorkPlan CRUD/revisions foram movidos para `plan_application.go`; Composer,
+geração inteligente, compilação e execução continuam no agregado até que suas
+dependências cruzadas permitam um boundary próprio.
+
+Verificação mais recente: `make quality-full` passou após essas mudanças;
+frontend 62/314, race Go, vet, lint, segurança e smoke `nexus --help`/`doctor`
+passaram. Linux está verificado; Windows/macOS permanecem `NOT VERIFIED`.
+
+Próximo contexto recomendado: completar a cobertura de DTOs dos endpoints v1
+restantes ou formalizar a interface de cliente para consumidores não-Web, mas
+somente após escolher um contrato consumidor real. O isolamento completo de
+runtime/processo e a taxonomia mais ampla de eventos permanecem P1. Não criar
+commit/push automaticamente.
+
+## Handoff — semantic consolidation — 2026-09-10
+
+The characterization report and executable audit are in
+`docs/refactoring/CHARACTERIZATION-REPORT.md` and
+`scripts/characterize-nexus.sh`. The typed AgentSpec/compiler work is in
+`internal/nexus/intelligence`, `internal/nexus/config.go`, and the Nexus
+execution paths. `AgentSpec` is stored in the revision JSON config; runtime
+generations already retain the effective revision ID.
+
+CLI `plan compile`, `plan run`, and `agents PROJECT` are now tested against
+real Core paths. No commits were made. The worktree still contains broad
+pre-existing HTTP extraction and frontend changes; preserve them. Before any
+new architectural change, rerun the relevant focused tests and inspect
+`git diff --check`. Remaining debt is deeper application-service extraction,
+public API authoring of custom AgentSpec, and a generated registry for the
+provider-native CLI surface.
+
+Latest verification after injected provider registry ownership and the
+continuity wrapper cleanup: `make quality-full` passed with exit 0 (Web 62/320;
+Go tests, race, vet, lint, build and security passed). `git diff --check` also
+passed. Linux is verified; Windows/macOS remain `NOT VERIFIED`. The only lint
+warning is the pre-existing React exhaustive-deps warning at
+`web/src/app/NexusWorkspaceApp.tsx:228`.
+
+The latest native-CI remediation slice fixed OS temporary-root canonicalization,
+quota lease token collisions, and the Wails macOS About plist ampersand. The
+installer `@latest` regression was removed and `make quality-full` plus
+`make build-desktop-wails` passed locally. Native Windows/macOS execution is
+still `NOT VERIFIED` until these changes are published and CI is rerun; no
+commit or push was created.
+
+The subsequent handoff cancellation slice also passed `make quality-full`
+(exit 0; Web 62/320; Go tests/race/vet/lint/build/security). The goal remains
+active while native platform evidence and deeper runtime/process ownership are
+still outstanding.
+
+WorkPlan DTO typing was then completed for the stable Web facade responses;
+the subsequent `make quality-full` also passed with exit 0 (Web 62/320; Go
+tests/race/vet/lint/build/security). No commit was created.
+
+The handoff dependency boundary was then exercised through the full quality
+gate: `make quality-full` passed with exit 0 (Web 62/320; Go
+tests/race/vet/lint/build/security). Native platform evidence remains absent.
+
+The TUI registry ownership slice was then verified by the full gate:
+`make quality-full` passed with exit 0 (Web 62/320; Go
+tests/race/vet/lint/build/security). No commit was created.
+
+Local cross-build evidence was also collected for the CLI: Windows amd64
+PE32+ and macOS amd64/arm64 Mach-O binaries, plus `go test -c` for
+`internal/control/registry` on those targets. This does not replace native
+execution; native smoke/test and same-SHA CI evidence remain pending.
+
+The cancellable IPC slice was then verified by `make quality-full`, which
+passed with exit 0 (Web 62/320; Go tests/race/vet/lint/build/security).

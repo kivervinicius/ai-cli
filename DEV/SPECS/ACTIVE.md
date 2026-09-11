@@ -1,5 +1,12 @@
 # Especificação ativa: IAPro Nexus — Implementação Completa Web + Desktop Multiplataforma
 
+## Slice ativo — registry progressivo de CLIs (2026-09-10)
+
+O Core agora separa descoberta de instalação (`InstallationRegistry`) do
+registro de contas. `nexus providers status [--json]` expõe os estados e
+`nexus providers register` cria perfil isolado, com autenticação imediata ou
+adiada via `--no-login`.
+
 ## Complemento de execução planejado — 2026-09-06
 
 O plano solicitado para execução posterior pelo Luna está em
@@ -60,3 +67,46 @@ recovery, overnight acceptance and real dogfooding remain explicit blockers.
    - ADRs de Desktop (Wails v2), Update Architecture e Maestro Integration.
    - Relatórios em `DEV/validation/` e `docs/superpowers/reports/`.
 Decisões executivas e pendências de promoção: `DEV/DECISIONS/NEXUS_TERMINAL_CONTINUITY.md`.
+
+## Nexus Core consolidation status — 2026-09-10
+
+## Account isolation slice — 2026-09-10
+
+Introduzido `model.AccountScope` com chave canônica
+`provider/account_id/identity_version`. Perfis persistem o identificador
+opaco e versionam mudanças de identidade; APIs scoped de quota recusam cache
+sem correspondência. Cooldown, monitor de quota e eventos aceitam o mesmo
+escopo. Registro progressivo de instalações permanece como próximo slice.
+
+- Characterization baseline and capability matrix are versioned under
+  `docs/refactoring/`.
+- Agent identity remains separate from provider. Typed `AgentSpec` is persisted
+  in `AgentRevision.Config` and normalized for legacy role-only Agents.
+- The existing intelligence compiler now exposes provenance sections and is
+  reused by custom direct, headless, and WorkPackage/Mission execution.
+- CLI `plan compile`, `plan run`, and positional `agents PROJECT` behavior are
+  wired/tested. Full CLI registry generation remains a documented follow-up
+  because provider-direct commands retain native parsing.
+
+## Consolidação arquitetural incremental — 2026-09-10
+
+Esta campanha não adiciona uma leva de funcionalidades. A primeira fatia
+concluída modulariza a composição das rotas HTTP e formaliza metadata aditiva
+da API, preservando handlers, paths, CLI aliases e o contrato Web existente.
+O plano completo e a baseline estão em `docs/superpowers/plans/` e
+`docs/refactoring/`; os principais domínios HTTP já possuem arquivos próprios
+de transporte, e extrações futuras devem ser guiadas por domínio e testes.
+
+Projects, Resources, Agents, WorkPlan CRUD, Missions planning, Composer e o
+boundary de transporte de MissionRun já possuem services de aplicação no Core,
+com testes de cancelamento/CRUD/delegação e preservação dos contratos HTTP.
+Correlation IDs opcionais já atravessam eventos duráveis nos fluxos de failover
+e handoff. A campanha continua ativa: não declarar a Definition of Done global
+enquanto a matriz completa de contratos API/CLI, a taxonomia integral de
+eventos e as evidências nativas de Windows/macOS permanecerem pendentes.
+
+Atualização: `RuntimeApplicationService` agora concentra também os controles
+de runtime usados pela API (stop/respond/handoff), cleanup e espera cancelável;
+`RunApplicationService` produz eventos correlacionados de MissionRun com
+ownership de projeto/agente quando disponível. O lifecycle/process state ainda
+é implementado pelo control plane e runner, conforme documentado na auditoria.

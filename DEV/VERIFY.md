@@ -1,5 +1,119 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-10 — Gates de format/lint alinhados
+
+- PASS — `make format-check` usa o Prettier local e verifica TypeScript, CSS,
+  SCSS e JSON.
+- PASS — `make lint-styles` verifica CSS e SCSS.
+- PASS — `make lint-frontend` usa o ESLint local; permanece apenas o warning
+  preexistente de diretiva não utilizada em `NexusWorkspaceApp.tsx`.
+- PASS — `.lintstagedrc.json` usa binários locais e inclui SCSS.
+
+## 2026-09-10 — Fechamento dos últimos caminhos de quota
+
+- PASS — AGY só persiste usage live com `AccountScope` verificável; arquivos
+  legados sem identidade permanecem não atribuídos até refresh autenticado.
+- PASS — `BatchFetch` e seleção de modelo AGY não leem/escrevem cache de quota
+  sem escopo; runtimes carregam o escopo quando o perfil registrado o fornece.
+- PASS — monitor de quota associa runtime afetado por escopo exato quando
+  disponível, evitando colisões entre contas do mesmo provider/perfil.
+- PASS — perfis pendentes/sem identidade mantêm apenas o identificador local
+  reservado; `AccountScope.Verifiable()` só fica verdadeiro após identidade
+  autenticada, impedindo cache e routing atribuíveis antes do login.
+- PASS — `go test ./...` após o fechamento.
+
+## 2026-09-10 — Review corrective pass
+
+- PASS — `go test ./...` após as correções.
+- PASS — `go test -race ./...` (processo concluído sem detector de corrida).
+- PASS — `go vet ./...`.
+- PASS — `npm --prefix web run typecheck`, testes Web (320/320), build e
+  Prettier nos arquivos Web alterados.
+- PASS — `git diff HEAD --check`.
+- NOT VERIFIED — execução nativa Windows/macOS e Cloudflare real; o tunnel
+  recebeu correção de lifecycle e readiness, mas não foi iniciado contra uma
+  instalação real de `cloudflared` nesta sessão.
+
+## 2026-09-10 — AccountScope e isolamento de estado
+
+- PASS — `go test ./internal/core/model ./internal/core/quota
+  ./internal/core/cooldown ./internal/profile ./internal/control/events
+  ./internal/nexus`.
+- PASS — regressões A/B: cache de quota e cooldown da conta A não são visíveis
+  para a conta B; troca de credencial preserva `account_id` e incrementa
+  `identity_version`.
+- PASS — `go test -race ./...`.
+- PASS — `git diff --check`.
+- NOT VERIFIED — registro TUI/CLI de instalação não registrada e execução nativa
+  Windows/macOS permanecem fora deste slice.
+
+## 2026-09-10 — Registry progressivo de CLIs
+
+- PASS — `InstallationRegistry` separa descoberta de binário do registro de
+  conta e persiste `installations.json` com permissões restritas.
+- PASS — `providers status --json` expõe estado de instalação/registro.
+- PASS — `providers register` cria perfil isolado e permite adiar autenticação.
+- PASS — testes de contrato e `go test -race` nos pacotes alterados.
+- PENDENTE — integração equivalente na TUI/Web e modo `UNMANAGED_EPHEMERAL`.
+
+## 2026-09-10 — Integração Web/TUI
+
+- PASS — API de providers retorna estado de instalação/registro e aceita
+  registro de perfil via POST.
+- PASS — TUI exibe Providers separadamente e registra o item selecionado como
+  `PENDING_AUTH` sem copiar credenciais.
+- PASS — cliente Web tipado expõe listagem e registro.
+- PASS — `go test -race ./...` e `npm --prefix web run typecheck`.
+- PASS — `SaveUsageForExecution(..., managed=false)` garante que execuções
+  efêmeras não persistam usage; o wiring de lançamento com HOME temporário
+  permanece pendente.
+
+## 2026-09-10 — Correção de uso compartilhado entre contas Codex
+
+- PASS — `go test ./internal/core/provider/adapters/codex ./internal/profile
+  ./internal/core/quota ./internal/nexus -count=1`.
+- PASS — `go vet` nos mesmos pacotes.
+- PASS — regressão cobre perfis distintos apontando por symlink para o mesmo
+  `~/.codex/sessions`; apenas a conta do host recebe o rollout LIVE.
+- PASS — `nexus usage --json` foi executado localmente; a resposta manteve
+  `profile_id`, `account`, `status` e `source` por perfil, com fallback
+  `ESTIMATED` quando não há rollout atribuível.
+- PASS — `git diff --check`.
+- NOT VERIFIED — execução nativa Windows/macOS; esta correção foi verificada
+  no Linux.
+- CONDITIONAL — `go test ./...` foi tentado, mas o sandbox bloqueou sockets
+  Unix/TCP e escrita em `/home/.../checkpoints`; falhas ocorreram em testes
+  de host/protocol/web/update/core lifecycle fora da área alterada. Os testes
+  focados do domínio passaram.
+
+## 2026-09-10 — Composer application boundary and context propagation
+
+- PASS — TDD RED confirmou que Composer ignorava contexto cancelado; após a
+  correção, `TestComposerOperationsRejectCanceledContext` passou cobrindo
+  criação, listagem, leitura, turno, skill, finalização e resolução.
+- PASS — `go test ./internal/nexus ./internal/control/web`.
+- PASS — `make quality-full`: Web 62 arquivos / 315 testes; Go completo com
+  race/vet; lint; build; security (`No vulnerabilities found`).
+- WARNING PRE-EXISTING — ESLint mantém um warning de dependência ausente em
+  `web/src/app/NexusWorkspaceApp.tsx`; nenhum erro novo.
+- NOT VERIFIED — execução nativa em Windows/macOS; esta fatia foi verificada
+  no Linux.
+- PASS — smoke não destrutivo: `go run ./cmd/nexus --help` e `go run
+  ./cmd/nexus doctor` retornaram exit 0; o diagnóstico listou os providers
+  instalados e manteve estados não verificáveis como WARN/SKIPPED.
+
+## 2026-09-10 — WorkPlan application boundary
+
+- PASS — `go test ./internal/nexus ./internal/control/web` após extrair CRUD
+  e revisões para `internal/nexus/plan_application.go`.
+- PASS — `make quality-full`: suíte Web com 62 arquivos / 315 testes; testes
+  Go completos incluindo race; `go vet`; lint; build; security (`No
+  vulnerabilities found`).
+- WARNING PRE-EXISTING — ESLint mantém um warning de dependência ausente em
+  `web/src/app/NexusWorkspaceApp.tsx`; sem erros novos.
+- NOT VERIFIED — execução nativa em Windows/macOS; esta etapa foi verificada
+  no Linux.
+
 ## 2026-09-08 — Project Shell IPC timeout
 
 - PASS — teste de fallback do ShellDriver com `SHELL` inválido.
@@ -769,40 +883,6 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
   no Makefile.
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-07T21:24:48Z
+## Frontend gate — 2026-09-10T23:32:12Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
-
-## Premium shell visual pass — 2026-09-08
-
-- `npm run format:check` — PASS.
-- `npm run lint` — PASS com 0 erros; permanece somente o warning preexistente
-  de dependência do `useEffect` em `NexusWorkspaceApp.tsx:228`.
-- `npm run lint:styles` e `npm run check:styles` — PASS.
-- `npm run typecheck` — PASS.
-- `npm run test -- --run` — PASS: 62 arquivos, 313 testes.
-- `npm run build` — PASS.
-- `make quality` — PASS.
-- `git diff --check` — PASS.
-- Escopo visual: `NexusShell`, `ProjectRail` e `WorkspaceTaskbar`, com tokens,
-  foco visível, reduced motion e responsividade preservados. Screenshot/Axe
-  autenticado não foi repetido nesta execução por ausência de sessão de browser.
-- A tentativa do runner visual local compilou o bundle, mas ficou bloqueada no
-  bootstrap porque `maestro-visual-verify.mjs` procura `Bootstrap: ...?token=...`
-  e `nexus web --port 0 --listen 127.0.0.1 --no-open` atualmente imprime apenas
-  `URL: http://127.0.0.1:<porta>`.
-
-## Codex quota identity correction — 2026-09-08
-
-- Teste regressivo adicionado para garantir que o `QuotaView` de Codex exiba
-  `Codex`, mesmo quando a chave técnica do pool é `claude_gpt`.
-- `go test ./internal/core/quota ./internal/tui ./internal/app` — PASS.
-- `LOCAL_BIN=/home/desenvolvedor/.local/bin make install-local` — PASS; binário
-  local reinstalado com frontend e contrato de quota corrigidos.
-## AGY — GNOME Keyring prompt-free (2026-09-08)
-
-- Execução interativa padrão não envolve `dbus-run-session`/`gnome-keyring-daemon`.
-- Secret Service permanece disponível somente com `NEXUS_AGY_ENABLE_SECRET_SERVICE=1`.
-- Probe de quota falha fechado para o D-Bus do desktop (`unix:path=/dev/null`) e
-  não exporta `AI_HOST_DBUS_SESSION_BUS_ADDRESS` nem variáveis do keyring.
-- Testes focados e race do runtime/adaptador passaram.

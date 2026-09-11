@@ -20,6 +20,11 @@ O código canônico utiliza o binário `nexus`, mantendo `ai` como alias transpa
 
 ## 2. Arquitetura, Interoperabilidade e Especificações Canônicas
 
+- [`docs/architecture/quota/account-isolation.md`](../docs/architecture/quota/account-isolation.md): fronteira canônica de estado por conta.
+- [`docs/architecture/quota/identity-scoping.md`](../docs/architecture/quota/identity-scoping.md): identidade persistida e versionamento de credencial.
+- [`docs/architecture/providers/registration-lifecycle.md`](../docs/architecture/providers/registration-lifecycle.md): separação entre instalação e registro.
+- [`docs/architecture/quota/legacy-cache-migration.md`](../docs/architecture/quota/legacy-cache-migration.md): tratamento não destrutivo de cache legado.
+
 - [`NEXUS_V1_ARCHITECTURE.md`](NEXUS_V1_ARCHITECTURE.md): Arquitetura mestre do Workspace OS, runtimes e store.
 - [`NEXUS_CANONICAL_ALIGNMENT.md`](NEXUS_CANONICAL_ALIGNMENT.md): Alinhamento canônico entre CLI, Web e drivers de provedores.
 - [`NEXUS_CAPABILITY_PRESERVATION.md`](NEXUS_CAPABILITY_PRESERVATION.md): Matriz de preservação honesta de capacidades.

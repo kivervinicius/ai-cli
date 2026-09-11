@@ -1,9 +1,11 @@
 # IAPro Nexus — Current State Audit
 
-Updated: 2026-09-06
+Updated: 2026-09-10 (consolidation continuation)
 Branch: `feat/nexus-maximum-delivery`
-HEAD: `1899ca6334576d859056d48a394e51d03758f313`
-Remote: `origin/feat/nexus-maximum-delivery` at the same SHA
+HEAD: local worktree based on `bfc90fc`; uncommitted consolidation changes are
+present and intentionally not published.
+Remote: `origin/feat/nexus-maximum-delivery` remains at the branch base; no
+commit or push was created by this campaign.
 
 ## Evidence boundary
 
@@ -37,6 +39,12 @@ macOS, or Desktop verification.
 | Community repository | PARTIAL | Added truthful `CODE_OF_CONDUCT.md`, `SECURITY.md`, `SUPPORT.md`, `ROADMAP.md`, `GOVERNANCE.md`, `CHANGELOG.md`, and a PR template; no repository transfer/rename or formal CODEOWNERS assignment is authorized. |
 
 ## Current mandatory reds / missing evidence
+
+The local consolidation gates are currently green after the Missions planning
+and MissionRun cancellation-contract slices. This does not promote the
+worktree to release status: native Windows/
+macOS and same-SHA remote CI evidence remain unavailable, and the local tree
+contains unrelated/pre-existing changes that are preserved.
 
 - Remote CI run `34012236345` is failed for the committed tree at this HEAD;
   the current worktree contains additional uncommitted changes and has not
