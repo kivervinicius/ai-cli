@@ -200,6 +200,8 @@ func Run(args []string) error {
 		return configCmd(args[1:])
 	case "control", "ui":
 		return controlCmd(args[1:])
+	case "tunnel":
+		return tunnelCmd(args[1:])
 	case "__control-host":
 		return controlHostCmd(args[1:])
 	case "codex", "agy", "claude", "opencode", "gemini", "cursor":
@@ -303,7 +305,9 @@ func executeProviderWithSmartSelection(provName, explicitProfile string, args []
 			// instead of potentially stale disk cache (especially for codex
 			// which always bypasses cache on read).
 			if snap.Status != model.UsageUnknown && snap.Status != model.UsageError {
-				_ = qEng.SaveUsage(snap)
+				if account.AccountScope.Verifiable() {
+					_ = qEng.SaveUsageForScope(account.AccountScope, snap)
+				}
 			}
 		}
 	}
@@ -316,7 +320,10 @@ func executeProviderWithSmartSelection(provName, explicitProfile string, args []
 	allUnavailable := true
 	for _, p := range candidates {
 		acc := accounts[p.Name]
-		snap, _ := qEng.GetCachedUsage(provName, p.Name)
+		var snap model.UsageSnapshot
+		if accounts[p.Name].AccountScope.Verifiable() {
+			snap, _ = qEng.GetCachedUsageForScope(accounts[p.Name].AccountScope)
+		}
 		qv := quota.BuildQuotaView(snap, acc.Email, acc.Plan)
 		if qv.IsAvailable() {
 			allUnavailable = false
@@ -327,7 +334,10 @@ func executeProviderWithSmartSelection(provName, explicitProfile string, args []
 		fmt.Fprintf(os.Stderr, "\n⚠  NENHUMA CONTA DISPONÍVEL para %s:\n\n", strings.ToUpper(provName))
 		for _, p := range candidates {
 			acc := accounts[p.Name]
-			snap, _ := qEng.GetCachedUsage(provName, p.Name)
+			var snap model.UsageSnapshot
+			if accounts[p.Name].AccountScope.Verifiable() {
+				snap, _ = qEng.GetCachedUsageForScope(accounts[p.Name].AccountScope)
+			}
 			qv := quota.BuildQuotaView(snap, acc.Email, acc.Plan)
 			reason := qv.AvailabilityLabel()
 			detail := ""
@@ -348,7 +358,10 @@ func executeProviderWithSmartSelection(provName, explicitProfile string, args []
 		if accEmail == "" {
 			accEmail = p.Name
 		}
-		snap, _ := qEng.GetCachedUsage(provName, p.Name)
+		var snap model.UsageSnapshot
+		if accInfo.AccountScope.Verifiable() {
+			snap, _ = qEng.GetCachedUsageForScope(accInfo.AccountScope)
+		}
 		var capInfo string
 		qvCap := quota.BuildQuotaView(snap, accEmail, accInfo.Plan)
 		if summary := qvCap.CompactGroupSummary(); summary != "" {
@@ -358,10 +371,11 @@ func executeProviderWithSmartSelection(provName, explicitProfile string, args []
 
 		start := time.Now()
 		_ = telemetry.LogEvent(telemetry.Event{
-			Type:       telemetry.EventSessionStarted,
-			ProviderID: provName,
-			ProfileID:  p.Name,
-			Workspace:  cwd,
+			Type:         telemetry.EventSessionStarted,
+			ProviderID:   provName,
+			ProfileID:    p.Name,
+			Workspace:    cwd,
+			AccountScope: accInfo.AccountScope,
 		})
 
 		fail, runErr := pAdapter.Run(ctx, p, args)
@@ -369,12 +383,13 @@ func executeProviderWithSmartSelection(provName, explicitProfile string, args []
 
 		if fail.Kind != model.FailureNone && fail.Kind != "" {
 			_ = telemetry.LogEvent(telemetry.Event{
-				Type:        telemetry.EventRateLimitDetected,
-				ProviderID:  provName,
-				ProfileID:   p.Name,
-				Workspace:   cwd,
-				DurationMs:  dur.Milliseconds(),
-				FailureKind: fail.Kind,
+				Type:         telemetry.EventRateLimitDetected,
+				ProviderID:   provName,
+				ProfileID:    p.Name,
+				Workspace:    cwd,
+				DurationMs:   dur.Milliseconds(),
+				FailureKind:  fail.Kind,
+				AccountScope: accInfo.AccountScope,
 			})
 		}
 		return fail, runErr
@@ -425,6 +440,7 @@ func usage() {
   %s                              Open Web Workspace OS (default)
   %s web [flags]                  Launch IAPro Nexus Workspace OS (Web UI)
   %s web open                     Reopen the running Web UI from any terminal
+  %s tunnel                       Remote access via Cloudflare Quick Tunnel
   %s control [subcmd]             Nexus Supervised Agent Runtimes (alias: %s ui)
   %s start <provider> [flags]     Start supervised agent runtime & attach
   %s stop <runtime-id>            Stop running supervised runtime
@@ -440,17 +456,27 @@ func usage() {
   %s resume [id] [provider:name]  Resume previous session using provider-native syntax
 
   %s providers [--json]           List installed providers, versions & capabilities
+  %s providers status [--json]    Show installation and registration lifecycle
+  %s providers register <provider> [--profile <name>] [--no-login]
   %s profiles [--json]            List configured profiles, auth status & priorities
+  %s paths                        Show Nexus data and configuration paths
   %s add <provider> [name]        Add a new provider authentication profile
   %s remove <provider> <name>     Remove an existing profile
+  %s rename <provider> <old> <new> Rename a configured provider profile
   %s login / logout <p> <name>    Run provider official login/logout flow
   %s use <provider> <name>        Set default active profile for provider
   %s status [provider[:profile]]  Display profile health, plan and account status
   %s usage [--json] [--refresh]   Searchable quota table; --json for integrations; --refresh for live CLI fetch
   %s inspect <provider> <name>    Inspect profile configuration details
 
+  %s projects [list|add]          Register and list project workspaces
+  %s agents [project-id]          List persistent agents for a project
+  %s plan [list|create|show|compile|run]
+                                  Manage, compile and run WorkPlans
+
   %s sessions [search] [--json]   Universal session index across all providers
   %s workspaces [--json]          View workspaces, session history & bindings
+  %s current                      Show the current active provider/profile
   %s bind <provider>:<profile>    Bind current workspace to a preferred profile
   %s unbind <provider>            Unbind current workspace
   %s bindings [--json]            List all active workspace bindings
@@ -459,6 +485,8 @@ func usage() {
   %s security [profile] [--json]  Audit file sharing and isolation boundary
   %s history [--json]             View local session execution log
   %s stats [--json]               Aggregated statistics (sessions, fallbacks, rate limits)
+  %s export [--json]              Export local session data
+  %s issue-report                 Create a diagnostic issue report
   %s config <show|validate>       Manage control plane settings
   %s update                       Update Nexus only (use 'maestro update' explicitly for Maestro)
   %s maestro <status|doctor|update> Manage optional Maestro integration explicitly
@@ -477,11 +505,12 @@ Universal Canonical Aliases (translated to native options for all providers):
 Merged Help:
   %s <provider> --help            Show Nexus canonical aliases merged with official CLI help
 `,
-		p, p, p, p, p, p, p, p, p, p, p, p, p, p,
-		p, p, p, p, p,
-		p, p, p, p, p, p, p, p, p,
-		p, p, p, p, p, p, p, p, p, p, p, p, p, p,
-		p, p,
+		p, p, p, p, p, p, p, p, p, p, p, p, p,
+		p, p, p, p, p, p,
+		p, p, p, p, p, p, p, p, p, p, p,
+		p, p, p,
+		p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p,
+		p,
 	)
 	fmt.Print(localization.HumanizeHelp(body))
 	fmt.Println(localization.T("help.language"))
@@ -499,6 +528,12 @@ func versionCmd(args []string) error {
 }
 
 func providersCmd(args []string) error {
+	if len(args) > 0 && (args[0] == "status" || args[0] == "register") {
+		if args[0] == "status" {
+			return providerStatusCmd(args[1:])
+		}
+		return providerRegisterCmd(args[1:])
+	}
 	reg := initRegistry()
 	ctx := context.Background()
 	detections := reg.DetectAll(ctx)
@@ -546,6 +581,104 @@ func providersCmd(args []string) error {
 		caps := p.Capabilities()
 		capSummary := fmt.Sprintf("usage:%v resume:%v isolate:%v", caps.Usage, caps.Resume, caps.IsolatedRuntime)
 		fmt.Printf("%-14s %-12s %-24s %-10d %s\n", p.Name(), instStr, verStr, profCount[id], capSummary)
+	}
+	return nil
+}
+
+func providerStatusCmd(args []string) error {
+	jsonOutput := false
+	for _, arg := range args {
+		if arg == "--json" {
+			jsonOutput = true
+		}
+	}
+	reg := initRegistry()
+	installations := provider.NewInstallationRegistry()
+	records, err := installations.Refresh(reg, context.Background())
+	if err != nil {
+		return err
+	}
+	profiles, err := profile.List()
+	if err != nil {
+		return err
+	}
+	for i := range records {
+		hasProfile := false
+		hasAuthenticated := false
+		for _, p := range profiles {
+			if p.Provider != records[i].Provider {
+				continue
+			}
+			hasProfile = true
+			info := profile.GetAccountInfo(p.Provider, p.Name)
+			if info.Authenticated {
+				hasAuthenticated = true
+			}
+		}
+		switch {
+		case hasAuthenticated:
+			records[i].State = provider.RegisteredAuthenticated
+		case hasProfile:
+			records[i].State = provider.PendingAuth
+		case !records[i].Installed:
+			// Preserve the installation record while making the current
+			// availability explicit in JSON/CLI output.
+			records[i].State = provider.InstalledUnregistered
+		default:
+			records[i].State = provider.InstalledUnregistered
+		}
+	}
+	if jsonOutput {
+		b, _ := json.MarshalIndent(records, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+	fmt.Printf("%-12s %-24s %-18s %s\n", "PROVIDER", "BINARY", "STATE", "VERSION")
+	for _, record := range records {
+		fmt.Printf("%-12s %-24s %-18s %s\n", record.Provider, record.Binary, record.State, record.Version)
+	}
+	return nil
+}
+
+func providerRegisterCmd(args []string) error {
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return fmt.Errorf("usage: %s providers register <provider> [--profile <name>] [--no-login]", progName())
+	}
+	providerID := strings.ToLower(args[0])
+	profileName := providerID
+	noLogin := false
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--profile":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--profile requires a name")
+			}
+			profileName = args[i+1]
+			i++
+		case "--no-login":
+			noLogin = true
+		default:
+			return fmt.Errorf("unknown option %q", args[i])
+		}
+	}
+	reg := initRegistry()
+	if _, ok := reg.Get(providerID); !ok {
+		return fmt.Errorf("unknown provider %s", providerID)
+	}
+	if profile.Exists(providerID, profileName) {
+		return fmt.Errorf("profile %s:%s already exists", providerID, profileName)
+	}
+	if _, err := profile.Create(providerID, profileName); err != nil {
+		return err
+	}
+	fmt.Printf("Registered %s:%s with an isolated profile.\n", providerID, profileName)
+	if noLogin {
+		fmt.Println("Authentication deferred; state is PENDING_AUTH.")
+		return nil
+	}
+	if err := loginCmd([]string{providerID, profileName}); err != nil {
+		fmt.Printf("Authentication pending for %s:%s: %v\n", providerID, profileName, err)
+		return err
 	}
 	return nil
 }
@@ -1522,7 +1655,7 @@ func completionCmd(args []string) error {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage inspect sessions workspaces bind unbind bindings explain doctor security history stats config update maestro completion version release codex agy claude opencode gemini cursor --supervised --direct --yolo --continue --resume"
+    opts="web start stop ps running attach handoff continue resume tunnel control ui providers profiles add remove login logout use status usage inspect sessions workspaces bind unbind bindings explain doctor security history stats config update maestro completion version release codex agy claude opencode gemini cursor --supervised --direct --yolo --continue --resume"
     COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
     return 0
 }
@@ -1535,6 +1668,7 @@ _nexus() {
     local -a commands
     commands=(
         'web:Launch IAPro Nexus Workspace OS (Web UI)'
+        'tunnel:Remote access via Cloudflare Quick Tunnel'
         'start:Start supervised agent runtime'
         'stop:Stop running supervised runtime'
         'ps:List active supervised runtimes'
@@ -1564,15 +1698,15 @@ _nexus() {
 _nexus "$@"
 `)
 	case "fish":
-		fmt.Print(`complete -c nexus -f -a "web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage inspect sessions workspaces bind unbind bindings explain doctor security history stats config update maestro completion version release codex agy claude opencode gemini cursor --supervised --direct --yolo --continue --resume"
-complete -c ai -f -a "web start stop ps running attach handoff continue resume control ui providers profiles add remove login logout use status usage inspect sessions workspaces bind unbind bindings explain doctor security history stats config update maestro completion version release codex agy claude opencode gemini cursor --supervised --direct --yolo --continue --resume"
+		fmt.Print(`complete -c nexus -f -a "web start stop ps running attach handoff continue resume tunnel control ui providers profiles add remove login logout use status usage inspect sessions workspaces bind unbind bindings explain doctor security history stats config update maestro completion version release codex agy claude opencode gemini cursor --supervised --direct --yolo --continue --resume"
+complete -c ai -f -a "web start stop ps running attach handoff continue resume tunnel control ui providers profiles add remove login logout use status usage inspect sessions workspaces bind unbind bindings explain doctor security history stats config update maestro completion version release codex agy claude opencode gemini cursor --supervised --direct --yolo --continue --resume"
 `)
 	case "powershell", "pwsh":
 		fmt.Print(`Register-ArgumentCompleter -Native -CommandName @('nexus', 'ai') -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
     $commands = @(
         'web', 'start', 'stop', 'ps', 'running', 'attach', 'handoff', 'continue', 'resume',
-        'control', 'ui', 'providers', 'profiles', 'add', 'remove', 'login', 'logout', 'use',
+        'tunnel', 'control', 'ui', 'providers', 'profiles', 'add', 'remove', 'login', 'logout', 'use',
         'status', 'usage', 'inspect', 'sessions', 'workspaces', 'bind', 'unbind', 'bindings',
         'explain', 'doctor', 'security', 'history', 'stats', 'config', 'update', 'completion', 'version', 'release',
         'codex', 'agy', 'claude', 'opencode', 'gemini', 'cursor', '--supervised', '--direct', '--yolo', '--continue', '--resume'

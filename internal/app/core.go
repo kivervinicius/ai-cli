@@ -15,11 +15,12 @@ import (
 
 // CoreConfig encapsulates runtime options for the reusable Nexus Core.
 type CoreConfig struct {
-	Host     string
-	Port     int
-	NoOpen   bool
-	Remote   bool
-	Language string
+	Host       string
+	Port       int
+	NoOpen     bool
+	Remote     bool
+	Language   string
+	TunnelHost string // Cloudflare Quick Tunnel public hostname
 }
 
 // Core encapsulates the entire Nexus backend and control server lifecycle.
@@ -59,10 +60,11 @@ func (c *Core) Start(ctx context.Context) error {
 	nexus.Default().StartQuotaMonitor(ctx)
 	c.mu.Lock()
 	srv, err := web.NewServer(web.ServerOptions{
-		Host:   c.cfg.Host,
-		Port:   c.cfg.Port,
-		NoOpen: c.cfg.NoOpen,
-		Remote: c.cfg.Remote,
+		Host:       c.cfg.Host,
+		Port:       c.cfg.Port,
+		NoOpen:     c.cfg.NoOpen,
+		Remote:     c.cfg.Remote,
+		TunnelHost: c.cfg.TunnelHost,
 	})
 	if err != nil {
 		c.mu.Unlock()

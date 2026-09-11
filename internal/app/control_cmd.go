@@ -106,7 +106,8 @@ SUBCOMMANDS:
   doctor [--json] [--repair]     Audit control runtime environment and drivers
   web [--port <port>] [--no-open] [--listen <ip>] [--remote]
                                 Open browser-based Web Workspace OS
-                                Default port: 3000 (override with NEXUS_WEB_PORT env var)
+                                Default port: 13000 (override with NEXUS_WEB_PORT env var)
+                                Registers nexus.dev in /etc/hosts for local name resolution
   web open                      Reopen the running Web UI from any terminal
   web url                       Print the current Web UI URL (with auth token if needed)
 
@@ -131,7 +132,7 @@ func controlWebCmd(args []string) error {
 	var noOpen bool
 	var remote bool
 
-	// Resolve port: CLI flag > env var > default (3000)
+	// Resolve port: CLI flag > env var > default (13000)
 	port = web.DefaultPort
 	if envPort := os.Getenv("NEXUS_WEB_PORT"); envPort != "" {
 		if p, err := strconv.Atoi(envPort); err == nil && p > 0 && p <= 65535 {
@@ -260,11 +261,12 @@ func controlHostCmd(args []string) error {
 	}
 
 	sh, err := host.NewSessionHost(host.Config{
-		Session: sess,
-		Binary:  bin,
-		Args:    cmdArgs,
-		Env:     env,
-		Cwd:     sess.Workspace,
+		Session:  sess,
+		Registry: reg,
+		Binary:   bin,
+		Args:     cmdArgs,
+		Env:      env,
+		Cwd:      sess.Workspace,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create SessionHost: %w", err)

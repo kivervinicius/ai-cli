@@ -64,7 +64,9 @@ func executeProviderSupervised(provName, explicitProfile string, args []string) 
 		account.Usage = snapshot
 		accounts[candidate.Name] = account
 		if snapshot.Status != model.UsageUnknown && snapshot.Status != model.UsageError {
-			_ = quotaEngine.SaveUsage(snapshot)
+			if account.AccountScope.Verifiable() {
+				_ = quotaEngine.SaveUsageForScope(account.AccountScope, snapshot)
+			}
 		}
 	}
 	if len(candidates) == 0 {

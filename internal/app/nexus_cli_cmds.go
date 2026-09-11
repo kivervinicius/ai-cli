@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/nexus"
+	"github.com/kivervinicius/ai-cli/internal/nexus/runner"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
 
@@ -80,6 +81,48 @@ func planCmd(args []string) error {
 		fmt.Println(string(out))
 		return nil
 
+	case "compile":
+		if len(args) < 3 {
+			return fmt.Errorf("informe o ID do plano e do pacote, ex: nexus plan compile <plan-id> <package-id> [phase-id]")
+		}
+		phaseID := ""
+		if len(args) > 3 {
+			phaseID = args[3]
+		}
+		compiled, err := n.CompilePackagePrompt(context.Background(), args[1], phaseID, args[2])
+		if err != nil {
+			return err
+		}
+		out, _ := json.MarshalIndent(compiled, "", "  ")
+		fmt.Println(string(out))
+		return nil
+
+	case "run":
+		if len(args) < 2 {
+			return fmt.Errorf("informe o ID do plano, ex: nexus plan run <plan-id> [agent-id]")
+		}
+		defaultAgentID := ""
+		if len(args) > 2 {
+			defaultAgentID = args[2]
+		}
+		run, err := n.StartMissionRun(context.Background(), args[1], defaultAgentID, runner.DefaultAutonomyContract(), false)
+		if err != nil {
+			return err
+		}
+		for {
+			updated, done, stepErr := n.Runner().ExecuteNextStep(context.Background(), run.ID)
+			if stepErr != nil {
+				return stepErr
+			}
+			run = updated
+			if done {
+				break
+			}
+		}
+		out, _ := json.MarshalIndent(run, "", "  ")
+		fmt.Println(string(out))
+		return nil
+
 	default:
 		return fmt.Errorf("subcomando de plano desconhecido: %s", args[0])
 	}
@@ -99,8 +142,8 @@ func agentsCmd(args []string) error {
 	}
 
 	projID := projects[0].ID
-	if len(args) > 1 && !strings.HasPrefix(args[1], "-") {
-		projID = args[1]
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		projID = args[0]
 	}
 
 	agents, err := st.ListAgents(projID)

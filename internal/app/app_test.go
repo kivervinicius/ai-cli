@@ -10,6 +10,8 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/quota"
+	"github.com/kivervinicius/ai-cli/internal/nexus"
+	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 	"github.com/kivervinicius/ai-cli/internal/profile"
 )
 
@@ -59,8 +61,87 @@ func TestCaptureStdoutDrainsLargeOutput(t *testing.T) {
 	}
 }
 
+func TestTopLevelCommandDispatchContracts(t *testing.T) {
+	setupTestEnvironment(t)
+	cases := []struct {
+		name      string
+		args      []string
+		wantError bool
+	}{
+		{name: "help", args: []string{"help"}},
+		{name: "version", args: []string{"version"}},
+		{name: "provider help", args: []string{"help", "codex"}},
+		{name: "unknown command", args: []string{"not-a-command"}, wantError: true},
+		{name: "missing plan id", args: []string{"plan", "show"}, wantError: true},
+		{name: "missing compile arguments", args: []string{"plan", "compile"}, wantError: true},
+		{name: "missing run arguments", args: []string{"plan", "run"}, wantError: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := captureStdout(func() error { return Run(tc.args) })
+			if (err != nil) != tc.wantError {
+				t.Fatalf("args=%v error=%v wantError=%v", tc.args, err, tc.wantError)
+			}
+		})
+	}
+}
+
+func TestHelpDocumentsDispatchedCommandFamilies(t *testing.T) {
+	setupTestEnvironment(t)
+	out, err := captureStdout(func() error { return Run([]string{"help"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []string{
+		"web", "projects", "agents", "plan", "providers", "profiles", "start",
+		"stop", "attach", "handoff", "continue", "usage", "doctor", "security",
+		"sessions", "workspaces", "paths", "rename", "current", "run", "export",
+		"issue-report", "update", "maestro", "completion", "version",
+	} {
+		if !strings.Contains(out, " "+command) {
+			t.Errorf("help does not document dispatched command %q", command)
+		}
+	}
+}
+
+func TestAgentsCommandUsesSinglePositionalProjectArgument(t *testing.T) {
+	setupTestEnvironment(t)
+	n := nexus.Default()
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := st.CreateProject(store.Project{Name: "First", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := st.CreateProject(store.Project{Name: "Second", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateAgent(store.Agent{ProjectID: first.ID, Name: "First agent"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateAgent(store.Agent{ProjectID: second.ID, Name: "Second agent"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.TouchProject(first.ID); err != nil {
+		t.Fatal(err)
+	}
+	out, err := captureStdout(func() error { return Run([]string{"agents", second.ID}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "("+second.ID+")") || strings.Contains(out, "("+first.ID+")") {
+		t.Fatalf("agents did not honor positional project id: %s", out)
+	}
+}
+
 func setupTestEnvironment(t *testing.T) (binDir, testOut string) {
 	t.Helper()
+	nexus.ResetDefaultForTest()
+	t.Cleanup(nexus.ResetDefaultForTest)
 	data := t.TempDir()
 	cfg := t.TempDir()
 	state := t.TempDir()
