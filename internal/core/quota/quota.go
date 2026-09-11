@@ -292,6 +292,34 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 	return snap, true
 }
 
+// GetCachedUsageForScope reads cache only when the caller supplies the exact
+// account boundary. The legacy method remains for compatibility with callers
+// that have not migrated yet.
+func (e *Engine) GetCachedUsageForScope(scope model.AccountScope) (model.UsageSnapshot, bool) {
+	if !scope.Verifiable() {
+		return model.UsageSnapshot{ProviderID: scope.ProviderID, ProfileID: scope.ProfileID, Status: model.UsageUnknown, Source: model.SourceNone}, false
+	}
+	snap, found := e.GetCachedUsage(scope.ProviderID, scope.ProfileID)
+	if !found || !snap.AccountScope.Verifiable() || snap.AccountScope.Key() != scope.Key() {
+		return model.UsageSnapshot{ProviderID: scope.ProviderID, ProfileID: scope.ProfileID, AccountScope: scope, Status: model.UsageUnknown, Source: model.SourceNone}, false
+	}
+	return snap, true
+}
+
+// GetLastKnownUsageForScope is the scoped equivalent of GetLastKnownUsage.
+// It deliberately uses the long retention window while still requiring the
+// exact account identity, so stale data cannot cross an identity change.
+func (e *Engine) GetLastKnownUsageForScope(scope model.AccountScope) (model.UsageSnapshot, bool) {
+	if !scope.Verifiable() {
+		return model.UsageSnapshot{ProviderID: scope.ProviderID, ProfileID: scope.ProfileID, AccountScope: scope, Status: model.UsageUnknown, Source: model.SourceNone}, false
+	}
+	snap, found := NewEngine(LastKnownTTL).GetCachedUsage(scope.ProviderID, scope.ProfileID)
+	if !found || !snap.AccountScope.Verifiable() || snap.AccountScope.Key() != scope.Key() {
+		return model.UsageSnapshot{ProviderID: scope.ProviderID, ProfileID: scope.ProfileID, AccountScope: scope, Status: model.UsageUnknown, Source: model.SourceNone}, false
+	}
+	return snap, true
+}
+
 // GetLastKnownUsage returns the most recent snapshot that was persisted with
 // windows, even when it is older than the normal trust window. Callers must
 // mark the returned snapshot as degraded/estimated before displaying or using
@@ -368,6 +396,28 @@ func (e *Engine) SaveUsage(snap model.UsageSnapshot) error {
 	}
 
 	return os.Rename(tempFile, quotaFile)
+}
+
+// SaveUsageForScope refuses to persist data without a verifiable account
+// identity. This is the safe boundary for new adapters and ephemeral runs.
+func (e *Engine) SaveUsageForScope(scope model.AccountScope, snap model.UsageSnapshot) error {
+	if !scope.Verifiable() {
+		return fmt.Errorf("cannot persist usage without a verifiable account scope")
+	}
+	snap.AccountScope = scope
+	snap.ProviderID = scope.ProviderID
+	snap.ProfileID = scope.ProfileID
+	return e.SaveUsage(snap)
+}
+
+// SaveUsageForExecution is the persistence boundary for managed versus
+// unmanaged runs. Ephemeral executions intentionally produce no account-owned
+// cache, even when a provider returns useful usage data.
+func (e *Engine) SaveUsageForExecution(scope model.AccountScope, snap model.UsageSnapshot, managed bool) error {
+	if !managed {
+		return nil
+	}
+	return e.SaveUsageForScope(scope, snap)
 }
 
 // FormatFreshness returns human-readable age of a snapshot (e.g. "updated 12s ago").
@@ -479,10 +529,17 @@ func (e *Engine) BatchFetch(ctx context.Context, profiles []model.Profile, fetch
 			defer func() { <-sem }()
 
 			snap := fetcher(ctx, prof)
-			_ = e.SaveUsage(snap)
+			if prof.AccountScope.Verifiable() {
+				snap.AccountScope = prof.AccountScope
+				_ = e.SaveUsageForScope(prof.AccountScope, snap)
+			}
 
 			mu.Lock()
-			results[prof.Provider+":"+prof.Name] = snap
+			key := prof.Provider + ":" + prof.Name
+			if prof.AccountScope.Verifiable() {
+				key = prof.AccountScope.Key()
+			}
+			results[key] = snap
 			mu.Unlock()
 		}(p)
 	}

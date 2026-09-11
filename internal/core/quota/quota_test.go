@@ -240,6 +240,34 @@ func TestStaleCachedSnapshotMarkedEstimatedByTrustworthy(t *testing.T) {
 	}
 }
 
+func TestUsageSnapshotRepresentsAbsoluteEvidenceWithoutInventingUnknowns(t *testing.T) {
+	limit := 1000.0
+	used := 125.0
+	remaining := 875.0
+	snapshot := model.UsageSnapshot{
+		ProviderID: "codex",
+		ProfileID:  "work",
+		Status:     model.UsageLive,
+		Source:     model.SourceOfficialAPI,
+		Confidence: model.UsageConfidenceHigh,
+		Windows: []model.UsageWindow{{
+			Kind:      "5h",
+			Limit:     &limit,
+			Used:      &used,
+			Remaining: &remaining,
+			Unit:      "tokens",
+		}},
+	}
+	if snapshot.Windows[0].Limit == nil || *snapshot.Windows[0].Remaining != remaining {
+		t.Fatalf("absolute usage evidence was not retained: %+v", snapshot.Windows[0])
+	}
+
+	unknown := model.UsageSnapshot{Status: model.UsageUnknown, Source: model.SourceNone}
+	if unknown.Windows != nil {
+		t.Fatalf("unknown snapshot must not gain synthetic windows: %+v", unknown.Windows)
+	}
+}
+
 func TestFormatFreshnessDays(t *testing.T) {
 	got := FormatFreshness(time.Now().Add(-8 * 24 * time.Hour))
 	if got != "8 days ago" {
