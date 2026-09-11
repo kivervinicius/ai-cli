@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Globe,
   MonitorCog,
   Palette,
   RefreshCw,
@@ -39,16 +40,19 @@ import {
 } from '../../notifications/notificationPrefs';
 import { pushNotifications } from '../../notifications/PushNotificationManager';
 import { SystemDiagnosticsCard } from './SystemDiagnosticsCard';
+import { RemoteAccessTab } from './RemoteAccessTab';
 import type { SystemDoctorReport } from '../../nexus/api';
 import styles from './SettingsSurface.module.scss';
 
-type SettingsTab = 'appearance' | 'accessibility' | 'updates' | 'intelligence' | 'notifications';
+type SettingsTab =
+  'appearance' | 'accessibility' | 'updates' | 'intelligence' | 'notifications' | 'remote';
 const SETTINGS_TABS: SettingsTab[] = [
   'appearance',
   'accessibility',
   'updates',
   'intelligence',
   'notifications',
+  'remote',
 ];
 
 export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) => {
@@ -298,6 +302,20 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
         >
           <Bell size={15} />
           <span>Notificações</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="settings-tab-remote"
+          aria-controls="settings-panel"
+          tabIndex={activeTab === 'remote' ? 0 : -1}
+          aria-selected={activeTab === 'remote'}
+          onKeyDown={onSettingsTabKeyDown}
+          className={`nx-settings-tab ${activeTab === 'remote' ? 'nx-settings-tab--active' : ''}`}
+          onClick={() => setActiveTab('remote')}
+        >
+          <Globe size={15} />
+          <span>{t('settings.remote.title')}</span>
         </button>
       </div>
 
@@ -683,6 +701,7 @@ export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) =>
             />
           </Card>
         )}
+        {activeTab === 'remote' && <RemoteAccessTab />}
       </div>
     </div>
   );
