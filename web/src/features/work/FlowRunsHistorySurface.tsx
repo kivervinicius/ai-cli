@@ -138,14 +138,14 @@ export const FlowRunsHistorySurface: React.FC<{
   }
 
   return (
-    <div className={`nx-flow-runs-history-surface ${styles.root}`}>
-      <div className="nx-flow-runs-history-header">
-        <div className="nx-flow-runs-history-title">
+    <div className={styles.root}>
+      <div className={styles.header}>
+        <div className={styles.title}>
           <History size={16} />
           <strong>{t('flow.historyTitle', 'Flow')}</strong>
           <Badge tone="default">{track === 'drafts' ? draftPlans.length : runs.length}</Badge>
         </div>
-        <div className="nx-flow-runs-history-actions">
+        <div className={styles.actions}>
           <div
             className={styles.trackToggle}
             role="tablist"
@@ -171,12 +171,13 @@ export const FlowRunsHistorySurface: React.FC<{
             </button>
           </div>
           {track === 'runs' && (
-            <div className="nx-flow-runs-filter-group">
+            <div className={styles.filterGroup}>
               {(['ALL', 'ACTIVE', 'COMPLETED', 'FAILED'] as const).map((s) => (
                 <button
                   key={s}
                   type="button"
-                  className={`nx-filter-chip ${filterState === s ? 'active' : ''}`}
+                  className={styles.filterChip}
+                  data-active={filterState === s ? 'true' : undefined}
                   onClick={() => setFilterState(s)}
                 >
                   {s === 'ALL'

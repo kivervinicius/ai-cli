@@ -61,6 +61,11 @@
   --nx-project-nav: 38px;
   --nx-taskbar: 38px;
   --nx-rail: 232px;
+  --nx-touch-min: 32px;
+  --nx-safe-top: env(safe-area-inset-top, 0px);
+  --nx-safe-right: env(safe-area-inset-right, 0px);
+  --nx-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --nx-safe-left: env(safe-area-inset-left, 0px);
   /* Canonical Z-Index Hierarchy Tokens */
   --nx-z-base: 1;
   --nx-z-window: 100;
@@ -170,6 +175,7 @@ body,
 #root {
   width: 100%;
   height: 100%;
+  min-height: 100dvh;
   margin: 0;
 }
 body {
@@ -243,11 +249,13 @@ button {
   top: 8px;
 }
 .nx-os-shell {
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
+  min-height: 100dvh;
   display: flex;
   background: var(--nx-bg);
   overflow: hidden;
+  padding: var(--nx-safe-top) var(--nx-safe-right) var(--nx-safe-bottom) var(--nx-safe-left);
 }
 .nx-os-main {
   min-width: 0;
@@ -592,6 +600,14 @@ button {
   flex: 0 0 auto;
   justify-content: flex-end;
 }
+.nx-chrome-wide {
+  display: flex;
+  align-items: center;
+  gap: inherit;
+}
+.nx-chrome-compact {
+  display: none;
+}
 .nx-topbar__project {
   border: 0;
   background: transparent;
@@ -661,8 +677,8 @@ button {
   color: var(--nx-subtle);
   font: 0.714rem var(--nx-font-mono);
 }
-.nx-mobile-menu {
-  display: none !important;
+.nx-icon-button.nx-mobile-menu {
+  display: none;
 }
 .nx-project-nav {
   display: flex;
@@ -2320,11 +2336,12 @@ button {
     opacity: 1;
     pointer-events: auto;
   }
-  .nx-mobile-menu {
+  .nx-icon-button.nx-mobile-menu {
     display: inline-flex;
   }
 }
-@media (max-height: 820px), (max-width: 1366px) {
+/* Laptop compact chrome must not apply to phones — touch needs the opposite. */
+@media (min-width: 821px) and (max-height: 820px), (min-width: 821px) and (max-width: 1366px) {
   :root {
     --nx-topbar: 38px;
     --nx-taskbar: 26px;
@@ -2427,6 +2444,162 @@ button {
     display: none;
   }
 }
+
+/* Phone + coarse pointer: touch-first chrome without changing desktop layout. */
+@media (max-width: 820px) {
+  :root {
+    --nx-topbar: 52px;
+    --nx-taskbar: 44px;
+    --nx-touch-min: 44px;
+    --nx-density-btn-h: 44px;
+    --nx-density-pad-btn: 0 14px;
+  }
+
+  .nx-chrome-wide {
+    display: none;
+  }
+
+  .nx-chrome-compact {
+    display: inline-flex;
+  }
+
+  .nx-icon-button.nx-mobile-menu {
+    display: inline-flex;
+  }
+
+  .nx-icon-button {
+    width: var(--nx-touch-min);
+    height: var(--nx-touch-min);
+  }
+
+  .nx-button,
+  .nx-button[data-size="sm"] {
+    min-height: var(--nx-touch-min);
+  }
+
+  .nx-topbar {
+    min-height: var(--nx-topbar);
+    padding: 0 8px;
+    gap: 6px;
+  }
+
+  .nx-topbar__project-btn {
+    min-height: var(--nx-touch-min);
+    max-width: min(46vw, 180px);
+  }
+
+  .nx-workspace-stack {
+    grid-template-rows: 48px minmax(0, 1fr);
+    border-radius: 0;
+  }
+
+  .nx-workspace-tabs {
+    min-height: 48px;
+    height: 48px;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .nx-workspace-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nx-workspace-tab {
+    min-width: max-content;
+    max-width: 46vw;
+    min-height: 48px;
+    padding: 0 12px;
+    scroll-snap-align: start;
+    font-size: 0.929rem;
+  }
+
+  .nx-workspace-tab__close {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 6px;
+  }
+
+  .nx-workspace-taskbar,
+  .nx-workspace-statusbar {
+    min-height: var(--nx-taskbar);
+    height: var(--nx-taskbar);
+    padding: 0 8px;
+  }
+
+  .nx-workspace-taskbar button,
+  .nx-statusbar-btn {
+    min-height: var(--nx-touch-min);
+    height: auto;
+  }
+
+  .nx-surface-scroll {
+    padding: 12px;
+    overscroll-behavior: contain;
+  }
+
+  .nx-page-header {
+    margin-bottom: 12px;
+    gap: 10px;
+  }
+
+  .nx-page-header h1 {
+    font-size: 1.286rem;
+  }
+
+  .nx-page-header p {
+    font-size: 0.857rem;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  .nx-composer-deliberative__grid > .nx-card:first-child {
+    min-height: 0;
+    grid-template-rows: auto minmax(140px, auto) auto;
+  }
+
+  .nx-composer-turns {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .nx-composer-destination-dock {
+    padding-bottom: 12px;
+  }
+
+  .nx-composer-goal-bar__row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .nx-statusbar-version,
+  .nx-statusbar-local span,
+  .nx-statusbar-project .nx-statusbar-item {
+    max-width: 28vw;
+  }
+}
+
+@media (pointer: coarse) and (max-width: 1200px) {
+  :root {
+    --nx-touch-min: 44px;
+  }
+
+  .nx-icon-button {
+    width: max(40px, var(--nx-touch-min));
+    height: max(40px, var(--nx-touch-min));
+  }
+
+  .nx-button,
+  .nx-button[data-size="sm"] {
+    min-height: var(--nx-touch-min);
+  }
+}
+
 .nx-selected-check {
   display: inline-flex;
   align-items: center;
@@ -7742,9 +7915,24 @@ button {
     max-width: 90px !important;
   }
   .nx-create-menu__trigger {
-    padding: 0 6px !important;
-    min-width: 30px;
-    height: 28px;
+    padding: 0 8px !important;
+    min-width: var(--nx-touch-min);
+    min-height: var(--nx-touch-min);
+    height: auto;
+  }
+}
+
+@media (max-width: 820px) {
+  .nx-chrome-wide {
+    display: none;
+  }
+
+  .nx-chrome-compact {
+    display: inline-flex;
+  }
+
+  .nx-icon-button.nx-mobile-menu {
+    display: inline-flex;
   }
 }
 

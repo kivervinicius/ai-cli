@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { IconButton } from '../design-system';
 import { LanguagePicker } from './components/LanguagePicker';
 import { FontScalePicker } from './components/FontScalePicker';
+import { ChromeOverflowMenu } from './components/ChromeOverflowMenu';
 import { WorkspaceTaskbar } from '../workspace/WorkspaceTaskbar';
 import { nexus } from '../nexus/api';
 import { AttentionIntermediationBanner } from '../components/AttentionIntermediationBanner';
@@ -151,49 +152,51 @@ export const NexusShell: React.FC<{
 
             {/* Right Status Controls */}
             <div className={`nx-topbar__status ${styles.status}`} data-tour="status">
-              <div
-                className="nx-topbar-version-pill"
-                title={t('settings.nexusVersion', 'Nexus version')}
-              >
-                <span className="nx-ver-nexus">Nexus v{sysInfo?.nexus_version || 'unknown'}</span>
-              </div>
+              <div className="nx-chrome-wide">
+                <div
+                  className="nx-topbar-version-pill"
+                  title={t('settings.nexusVersion', 'Nexus version')}
+                >
+                  <span className="nx-ver-nexus">Nexus v{sysInfo?.nexus_version || 'unknown'}</span>
+                </div>
 
-              {sysInfo?.update_available && (
+                {sysInfo?.update_available && (
+                  <button
+                    type="button"
+                    onClick={() => onSettings('updates')}
+                    className="nx-update-indicator"
+                    title={t('settings.updates')}
+                  >
+                    <ArrowUpCircle size={13} className="nx-spin-slow" />
+                    <span className="nx-update-badge">{t('settings.updates')}</span>
+                  </button>
+                )}
+
+                <LanguagePicker />
+                <FontScalePicker />
+                <IconButton
+                  label={t('settings.remote.title', 'Acesso remoto')}
+                  onClick={() => onSettings('remote')}
+                  title={t(
+                    'settings.remote.description',
+                    'Acesso Nexus de outro dispositivo via túnel Cloudflare',
+                  )}
+                >
+                  <Globe size={15} aria-hidden="true" />
+                </IconButton>
+
                 <button
                   type="button"
-                  onClick={() => onSettings('updates')}
-                  className="nx-update-indicator"
-                  title={t('settings.updates')}
+                  className={`nx-command-trigger ${styles.commandButton}`}
+                  data-tour="command"
+                  onClick={onCommand}
+                  title={t('shell.searchShortcut', 'Search & Commands (Ctrl+K)')}
                 >
-                  <ArrowUpCircle size={13} className="nx-spin-slow" />
-                  <span className="nx-update-badge">{t('settings.updates')}</span>
+                  <Command size={13} />
+                  <span>{t('shell.search')}</span>
+                  <kbd>Ctrl K</kbd>
                 </button>
-              )}
-
-              <LanguagePicker />
-              <FontScalePicker />
-              <IconButton
-                label={t('settings.remote.title', 'Acesso remoto')}
-                onClick={() => onSettings('remote')}
-                title={t(
-                  'settings.remote.description',
-                  'Acesso Nexus de outro dispositivo via túnel Cloudflare',
-                )}
-              >
-                <Globe size={15} aria-hidden="true" />
-              </IconButton>
-
-              <button
-                type="button"
-                className={`nx-command-trigger ${styles.commandButton}`}
-                data-tour="command"
-                onClick={onCommand}
-                title={t('shell.searchShortcut', 'Search & Commands (Ctrl+K)')}
-              >
-                <Command size={13} />
-                <span>{t('shell.search')}</span>
-                <kbd>Ctrl K</kbd>
-              </button>
+              </div>
 
               <div className={styles.notificationWrap}>
                 <IconButton
@@ -210,36 +213,47 @@ export const NexusShell: React.FC<{
                 {hasAttentionAlerts && <span className={styles.attentionIndicator} />}
               </div>
 
-              <IconButton
-                className="nx-topbar-tour-btn"
-                label={t('shell.tour')}
-                onClick={onOpenWelcome}
-              >
-                <CircleHelp size={15} />
-              </IconButton>
-
-              {onToggleZenMode && (
-                <button
-                  type="button"
-                  className={styles.focusToggleBtn}
-                  data-active={zenMode ? 'true' : 'false'}
-                  onClick={onToggleZenMode}
-                  title={zenMode ? t('workspace.exitFocusMode') : t('workspace.focusMode')}
-                  aria-label={zenMode ? t('workspace.exitFocusMode') : t('workspace.focusMode')}
+              <div className="nx-chrome-wide">
+                <IconButton
+                  className="nx-topbar-tour-btn"
+                  label={t('shell.tour')}
+                  onClick={onOpenWelcome}
                 >
-                  {zenMode ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-                  <span className={styles.focusBtnText}>
-                    {zenMode
-                      ? t('workspace.exitFocus')
-                      : t('workspace.focusModeShort', 'Modo Foco')}
-                  </span>
-                  <kbd>Ctrl+Shift+F</kbd>
-                </button>
-              )}
+                  <CircleHelp size={15} />
+                </IconButton>
 
-              <IconButton label={t('shell.appearance')} onClick={() => onSettings('appearance')}>
-                <MoonStar size={15} />
-              </IconButton>
+                {onToggleZenMode && (
+                  <button
+                    type="button"
+                    className={styles.focusToggleBtn}
+                    data-active={zenMode ? 'true' : 'false'}
+                    onClick={onToggleZenMode}
+                    title={zenMode ? t('workspace.exitFocusMode') : t('workspace.focusMode')}
+                    aria-label={zenMode ? t('workspace.exitFocusMode') : t('workspace.focusMode')}
+                  >
+                    {zenMode ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                    <span className={styles.focusBtnText}>
+                      {zenMode
+                        ? t('workspace.exitFocus')
+                        : t('workspace.focusModeShort', 'Modo Foco')}
+                    </span>
+                    <kbd>Ctrl+Shift+F</kbd>
+                  </button>
+                )}
+
+                <IconButton label={t('shell.appearance')} onClick={() => onSettings('appearance')}>
+                  <MoonStar size={15} />
+                </IconButton>
+              </div>
+
+              <ChromeOverflowMenu
+                zenMode={zenMode}
+                updateAvailable={Boolean(sysInfo?.update_available)}
+                onCommand={onCommand}
+                onOpenWelcome={onOpenWelcome}
+                onSettings={onSettings}
+                onToggleZenMode={onToggleZenMode}
+              />
             </div>
           </header>
 

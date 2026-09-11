@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -328,7 +329,7 @@ func (a *Adapter) getUsageFromRollouts(ctx context.Context, p model.Profile) (mo
 		return rolloutFiles[i].modTime.After(rolloutFiles[j].modTime)
 	})
 
-	maxCheck := 30
+	maxCheck := 120
 	if len(rolloutFiles) < maxCheck {
 		maxCheck = len(rolloutFiles)
 	}
@@ -353,6 +354,7 @@ func (a *Adapter) getUsageFromRollouts(ctx context.Context, p model.Profile) (mo
 		}
 		var detectedModel string
 		matchedAccount := false
+		sawForeignEmail := false
 
 		scanner := bufio.NewScanner(f)
 		buf := make([]byte, 1024*1024)
@@ -367,6 +369,9 @@ func (a *Adapter) getUsageFromRollouts(ctx context.Context, p model.Profile) (mo
 			// Check account match if email is present
 			if targetEmail != "" && !matchedAccount && strings.Contains(string(line), targetEmail) {
 				matchedAccount = true
+			}
+			if !sawForeignEmail {
+				sawForeignEmail = rolloutLineHasForeignEmail(line, targetEmail)
 			}
 
 			if strings.Contains(string(line), `"token_count"`) {
@@ -422,7 +427,8 @@ func (a *Adapter) getUsageFromRollouts(ctx context.Context, p model.Profile) (mo
 		isProfilePath := profileHome != "" && config.FilesystemPathWithin(profileHome, rf.path)
 		belongs := matchedAccount || isProfilePath
 		if rf.sharedHost {
-			belongs = targetEmail != "" && hostAuthEmail != "" && strings.EqualFold(targetEmail, hostAuthEmail)
+			hostOwned := targetEmail != "" && hostAuthEmail != "" && strings.EqualFold(targetEmail, hostAuthEmail)
+			belongs = matchedAccount || (hostOwned && !sawForeignEmail)
 		}
 		if !belongs {
 			continue
@@ -515,6 +521,19 @@ func readCodexAuthEmail(authPath string) string {
 		return ""
 	}
 	return strings.TrimSpace(claims.Email)
+}
+
+var rolloutEmailRe = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
+
+func rolloutLineHasForeignEmail(line []byte, targetEmail string) bool {
+	target := strings.ToLower(strings.TrimSpace(targetEmail))
+	for _, match := range rolloutEmailRe.FindAll(line, 8) {
+		found := strings.ToLower(string(match))
+		if target == "" || found != target {
+			return true
+		}
+	}
+	return false
 }
 
 func formatCodexResetTime(epochSec int64) string {

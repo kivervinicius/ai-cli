@@ -68,6 +68,12 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 	if scopeOK {
 		lastKnown, hasLastKnown = qEng.GetLastKnownUsageForScope(scope)
 	}
+	if !hasLastKnown {
+		fallback, ok := qEng.GetLastKnownUsage(providerName, name)
+		if ok && snapshotBelongsToProfile(fallback, providerName, name, expectedAccount) {
+			lastKnown, hasLastKnown = fallback, true
+		}
+	}
 	if hasLastKnown && !snapshotBelongsToProfile(lastKnown, providerName, name, expectedAccount) {
 		lastKnown = model.UsageSnapshot{ProviderID: providerName, ProfileID: name, Status: model.UsageUnknown, Source: model.SourceNone}
 		hasLastKnown = false
@@ -152,6 +158,9 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 			FetchedAt:  time.Now(),
 		}
 	}
+	if scopeOK && !snap.AccountScope.Verifiable() {
+		snap.AccountScope = scope
+	}
 	if !snapshotBelongsToProfile(snap, providerName, name, expectedAccount) {
 		snap = model.UsageSnapshot{ProviderID: providerName, ProfileID: name, Status: model.UsageUnknown, Source: model.SourceNone, FetchedAt: time.Now()}
 	}
@@ -235,7 +244,9 @@ func snapshotBelongsToProfile(snap model.UsageSnapshot, providerName, profileNam
 	// identity scope. Legacy files without this metadata remain untrusted and
 	// must be refreshed before they can become account-owned usage.
 	if scope, ok := usageScope(providerName, profileName, expectedAccount); ok {
-		if snap.AccountScope != scope {
+		// Fresh adapter observations often omit AccountScope. Reject only when
+		// a verifiable scope is present and belongs to a different identity.
+		if snap.AccountScope.Verifiable() && snap.AccountScope.Key() != scope.Key() {
 			return false
 		}
 	}

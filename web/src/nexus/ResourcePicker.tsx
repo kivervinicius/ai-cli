@@ -6,6 +6,11 @@ import { translateStatus } from '../i18n';
 import { useTranslation } from 'react-i18next';
 import styles from './ResourcePicker.module.scss';
 import { quotaTruthState } from '../features/work/directSessionModel';
+import {
+  displayLabelKey,
+  formatResetDescription,
+  windowKindLabelKey,
+} from '../features/usage/usageModel';
 
 import type { ProviderAccount, SchedulerDecision } from '../types';
 
@@ -38,23 +43,30 @@ const healthTone = (health: string) =>
         ? 'danger'
         : 'default';
 
-const QuotaBar: React.FC<{ w: DisplayQuotaWindow }> = ({ w }) => (
-  <span className="nx-resource-account__quota-row">
-    <span className="nx-resource-account__quota-label">{w.label}</span>
-    <Progress value={w.remaining} label={`${Math.round(w.remaining)}%`} />
-    {w.reset_desc && <span className="nx-resource-account__quota-reset">{w.reset_desc}</span>}
-  </span>
-);
+const QuotaBar: React.FC<{ w: DisplayQuotaWindow }> = ({ w }) => {
+  const { t, i18n } = useTranslation();
+  const windowKey = windowKindLabelKey(w.kind) || displayLabelKey(w.label);
+  const reset = formatResetDescription(w.reset_desc, i18n.language, (key, options) =>
+    t(key, options),
+  );
+  return (
+    <span className="nx-resource-account__quota-row">
+      <span className="nx-resource-account__quota-label">{windowKey ? t(windowKey) : w.label}</span>
+      <Progress value={w.remaining} label={`${Math.round(w.remaining)}%`} />
+      {reset ? <span className="nx-resource-account__quota-reset">{reset}</span> : null}
+    </span>
+  );
+};
 
 const groupAvailable = (group: DisplayQuotaModelGroup) =>
   group.windows.some((w) => w.kind !== 'unknown' && w.remaining > 0);
 
 function displayQuotaGroups(account: ProviderAccount): DisplayQuotaModelGroup[] {
-  return (account.quota_view?.model_groups || []).map((group, index) => ({
-    name: group.name || group.key || `Quota ${index + 1}`,
+  return (account.quota_view?.model_groups || []).map((group) => ({
+    name: group.name || group.key || 'Quota',
     windows: (group.windows || []).map((window) => ({
       kind: window.kind || 'unknown',
-      label: window.label || window.kind || 'quota',
+      label: window.label || window.kind || 'Quota',
       remaining: typeof window.remaining === 'number' ? window.remaining : 0,
       reset_desc: window.reset_desc || '',
       status: window.status || 'UNKNOWN',
@@ -189,7 +201,9 @@ export const ResourcePicker: React.FC<Props> = ({ agentId, preferProvider, onSel
                             {multiGroups && group.name && (
                               <span className="nx-resource-account__group-heading">
                                 <span className="nx-resource-account__group-name">
-                                  {group.name}
+                                  {displayLabelKey(group.name)
+                                    ? t(displayLabelKey(group.name) as string)
+                                    : group.name}
                                 </span>
                                 <Badge tone={groupAvailable(group) ? 'success' : 'danger'}>
                                   {groupAvailable(group)

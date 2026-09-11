@@ -1,0 +1,66 @@
+.card {
+  display: grid;
+  gap: 10px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--nx-accent-text);
+}
+
+.header strong {
+  color: var(--nx-text);
+  font-size: 13px;
+}
+
+.recommended,
+.candidates {
+  display: grid;
+  gap: 8px;
+}
+
+.row,
+.candidate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.recommended p,
+.error {
+  margin: 0;
+  color: var(--nx-text-soft);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.recommended ul {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--nx-muted);
+  font-size: 12px;
+}
+
+.cons {
+  color: var(--nx-warning);
+}
+
+.candidates small {
+  color: var(--nx-subtle);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.candidate {
+  justify-content: space-between;
+  padding: 6px 8px;
+  border: 1px solid var(--nx-border);
+  border-radius: 7px;
+  background: var(--nx-surface);
+  font-size: 12px;
+  color: var(--nx-text-soft);
+}

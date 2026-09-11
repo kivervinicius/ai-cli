@@ -40,3 +40,13 @@
 .accentDot {
   background: var(--nx-accent);
 }
+
+@include mixins.nx-phone {
+  .canonicalPath {
+    display: none;
+  }
+
+  .projectItem {
+    max-width: 42vw;
+  }
+}

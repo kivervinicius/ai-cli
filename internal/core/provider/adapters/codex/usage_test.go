@@ -145,6 +145,65 @@ func TestCodexSharedHostRolloutsMatchHostAuthEmail(t *testing.T) {
 	}
 }
 
+func TestCodexSharedHostRolloutWithEmbeddedEmailGoesToMatchingProfile(t *testing.T) {
+	dataDir := t.TempDir()
+	cfgDir := t.TempDir()
+	hostHome := t.TempDir()
+	t.Setenv("NEXUS_DATA_DIR", dataDir)
+	t.Setenv("AI_MANAGER_DATA_DIR", dataDir)
+	t.Setenv("AI_CLI_DATA_DIR", dataDir)
+	t.Setenv("NEXUS_CONFIG_DIR", cfgDir)
+	t.Setenv("AI_MANAGER_CONFIG_DIR", cfgDir)
+	t.Setenv("AI_CLI_CONFIG_DIR", cfgDir)
+	t.Setenv("HOME", hostHome)
+	t.Setenv("AI_REAL_HOME", hostHome)
+
+	hostSessions := filepath.Join(hostHome, ".codex", "sessions", "2026", "09", "10")
+	if err := os.MkdirAll(hostSessions, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	omegaAuth := `{"tokens":{"id_token":"eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6ImtpdmVyQG9tZWdhc2lzdGVtYXMubmV0LmJyIn0.sig"}}`
+	gmailAuth := `{"tokens":{"id_token":"eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6ImtpdmVyLm9tZWdhZWR1QGdtYWlsLmNvbSJ9.sig"}}`
+	if err := os.WriteFile(filepath.Join(hostHome, ".codex", "auth.json"), []byte(omegaAuth), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gmailRollout := `{"type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"Authenticated as kiver.omegaedu@gmail.com"}]}}
+{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":7.0,"window_minutes":300,"resets_at":1788556157},"secondary":{"used_percent":11.0,"window_minutes":10080,"resets_at":1788748886}}}}
+`
+	if err := os.WriteFile(filepath.Join(hostSessions, "rollout-gmail.jsonl"), []byte(gmailRollout), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, profile := range []struct {
+		name string
+		auth string
+	}{
+		{name: "omega", auth: omegaAuth},
+		{name: "gmail", auth: gmailAuth},
+	} {
+		home := filepath.Join(dataDir, "profiles", "codex", profile.name, "home")
+		if err := os.MkdirAll(home, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(home, "auth.json"), []byte(profile.auth), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(hostHome, ".codex", "sessions"), filepath.Join(home, "sessions")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	adapter := New()
+	gmail := adapter.GetUsage(context.Background(), model.Profile{Provider: "codex", Name: "gmail"})
+	if gmail.Status != model.UsageLive || len(gmail.Windows) != 2 {
+		t.Fatalf("gmail should receive the rollout that names its email, got status=%s windows=%d", gmail.Status, len(gmail.Windows))
+	}
+	omega := adapter.GetUsage(context.Background(), model.Profile{Provider: "codex", Name: "omega"})
+	if omega.Source == model.SourceObservation {
+		t.Fatalf("omega must not inherit a shared rollout that names the gmail account")
+	}
+}
+
 func TestCodexSharedHostRolloutsThroughProfileSymlinkStayAccountScoped(t *testing.T) {
 	dataDir := t.TempDir()
 	cfgDir := t.TempDir()
