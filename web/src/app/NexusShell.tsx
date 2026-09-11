@@ -6,6 +6,7 @@ import {
   ChevronDown,
   CircleHelp,
   Command,
+  Globe,
   Maximize2,
   Menu,
   Minimize2,
@@ -39,7 +40,7 @@ export const NexusShell: React.FC<{
   onCommand: () => void;
   onOpenWelcome: () => void;
   onOpenProjectManager: () => void;
-  onSettings: () => void;
+  onSettings: (tab?: 'appearance' | 'updates' | 'remote') => void;
   onNewAgent?: () => void;
   onNewAISession?: () => void;
   onProjectShell?: () => void;
@@ -160,22 +161,28 @@ export const NexusShell: React.FC<{
               {sysInfo?.update_available && (
                 <button
                   type="button"
-                  onClick={onSettings}
+                  onClick={() => onSettings('updates')}
                   className="nx-update-indicator"
                   title={t('settings.updates')}
                 >
                   <ArrowUpCircle size={13} className="nx-spin-slow" />
-                  <span className="nx-update-badge">Updates</span>
+                  <span className="nx-update-badge">{t('settings.updates')}</span>
                 </button>
               )}
 
-              {/* Language Switcher */}
               <LanguagePicker />
-
-              {/* Reading accessibility is an immediate toolbar preference. */}
               <FontScalePicker />
+              <IconButton
+                label={t('settings.remote.title', 'Acesso remoto')}
+                onClick={() => onSettings('remote')}
+                title={t(
+                  'settings.remote.description',
+                  'Acesso Nexus de outro dispositivo via túnel Cloudflare',
+                )}
+              >
+                <Globe size={15} aria-hidden="true" />
+              </IconButton>
 
-              {/* Command Palette Trigger */}
               <button
                 type="button"
                 className={`nx-command-trigger ${styles.commandButton}`}
@@ -188,11 +195,11 @@ export const NexusShell: React.FC<{
                 <kbd>Ctrl K</kbd>
               </button>
 
-              {/* Push & In-App Attention Notification Trigger */}
               <div className={styles.notificationWrap}>
                 <IconButton
                   label={t('shell.notificationsAndRadar', 'Central de Notificações e Radar')}
                   onClick={() => setNotificationDrawerOpen((prev) => !prev)}
+                  aria-expanded={notificationDrawerOpen}
                 >
                   {pushNotifications.getPermission() === 'granted' ? (
                     <BellRing size={15} className="nx-text-emerald-400" />
@@ -203,7 +210,6 @@ export const NexusShell: React.FC<{
                 {hasAttentionAlerts && <span className={styles.attentionIndicator} />}
               </div>
 
-              {/* Help & Welcome Guide */}
               <IconButton
                 className="nx-topbar-tour-btn"
                 label={t('shell.tour')}
@@ -212,7 +218,6 @@ export const NexusShell: React.FC<{
                 <CircleHelp size={15} />
               </IconButton>
 
-              {/* Focus Mode Explicit Enter & Exit Button */}
               {onToggleZenMode && (
                 <button
                   type="button"
@@ -232,8 +237,7 @@ export const NexusShell: React.FC<{
                 </button>
               )}
 
-              {/* Theme & Settings */}
-              <IconButton label={t('shell.appearance')} onClick={onSettings}>
+              <IconButton label={t('shell.appearance')} onClick={() => onSettings('appearance')}>
                 <MoonStar size={15} />
               </IconButton>
             </div>

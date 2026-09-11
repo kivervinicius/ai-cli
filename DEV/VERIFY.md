@@ -1,30 +1,5 @@
 # Verification: Nexus V1 (post-pending-issues)
 
-## 2026-09-10 — Troca de projeto sem tela global
-
-- PASS — removido o `NexusSplashScreen` durante a troca de projeto; o shell e
-  o canvas permanecem montados enquanto o layout autenticado é carregado.
-- PASS — a persistência do layout fica desabilitada até `layoutReady`, evitando
-  sobrescrever o layout remoto com o fallback temporário.
-- PASS — `npm --prefix web run typecheck`, ESLint, Stylelint, testes focados
-  (25/25) e build Web.
-- PASS — `make build-desktop-wails` e smoke HTTP no Web Core (`127.0.0.1:13000`)
-  após reiniciar o binário desktop.
-- ENVIRONMENT — WebKit/Mesa reporta VMware sem aceleração 3D; blur e outros
-  efeitos dependentes de GPU podem ficar reduzidos neste ambiente, sem relação
-  com a troca de projeto.
-
-## 2026-09-10 — Investigação de novas janelas no desktop
-
-- PASS — `make build-desktop-wails` gerou o binário Linux Wails em
-  `cmd/nexus-desktop/build/bin/nexus-desktop`.
-- PASS — o desktop iniciou e anexou ao Web Core existente em `127.0.0.1:13000`.
-- PASS — segunda inicialização foi recusada pela `SingleInstanceLock`; apenas
-  um processo `nexus-desktop` permaneceu ativo.
-- NOT VERIFIED — interação visual nativa não pôde ser reproduzida nesta sessão:
-  o display VMware/Mesa reportou falha de aceleração EGL/DRI e não expôs uma
-  janela inspecionável por X11.
-
 ## 2026-09-10 — Gates de format/lint alinhados
 
 - PASS — `make format-check` usa o Prettier local e verifica TypeScript, CSS,
@@ -908,7 +883,7 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
   no Makefile.
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-11T01:56:27Z
+## Frontend gate — 2026-09-11T02:19:13Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
 

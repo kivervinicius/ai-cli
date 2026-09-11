@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { composerGateForReadiness, composerNeedsGapConfirmation } from './composerModel';
+import {
+  composerGateForReadiness,
+  composerNeedsGapConfirmation,
+  formatComposerSessionTitle,
+} from './composerModel';
 import type { ContextReadinessState } from '../../types';
 
 describe('Composer Context Readiness gate', () => {
@@ -15,6 +19,17 @@ describe('Composer Context Readiness gate', () => {
     expect(composerGateForReadiness('HYDRATING').action).toBe('WAIT');
     expect(composerGateForReadiness('STALE').action).toBe('REFRESH');
     expect(composerGateForReadiness('FAILED').action).toBe('RETRY');
+  });
+});
+
+describe('formatComposerSessionTitle', () => {
+  it('replaces keyboard-spam titles with a compact fallback', () => {
+    expect(formatComposerSessionTitle('çlkkkkkkkkkkk', 'cmp_ABCDEF123456')).toBe('EF123456');
+  });
+
+  it('keeps meaningful titles and trims long ones', () => {
+    expect(formatComposerSessionTitle('Auth JWT', 'cmp_x')).toBe('Auth JWT');
+    expect(formatComposerSessionTitle('a'.repeat(60), 'cmp_x').endsWith('…')).toBe(true);
   });
 });
 

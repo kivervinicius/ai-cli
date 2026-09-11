@@ -238,6 +238,14 @@ export const nexus = {
   // Resource Scheduler (Gate 5)
   listResources: () =>
     request<{ accounts: ProviderAccount[]; policy: string }>('/api/v1/resources'),
+  refreshResources: () =>
+    request<{ accounts: ProviderAccount[]; policy: string; refreshed?: boolean }>(
+      '/api/v1/resources/refresh',
+      {
+        method: 'POST',
+        body: '{}',
+      },
+    ),
   selectResource: (agentId: string, provider: string, profile: string, policy = 'MANUAL') =>
     request<ResourceAllocation>('/api/v1/resources/select', {
       method: 'POST',

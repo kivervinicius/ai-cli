@@ -46,6 +46,7 @@ func registerNexusRoutes(mux *http.ServeMux, deps routeDependencies) {
 	mux.HandleFunc("/api/v1/projects/", s.routeProject(h))
 	mux.HandleFunc("/api/v1/agents/", s.routeAgent(h))
 	mux.HandleFunc("/api/v1/resources", s.authMiddleware(h.handleResourcesList))
+	mux.HandleFunc("/api/v1/resources/refresh", s.authMiddleware(h.handleResourcesRefresh))
 	mux.HandleFunc("/api/v1/resources/select", s.authMiddleware(h.handleResourceSelect))
 	mux.HandleFunc("/api/v1/resources/recommend", s.authMiddleware(h.handleResourceRecommend))
 }

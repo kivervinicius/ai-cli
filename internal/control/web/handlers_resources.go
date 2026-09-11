@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/nexus"
+	"github.com/kivervinicius/ai-cli/internal/profile"
 )
 
 // handleResourcesList GET /api/v1/resources — returns available provider accounts
@@ -27,6 +28,35 @@ func (h *NexusHandler) handleResourcesList(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]any{
 		"accounts": accounts,
 		"policy":   "BALANCED",
+	})
+}
+
+// handleResourcesRefresh POST /api/v1/resources/refresh — force live quota probes then list.
+func (h *NexusHandler) handleResourcesRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	profiles, err := profile.List()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for _, p := range profiles {
+		_ = profile.RefreshUsageSnapshot(p.Provider, p.Name)
+	}
+	accounts, err := h.resources.List(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if accounts == nil {
+		accounts = []nexus.ProviderAccount{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"accounts":  accounts,
+		"policy":    "BALANCED",
+		"refreshed": true,
 	})
 }
 

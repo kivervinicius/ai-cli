@@ -128,6 +128,7 @@ export interface ProviderAccount {
   rate_limited: boolean;
   health: string;
   last_checked: string;
+  cooldown_until?: string;
   avail_reasons?: {
     exhausted_windows?: string[];
     rate_limited?: boolean;
@@ -137,8 +138,11 @@ export interface ProviderAccount {
   };
   quota_view?: {
     status?: string;
+    source?: string;
     plan?: string;
     account?: string;
+    fetched_at?: string;
+    available?: boolean;
     model_groups?: Array<{
       key?: string;
       name?: string;
@@ -148,6 +152,7 @@ export interface ProviderAccount {
         remaining?: number;
         reset_desc?: string;
         status?: string;
+        bar?: string;
       }>;
     }>;
   };

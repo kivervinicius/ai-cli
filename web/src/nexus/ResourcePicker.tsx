@@ -192,7 +192,9 @@ export const ResourcePicker: React.FC<Props> = ({ agentId, preferProvider, onSel
                                   {group.name}
                                 </span>
                                 <Badge tone={groupAvailable(group) ? 'success' : 'danger'}>
-                                  {groupAvailable(group) ? 'DISPONIVEL' : 'INDISPONIVEL'}
+                                  {groupAvailable(group)
+                                    ? t('usage.groupAvailable', 'Disponível')
+                                    : t('usage.groupUnavailable', 'Indisponível')}
                                 </Badge>
                               </span>
                             )}

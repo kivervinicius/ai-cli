@@ -23,7 +23,11 @@ import type {
   Project,
 } from '../../types';
 import { selectResumableComposerSession } from './composerSessionModel';
-import { composerNeedsGapConfirmation } from './composerModel';
+import {
+  composerNeedsGapConfirmation,
+  formatComposerSessionTitle,
+  composerSessionStateKey,
+} from './composerModel';
 import type { ComposerGate } from './composerModel';
 import { asArray, asStringArray } from '../../lib/safeArray';
 import { TaskPreparationDialog } from '../../components/TaskPreparationDialog';
@@ -39,6 +43,10 @@ const ARCHETYPE_LABELS: Record<string, string> = {
   SECURITY: 'Segurança',
   GENERIC: 'Genérico',
 };
+
+function isUnknownResolved(status: string): boolean {
+  return status === 'ANSWERED' || status === 'CONFIRMED' || status === 'DISMISSED';
+}
 
 export const ComposerSurface: React.FC<{
   project: Project;
@@ -101,30 +109,61 @@ export const ComposerSurface: React.FC<{
       .catch(() => undefined);
   }, [project.id, selectedAgentId]);
 
-  const briefItems = useMemo(
+  const briefItems = useMemo(() => {
+    if (!view) return [];
+    return [
+      [t('work.composer.understood', 'Understood'), view.brief.goal],
+      [
+        t('work.composer.context', 'Context'),
+        [
+          ...asStringArray(view.brief.context),
+          ...(view.brief.context &&
+          typeof view.brief.context === 'object' &&
+          !Array.isArray(view.brief.context)
+            ? asStringArray((view.brief.context as { existing_state?: unknown }).existing_state)
+            : []),
+        ].join(' · '),
+      ],
+      [t('work.composer.decisions', 'Decisions'), asStringArray(view.brief.decisions).join(' · ')],
+      [
+        t('work.composer.criteria', 'Criteria'),
+        asStringArray(view.brief.success_criteria).join(' · '),
+      ],
+      [
+        t('work.composer.openDoubts', 'Open doubts'),
+        asStringArray(view.brief.open_questions).join(' · '),
+      ],
+    ].filter(([, value]) => value);
+  }, [t, view]);
+
+  const nextQuestion = useMemo(() => {
+    if (!view) return '';
+    type UnknownItem = NonNullable<ComposerSessionView['brief']['unknowns']>[number];
+    const unknowns = asArray<UnknownItem>(view.brief.unknowns);
+    const unresolved = unknowns.filter((u) => !isUnknownResolved(u.status));
+    const blocking = unresolved.find((u) => u.severity === 'BLOCKING');
+    if (blocking?.question) return blocking.question;
+    if (unresolved[0]?.question) return unresolved[0].question;
+    const openQs = asStringArray(view.brief.open_questions);
+    return openQs[0] || '';
+  }, [view]);
+
+  const actionableGaps = useMemo(() => {
+    if (!view) return [];
+    type UnknownItem = NonNullable<ComposerSessionView['brief']['unknowns']>[number];
+    return asArray<UnknownItem>(view.brief.unknowns).filter((u) => !isUnknownResolved(u.status));
+  }, [view]);
+
+  const sessionOptions = useMemo(
     () =>
-      view
-        ? [
-            ['Entendido', view.brief.goal],
-            [
-              'Contexto',
-              [
-                ...asStringArray(view.brief.context),
-                ...(view.brief.context &&
-                typeof view.brief.context === 'object' &&
-                !Array.isArray(view.brief.context)
-                  ? asStringArray(
-                      (view.brief.context as { existing_state?: unknown }).existing_state,
-                    )
-                  : []),
-              ].join(' · '),
-            ],
-            ['Decisões', asStringArray(view.brief.decisions).join(' · ')],
-            ['Critérios', asStringArray(view.brief.success_criteria).join(' · ')],
-            ['Dúvidas abertas', asStringArray(view.brief.open_questions).join(' · ')],
-          ].filter(([, value]) => value)
-        : [],
-    [view],
+      sessions.map((s) => ({
+        value: s.id,
+        label: `${formatComposerSessionTitle(s.title, s.id, s.created_at)} · ${t(
+          composerSessionStateKey(s.state),
+          s.state,
+        )}`,
+      })),
+    [sessions, t],
   );
 
   const create = async () => {
@@ -161,7 +200,6 @@ export const ComposerSurface: React.FC<{
       await refreshSessions();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      // message is preserved because setMessage('') was only called on success!
     } finally {
       setBusy(false);
     }
@@ -253,7 +291,7 @@ export const ComposerSurface: React.FC<{
     try {
       await navigator.clipboard.writeText(artifact.content);
     } catch {
-      setError('Não foi possível copiar o prompt neste navegador.');
+      setError(t('work.composer.copyFailed', 'Could not copy the prompt in this browser.'));
     }
   };
 
@@ -266,7 +304,7 @@ export const ComposerSurface: React.FC<{
         <div className={`nx-composer-goal-bar__label ${styles.flexRowBetween}`}>
           <div className={styles.flexRowGap6}>
             <Sparkles size={16} />
-            <span>Comece uma elaboração</span>
+            <span>{t('work.composer.startTitle', 'Start an elaboration')}</span>
           </div>
           <div className={styles.flexRowGap4}>
             <Button
@@ -275,7 +313,7 @@ export const ComposerSurface: React.FC<{
               onClick={() => setInputMode('IDEA')}
               disabled={busy}
             >
-              <Lightbulb size={13} /> Ideia / Explorar
+              <Lightbulb size={13} /> {t('work.composer.ideaMode', 'Idea / Explore')}
             </Button>
             <Button
               size="sm"
@@ -283,7 +321,7 @@ export const ComposerSurface: React.FC<{
               onClick={() => setInputMode('EXISTING_PROMPT')}
               disabled={busy}
             >
-              <FileText size={13} /> Prompt Existente
+              <FileText size={13} /> {t('work.composer.existingPromptMode', 'Existing prompt')}
             </Button>
           </div>
         </div>
@@ -294,8 +332,14 @@ export const ComposerSurface: React.FC<{
             onChange={setDraft}
             placeholder={
               inputMode === 'IDEA'
-                ? 'Qual ideia ou objetivo você quer transformar em um ótimo prompt?'
-                : 'Qual o objetivo principal deste prompt existente?'
+                ? t(
+                    'work.composer.ideaPlaceholder',
+                    'Which idea or goal do you want to turn into a strong prompt?',
+                  )
+                : t(
+                    'work.composer.existingGoalPlaceholder',
+                    'What is the main goal of this existing prompt?',
+                  )
             }
             style={{ flex: 1 }}
             disabled={busy}
@@ -305,7 +349,10 @@ export const ComposerSurface: React.FC<{
               className={styles.sourceTextarea}
               value={sourcePrompt}
               onChange={(e) => setSourcePrompt(e.target.value)}
-              placeholder="Cole aqui o prompt original para análise de gaps, completude e estruturação…"
+              placeholder={t(
+                'work.composer.sourcePlaceholder',
+                'Paste the original prompt for gap analysis, completeness and structure…',
+              )}
               rows={4}
               disabled={busy}
             />
@@ -320,19 +367,21 @@ export const ComposerSurface: React.FC<{
             >
               <MessageCircle size={14} />{' '}
               {busy
-                ? 'Iniciando…'
+                ? t('work.composer.starting', 'Starting…')
                 : inputMode === 'EXISTING_PROMPT'
-                  ? 'Analisar Prompt'
-                  : 'Conversar'}
+                  ? t('work.composer.analyzePrompt', 'Analyze prompt')
+                  : t('work.composer.converse', 'Converse')}
             </Button>
           </div>
         </div>
 
         {sessions.length > 0 && (
           <div className={styles.flexRowWrapGap8}>
-            <small className={styles.mutedLabel}>Elaborações anteriores:</small>
+            <small className={styles.mutedLabel}>
+              {t('work.composer.previousSessions', 'Previous elaborations:')}
+            </small>
             <Select
-              placeholder="Retomar uma sessão salva…"
+              placeholder={t('work.composer.resumeSession', 'Resume a saved session…')}
               value=""
               onChange={async (id) => {
                 if (!id) return;
@@ -346,10 +395,7 @@ export const ComposerSurface: React.FC<{
                   setBusy(false);
                 }
               }}
-              options={sessions.map((s) => ({
-                value: s.id,
-                label: `${s.title || `Sessão ${s.id.slice(-6)}`} · ${s.state}`,
-              }))}
+              options={sessionOptions}
               selectStyle={{ fontSize: '0.857rem', height: 28 }}
             />
           </div>
@@ -361,15 +407,30 @@ export const ComposerSurface: React.FC<{
 
   const archetype = view.brief.intent?.archetype;
   const archetypeLabel = archetype ? ARCHETYPE_LABELS[archetype] || archetype : null;
+  const turns = view.turns || [];
+  const showDestinationDock =
+    turns.length > 0 || Boolean(artifact) || view.session.state === 'FINALIZED';
+  const readinessScore = view.brief.readiness?.score ?? 0;
+  const readinessState = view.brief.readiness?.state || 'UNKNOWN';
 
   return (
     <div className="nx-composer-deliberative">
       <div className="nx-composer-deliberative__header">
         <div>
-          <h2>{view.session.title || 'Elaboração'}</h2>
+          <h2>
+            {formatComposerSessionTitle(
+              view.session.title,
+              view.session.id,
+              view.session.created_at,
+            )}
+          </h2>
         </div>
         <div className={styles.flexRowGap8Center}>
-          {archetypeLabel && <Badge tone="default">Arquétipo: {archetypeLabel}</Badge>}
+          {archetypeLabel && (
+            <Badge tone="default">
+              {t('work.composer.archetype', 'Archetype')}: {archetypeLabel}
+            </Badge>
+          )}
           {sessions.length > 1 && (
             <Select
               value={view.session.id}
@@ -386,15 +447,12 @@ export const ComposerSurface: React.FC<{
                   setBusy(false);
                 }
               }}
-              options={sessions.map((s) => ({
-                value: s.id,
-                label: `${s.title || `Sessão ${s.id.slice(-6)}`} (${s.state})`,
-              }))}
+              options={sessionOptions}
               selectStyle={{ fontSize: '0.857rem', height: 28 }}
             />
           )}
           <Badge tone={view.session.state === 'FINALIZED' ? 'success' : 'brand'}>
-            {view.session.state}
+            {t(composerSessionStateKey(view.session.state), view.session.state)}
           </Badge>
           <Button
             size="sm"
@@ -404,27 +462,33 @@ export const ComposerSurface: React.FC<{
               setArtifact(null);
             }}
           >
-            <Plus size={13} /> Nova
+            <Plus size={13} /> {t('work.composer.newSession', 'New')}
           </Button>
         </div>
       </div>
 
       <div className="nx-composer-deliberative__grid">
         <Card>
-          <strong>Conversa de elaboração</strong>
+          <strong>{t('work.composer.conversation', 'Elaboration conversation')}</strong>
           <div className="nx-composer-turns">
-            {(view.turns || []).length === 0 ? (
+            {turns.length === 0 ? (
               <p className="nx-muted-copy">
-                Descreva contexto, resultado desejado e limitações. O Composer preserva esta
-                elaboração.
+                {t(
+                  'work.composer.emptyTurns',
+                  'Describe context, desired outcome and constraints. Composer keeps this elaboration.',
+                )}
               </p>
             ) : (
-              (view.turns || []).map((turn) => (
+              turns.map((turn) => (
                 <div
                   key={turn.id}
                   className={`nx-composer-turn nx-composer-turn--${turn.role.toLowerCase()}`}
                 >
-                  <small>{turn.role === 'USER' ? 'Você' : 'Composer'}</small>
+                  <small>
+                    {turn.role === 'USER'
+                      ? t('work.composer.you', 'You')
+                      : t('work.composer.composerRole', 'Composer')}
+                  </small>
                   <p>{turn.content}</p>
                 </div>
               ))
@@ -442,7 +506,10 @@ export const ComposerSurface: React.FC<{
                     void send();
                   }
                 }}
-                placeholder="Adicione requisito, decisão ou resposta a uma lacuna… (Enter envia, Shift+Enter pula linha)"
+                placeholder={t(
+                  'work.composer.messagePlaceholder',
+                  'Add a requirement, decision or gap answer… (Enter sends, Shift+Enter new line)',
+                )}
                 rows={2}
                 disabled={busy}
               />
@@ -452,150 +519,126 @@ export const ComposerSurface: React.FC<{
                 onClick={() => void send()}
                 className={styles.sendButton}
               >
-                <Send size={14} /> {busy ? 'Enviando…' : 'Enviar'}
+                <Send size={14} />{' '}
+                {busy ? t('work.composer.sending', 'Sending…') : t('work.composer.send', 'Send')}
               </Button>
             </div>
           )}
         </Card>
 
-        <Card>
-          <strong>Briefing vivo</strong>
-          <div className={styles.flexColGap10}>
-            {briefItems.length > 0 ? (
-              briefItems.map(([label, value]) => (
-                <div key={label}>
-                  <small className={styles.mutedLabel}>{label}</small>
-                  <p className={styles.briefValue}>{value}</p>
-                </div>
-              ))
-            ) : (
-              <p className={`nx-muted-copy ${styles.briefEmptyHint}`}>
-                O briefing vivo sintetiza objetivo, contexto, critérios e decisões conforme a
-                conversa avança.
-              </p>
-            )}
-          </div>
-          <div className={styles.badgeSpacer}>
-            <Badge tone="default">Maestro: sugestões reais ao refinar</Badge>
-          </div>
-        </Card>
-      </div>
-
-      <div className="nx-composer-deliberative__grid">
-        <Card>
-          <strong>Prompt Readiness</strong>
-          <p>{view.brief.readiness?.summary || 'Ainda sem avaliação.'}</p>
-          <Badge tone={view.brief.readiness?.state === 'READY' ? 'success' : 'warning'}>
-            {view.brief.readiness?.state || 'UNKNOWN'} · {view.brief.readiness?.score ?? 0}%
-          </Badge>
-
-          {asArray<PromptReadinessCheck>(view.brief.readiness?.checks).length > 0 && (
-            <div className={`${styles.flexColGap6} ${styles.readinessSection}`}>
-              <small className={styles.mutedLabelBold}>Dimensões avaliadas</small>
-              {asArray<PromptReadinessCheck>(view.brief.readiness?.checks).map((check) => (
-                <div key={check.key} className={styles.readinessCheckItem}>
-                  <div className={styles.readinessCheckContent}>
-                    <span className={styles.readinessCheckLabel}>{check.label || check.key}</span>
-                    {check.summary && (
-                      <small className={styles.readinessCheckSummary}>{check.summary}</small>
-                    )}
+        <aside className={`nx-composer-deliberative__rail ${styles.rail}`}>
+          <Card className={styles.railCard}>
+            <strong>{t('work.composer.liveBrief', 'Live briefing')}</strong>
+            <div className={styles.flexColGap10}>
+              {briefItems.length > 0 ? (
+                briefItems.map(([label, value]) => (
+                  <div key={String(label)}>
+                    <small className={styles.mutedLabel}>{label}</small>
+                    <p className={styles.briefValue}>{value}</p>
                   </div>
-                  <span
-                    className={
-                      check.score >= 80
-                        ? styles.readinessCheckScoreHigh
-                        : styles.readinessCheckScore
-                    }
-                  >
-                    {check.score}%
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {(view.brief.assumptions || []).length > 0 && (
-            <div className={styles.readinessSection}>
-              <small className={styles.mutedLabelBold}>Premissas ativas</small>
-              {view.brief.assumptions?.map((item, index) => (
-                <p key={index} className={`nx-muted-copy ${styles.assumptionItem}`}>
-                  • {typeof item === 'string' ? item : item.value}{' '}
-                  {typeof item !== 'string' && item.status ? `(${item.status})` : ''}
+                ))
+              ) : (
+                <p className={`nx-muted-copy ${styles.briefEmptyHint}`}>
+                  {t(
+                    'work.composer.briefEmpty',
+                    'The live briefing synthesizes goal, context, criteria and decisions as the conversation advances.',
+                  )}
                 </p>
-              ))}
+              )}
             </div>
-          )}
-        </Card>
+          </Card>
 
-        <Card>
-          <strong>Lacunas & Perguntas (Unknowns)</strong>
-          {(view.brief.unknowns || []).length === 0 ? (
-            <p className="nx-muted-copy">Nenhuma lacuna aberta.</p>
-          ) : (
-            view.brief.unknowns?.map((unknown) => {
-              const isResolved =
-                unknown.status === 'ANSWERED' ||
-                unknown.status === 'CONFIRMED' ||
-                unknown.status === 'DISMISSED';
-              return (
+          {nextQuestion ? (
+            <Card className={styles.railCard}>
+              <strong>{t('work.composer.nextQuestion', 'Next question')}</strong>
+              <p className={styles.nextQuestionText}>{nextQuestion}</p>
+            </Card>
+          ) : null}
+
+          <Card className={styles.railCard}>
+            <div className={styles.readinessCompact}>
+              <strong>{t('work.composer.readiness', 'Readiness')}</strong>
+              <Badge tone={readinessState === 'READY' ? 'success' : 'warning'}>
+                {readinessScore}% · {readinessState}
+              </Badge>
+            </div>
+            <p className={styles.readinessSummary}>
+              {view.brief.readiness?.summary ||
+                t('work.composer.readinessEmpty', 'No assessment yet.')}
+            </p>
+            {asArray<PromptReadinessCheck>(view.brief.readiness?.checks).length > 0 && (
+              <div className={`${styles.flexColGap6} ${styles.readinessSection}`}>
+                {asArray<PromptReadinessCheck>(view.brief.readiness?.checks).map((check) => (
+                  <div key={check.key} className={styles.readinessCheckItem}>
+                    <div className={styles.readinessCheckContent}>
+                      <span className={styles.readinessCheckLabel}>{check.label || check.key}</span>
+                    </div>
+                    <span
+                      className={
+                        check.score >= 80
+                          ? styles.readinessCheckScoreHigh
+                          : styles.readinessCheckScore
+                      }
+                    >
+                      {check.score}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className={styles.railCard}>
+            <strong>{t('work.composer.gaps', 'Actionable gaps')}</strong>
+            {actionableGaps.length === 0 ? (
+              <p className="nx-muted-copy">{t('work.composer.noGaps', 'No open gaps.')}</p>
+            ) : (
+              actionableGaps.map((unknown) => (
                 <div key={unknown.id} className={styles.unknownCard}>
                   <div className={styles.unknownHeader}>
                     <p className={styles.unknownQuestion}>{unknown.question}</p>
-                    <Badge
-                      tone={
-                        unknown.status === 'ANSWERED'
-                          ? 'success'
-                          : unknown.severity === 'BLOCKING'
-                            ? 'danger'
-                            : 'warning'
-                      }
-                    >
-                      {unknown.severity} · {unknown.status}
+                    <Badge tone={unknown.severity === 'BLOCKING' ? 'danger' : 'warning'}>
+                      {unknown.severity}
                     </Badge>
                   </div>
-                  {unknown.answer && (
-                    <small className={styles.unknownAnswer}>Resposta: {unknown.answer}</small>
-                  )}
-                  {!isResolved && (
-                    <div className={styles.unknownResolveArea}>
-                      <input
-                        className={`nx-input ${styles.unknownAnswerInput}`}
-                        placeholder="Sua resposta para esta lacuna…"
-                        value={unknownAnswers[unknown.id] || ''}
-                        onChange={(e) =>
-                          setUnknownAnswers({ ...unknownAnswers, [unknown.id]: e.target.value })
-                        }
+                  <div className={styles.unknownResolveArea}>
+                    <input
+                      className={`nx-input ${styles.unknownAnswerInput}`}
+                      placeholder={t('work.composer.gapAnswerPlaceholder', 'Your answer…')}
+                      value={unknownAnswers[unknown.id] || ''}
+                      onChange={(e) =>
+                        setUnknownAnswers({ ...unknownAnswers, [unknown.id]: e.target.value })
+                      }
+                      disabled={busy}
+                    />
+                    <div className={styles.unknownAnswerButtons}>
+                      <Button
+                        size="sm"
+                        tone="brand"
+                        disabled={!unknownAnswers[unknown.id]?.trim() || busy}
+                        onClick={() => void resolveUnknown(unknown.id, 'ANSWERED')}
+                      >
+                        <CheckCircle2 size={12} /> {t('work.composer.answer', 'Answer')}
+                      </Button>
+                      <Button
+                        size="sm"
                         disabled={busy}
-                      />
-                      <div className={styles.unknownAnswerButtons}>
-                        <Button
-                          size="sm"
-                          tone="brand"
-                          disabled={!unknownAnswers[unknown.id]?.trim() || busy}
-                          onClick={() => void resolveUnknown(unknown.id, 'ANSWERED')}
-                        >
-                          <CheckCircle2 size={12} /> Responder
-                        </Button>
-                        <Button
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => void resolveUnknown(unknown.id, 'DISMISSED')}
-                        >
-                          Dispensar
-                        </Button>
-                      </div>
+                        onClick={() => void resolveUnknown(unknown.id, 'DISMISSED')}
+                      >
+                        {t('work.composer.dismiss', 'Dismiss')}
+                      </Button>
                     </div>
-                  )}
+                  </div>
                 </div>
-              );
-            })
-          )}
-        </Card>
+              ))
+            )}
+          </Card>
+        </aside>
       </div>
 
       {(view.skills || []).length > 0 && (
         <Card className={styles.artifactCard}>
-          <strong>Maestro skills</strong>
+          <strong>{t('work.composer.maestroSkills', 'Maestro skills')}</strong>
           {(view.skills || []).map((skill) => (
             <div key={skill.skill_id} className={styles.skillRow}>
               <div className={styles.skillInfo}>
@@ -613,14 +656,14 @@ export const ComposerSurface: React.FC<{
                     disabled={busy}
                     onClick={() => void updateSkill(skill.skill_id, 'ACCEPTED')}
                   >
-                    Aceitar
+                    {t('work.composer.accept', 'Accept')}
                   </Button>
                   <Button
                     size="sm"
                     disabled={busy}
                     onClick={() => void updateSkill(skill.skill_id, 'REJECTED')}
                   >
-                    Dispensar
+                    {t('work.composer.dismiss', 'Dismiss')}
                   </Button>
                 </>
               )}
@@ -634,11 +677,14 @@ export const ComposerSurface: React.FC<{
       {!artifact && view.session.state !== 'FINALIZED' && (
         <div className="nx-composer-header-actions">
           <Button tone="brand" disabled={busy} onClick={() => void finalize()}>
-            <Sparkles size={14} /> {busy ? 'Finalizando…' : 'Concluir elaboração'}
+            <Sparkles size={14} />{' '}
+            {busy
+              ? t('work.composer.finalizing', 'Finalizing…')
+              : t('work.composer.finalize', 'Finish elaboration')}
           </Button>
           {confirmGaps && (
             <Button tone="warning" disabled={busy} onClick={() => void finalize(true)}>
-              Concluir com lacunas confirmadas
+              {t('work.composer.finalizeWithGaps', 'Finish with confirmed gaps')}
             </Button>
           )}
         </div>
@@ -647,76 +693,105 @@ export const ComposerSurface: React.FC<{
       {artifact && (
         <Card className={styles.artifactCard}>
           <div className={styles.artifactHeader}>
-            <strong>Prompt canônico · v{artifact.version}</strong>
-            <Badge tone="success">Versão imutável #{artifact.version}</Badge>
+            <strong>
+              {t('work.composer.canonicalPrompt', 'Canonical prompt')} · v{artifact.version}
+            </strong>
+            <Badge tone="success">
+              {t('work.composer.immutableVersion', 'Immutable version')} #{artifact.version}
+            </Badge>
           </div>
           <pre className={`nx-flow-step-compare ${styles.preWrap}`}>{artifact.content}</pre>
           <div className={`nx-composer-header-actions ${styles.artifactActions}`}>
-            <Button onClick={() => void copy()}>
-              <ClipboardCopy size={14} /> Copiar
-            </Button>
-            {agents.length > 0 && (
-              <>
-                <Select
-                  value={selectedAgentId}
-                  onChange={setSelectedAgentId}
-                  options={agents.map((agent) => ({ value: agent.id, label: agent.name }))}
-                  selectStyle={{ minWidth: 150 }}
-                />
-                <Button
-                  tone="brand"
-                  disabled={busy || !selectedAgentId || !canExecute}
-                  onClick={() => setPreparationOpen(true)}
-                >
-                  <Send size={14} />{' '}
-                  {t('work.composer.reviewBeforeSend', { defaultValue: 'Revisar antes de enviar' })}
-                </Button>
-              </>
-            )}
-            <Button
-              tone="brand"
-              disabled={!canMaterialize}
-              title={!canMaterialize ? destinationGate?.reason : undefined}
-              onClick={() => onTransformFlow(artifact)}
-            >
-              <Layers size={14} /> Transformar em Flow
-            </Button>
             <Button disabled={busy} onClick={() => setShowRefineInput(!showRefineInput)}>
-              <RefreshCw size={14} /> Refinar (v{artifact.version + 1})
+              <RefreshCw size={14} /> {t('work.refine', 'Refine')} (v{artifact.version + 1})
             </Button>
           </div>
-          {destinationGate && (!canMaterialize || !canExecute) && (
-            <small className="nx-muted-copy">
-              Copy permanece disponível. {destinationGate.reason} Prepare o contexto para habilitar
-              Flow e Agent.
-            </small>
-          )}
 
           {showRefineInput && (
             <div className={styles.refinementPanel}>
               <small className={styles.refinementLabel}>
-                Instrução adicional de refinamento (opcional):
+                {t('work.composer.refineHint', 'Optional refinement instruction:')}
               </small>
               <Input
                 value={refineText}
                 onChange={setRefineText}
-                placeholder="Ex: 'Adicione suporte a PostgreSQL', 'Foque apenas na API REST'…"
+                placeholder={t(
+                  'work.composer.refinePlaceholder',
+                  "E.g. 'Add PostgreSQL support', 'Focus only on the REST API'…",
+                )}
                 disabled={busy}
               />
               <div className={styles.refinementActions}>
                 <Button size="sm" disabled={busy} onClick={() => setShowRefineInput(false)}>
-                  Cancelar
+                  {t('common.cancel', 'Cancel')}
                 </Button>
                 <Button size="sm" tone="brand" disabled={busy} onClick={() => void refine()}>
                   {busy
-                    ? 'Gerando v' + (artifact.version + 1) + '…'
-                    : 'Gerar nova revisão (v' + (artifact.version + 1) + ')'}
+                    ? t('work.composer.generatingVersion', 'Generating v{{version}}…', {
+                        version: artifact.version + 1,
+                      })
+                    : t('work.composer.generateRevision', 'Generate new revision (v{{version}})', {
+                        version: artifact.version + 1,
+                      })}
                 </Button>
               </div>
             </div>
           )}
         </Card>
       )}
+
+      {showDestinationDock && (
+        <div className={`nx-composer-destination-dock ${styles.destinationDock}`}>
+          <div className={styles.destinationDockInner}>
+            <small className={styles.destinationLabel}>
+              {t('work.composer.destinations', 'Destinations')}
+            </small>
+            <div className={styles.destinationActions}>
+              <Button onClick={() => void copy()} disabled={!artifact}>
+                <ClipboardCopy size={14} /> {t('work.composer.copy', 'Copy')}
+              </Button>
+              {agents.length > 0 && (
+                <>
+                  <Select
+                    value={selectedAgentId}
+                    onChange={setSelectedAgentId}
+                    options={agents.map((agent) => ({ value: agent.id, label: agent.name }))}
+                    selectStyle={{ minWidth: 150 }}
+                  />
+                  <Button
+                    tone="brand"
+                    disabled={busy || !selectedAgentId || !canExecute || !artifact}
+                    onClick={() => setPreparationOpen(true)}
+                  >
+                    <Send size={14} /> {t('work.composer.sendToAgent', 'Send to agent')}
+                  </Button>
+                </>
+              )}
+              <Button
+                tone="brand"
+                disabled={!canMaterialize || !artifact}
+                title={
+                  !canMaterialize && destinationGate
+                    ? t(destinationGate.reasonKey, destinationGate.reason)
+                    : undefined
+                }
+                onClick={() => {
+                  if (artifact) onTransformFlow(artifact);
+                }}
+              >
+                <Layers size={14} /> {t('work.composer.transformFlow', 'Turn into Flow')}
+              </Button>
+            </div>
+            {destinationGate && artifact && (!canMaterialize || !canExecute) && (
+              <small className="nx-muted-copy">
+                {t('work.copyAlwaysAvailable', 'Copy remains available.')}{' '}
+                {t(destinationGate.reasonKey, destinationGate.reason)}
+              </small>
+            )}
+          </div>
+        </div>
+      )}
+
       <TaskPreparationDialog
         open={preparationOpen}
         agentId={selectedAgentId}
@@ -730,7 +805,7 @@ export const ComposerSurface: React.FC<{
             projectId: project.id,
             contextFingerprintId: contextFingerprintId || '',
           });
-          setMessage(t('work.composer.sentToAgent', { defaultValue: 'Tarefa enviada ao Agente.' }));
+          setMessage(t('work.composer.sentToAgent', 'Task sent to Agent.'));
         }}
       />
     </div>

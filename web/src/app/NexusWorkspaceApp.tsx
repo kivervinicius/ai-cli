@@ -317,6 +317,9 @@ const WorkspaceCoordinator: React.FC<{
   const presentation = useWorkspacePresentation();
   const [railOpen, setRailOpen] = useState(false);
   const [palette, setPalette] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'appearance' | 'updates' | 'remote'>(
+    'appearance',
+  );
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [maestroControlOpen, setMaestroControlOpen] = useState(false);
   const [newAgentOpen, setNewAgentOpen] = useState(false);
@@ -347,7 +350,7 @@ const WorkspaceCoordinator: React.FC<{
     return () => {
       mounted = false;
     };
-  }, [project.id]); // eslint-disable-line react-hooks/exhaustive-deps -- palette is UI state, not a data dependency
+  }, [project.id]);
 
   const open = useCallback(
     (surface: WorkspaceSurface, updateUrl = true) => {
@@ -858,6 +861,7 @@ const WorkspaceCoordinator: React.FC<{
           openSurface={open}
           closeSurface={workspace.close}
           onTour={() => setWelcomeOpen(true)}
+          settingsInitialTab={settingsInitialTab}
         />
       )}
       onRequestClose={requestCloseSurface}
@@ -1159,7 +1163,10 @@ const WorkspaceCoordinator: React.FC<{
         onCommand={() => setPalette(true)}
         onOpenWelcome={() => setWelcomeOpen(true)}
         onOpenProjectManager={() => openKind('projects')}
-        onSettings={() => openKind('settings')}
+        onSettings={(tab) => {
+          setSettingsInitialTab(tab || 'appearance');
+          openKind('settings');
+        }}
         onNewAgent={() => setNewAgentOpen(true)}
         onNewAISession={openNewAISession}
         onProjectShell={() => {

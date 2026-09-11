@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Network, RefreshCw, Sparkles } from 'lucide-react';
-import { Badge, Button, Card } from '../../design-system';
+import { useTranslation } from 'react-i18next';
+import { RefreshCw, Sparkles } from 'lucide-react';
+import { Badge, Button } from '../../design-system';
 import type {
   Agent,
   ContextReadiness,
@@ -11,7 +12,6 @@ import type {
   WorkPlan,
 } from '../../types';
 import { nexus } from '../../nexus/api';
-import { PlanBuilderSurface } from './PlanBuilderSurface';
 import { ComposerSurface } from './ComposerSurface';
 import { composerGateForReadiness } from './composerModel';
 import styles from './WorkSurface.module.scss';
@@ -25,16 +25,20 @@ const readinessTone = (state: ContextReadinessState) =>
         ? 'warning'
         : 'default';
 
+const FLOW_DRAFT_KEY = (projectId: string) => `iapro:nexus:flow-draft:${projectId}`;
+
 /**
  * Composer is the goal bar for Flow — not a second IDE and not a send-to-agent surface.
- * PlanBuilder owns Generate / canvas / inspector / Approve & Run.
+ * Flow canvas lives on the Flow Runs surface after handoff.
  */
 export const WorkSurface: React.FC<{
   project: Project;
   agents: Agent[];
   onDirect: (agent: Agent) => void;
   onFlowRun?: (run: MissionRun) => void;
-}> = ({ project, agents, onDirect, onFlowRun }) => {
+  onOpenFlowDrafts?: (plan: WorkPlan) => void;
+}> = ({ project, onOpenFlowDrafts }) => {
+  const { t } = useTranslation();
   const [readiness, setReadiness] = useState<ContextReadiness | null>(null);
   const [readinessBusy, setReadinessBusy] = useState(false);
   const [error, setError] = useState('');
@@ -43,8 +47,6 @@ export const WorkSurface: React.FC<{
     provider?: string;
     error?: string;
   } | null>(null);
-  const [flowArtifact, setFlowArtifact] = useState<PromptArtifact | null>(null);
-  const [flowPlan, setFlowPlan] = useState<WorkPlan | null>(null);
   const [flowError, setFlowError] = useState('');
 
   const refreshContext = useCallback(async () => {
@@ -93,10 +95,15 @@ export const WorkSurface: React.FC<{
   };
 
   const materializeFlow = async (artifact: PromptArtifact) => {
-    setFlowArtifact(artifact);
     setFlowError('');
     try {
-      setFlowPlan(await nexus.materializePromptArtifact(artifact.id));
+      const plan = await nexus.materializePromptArtifact(artifact.id);
+      try {
+        window.sessionStorage.setItem(FLOW_DRAFT_KEY(project.id), plan.id);
+      } catch {
+        /* ignore */
+      }
+      onOpenFlowDrafts?.(plan);
     } catch (err) {
       setFlowError(err instanceof Error ? err.message : String(err));
     }
@@ -107,69 +114,64 @@ export const WorkSurface: React.FC<{
       <div className="nx-page-header">
         <div>
           <span className="nx-eyebrow">
-            <Sparkles size={13} /> COMPOSER
+            <Sparkles size={13} /> {t('work.composerEyebrow', 'Composer')}
           </span>
-          <h1>Sua solicitação</h1>
+          <h1>{t('work.composerTitle', 'Elaboração de intenção')}</h1>
           <p>
-            Descreva o objetivo. O Flow embaixo nasce ao gerar o rascunho. Trabalho direto no agente
-            fica no terminal.
+            {t(
+              'work.composerIntro',
+              'Uma decisão por rodada. Depois: Copiar, enviar ao agente ou transformar em Flow.',
+            )}
           </p>
         </div>
-        <div className="nx-composer-header-actions">
-          <Badge tone={readinessTone(state)}>Context {state}</Badge>
-          <Badge tone={intelligenceTone}>
-            Intelligence{' '}
-            {intelligence?.available
-              ? `READY${intelligence.provider ? ` · ${intelligence.provider}` : ''}`
-              : 'OFF'}
+        <div className={`nx-composer-header-actions ${styles.headerChips}`}>
+          <Badge tone={readinessTone(state)}>
+            {t('work.contextChip', 'Contexto')} {t(`work.gateState.${state}`, state)}
           </Badge>
+          <Badge tone={intelligenceTone}>
+            {t('work.intelligenceChip', 'Intelligence')}{' '}
+            {intelligence?.available
+              ? `${t('work.intelligenceReady', 'READY')}${
+                  intelligence.provider ? ` · ${intelligence.provider}` : ''
+                }`
+              : t('work.intelligenceOff', 'OFF')}
+          </Badge>
+          {!gate.canMaterialize && gate.action !== 'WAIT' && (
+            <Button
+              size="sm"
+              tone="brand"
+              disabled={readinessBusy}
+              onClick={() =>
+                void prepareContext(
+                  gate.action === 'PREPARE' ||
+                    Boolean(readiness?.error?.includes('durable project context is missing')),
+                )
+              }
+            >
+              <RefreshCw size={13} />{' '}
+              {readinessBusy
+                ? t('work.checking', 'Verificando…')
+                : gate.action === 'PREPARE'
+                  ? t('work.createBaseContext', 'Criar contexto base')
+                  : t('work.refreshContext', 'Atualizar contexto')}
+            </Button>
+          )}
         </div>
       </div>
 
       {!gate.canMaterialize && (
-        <Card className="nx-context-readiness-card" data-state={state}>
-          <div className="nx-context-readiness-card__status">
-            <Network size={17} />
-            <div>
-              <strong>Context Readiness · {state}</strong>
-              <p>{gate.reason}</p>
-              {readiness?.error && <small>{readiness.error}</small>}
-            </div>
-          </div>
-          {gate.action !== 'WAIT' && (
-            <div className={styles.readinessActions}>
-              {(gate.action === 'PREPARE' ||
-                (gate.action === 'RETRY' &&
-                  readiness?.error?.includes('durable project context is missing'))) && (
-                <small className={styles.readinessHint}>
-                  Este projeto não possui contexto durável. Ao continuar, o Nexus criará um{' '}
-                  <code>AGENTS.md</code> base na raiz, sem sobrescrever arquivos existentes.
-                </small>
-              )}
-              <Button
-                size="sm"
-                tone="brand"
-                disabled={readinessBusy}
-                onClick={() =>
-                  void prepareContext(
-                    gate.action === 'PREPARE' ||
-                      Boolean(readiness?.error?.includes('durable project context is missing')),
-                  )
-                }
-              >
-                <RefreshCw size={13} />{' '}
-                {readinessBusy
-                  ? 'Checking…'
-                  : gate.action === 'PREPARE'
-                    ? 'Criar contexto base'
-                    : 'Refresh Context'}
-              </Button>
-            </div>
-          )}
-        </Card>
+        <p className={styles.gateHint} data-state={state}>
+          {t(gate.reasonKey, gate.reason)}
+          {state === 'FAILED' && readiness?.error ? ` · ${readiness.error}` : ''}
+        </p>
       )}
 
       {error && <div className="nx-inline-error">{error}</div>}
+      {flowError && (
+        <div className="nx-inline-error">
+          {t('work.flowMaterializeFailed', 'Falha ao materializar Flow')}: {flowError}
+        </div>
+      )}
 
       <div
         className="nx-composer-flow-region"
@@ -180,20 +182,9 @@ export const WorkSurface: React.FC<{
           destinationGate={gate}
           onTransformFlow={(artifact) => void materializeFlow(artifact)}
         />
-        {flowError && (
-          <div className="nx-inline-error">Flow materialization failed: {flowError}</div>
-        )}
-        {flowArtifact && flowPlan && (
-          <PlanBuilderSurface
-            project={project}
-            agents={agents}
-            onOpenAgent={onDirect}
-            onRunCreated={onFlowRun}
-            initialPlan={flowPlan}
-            compactGoal
-          />
-        )}
       </div>
     </div>
   );
 };
+
+export { FLOW_DRAFT_KEY };

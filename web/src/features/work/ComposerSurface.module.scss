@@ -285,3 +285,71 @@
 .skillReason {
   display: block;
 }
+
+.rail {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.railCard {
+  margin: 0;
+}
+
+.nextQuestionText {
+  margin: 8px 0 0;
+  color: var(--nx-text-soft);
+  font-size: 0.893rem;
+  line-height: 1.45;
+}
+
+.readinessCompact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.readinessSummary {
+  margin: 8px 0 0;
+  color: var(--nx-text-soft);
+  font-size: 0.857rem;
+  line-height: 1.45;
+}
+
+.destinationDock {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--nx-border);
+  background: var(--nx-surface);
+}
+
+.destinationDockInner {
+  display: grid;
+  gap: 8px;
+}
+
+.destinationLabel {
+  color: var(--nx-muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+.destinationActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.flexRowGap8mt {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin-top: 8px;
+}

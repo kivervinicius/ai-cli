@@ -482,6 +482,37 @@ func TestResourceAllocationRejectsAutomaticPolicy(t *testing.T) {
 	}
 }
 
+func TestResourcesRefreshReturnsAccounts(t *testing.T) {
+	client, srv, csrf := csrfClient(t)
+	req, _ := http.NewRequest(http.MethodPost, srv.URL()+"/api/v1/resources/refresh", nil)
+	req.Header.Set("X-CSRF-Token", csrf)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from resources refresh, got %d", resp.StatusCode)
+	}
+	var payload struct {
+		Accounts  []any  `json:"accounts"`
+		Policy    string `json:"policy"`
+		Refreshed bool   `json:"refreshed"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode refresh payload: %v", err)
+	}
+	if !payload.Refreshed {
+		t.Fatal("expected refreshed=true")
+	}
+	if payload.Accounts == nil {
+		t.Fatal("expected accounts array (possibly empty), got null")
+	}
+	if payload.Policy == "" {
+		t.Fatal("expected non-empty policy")
+	}
+}
+
 func TestSystemUpdateReturnsJSONNot501(t *testing.T) {
 	prev := performSystemUpdate
 	performSystemUpdate = func() nexus.UpdateResult {

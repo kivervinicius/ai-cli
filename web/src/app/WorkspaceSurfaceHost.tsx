@@ -1,6 +1,6 @@
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { Network } from 'lucide-react';
-import { Button, Card, EmptyState } from '../design-system';
+import { Button, EmptyState } from '../design-system';
 import { recoverOrStartAgent } from '../nexus/agentRecover';
 import { nexus } from '../nexus/api';
 import { api } from '../api';
@@ -73,8 +73,8 @@ const ProjectShellSurface = React.lazy(() =>
 const AgentTerminal = React.lazy(() =>
   import('../nexus/AgentTerminal').then((m) => ({ default: m.AgentTerminal })),
 );
-const ResourcePicker = React.lazy(() =>
-  import('../nexus/ResourcePicker').then((m) => ({ default: m.ResourcePicker })),
+const UsageSurface = React.lazy(() =>
+  import('../features/usage/UsageSurface').then((m) => ({ default: m.UsageSurface })),
 );
 const TerminalPane = React.lazy(() =>
   import('../components/TerminalPane').then((m) => ({ default: m.TerminalPane })),
@@ -117,6 +117,7 @@ export const WorkspaceSurfaceHost: React.FC<{
   openSurface: (surface: WorkspaceSurface) => void;
   closeSurface: (surfaceId: string) => void;
   onTour: () => void;
+  settingsInitialTab?: 'appearance' | 'updates' | 'remote';
 }> = ({
   surface,
   project,
@@ -136,6 +137,7 @@ export const WorkspaceSurfaceHost: React.FC<{
   openSurface,
   closeSurface,
   onTour,
+  settingsInitialTab,
 }) => {
   const { t } = useTranslation();
   const presentation = useWorkspacePresentation();
@@ -222,6 +224,7 @@ export const WorkspaceSurfaceHost: React.FC<{
           onFlowRun={(run) =>
             openSurface(flowRunSurface(run.id, `Flow Run · ${(run.id || '').slice(-6)}`))
           }
+          onOpenFlowDrafts={() => open('missions')}
         />
       );
     }
@@ -370,22 +373,7 @@ export const WorkspaceSurfaceHost: React.FC<{
     }
 
     if (surface.type === 'resources') {
-      return (
-        <div className="nx-surface-scroll">
-          <div className="nx-page-header">
-            <div>
-              <span className="nx-eyebrow">{t('surfaces.resourcesEyebrow')}</span>
-              <h1>{t('surfaces.resourcesTitle')}</h1>
-              <p>{t('surfaces.resourcesIntro')}</p>
-            </div>
-          </div>
-          <div className="nx-resource-layout nx-resource-layout--full">
-            <Card className="nx-resource-card">
-              <ResourcePicker />
-            </Card>
-          </div>
-        </div>
-      );
+      return <UsageSurface />;
     }
 
     if (surface.type === 'maestro') {
@@ -396,15 +384,18 @@ export const WorkspaceSurfaceHost: React.FC<{
       return (
         <FlowRunsHistorySurface
           project={project}
+          agents={agents}
           onOpenRun={(run) => openSurface(flowRunSurface(run.id, `Flow Run · ${run.id.slice(-6)}`))}
           onOpenComposer={() => open('work')}
+          onOpenAgent={terminal}
         />
       );
     }
 
     if (surface.type === 'sessions') return <SessionsSurface agents={agents} />;
 
-    if (surface.type === 'settings') return <SettingsSurface onTour={onTour} />;
+    if (surface.type === 'settings')
+      return <SettingsSurface onTour={onTour} initialTab={settingsInitialTab} />;
 
     if (surface.type === 'legacy-providers') {
       return (

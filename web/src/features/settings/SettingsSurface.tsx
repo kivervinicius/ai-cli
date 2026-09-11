@@ -55,11 +55,19 @@ const SETTINGS_TABS: SettingsTab[] = [
   'remote',
 ];
 
-export const SettingsSurface: React.FC<{ onTour: () => void }> = ({ onTour }) => {
+export const SettingsSurface: React.FC<{
+  onTour: () => void;
+  initialTab?: SettingsTab;
+}> = ({ onTour, initialTab }) => {
   const theme = useTheme();
   const { t } = useTranslation();
   const workspace = useWorkspace();
-  const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(
+    initialTab && SETTINGS_TABS.includes(initialTab) ? initialTab : 'appearance',
+  );
+  useEffect(() => {
+    if (initialTab && SETTINGS_TABS.includes(initialTab)) setActiveTab(initialTab);
+  }, [initialTab]);
   const onSettingsTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
     const current = SETTINGS_TABS.indexOf(activeTab);
     if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;

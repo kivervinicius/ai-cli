@@ -5309,6 +5309,14 @@ button {
 .nx-os-shell--zen .nx-workspace-statusbar {
   display: none;
 }
+.nx-os-shell--zen .nx-topbar__status .nx-topbar-version-pill,
+.nx-os-shell--zen .nx-topbar__status .nx-lang-picker,
+.nx-os-shell--zen .nx-topbar__status [data-testid="font-scale-picker"],
+.nx-os-shell--zen .nx-topbar__status .nx-command-trigger span,
+.nx-os-shell--zen .nx-topbar__status .nx-command-trigger kbd,
+.nx-os-shell--zen .nx-topbar__status .nx-update-badge {
+  display: none;
+}
 .nx-os-shell--zen .nx-project-rail {
   position: fixed;
   inset: 0 auto 0 0;
@@ -5612,7 +5620,7 @@ button {
 }
 .nx-composer-deliberative__grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
   gap: 14px;
   align-items: start;
 }
@@ -5624,6 +5632,22 @@ button {
   grid-template-rows: auto minmax(220px, 1fr) auto;
   gap: 12px;
   min-height: 420px;
+}
+.nx-composer-deliberative__rail {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  min-width: 0;
+}
+.nx-composer-deliberative__rail > .nx-card p {
+  margin: 2px 0 0;
+  color: var(--nx-text-soft);
+  font-size: 0.857rem;
+  line-height: 1.45;
 }
 .nx-composer-turns {
   display: grid;
@@ -5661,19 +5685,13 @@ button {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.nx-composer-deliberative__grid > .nx-card:nth-child(2) {
+.nx-composer-destination-dock {
   position: sticky;
-  top: 12px;
-}
-.nx-composer-deliberative__grid > .nx-card:nth-child(2) > div {
-  display: grid;
-  gap: 11px;
-}
-.nx-composer-deliberative__grid > .nx-card:nth-child(2) p {
-  margin: 2px 0 0;
-  color: var(--nx-text-soft);
-  font-size: 0.857rem;
-  line-height: 1.45;
+  bottom: 0;
+  z-index: 2;
+  border-top: 1px solid var(--nx-border);
+  background: var(--nx-surface);
+  padding: 10px 12px;
 }
 .nx-composer-deliberative .nx-composer-header-actions {
   justify-content: flex-start;
@@ -5682,8 +5700,10 @@ button {
   .nx-composer-deliberative__grid {
     grid-template-columns: 1fr;
   }
-  .nx-composer-deliberative__grid > .nx-card:nth-child(2) {
+  .nx-composer-deliberative__rail {
     position: static;
+    max-height: none;
+    overflow: visible;
   }
   .nx-composer-turns {
     max-height: 42vh;
@@ -7391,7 +7411,7 @@ button {
 
 @container (min-width: 1100px) {
   .nx-composer-deliberative__grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
   }
 }
 
