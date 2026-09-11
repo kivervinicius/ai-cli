@@ -49,6 +49,7 @@ func TestBuildReportDoesNotClaimDesktopShellRuntimeWasVerified(t *testing.T) {
 func TestBuildReportPlatformChecksAreEvidenceBound(t *testing.T) {
 	t.Setenv("NEXUS_DOCKER", "")
 	t.Setenv("NEXUS_COMPAT_DOCKER", "")
+	t.Setenv("NEXUS_TEST_NOT_CONTAINER", "1")
 	report := BuildReport("test", nil, nexusruntime.CredentialCapability{
 		Status:    nexusruntime.CredentialUnsupported,
 		Mechanism: "test",

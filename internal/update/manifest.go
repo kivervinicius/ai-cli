@@ -99,23 +99,107 @@ func (m Manifest) Validate(policy ManifestPolicy) error {
 }
 
 func compareVersions(a, b string) int {
-	parse := func(v string) []int {
-		v = strings.TrimPrefix(strings.TrimSpace(v), "v")
-		parts := strings.SplitN(v, "-", 2)[0]
-		segments := strings.Split(parts, ".")
-		values := make([]int, 3)
-		for i := 0; i < len(values) && i < len(segments); i++ {
-			values[i], _ = strconv.Atoi(segments[i])
-		}
-		return values
+	type semver struct {
+		major, minor, patch int
+		prerelease          string // empty = stable (highest precedence)
 	}
+
+	parse := func(v string) semver {
+		v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+		var s semver
+		// Split into core + optional prerelease
+		core := v
+		if idx := strings.IndexAny(v, "-+"); idx != -1 {
+			core = v[:idx]
+			s.prerelease = v[idx+1:]
+			// Only use the part after '-' (prerelease), ignore build metadata after '+'
+			if plusIdx := strings.Index(s.prerelease, "+"); plusIdx != -1 {
+				s.prerelease = s.prerelease[:plusIdx]
+			}
+		}
+		segments := strings.Split(core, ".")
+		for i := 0; i < len(segments) && i < 3; i++ {
+			val, _ := strconv.Atoi(segments[i])
+			switch i {
+			case 0:
+				s.major = val
+			case 1:
+				s.minor = val
+			case 2:
+				s.patch = val
+			}
+		}
+		return s
+	}
+
 	left, right := parse(a), parse(b)
-	for i := range left {
-		if left[i] < right[i] {
+
+	// Compare major.minor.patch
+	if left.major != right.major {
+		if left.major < right.major {
 			return -1
 		}
-		if left[i] > right[i] {
+		return 1
+	}
+	if left.minor != right.minor {
+		if left.minor < right.minor {
+			return -1
+		}
+		return 1
+	}
+	if left.patch != right.patch {
+		if left.patch < right.patch {
+			return -1
+		}
+		return 1
+	}
+
+	// Same major.minor.patch: stable > any prerelease (SemVer 2.0.0 §11)
+	if left.prerelease == "" && right.prerelease == "" {
+		return 0
+	}
+	if left.prerelease == "" {
+		return 1 // stable > prerelease
+	}
+	if right.prerelease == "" {
+		return -1 // prerelease < stable
+	}
+
+	// Both have prerelease: compare dot-separated identifiers numerically
+	// then lexically, per SemVer 2.0.0 §11
+	leftParts := strings.Split(left.prerelease, ".")
+	rightParts := strings.Split(right.prerelease, ".")
+	maxLen := len(leftParts)
+	if len(rightParts) > maxLen {
+		maxLen = len(rightParts)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		if i >= len(leftParts) {
+			return -1 // shorter prerelease has lower precedence
+		}
+		if i >= len(rightParts) {
 			return 1
+		}
+		lp, rp := leftParts[i], rightParts[i]
+		ln, lErr := strconv.Atoi(lp)
+		rn, rErr := strconv.Atoi(rp)
+		if lErr == nil && rErr == nil {
+			// Both numeric: compare numerically
+			if ln < rn {
+				return -1
+			}
+			if ln > rn {
+				return 1
+			}
+		} else {
+			// At least one is alphanumeric: compare lexically
+			if lp < rp {
+				return -1
+			}
+			if lp > rp {
+				return 1
+			}
 		}
 	}
 	return 0

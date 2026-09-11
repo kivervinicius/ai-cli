@@ -142,6 +142,10 @@ func (s *Server) handleTunnelStart(w http.ResponseWriter, r *http.Request) {
 	tm.starting = false
 	tm.mu.Unlock()
 
+	// Inform auth manager that tunnel is active so bootstrap becomes one-time
+	// and cookies are set Secure even on loopback.
+	s.auth.SetTunnelActive(true)
+
 	bURL := s.remoteBootstrapURL(tunnel.URL)
 
 	writeJSON(w, http.StatusOK, TunnelStatusResponse{
@@ -181,6 +185,9 @@ func (s *Server) handleTunnelStop(w http.ResponseWriter, r *http.Request) {
 		tm.cancel()
 		tm.cancel = nil
 	}
+
+	// Inform auth manager that tunnel is no longer active.
+	s.auth.SetTunnelActive(false)
 
 	writeJSON(w, http.StatusOK, TunnelStatusResponse{Active: false})
 }

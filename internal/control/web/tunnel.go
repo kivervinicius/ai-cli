@@ -24,10 +24,11 @@ import (
 var tunnelURLRegex = regexp.MustCompile(`https://[a-zA-Z0-9-]+\.trycloudflare\.com`)
 
 const (
-	cloudflaredBinDir = "bin"
-	cloudflaredBin    = "cloudflared"
-	cloudflaredWinBin = "cloudflared.exe"
-	cloudflaredBase   = "https://github.com/cloudflare/cloudflared/releases/latest/download"
+	cloudflaredBinDir  = "bin"
+	cloudflaredBin     = "cloudflared"
+	cloudflaredWinBin  = "cloudflared.exe"
+	cloudflaredVersion = "2026.8.2"
+	cloudflaredBase    = "https://github.com/cloudflare/cloudflared/releases/download/" + cloudflaredVersion
 )
 
 // cloudflaredChecksums contains known-good SHA-256 hashes for cloudflared binaries.
@@ -127,28 +128,61 @@ func cloudflaredDownloadURL() string {
 // EnsureCloudflared checks if cloudflared is available and downloads it if not.
 // Returns the path to the binary.
 func EnsureCloudflared(ctx context.Context) (string, error) {
-	// 1. Check PATH
+	// 1. Check PATH — cannot verify integrity of system-installed binary
 	if path, err := exec.LookPath(cloudflaredBinaryName()); err == nil {
 		return path, nil
 	}
 
-	// 2. Check local install
+	// 2. Check local install with SHA-256 verification
 	binPath, err := cloudflaredPath()
 	if err != nil {
 		return "", err
 	}
 
 	if _, err := os.Stat(binPath); err == nil {
-		return binPath, nil
+		if verifyErr := verifyCloudflaredChecksum(binPath); verifyErr == nil {
+			return binPath, nil
+		}
+		// Checksum mismatch — quarantine and re-download
+		fmt.Fprintf(os.Stderr, "cloudflared checksum mismatch, re-downloading...\n")
+		quarantine := binPath + ".quarantine"
+		_ = os.Remove(quarantine)
+		_ = os.Rename(binPath, quarantine)
 	}
 
 	// 3. Download
-	fmt.Fprintf(os.Stderr, "Baixando cloudflared (%s/%s)...\n", runtime.GOOS, runtime.GOARCH)
+	fmt.Fprintf(os.Stderr, "Baixando cloudflared %s (%s/%s)...\n", cloudflaredVersion, runtime.GOOS, runtime.GOARCH)
 	if err := downloadCloudflared(ctx, binPath); err != nil {
 		return "", fmt.Errorf("failed to download cloudflared: %w", err)
 	}
 
 	return binPath, nil
+}
+
+// verifyCloudflaredChecksum checks the SHA-256 of a cached cloudflared binary
+// against the pinned checksums. Returns nil if the binary is not in the
+// checksum table (e.g. PATH-installed binary).
+func verifyCloudflaredChecksum(path string) error {
+	name := filepath.Base(path)
+	expected, ok := cloudflaredChecksums[name]
+	if !ok {
+		// Binary not in pinned table — cannot verify, allow it
+		return nil
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return err
+	}
+	actual := hex.EncodeToString(h.Sum(nil))
+	if !strings.EqualFold(actual, expected) {
+		return fmt.Errorf("cloudflared checksum mismatch: expected %s, got %s", expected, actual)
+	}
+	return nil
 }
 
 func downloadCloudflared(ctx context.Context, destPath string) error {

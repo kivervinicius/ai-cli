@@ -126,6 +126,12 @@ func BuildReport(version string, detections map[string]model.DetectionResult, ca
 }
 
 func runningInContainer() bool {
+	// Explicit override for testing environments that are not containers but
+	// have cgroup entries matching container patterns (e.g. GitHub Actions
+	// Ubuntu runners where /proc/1/cgroup contains "docker" or "containerd").
+	if os.Getenv("NEXUS_TEST_NOT_CONTAINER") == "1" {
+		return false
+	}
 	if os.Getenv("NEXUS_DOCKER") == "1" || os.Getenv("NEXUS_COMPAT_DOCKER") == "1" {
 		return true
 	}

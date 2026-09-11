@@ -7,12 +7,25 @@ ifeq ($(shell go env GOOS),linux)
 DESKTOP_TAGS = production,webkit2_41
 endif
 
-.PHONY: all build build-desktop build-desktop-wails web web-verify docs-verify test race vet install install-local release-local bump clean format format-check lint-frontend lint-styles lint-styles-fix lint-fix lint-go typecheck test-frontend test-go test-e2e security quality quality-full golangci-lint
+.PHONY: all build build-desktop build-desktop-wails web web-verify docs-verify test race vet install install-local release-local bump clean format format-check lint-frontend lint-styles lint-styles-fix lint-fix lint-go typecheck test-frontend test-go test-e2e security quality quality-full golangci-lint version-check
 
 all: build
 
 bump:
 	@echo "Version bumps are managed by: make release-local"
+
+# ─── Version Consistency ────────────────────────────────────────────
+
+version-check:
+	@VERSION=$$(cat VERSION 2>/dev/null); \
+	WEB_VER=$$(node -p "require('./web/package.json').version" 2>/dev/null); \
+	if [ -z "$$VERSION" ]; then echo "VERSION file missing or empty" >&2; exit 1; fi; \
+	if [ -z "$$WEB_VER" ]; then echo "web/package.json version missing" >&2; exit 1; fi; \
+	if [ "$$VERSION" != "$$WEB_VER" ]; then \
+		echo "Version drift detected: VERSION=$$VERSION web/package.json=$$WEB_VER" >&2; \
+		exit 1; \
+	fi; \
+	echo "Version consistency PASS: $$VERSION"
 
 # ─── Frontend ───────────────────────────────────────────────────────
 
@@ -86,7 +99,7 @@ security:
 
 # ─── Quality gates ──────────────────────────────────────────────────
 
-quality: format-check lint-frontend lint-styles typecheck lint-go test-go test-frontend
+quality: format-check lint-frontend lint-styles typecheck lint-go test-go test-frontend version-check
 
 quality-full: quality race security
 

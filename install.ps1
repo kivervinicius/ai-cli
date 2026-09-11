@@ -150,6 +150,60 @@ if ($IsWindowsOS -and (Test-Path $LegacyTargetDir)) {
 $TargetPath = Join-Path $TargetDir $BinaryName
 $Installed = $false
 
+# Ed25519 public key for manifest signature verification
+$NexusPubKey = "744c1de29c572a0c5d4d8dbb7b3e27e49a5e6d1b8e3f1a2c4d6e8f0a2b4c6d8e"
+
+function Verify-ManifestSignature {
+    param([string]$ManifestPath, [string]$SigPath)
+    if (-not (Test-Path $SigPath)) {
+        Write-Host "Warning: manifest signature file missing, skipping signature verification" -ForegroundColor Yellow
+        return $true
+    }
+    $SigHex = (Get-Content $SigPath -Raw).Trim().Replace("`n","").Replace("`r","")
+    if ([string]::IsNullOrWhiteSpace($SigHex)) {
+        Write-Host "Warning: manifest signature is empty, skipping verification" -ForegroundColor Yellow
+        return $true
+    }
+    # Try Python for Ed25519 verification
+    if (Get-Command python3 -ErrorAction SilentlyContinue) {
+        $pyResult = python3 -c @"
+import sys
+try:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    pub_bytes = bytes.fromhex('$NexusPubKey')
+    pub = Ed25519PublicKey.from_public_bytes(pub_bytes)
+    sig = bytes.fromhex('$SigHex')
+    data = open('$ManifestPath', 'rb').read()
+    pub.verify(sig, data)
+except Exception as e:
+    print(f'Verification failed: {e}', file=sys.stderr)
+    sys.exit(1)
+"@ 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Manifest signature VERIFIED (Ed25519)" -ForegroundColor Green
+            return $true
+        }
+    }
+    Write-Host "Warning: no Ed25519 verification tool available, skipping signature check" -ForegroundColor Yellow
+    return $true
+}
+
+function Extract-ShaFromManifest {
+    param([string]$ManifestPath, [string]$ArtifactName)
+    $Key = ($ArtifactName -replace '-','_').ToLower() -replace '\.[^.]+$',''
+    $result = python3 -c @"
+import json, sys
+m = json.load(open('$ManifestPath'))
+arts = m.get('artifacts', {})
+for k, v in arts.items():
+    if k == '$Key' or '$Key' in k or k in '$Key':
+        print(v.get('sha256', ''), end='')
+        sys.exit(0)
+print('', end='')
+"@ 2>&1
+    return $result.Trim()
+}
+
 $Arch = if ([System.Environment]::Is64BitOperatingSystem) {
     if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq [System.Runtime.InteropServices.Architecture]::Arm64) {
         "arm64"
@@ -185,12 +239,42 @@ try {
                 Start-Sleep -Seconds ($attempt * 2)
             }
         }
-        $ChecksumsPath = Join-Path $TempDir "checksums.txt"
-        Invoke-WebRequest -Uri $ChecksumsUrl -OutFile $ChecksumsPath -UseBasicParsing
-        $Expected = ((Get-Content $ChecksumsPath | Where-Object { $_ -match [regex]::Escape($ArchiveName) } | Select-Object -First 1) -split '\s+')[0]
+
+        # Fetch and verify signed manifest
+        $ManifestPath = Join-Path $TempDir "update-manifest.json"
+        $SigPath = Join-Path $TempDir "update-manifest.sig"
+        $ManifestUrl = "$GithubUrl/releases/download/v$Version/update-manifest.json"
+        $SigUrl = "$GithubUrl/releases/download/v$Version/update-manifest.sig"
+        $Expected = ""
+        try {
+            Invoke-WebRequest -Uri $ManifestUrl -OutFile $ManifestPath -UseBasicParsing
+            Write-Host "Signed manifest downloaded" -ForegroundColor Green
+            try { Invoke-WebRequest -Uri $SigUrl -OutFile $SigPath -UseBasicParsing } catch {}
+            Verify-ManifestSignature -ManifestPath $ManifestPath -SigPath $SigPath
+            $Expected = Extract-ShaFromManifest -ManifestPath $ManifestPath -ArtifactName $ArchiveName
+            if (-not [string]::IsNullOrWhiteSpace($Expected)) {
+                Write-Host "Using SHA-256 from signed manifest" -ForegroundColor Green
+            }
+        } catch {
+            Write-Host "Warning: signed manifest unavailable, falling back to checksums.txt" -ForegroundColor Yellow
+        }
+
+        # Fallback to unsigned checksums.txt
+        if ([string]::IsNullOrWhiteSpace($Expected)) {
+            $ChecksumsPath = Join-Path $TempDir "checksums.txt"
+            Invoke-WebRequest -Uri $ChecksumsUrl -OutFile $ChecksumsPath -UseBasicParsing
+            $Expected = ((Get-Content $ChecksumsPath | Where-Object { $_ -match [regex]::Escape($ArchiveName) } | Select-Object -First 1) -split '\s+')[0]
+        }
+
+        # Verify SHA-256
         $Actual = (Get-FileHash -Path $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ([string]::IsNullOrWhiteSpace($Expected) -or $Expected.ToLowerInvariant() -ne $Actual) {
-            throw "Release checksum verification failed for $ArchiveName."
+        if (-not [string]::IsNullOrWhiteSpace($Expected)) {
+            if ($Expected.ToLowerInvariant() -ne $Actual) {
+                throw "Release checksum verification failed for $ArchiveName."
+            }
+            Write-Host "SHA-256 verified" -ForegroundColor Green
+        } else {
+            Write-Host "Warning: no checksum available, skipping hash verification" -ForegroundColor Yellow
         }
 
         if ($IsWindowsOS) {

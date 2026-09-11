@@ -267,3 +267,78 @@ func TestUpdatePlan_ChecksumVerificationAndRollback(t *testing.T) {
 		t.Fatalf("expected restored content %q, got %q", string(origContent), string(restoredBytes))
 	}
 }
+
+func TestCompareVersionsSemverCompliance(t *testing.T) {
+	tests := []struct {
+		a, b  string
+		want  int
+		label string
+	}{
+		// Equal
+		{"1.0.0", "1.0.0", 0, "equal stable"},
+		{"0.5.0-beta.23", "0.5.0-beta.23", 0, "equal prerelease"},
+
+		// Major/minor/patch ordering
+		{"0.4.0", "0.5.0", -1, "minor upgrade"},
+		{"0.5.0", "0.4.0", 1, "minor downgrade"},
+		{"1.0.0", "2.0.0", -1, "major upgrade"},
+		{"0.5.0", "0.5.1", -1, "patch upgrade"},
+
+		// Prerelease ordering within same version
+		{"0.5.0-beta.23", "0.5.0-beta.24", -1, "beta increment"},
+		{"0.5.0-beta.24", "0.5.0-rc.1", -1, "beta to rc"},
+		{"0.5.0-rc.1", "0.5.0-rc.2", -1, "rc increment"},
+
+		// Prerelease < stable (SemVer 2.0.0 §11)
+		{"0.5.0-beta.23", "0.5.0", -1, "beta < stable"},
+		{"0.5.0-rc.1", "0.5.0", -1, "rc < stable"},
+		{"0.5.0", "0.5.0-beta.23", 1, "stable > beta"},
+		{"0.5.0", "0.5.0-rc.1", 1, "stable > rc"},
+
+		// Leading v prefix
+		{"v0.5.0", "0.5.0", 0, "v prefix ignored"},
+		{"v0.5.0-beta.23", "0.5.0-beta.23", 0, "v prefix with prerelease"},
+
+		// Cross-level comparisons
+		{"0.5.0-beta.23", "0.5.1", -1, "beta < next patch"},
+		{"0.5.0-rc.1", "0.5.1", -1, "rc < next patch"},
+		{"1.0.0-alpha.1", "0.9.9", 1, "alpha.1 > 0.9.9 (major higher)"},
+	}
+
+	for _, tt := range tests {
+		got := compareVersions(tt.a, tt.b)
+		if got != tt.want {
+			t.Errorf("compareVersions(%q, %q) = %d, want %d (%s)", tt.a, tt.b, got, tt.want, tt.label)
+		}
+	}
+}
+
+func TestCompareVersionsDowngradeRejection(t *testing.T) {
+	manifest := Manifest{
+		SchemaVersion: 1,
+		Channel:       "beta",
+		Version:       "0.5.0-beta.23",
+		ReleaseDate:   time.Now().UTC().Format(time.RFC3339),
+		ExpiresAt:     time.Now().UTC().Add(time.Hour).Format(time.RFC3339),
+		KeyID:         "test",
+		Artifacts:     map[string]Artifact{"linux_amd64": {SHA256: strings.Repeat("a", 64), Size: 3}},
+	}
+
+	// Current version is newer: should reject
+	if err := manifest.Validate(ManifestPolicy{Channel: "beta", CurrentVersion: "0.5.0-beta.24", Target: "linux_amd64"}); err == nil {
+		t.Fatal("expected downgrade from beta.24 to beta.23 to be rejected")
+	}
+
+	// Current version is same: should pass
+	manifest.Version = "0.5.0-beta.24"
+	if err := manifest.Validate(ManifestPolicy{Channel: "beta", CurrentVersion: "0.5.0-beta.24", Target: "linux_amd64"}); err != nil {
+		t.Fatalf("expected same version to pass: %v", err)
+	}
+
+	// Current is beta, manifest is stable (upgrade): should pass
+	manifest.Version = "0.5.0"
+	manifest.Channel = "stable"
+	if err := manifest.Validate(ManifestPolicy{Channel: "stable", CurrentVersion: "0.5.0-beta.24", Target: "linux_amd64"}); err != nil {
+		t.Fatalf("expected beta->stable upgrade to pass: %v", err)
+	}
+}

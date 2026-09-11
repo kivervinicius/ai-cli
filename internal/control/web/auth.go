@@ -41,6 +41,7 @@ type AuthManager struct {
 	storeDir       string
 	lastPersist    time.Time
 	entropy        io.Reader
+	tunnelActive   bool // true when a Cloudflare Quick Tunnel exposes this server to the internet
 }
 
 func (a *AuthManager) SetDesktopSession(sess *Session) {
@@ -278,6 +279,23 @@ func (a *AuthManager) RotateSession(oldSessionID string) (*Session, error) {
 	return sess, nil
 }
 
+// SetTunnelActive informs the auth manager that a Cloudflare Quick Tunnel
+// is exposing this server to the internet. When active, bootstrap tokens are
+// one-time (even on loopback) and cookies must be Secure.
+func (a *AuthManager) SetTunnelActive(active bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.tunnelActive = active
+}
+
+// IsTunnelActive reports whether a Cloudflare Quick Tunnel is currently
+// exposing this server to the internet.
+func (a *AuthManager) IsTunnelActive() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.tunnelActive
+}
+
 func (a *AuthManager) ExchangeBootstrapToken(token string) (*Session, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -285,11 +303,14 @@ func (a *AuthManager) ExchangeBootstrapToken(token string) (*Session, bool) {
 	if token == "" || token != a.bootstrapToken {
 		return nil, false
 	}
-	// Remote/private binds keep one-time consume. Loopback reuses the printed
-	// Bootstrap URL for the life of the process so local re-auth does not
-	// require restarting `nexus web` after a cookie loss or accidental consume.
+	// Remote/private binds and tunnel-active states keep one-time consume.
+	// Loopback reuses the printed Bootstrap URL for the life of the process
+	// so local re-auth does not require restarting `nexus web` after a cookie
+	// loss or accidental consume — unless a tunnel is active, in which case
+	// traffic traverses the internet and the bootstrap must be consumed once.
 	loopback := a.isLoopbackListen()
-	if a.usedBootstrap && !loopback {
+	reusable := loopback && !a.tunnelActive
+	if a.usedBootstrap && !reusable {
 		return nil, false
 	}
 
@@ -313,7 +334,7 @@ func (a *AuthManager) ExchangeBootstrapToken(token string) (*Session, bool) {
 		ExpiresAt:    now.Add(sessionTTL),
 		LastActiveAt: now,
 	}
-	if !loopback {
+	if !reusable {
 		a.usedBootstrap = true
 	}
 	a.sessions[sessID] = sess

@@ -57,9 +57,11 @@ func (s *Server) tunnelManager() *tunnelManager {
 
 // cookieSecure returns the Secure flag for session cookies. Non-loopback
 // binds (e.g. --remote on a private IP) set Secure to protect cookies
-// traversing the network in plaintext.
+// traversing the network in plaintext. When a Cloudflare Quick Tunnel is
+// active, cookies must also be Secure even on loopback because traffic
+// traverses the internet.
 func (s *Server) cookieSecure() bool {
-	return !s.loopback
+	return !s.loopback || (s.auth != nil && s.auth.IsTunnelActive())
 }
 
 func NewServer(opts ServerOptions) (*Server, error) {
@@ -554,6 +556,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		originpolicy.UnregisterTunnelHost(s.tunnelHost)
 	}
 	if s.auth != nil {
+		s.auth.SetTunnelActive(false)
 		if sess := s.auth.GetDesktopSession(); sess != nil {
 			s.auth.RevokeSession(sess.ID)
 		}
