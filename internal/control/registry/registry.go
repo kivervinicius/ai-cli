@@ -276,6 +276,41 @@ func (r *Registry) UpdateState(runtimeID string, state RuntimeState) error {
 	return nil
 }
 
+// TransitionState applies the runtime lifecycle contract. UpdateState remains
+// available for backward-compatible administrative reconciliation, while new
+// application paths should use this method to reject invalid jumps.
+func (r *Registry) TransitionState(runtimeID string, state RuntimeState) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var transitionErr error
+	var notFound bool
+	err := r.saveLocked(func(fresh map[string]RuntimeSession) {
+		s, ok := fresh[runtimeID]
+		if !ok {
+			notFound = true
+			return
+		}
+		if !CanTransition(s.State, state) {
+			transitionErr = fmt.Errorf("invalid runtime state transition %s -> %s", s.State, state)
+			return
+		}
+		s.State = state
+		s.UpdatedAt = time.Now()
+		fresh[runtimeID] = s
+	})
+	if err != nil {
+		return err
+	}
+	if transitionErr != nil {
+		return transitionErr
+	}
+	if notFound {
+		return fmt.Errorf("runtime %q not found", runtimeID)
+	}
+	return nil
+}
+
 // UpdateStartupStage records the observable startup stage without changing
 // the backward-compatible operational RuntimeState field.
 func (r *Registry) UpdateStartupStage(runtimeID string, stage StartupStage, fault StartupFault) error {

@@ -101,6 +101,19 @@ func TestRegistryPersistenceAndLifecycle(t *testing.T) {
 	}
 }
 
+func TestRegistryTransitionStateRejectsInvalidJump(t *testing.T) {
+	reg := NewRegistry("")
+	if err := reg.Register(RuntimeSession{RuntimeID: "rt-transition", State: StateStarting}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.TransitionState("rt-transition", StateStopped); err == nil {
+		t.Fatal("expected invalid starting to stopped transition to fail")
+	}
+	if err := reg.TransitionState("rt-transition", StateRunning); err != nil {
+		t.Fatalf("valid transition failed: %v", err)
+	}
+}
+
 func TestCleanupStale(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "runtimes.json")
