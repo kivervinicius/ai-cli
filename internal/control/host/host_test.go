@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/kivervinicius/ai-cli/internal/control/events"
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 )
@@ -144,6 +146,10 @@ func TestSessionHostLifecycle(t *testing.T) {
 		t.Fatalf("failed to start SessionHost: %v", err)
 	}
 	defer sh.Stop()
+	started := events.DefaultBus().GetHistory(runtimeID, 10)
+	if !containsEventType(started, events.EventProcessStarted) || !containsEventType(started, events.EventRuntimeStarted) {
+		t.Fatalf("runtime start lifecycle events missing: %+v", started)
+	}
 
 	waitForHostEndpoint(t, runtimeID)
 
@@ -169,6 +175,66 @@ func TestSessionHostLifecycle(t *testing.T) {
 	if err := client.Stop(); err != nil {
 		t.Errorf("stop request failed: %v", err)
 	}
+	sh.Wait()
+	stopped := events.DefaultBus().GetHistory(runtimeID, 10)
+	if !containsEventType(stopped, events.EventProcessExited) ||
+		(!containsEventType(stopped, events.EventRuntimeStopped) && !containsEventType(stopped, events.EventRuntimeFailed)) {
+		t.Fatalf("runtime stop lifecycle events missing: %+v", stopped)
+	}
+}
+
+func TestSessionHostUsesConfiguredRegistryOwnership(t *testing.T) {
+	runtimeID := "rt-host-owned-registry"
+	owned := registry.NewRegistry(filepath.Join(t.TempDir(), "runtimes.json"))
+	sess := registry.RuntimeSession{
+		RuntimeID:    runtimeID,
+		ProviderID:   "test",
+		ProfileID:    "default",
+		Workspace:    os.TempDir(),
+		State:        registry.StateStarting,
+		ControlLevel: registry.ControlLevelTerminal,
+	}
+
+	sh, err := NewSessionHost(Config{
+		Session:  sess,
+		Registry: owned,
+		Binary:   testTerminalBinary,
+		Args:     testTerminalArgs(),
+		Env:      os.Environ(),
+		Cwd:      os.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("failed to create SessionHost: %v", err)
+	}
+	if err := sh.Start(); err != nil {
+		t.Fatalf("failed to start SessionHost: %v", err)
+	}
+
+	stored, ok := owned.Get(runtimeID)
+	if !ok || stored.State != registry.StateRunning {
+		t.Fatalf("configured registry did not receive running runtime: ok=%v session=%+v", ok, stored)
+	}
+	if _, ok := registry.DefaultRegistry().Get(runtimeID); ok {
+		t.Fatal("runtime leaked into the process-global registry")
+	}
+
+	if err := sh.Stop(); err != nil {
+		t.Fatalf("stop failed: %v", err)
+	}
+	sh.Wait()
+	stored, ok = owned.Get(runtimeID)
+	if !ok || (stored.State != registry.StateStopped && stored.State != registry.StateFailed) {
+		t.Fatalf("configured registry did not receive terminal runtime: ok=%v session=%+v", ok, stored)
+	}
+}
+
+func containsEventType(history []events.Event, want events.EventType) bool {
+	for _, event := range history {
+		if event.Type == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestSessionHost_CmdInputNoDeadlock(t *testing.T) {

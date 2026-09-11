@@ -27,6 +27,7 @@ const MaxFrameSize = 64 * 1024 // 64 KB max frame
 // Config configures a SessionHost instance.
 type Config struct {
 	Session     registry.RuntimeSession
+	Registry    *registry.Registry
 	Binary      string
 	Args        []string
 	Env         []string
@@ -39,6 +40,7 @@ type Config struct {
 type SessionHost struct {
 	mu                    sync.RWMutex
 	session               registry.RuntimeSession
+	registry              *registry.Registry
 	cfg                   Config
 	cmd                   *exec.Cmd
 	termBackend           terminal.Backend
@@ -61,6 +63,9 @@ func NewSessionHost(cfg Config) (*SessionHost, error) {
 	if cfg.Session.RuntimeID == "" {
 		return nil, fmt.Errorf("runtime ID is required")
 	}
+	if cfg.Registry == nil {
+		cfg.Registry = registry.DefaultRegistry()
+	}
 
 	cmd := exec.Command(cfg.Binary, cfg.Args...)
 	cmd.Dir = cfg.Cwd
@@ -70,6 +75,7 @@ func NewSessionHost(cfg Config) (*SessionHost, error) {
 
 	sh := &SessionHost{
 		session:      cfg.Session,
+		registry:     cfg.Registry,
 		cfg:          cfg,
 		cmd:          cmd,
 		termBackend:  termBackend,
@@ -103,6 +109,7 @@ func NewSessionHost(cfg Config) (*SessionHost, error) {
 			sh.mu.Unlock()
 		},
 	)
+	sh.detector.SetRegistry(cfg.Registry)
 	// PTY regex is TERMINAL fallback only. EVENTS/CONTROL_API (future structured
 	// adapters) must not scrape stdout for agent attention.
 	sh.detector.SetControlPolicy(cfg.Session.ControlLevel, false, cfg.Session.AgentID)
@@ -118,7 +125,7 @@ func (sh *SessionHost) Start() error {
 		sh.session.StartupStage = stage
 		sh.session.StageChangedAt = time.Now()
 		sh.session.LastFault = fault
-		_ = registry.DefaultRegistry().UpdateStartupStage(sh.session.RuntimeID, stage, fault)
+		_ = sh.registry.UpdateStartupStage(sh.session.RuntimeID, stage, fault)
 	}
 	setStage(registry.StartupHostStarting, "")
 	setStage(registry.StartupIPCBinding, "")
@@ -129,7 +136,7 @@ func (sh *SessionHost) Start() error {
 	if err != nil {
 		setStage(registry.StartupIPCBinding, registry.StartupFaultIPCBindFailed)
 		sh.session.State = registry.StateFailed
-		_ = registry.DefaultRegistry().UpdateState(sh.session.RuntimeID, registry.StateFailed)
+		_ = sh.registry.UpdateState(sh.session.RuntimeID, registry.StateFailed)
 		return fmt.Errorf("failed to create control endpoint: %w", err)
 	}
 	sh.listener = l
@@ -180,16 +187,29 @@ func (sh *SessionHost) Start() error {
 	sh.session.ControlEndpoint = protocol.EndpointPath(sh.session.RuntimeID)
 
 	// Persist in Registry
-	_ = registry.DefaultRegistry().Register(sh.session)
+	_ = sh.registry.Register(sh.session)
 
 	// Emit Process Started event
-	events.DefaultBus().Publish(events.NewEvent(
+	eventData := sh.lifecycleEventData(map[string]any{
+		"pid": sh.session.PID, "host_pid": sh.session.HostPID, "endpoint": sh.session.ControlEndpoint,
+	})
+	events.DefaultBus().Publish(events.NewEventWithCorrelation(
+		sh.session.LineageID,
 		sh.session.RuntimeID,
 		sh.session.ProviderID,
 		sh.session.ProfileID,
 		events.EventProcessStarted,
 		fmt.Sprintf("Started supervised %s runtime (PID %d, Host PID %d)", sh.session.ProviderID, sh.session.PID, sh.session.HostPID),
-		map[string]any{"pid": sh.session.PID, "host_pid": sh.session.HostPID, "endpoint": sh.session.ControlEndpoint},
+		eventData,
+	))
+	events.DefaultBus().Publish(events.NewEventWithCorrelation(
+		sh.session.LineageID,
+		sh.session.RuntimeID,
+		sh.session.ProviderID,
+		sh.session.ProfileID,
+		events.EventRuntimeStarted,
+		fmt.Sprintf("Runtime started (PID %d)", sh.session.PID),
+		eventData,
 	))
 
 	// Monitor process termination.
@@ -716,18 +736,49 @@ func (sh *SessionHost) waitProcess() {
 		state = registry.StateFailed
 	}
 	sh.session.State = state
-	_ = registry.DefaultRegistry().UpdateState(sh.session.RuntimeID, state)
+	_ = sh.registry.UpdateState(sh.session.RuntimeID, state)
 
-	events.DefaultBus().Publish(events.NewEvent(
+	eventData := sh.lifecycleEventData(map[string]any{"state": string(state)})
+	events.DefaultBus().Publish(events.NewEventWithCorrelation(
+		sh.session.LineageID,
 		sh.session.RuntimeID,
 		sh.session.ProviderID,
 		sh.session.ProfileID,
 		events.EventProcessExited,
 		fmt.Sprintf("Process exited (State: %s)", state),
-		map[string]any{"state": string(state)},
+		eventData,
+	))
+	runtimeEvent := events.EventRuntimeStopped
+	if state == registry.StateFailed {
+		runtimeEvent = events.EventRuntimeFailed
+	}
+	events.DefaultBus().Publish(events.NewEventWithCorrelation(
+		sh.session.LineageID,
+		sh.session.RuntimeID,
+		sh.session.ProviderID,
+		sh.session.ProfileID,
+		runtimeEvent,
+		fmt.Sprintf("Runtime ended (State: %s)", state),
+		eventData,
 	))
 
 	close(sh.doneChan)
+}
+
+// lifecycleEventData adds ownership metadata to runtime/process events when
+// the launcher already knows it. It never derives ownership from runtime IDs.
+func (sh *SessionHost) lifecycleEventData(data map[string]any) map[string]any {
+	result := make(map[string]any, len(data)+2)
+	for key, value := range data {
+		result[key] = value
+	}
+	if sh.session.ProjectID != "" {
+		result["project_id"] = sh.session.ProjectID
+	}
+	if sh.session.AgentID != "" {
+		result["agent_id"] = sh.session.AgentID
+	}
+	return result
 }
 
 // Wait blocks until the supervised child process terminates.

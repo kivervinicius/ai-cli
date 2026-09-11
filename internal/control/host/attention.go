@@ -130,6 +130,7 @@ type AttentionDetector struct {
 	lastOSCTitle     string
 	lastFingerprint  string
 	lastUpdateAt     time.Time
+	registry         *registry.Registry
 	onAttention      func(reason, context, dynamicTitle string, state registry.RuntimeState)
 }
 
@@ -173,6 +174,22 @@ func (d *AttentionDetector) SetControlPolicy(level registry.ControlLevel, struct
 	}
 	d.structuredEvents = structuredEvents
 	d.agentID = strings.TrimSpace(agentID)
+}
+
+// SetRegistry binds durable attention updates to the owning runtime registry.
+// The constructor remains backwards-compatible for standalone detector tests;
+// those callers fall back to the process registry when no owner is supplied.
+func (d *AttentionDetector) SetRegistry(reg *registry.Registry) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.registry = reg
+}
+
+func (d *AttentionDetector) ownerRegistry() *registry.Registry {
+	if d.registry != nil {
+		return d.registry
+	}
+	return registry.DefaultRegistry()
 }
 
 // isShellProvider reports Project Shell / non-agent PTYs that must not emit
@@ -344,7 +361,7 @@ func (d *AttentionDetector) ProcessChunk(chunk []byte) {
 	}
 	d.lastUpdateAt = time.Now()
 
-	_ = registry.DefaultRegistry().UpdateAttentionMeta(d.runtimeID, registry.AttentionUpdate{
+	_ = d.ownerRegistry().UpdateAttentionMeta(d.runtimeID, registry.AttentionUpdate{
 		State:        state,
 		Reason:       reason,
 		Context:      attentionCtx,
@@ -423,7 +440,7 @@ func (d *AttentionDetector) applyOSCTitleLocked(title string) {
 		return
 	}
 	d.lastOSCTitle = title
-	_ = registry.DefaultRegistry().UpdateTitle(d.runtimeID, title)
+	_ = d.ownerRegistry().UpdateTitle(d.runtimeID, title)
 	if d.onAttention != nil && d.lastKind != AttentionNeedsUser && d.lastKind != AttentionError {
 		d.onAttention(d.lastReason, title, title, d.lastState)
 	}

@@ -2,8 +2,12 @@ package protocol
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"testing"
+	"time"
 )
 
 func TestProtocolSerialization(t *testing.T) {
@@ -33,6 +37,28 @@ func TestProtocolSerialization(t *testing.T) {
 	errResp := NewErrorResponse("something went wrong")
 	if errResp.OK || errResp.Error != "something went wrong" {
 		t.Errorf("unexpected error response: %+v", errResp)
+	}
+}
+
+func TestSendContextInterruptsBlockedConnection(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	client := &Client{runtimeID: "context-test", conn: clientConn, reader: bufio.NewReader(clientConn)}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		cancel()
+	}()
+
+	started := time.Now()
+	_, err := client.SendContext(ctx, CmdPing, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("SendContext error = %v, want context.Canceled", err)
+	}
+	if elapsed := time.Since(started); elapsed >= time.Second {
+		t.Fatalf("cancellation took %s", elapsed)
 	}
 }
 

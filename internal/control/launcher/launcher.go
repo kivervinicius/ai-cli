@@ -27,6 +27,7 @@ type LaunchOptions struct {
 	Title             string
 	ProviderID        string
 	ProfileID         string
+	AccountScope      model.AccountScope `json:"account_scope,omitempty"`
 	ProviderSessionID string
 	Workspace         string
 	Args              []string
@@ -88,7 +89,10 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 	launchModel := opts.Model
 	if strings.EqualFold(strings.TrimSpace(opts.ProviderID), "agy") && strings.TrimSpace(launchModel) == "" {
 		quotaEngine := quota.NewEngine(quota.DefaultTTL)
-		cachedUsage, _ := quotaEngine.GetCachedUsage(opts.ProviderID, opts.ProfileID)
+		var cachedUsage model.UsageSnapshot
+		if opts.AccountScope.Verifiable() {
+			cachedUsage, _ = quotaEngine.GetCachedUsageForScope(opts.AccountScope)
+		}
 		if !quotaEngine.Trustworthy(cachedUsage) {
 			cachedUsage.Windows = nil
 		}
@@ -137,6 +141,7 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 		Title:             title,
 		ProviderID:        opts.ProviderID,
 		ProfileID:         opts.ProfileID,
+		AccountScope:      opts.AccountScope,
 		ProviderSessionID: opts.ProviderSessionID,
 		Model:             launchModel,
 		Workspace:         opts.Workspace,
@@ -159,6 +164,7 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 	if opts.Standalone {
 		sh, err := host.NewSessionHost(host.Config{
 			Session:     sess,
+			Registry:    l.reg,
 			Binary:      bin,
 			Args:        extraArgs,
 			Env:         env,
