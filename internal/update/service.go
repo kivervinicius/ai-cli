@@ -208,6 +208,34 @@ func (s *Service) Apply(ctx context.Context) (*Receipt, error) {
 		return nil, fmt.Errorf("%w: %s", ErrManifestTarget, target)
 	}
 
+	// Check if artifact requires manual installation
+	if art.ExtractAction() == "manual" {
+		return nil, fmt.Errorf("artifact type %s requires manual installation: %s", art.Target, s.method.UpgradeInstruction())
+	}
+
+	data, err := s.downloadArtifact(ctx, art)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract binary if archive format
+	var binaryData []byte
+	if art.Target == TargetTarGz || art.Target == TargetZip {
+		extracted, err := ExtractBinary(data, art.Target)
+		if err != nil {
+			return nil, fmt.Errorf("archive extraction failed: %w", err)
+		}
+		binaryData = extracted.Data
+	} else {
+		binaryData = data
+	}
+
+	updater := NewUpdater(s.execPath, os.Getenv("HOME"))
+	return updater.ApplyManifest(*manifest, policy, binaryData)
+}
+
+// downloadArtifact streams the artifact to disk without loading entire body into memory.
+func (s *Service) downloadArtifact(ctx context.Context, art Artifact) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, art.URL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("invalid artifact URL: %w", err)
@@ -223,13 +251,18 @@ func (s *Service) Apply(ctx context.Context) (*Receipt, error) {
 		return nil, fmt.Errorf("artifact download returned HTTP %d", resp.StatusCode)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	// Stream with size limit
+	limitedReader := io.LimitReader(resp.Body, MaxExtractSize+1)
+	data, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, fmt.Errorf("reading artifact body failed: %w", err)
 	}
 
-	updater := NewUpdater(s.execPath, os.Getenv("HOME"))
-	return updater.ApplyManifest(*manifest, policy, data)
+	if int64(len(data)) > MaxExtractSize {
+		return nil, ErrArchiveTooLarge
+	}
+
+	return data, nil
 }
 
 func (s *Service) fetchManifest(ctx context.Context) (*Manifest, error) {

@@ -137,7 +137,26 @@ case "$ARCH" in
         ;;
 esac
 
-TARGET_DIR="${HOME}/.local/bin"
+# Install into the directory that the current shell resolves first. This keeps
+# `type -a nexus` and the binary we just installed in sync when an older copy
+# exists in a higher-priority PATH entry. A fresh installation still defaults
+# to ~/.local/bin.
+resolve_nexus_target_dir() {
+    local path_entry candidate
+    local -a path_entries
+    IFS=: read -r -a path_entries <<< "${PATH:-}"
+    for path_entry in "${path_entries[@]}"; do
+        [ -n "$path_entry" ] || path_entry="."
+        candidate="${path_entry}/nexus"
+        if [ -x "$candidate" ] && [ ! -d "$candidate" ]; then
+            dirname "$candidate"
+            return 0
+        fi
+    done
+    printf '%s/.local/bin\n' "$HOME"
+}
+
+TARGET_DIR="$(resolve_nexus_target_dir)"
 mkdir -p "$TARGET_DIR"
 
 INSTALL_SUCCESS=0
@@ -160,12 +179,10 @@ install_cli_from_dir() {
     if [ -f "${dir}/nexus" ]; then
         install -m 0755 "${dir}/nexus" "${TMP_DIR}/nexus.install"
         mv -f "${TMP_DIR}/nexus.install" "${TARGET_DIR}/nexus"
-        ln -sf "${TARGET_DIR}/nexus" "${TARGET_DIR}/ai"
         INSTALL_SUCCESS=1
     elif [ -f "${dir}/ai" ]; then
         install -m 0755 "${dir}/ai" "${TMP_DIR}/nexus.install"
         mv -f "${TMP_DIR}/nexus.install" "${TARGET_DIR}/nexus"
-        ln -sf "${TARGET_DIR}/nexus" "${TARGET_DIR}/ai"
         INSTALL_SUCCESS=1
     fi
 }
@@ -391,7 +408,6 @@ elif [ "$BUILD_FROM_SOURCE" = true ]; then
         make build
         install -m 0755 ./nexus "${TARGET_DIR}/nexus"
     )
-    ln -sf "${TARGET_DIR}/nexus" "${TARGET_DIR}/ai"
     INSTALL_SUCCESS=1
 fi
 
@@ -400,7 +416,7 @@ if [ "$INSTALL_SUCCESS" -eq 0 ]; then
     exit 1
 fi
 
-echo "✓ Successfully installed IAPro Nexus to ${TARGET_DIR}/nexus (with 'ai' alias)"
+echo "✓ Successfully installed IAPro Nexus to ${TARGET_DIR}/nexus"
 
 if [ "$OS_NAME" = "Linux" ] && [ -n "$VERSION_PLAIN" ] && [ "$BUILD_FROM_SOURCE" != true ]; then
     echo "Optional system packages (when published on the same release):"

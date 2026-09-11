@@ -144,9 +144,12 @@ func (d *CodexDriver) BuildCommand(ctx context.Context, p model.Profile, extraAr
 		"HOME":             home,
 		"CODEX_HOME":       home,
 		"CODEX_CONFIG_DIR": home,
-		"AI_PROFILE":       p.Name,
-		"AI_PROVIDER":      "codex",
-		"PATH":             runtime.EnhancedPATH(filepath.Dir(bin)),
+		// The Nexus xterm.js terminal does not implement Kitty/CSI-u keyboard
+		// enhancement; disable it to prevent raw sequences leaking into input.
+		"CODEX_TUI_DISABLE_KEYBOARD_ENHANCEMENT": "1",
+		"AI_PROFILE":                             p.Name,
+		"AI_PROVIDER":                            "codex",
+		"PATH":                                   runtime.EnhancedPATH(filepath.Dir(bin)),
 	})
 
 	return bin, extraArgs, env, nil

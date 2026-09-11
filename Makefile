@@ -7,7 +7,7 @@ ifeq ($(shell go env GOOS),linux)
 DESKTOP_TAGS = production,webkit2_41
 endif
 
-.PHONY: all build build-desktop build-desktop-wails web web-verify docs-verify test race vet install install-local release-local bump clean format format-check lint-frontend lint-styles lint-styles-fix lint-fix lint-go typecheck test-frontend test-go test-e2e security quality quality-full golangci-lint version-check
+.PHONY: all build build-desktop build-desktop-wails web web-verify docs-verify test race vet install install-local release-local bump clean format format-check lint-frontend lint-styles lint-styles-fix lint-fix lint-go typecheck test-frontend test-go test-e2e security quality quality-full golangci-lint version-check test-updater-negative test-update-integration release-dry-run browser-functional browser-a11y browser-visual browser-all verify-update
 
 all: build
 
@@ -121,8 +121,8 @@ install-local: build
 	cp -f $(BINARY) $(LOCAL_BIN)/$(BINARY).tmp; \
 	chmod +x $(LOCAL_BIN)/$(BINARY).tmp; \
 	mv -f $(LOCAL_BIN)/$(BINARY).tmp $(LOCAL_BIN)/$(BINARY); \
-	ln -sf $(LOCAL_BIN)/$(BINARY) $(LOCAL_BIN)/ai; \
-	echo "Installed $(BINARY) to $(LOCAL_BIN)/$(BINARY) (alias: ai)"
+	rm -f $(LOCAL_BIN)/ai; \
+	echo "Installed $(BINARY) to $(LOCAL_BIN)/$(BINARY)"
 
 build-desktop: web
 	@set -e; VERSION=$$(cat VERSION 2>/dev/null || echo "dev"); \
@@ -150,9 +150,42 @@ install: build
 		cp -f $(BINARY) $(LOCAL_BIN)/$(BINARY).tmp; \
 		chmod +x $(LOCAL_BIN)/$(BINARY).tmp; \
 		mv -f $(LOCAL_BIN)/$(BINARY).tmp $(LOCAL_BIN)/$(BINARY); \
-		ln -sf $(LOCAL_BIN)/$(BINARY) $(LOCAL_BIN)/ai; \
-		echo "Installed $(BINARY) to $(LOCAL_BIN)/$(BINARY) (alias: ai)"; \
+		rm -f $(LOCAL_BIN)/ai; \
+		echo "Installed $(BINARY) to $(LOCAL_BIN)/$(BINARY)"; \
 	fi
 
 clean:
 	rm -f $(BINARY)
+
+# ─── Updater Tests ──────────────────────────────────────────────────
+
+test-updater-negative:
+	@echo "Running updater negative tests..."
+	@go test -v -run "TestNegative" ./internal/update/...
+
+test-update-integration:
+	@echo "Running updater integration tests..."
+	@go test -v -run "TestService" ./internal/update/...
+
+# ─── Release Engineering ────────────────────────────────────────────
+
+release-dry-run: build
+	@echo "=== Release Dry Run ==="
+	@echo "1. Version contract check..."
+	@go run scripts/verify-version-contract.go .
+	@echo ""
+	@echo "2. Build verification..."
+	@if [ ! -f $(BINARY) ]; then echo "Binary not found"; exit 1; fi
+	@echo "   Binary: $(BINARY) ✓"
+	@echo ""
+	@echo "3. Quality gates..."
+	@$(MAKE) version-check
+	@echo ""
+	@echo "=== Dry Run Complete ==="
+	@echo "Ready for release. Run 'make release' to publish."
+
+# ─── Update Verification ────────────────────────────────────────────
+
+verify-update:
+	@echo "Running update verification gate..."
+	@bash scripts/verify-update-gate.sh

@@ -30,12 +30,14 @@ type RouterOutput struct {
 	Suggestions  string
 }
 
-// SlashPrefixRouter handles input bytes character by character, buffering ambiguous slash prefixes
-// (/nexus, /ai, //nexus, //ai) and instantly forwarding non-matching bytes to the child process.
+// SlashPrefixRouter handles input bytes character by character, buffering the
+// canonical Nexus control prefix (/nexus, //nexus) and instantly forwarding
+// non-matching bytes to the child process.
 type SlashPrefixRouter struct {
-	state      PrefixState
-	prefixBuf  bytes.Buffer
-	commandBuf bytes.Buffer
+	state       PrefixState
+	prefixBuf   bytes.Buffer
+	commandBuf  bytes.Buffer
+	inputEscape bool
 }
 
 // NewSlashPrefixRouter creates an initialized SlashPrefixRouter.
@@ -48,10 +50,11 @@ func (r *SlashPrefixRouter) Reset() {
 	r.state = StateIdle
 	r.prefixBuf.Reset()
 	r.commandBuf.Reset()
+	r.inputEscape = false
 }
 
 func isPrefixOfKnown(s string) bool {
-	targets := []string{"/nexus", "/ai", "//nexus", "//ai", ":nexus", ":ai", "::nexus", "::ai"}
+	targets := []string{"/nexus", "//nexus", ":nexus", "::nexus"}
 	for _, t := range targets {
 		if strings.HasPrefix(t, s) {
 			return true
@@ -64,7 +67,7 @@ func isPrefixOfKnown(s string) bool {
 // intercepted as a Nexus control command (not forwarded to the child).
 func isControlPrefix(s string) bool {
 	switch s {
-	case "/nexus", "/ai", ":nexus", ":ai":
+	case "/nexus", ":nexus":
 		return true
 	}
 	return false
@@ -75,7 +78,7 @@ func isControlPrefix(s string) bool {
 // to the child process.
 func isEscapePrefix(s string) bool {
 	switch s {
-	case "//nexus", "//ai", "::nexus", "::ai":
+	case "//nexus", "::nexus":
 		return true
 	}
 	return false
@@ -92,6 +95,19 @@ func strippedEscape(s string) string {
 
 // ProcessByte processes a single byte through the prefix state machine.
 func (r *SlashPrefixRouter) ProcessByte(b byte) RouterOutput {
+	// Terminal frontends may prepend CSI/Kitty keyboard sequences before the
+	// actual printable key. Do not let those sequences poison the line state
+	// and cause a following /nexus command to be forwarded to the provider.
+	if r.inputEscape {
+		if (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '~' {
+			r.inputEscape = false
+		}
+		return RouterOutput{Action: ActionNone}
+	}
+	if b == 0x1b {
+		r.inputEscape = true
+		return RouterOutput{Action: ActionNone}
+	}
 	if b == 0x03 || b == 0x15 { // Ctrl+C or Ctrl+U
 		r.Reset()
 		return RouterOutput{Action: ActionForwardBytes, ForwardBytes: []byte{b}}

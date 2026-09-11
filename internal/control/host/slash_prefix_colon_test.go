@@ -24,12 +24,12 @@ func TestColonNexus_Accounts(t *testing.T) {
 	}
 }
 
-func TestColonAI_Status(t *testing.T) {
+func TestColonAI_IsForwardedAsLegacyText(t *testing.T) {
 	r := NewSlashPrefixRouter()
 	outputs := feedString(r, ":ai status\r")
 	cmds := collectControlCmds(outputs)
-	if len(cmds) != 1 || cmds[0] != ":ai status" {
-		t.Errorf("expected [':ai status'], got %v", cmds)
+	if len(cmds) != 0 || string(collectForwarded(outputs)) != ":ai status\r" {
+		t.Errorf("expected legacy :ai text to pass through, got commands=%v forwarded=%q", cmds, collectForwarded(outputs))
 	}
 }
 
@@ -47,7 +47,7 @@ func TestDoubleColonNexus_EscapesToChild(t *testing.T) {
 	}
 }
 
-func TestDoubleColonAI_EscapesToChild(t *testing.T) {
+func TestDoubleColonAI_IsForwardedLiterally(t *testing.T) {
 	r := NewSlashPrefixRouter()
 	outputs := feedString(r, "::ai status\r")
 	cmds := collectControlCmds(outputs)
@@ -55,7 +55,7 @@ func TestDoubleColonAI_EscapesToChild(t *testing.T) {
 		t.Errorf("expected no control commands for ::ai, got %v", cmds)
 	}
 	forwarded := collectForwarded(outputs)
-	expected := ":ai status\r"
+	expected := "::ai status\r"
 	if string(forwarded) != expected {
 		t.Errorf("expected forwarded %q, got %q", expected, string(forwarded))
 	}
@@ -64,7 +64,7 @@ func TestDoubleColonAI_EscapesToChild(t *testing.T) {
 func TestColonStatus_ShortAlias(t *testing.T) {
 	r := NewSlashPrefixRouter()
 	outputs := feedString(r, ":status\r")
-	// ":status" starts with ":" but is not ":nexus" or ":ai", so it's not
+	// ":status" starts with ":" but is not ":nexus", so it's not
 	// intercepted. It gets forwarded to the child as-is.
 	forwarded := collectForwarded(outputs)
 	expected := ":status\r"

@@ -3955,3 +3955,30 @@ build` PASS e Web reiniciado em HTTP 200.
   global anterior também passou; uma alteração concorrente posterior no AGY
   deixou três fixtures AGY falhando, fora desta campanha.
 - Relatório detalhado: `docs/validation/NEXUS_HUMAN_INTERVENTION_SAFETY_REPORT.md`.
+
+## 2026-09-11 — Compatibilidade de teclado do Codex no terminal Nexus
+
+- Causa: o Codex CLI habilita Kitty/CSI-u, mas o terminal embutido do Nexus
+  usa xterm.js 5.3 e não interpreta esse protocolo; sequências como
+  `[47;1:3u` podiam aparecer como caracteres na entrada.
+- Correção: `CODEX_TUI_DISABLE_KEYBOARD_ENHANCEMENT=1` passou a ser definido
+  nos caminhos direto e supervisionado do adapter/driver Codex.
+- Verificação: testes focados de `internal/control/driver`,
+  `internal/core/provider/adapters/codex` e `internal/runtime` passaram; a
+  regressão confirma a variável no ambiente do runtime supervisionado.
+
+## 2026-09-11 — Rebuild e regressão do comando `/nexus`
+
+- O roteador de prefixos foi validado com `/nexus`, `:nexus`, escapes `//nexus`
+  e texto legado; todos os testes focados passaram.
+- O rebuild via `go run` estava bloqueado por soma `int64`/`uint64` em
+  `internal/update/archive.go`; a conversão agora é validada antes de somar,
+  evitando overflow em arquivos ZIP maliciosos.
+- `go test ./internal/update ./internal/control/host ./internal/control/driver`,
+  build do binário e `git diff --check` passaram.
+# 2026-09-11 — Installer follows first PATH-resolved Nexus
+
+- `install.sh` agora escolhe como `TARGET_DIR` o primeiro diretório do `PATH`
+  que contém um executável `nexus`, alinhando a instalação com `type -a nexus`.
+- Sem binário existente, o fallback continua sendo `~/.local/bin`.
+- Verificação: `bash -n install.sh`, `go test ./internal/release` e `git diff --check`.

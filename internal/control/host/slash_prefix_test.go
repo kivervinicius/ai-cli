@@ -55,12 +55,12 @@ func TestSlashNexus_Accounts(t *testing.T) {
 	}
 }
 
-func TestSlashAI_Status(t *testing.T) {
+func TestSlashAI_IsForwardedAsLegacyText(t *testing.T) {
 	r := NewSlashPrefixRouter()
 	outputs := feedString(r, "/ai status\r")
 	cmds := collectControlCmds(outputs)
-	if len(cmds) != 1 || cmds[0] != "/ai status" {
-		t.Errorf("expected ['/ai status'], got %v", cmds)
+	if len(cmds) != 0 || string(collectForwarded(outputs)) != "/ai status\r" {
+		t.Errorf("expected legacy /ai text to pass through, got commands=%v forwarded=%q", cmds, collectForwarded(outputs))
 	}
 }
 
@@ -78,7 +78,7 @@ func TestDoubleSlashNexus_EscapesToChild(t *testing.T) {
 	}
 }
 
-func TestDoubleSlashAI_EscapesToChild(t *testing.T) {
+func TestDoubleSlashAI_IsForwardedLiterally(t *testing.T) {
 	r := NewSlashPrefixRouter()
 	outputs := feedString(r, "//ai status\r")
 	cmds := collectControlCmds(outputs)
@@ -86,7 +86,7 @@ func TestDoubleSlashAI_EscapesToChild(t *testing.T) {
 		t.Errorf("expected no control commands for //ai, got %v", cmds)
 	}
 	forwarded := collectForwarded(outputs)
-	expected := "/ai status\r"
+	expected := "//ai status\r"
 	if string(forwarded) != expected {
 		t.Errorf("expected forwarded %q, got %q", expected, string(forwarded))
 	}

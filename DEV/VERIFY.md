@@ -1,5 +1,13 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-11 — Codex/CSI-u no terminal Nexus
+
+- PASS — `go test ./internal/control/driver ./internal/core/provider/adapters/codex ./internal/runtime`.
+- PASS — `gofmt` nos arquivos Go alterados e `git diff --check`.
+- PASS — o driver supervisionado injeta
+  `CODEX_TUI_DISABLE_KEYBOARD_ENHANCEMENT=1`; o adapter direto usa a mesma
+  proteção.
+
 ## 2026-09-11 — Evolution corrective closure (current working tree)
 
 - PASS — focused Go regression: `internal/nexus`, `internal/core/scheduler`,
@@ -909,7 +917,30 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
   no Makefile.
 
 <!-- frontend-verify:latest -->
+## `/nexus` e rebuild — 2026-09-11
+
+- PASS — `go test ./internal/update ./internal/control/host ./internal/control/driver -count=1`
+- PASS — `go build -o /tmp/nexus-current ./cmd/nexus`
+- PASS — `/tmp/nexus-current version --json` e `--help`
+- PASS — `git diff --check`
+- Regressão coberta: `/nexus` intercepta controle, `//nexus` escapa para o
+  provider e prefixos não-Nexus continuam sendo encaminhados.
+
+## Prefixo de controle canônico — 2026-09-11
+
+- `go test ./internal/control/host` — PASS.
+- `/nexus` e `:nexus` continuam interceptados; aliases `/ai` e `:ai` passam
+  literalmente para o provider — PASS.
 ## Frontend gate — 2026-09-11T17:53:45Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
+# Verification — 2026-09-11
 
+## Installer PATH alignment
+
+- PASS — `bash -n install.sh`
+- PASS — `go test ./internal/release`
+- PASS — `git diff --check`
+- Behavior — installer scans `PATH` in shell resolution order and installs to
+  the first directory containing executable `nexus`; otherwise uses
+  `~/.local/bin`.

@@ -15,14 +15,44 @@ var (
 	ErrManifestMalformed = errors.New("manifest JSON is malformed")
 )
 
+const (
+	// ProductionTrustRootKeyID is the canonical key ID used for production Nexus releases.
+	ProductionTrustRootKeyID = "nexus-signing-key-2026-v1"
+)
+
+var (
+	// ProductionTrustRoot is the hex-encoded Ed25519 public key used for production signing.
+	// This key must be embedded at build time and cannot be overridden without recompilation.
+	// To rotate: generate a new key pair, update this constant, rebuild, and sign the new manifest.
+	ProductionTrustRoot ed25519.PublicKey
+)
+
+func init() {
+	// Embed the production trust root at compile time.
+	// This is a placeholder - replace with actual generated key before production releases.
+	const hexKey = "REPLACE_WITH_GENERATED_HEX_PUBLIC_KEY"
+	pub, err := hex.DecodeString(hexKey)
+	if err != nil || len(pub) != ed25519.PublicKeySize {
+		// If the trust root is not properly embedded, the keyring will be empty
+		// and signature verification will fail with ErrUntrustedKeyID.
+		return
+	}
+	ProductionTrustRoot = ed25519.PublicKey(pub)
+}
+
 type KeyRing struct {
 	keys map[string]ed25519.PublicKey
 }
 
 func NewKeyRing() *KeyRing {
-	return &KeyRing{
+	kr := &KeyRing{
 		keys: make(map[string]ed25519.PublicKey),
 	}
+	// Always include the production trust root when available
+	if ProductionTrustRoot != nil {
+		kr.keys[ProductionTrustRootKeyID] = ProductionTrustRoot
+	}
+	return kr
 }
 
 func (kr *KeyRing) AddKey(keyID string, pub ed25519.PublicKey) {

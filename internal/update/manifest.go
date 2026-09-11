@@ -9,11 +9,43 @@ import (
 	"time"
 )
 
+// ArtifactTarget defines the type and extraction behavior for an artifact.
+type ArtifactTarget string
+
+const (
+	// TargetBinary is a single executable binary (no extraction needed).
+	TargetBinary ArtifactTarget = "binary"
+	// TargetTarGz is a gzipped tar archive (common on Linux/macOS).
+	TargetTarGz ArtifactTarget = "tar.gz"
+	// TargetZip is a ZIP archive (common on Windows).
+	TargetZip ArtifactTarget = "zip"
+	// TargetNSIS is a Windows NSIS installer (manual download required).
+	TargetNSIS ArtifactTarget = "nsis"
+	// TargetDEB is a Debian package (manual install required).
+	TargetDEB ArtifactTarget = "deb"
+	// TargetRPM is an RPM package (manual install required).
+	TargetRPM ArtifactTarget = "rpm"
+)
+
 type Artifact struct {
-	URL       string `json:"url"`
-	Size      int64  `json:"size"`
-	SHA256    string `json:"sha256"`
-	Signature string `json:"signature,omitempty"`
+	URL       string         `json:"url"`
+	Size      int64          `json:"size"`
+	SHA256    string         `json:"sha256"`
+	Signature string         `json:"signature,omitempty"`
+	Target    ArtifactTarget `json:"target,omitempty"`
+}
+
+// ExtractAction returns the recommended extraction action for the artifact type.
+// Returns "replace" for self-updateable artifacts, "manual" for package managers.
+func (a Artifact) ExtractAction() string {
+	switch a.Target {
+	case TargetBinary, TargetTarGz, TargetZip:
+		return "replace"
+	case TargetNSIS, TargetDEB, TargetRPM:
+		return "manual"
+	default:
+		return "replace" // backward compatible default
+	}
 }
 
 type Manifest struct {

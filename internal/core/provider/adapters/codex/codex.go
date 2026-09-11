@@ -131,11 +131,14 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 		"HOME":             home,
 		"CODEX_HOME":       home,
 		"CODEX_CONFIG_DIR": home,
-		"XDG_CONFIG_HOME":  filepath.Join(home, ".config"),
-		"XDG_CACHE_HOME":   filepath.Join(home, ".cache"),
-		"XDG_DATA_HOME":    filepath.Join(home, ".local", "share"),
-		"XDG_STATE_HOME":   filepath.Join(home, ".local", "state"),
-		"PATH":             runtime.EnhancedPATH(filepath.Dir(bin)),
+		// xterm.js 5.3, used by Nexus, does not support Kitty/CSI-u keyboard
+		// enhancement. Keep Codex from leaking those sequences into the prompt.
+		"CODEX_TUI_DISABLE_KEYBOARD_ENHANCEMENT": "1",
+		"XDG_CONFIG_HOME":                        filepath.Join(home, ".config"),
+		"XDG_CACHE_HOME":                         filepath.Join(home, ".cache"),
+		"XDG_DATA_HOME":                          filepath.Join(home, ".local", "share"),
+		"XDG_STATE_HOME":                         filepath.Join(home, ".local", "state"),
+		"PATH":                                   runtime.EnhancedPATH(filepath.Dir(bin)),
 	}
 	env := runtime.EnvSet(os.Environ(), envOverrides)
 	return runtime.RunInteractive(bin, args, env, cwd)

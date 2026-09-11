@@ -75,34 +75,34 @@ func TestSlashRouterInterceptionAndEscape(t *testing.T) {
 		t.Errorf("expected normal input to be forwarded, got %+v", res1)
 	}
 
-	// 2. /ai status (should be intercepted)
-	res2 := RouteSlashCommand("/ai status\n", sess)
+	// 2. /nexus status (should be intercepted)
+	res2 := RouteSlashCommand("/nexus status\n", sess)
 	if !res2.Intercepted || res2.ForwardToProcess != "" || !strings.Contains(res2.Response, "rt-test-01") {
-		t.Errorf("expected /ai status to be intercepted, got %+v", res2)
+		t.Errorf("expected /nexus status to be intercepted, got %+v", res2)
 	}
 
 	// 3. /ai help (should be intercepted)
-	res3 := RouteSlashCommand("/ai help\n", sess)
+	res3 := RouteSlashCommand("/nexus help\n", sess)
 	if !res3.Intercepted || !strings.Contains(res3.Response, "UNIVERSAL SLASH COMMANDS") {
 		t.Errorf("expected /ai help to show guide, got %+v", res3)
 	}
 
-	// 4. //ai escaped command (should unescape and forward to provider)
-	res4 := RouteSlashCommand("//ai tell me a story\n", sess)
-	if res4.Intercepted || res4.ForwardToProcess != "/ai tell me a story\n" {
-		t.Errorf("expected //ai to be unescaped to /ai, got %+v", res4)
+	// 4. //nexus escaped command (should unescape and forward to provider)
+	res4 := RouteSlashCommand("//nexus tell me a story\n", sess)
+	if res4.Intercepted || res4.ForwardToProcess != "/nexus tell me a story\n" {
+		t.Errorf("expected //nexus to be unescaped to /nexus, got %+v", res4)
 	}
 
-	// 5. /ai detach
-	res5 := RouteSlashCommand("/ai detach", sess)
+	// 5. /nexus detach
+	res5 := RouteSlashCommand("/nexus detach", sess)
 	if !res5.Intercepted || res5.Action != "detach" {
-		t.Errorf("expected /ai detach to produce action detach, got %+v", res5)
+		t.Errorf("expected /nexus detach to produce action detach, got %+v", res5)
 	}
 
-	// 6. /ai stop
-	res6 := RouteSlashCommand("/ai stop", sess)
+	// 6. /nexus stop
+	res6 := RouteSlashCommand("/nexus stop", sess)
 	if !res6.Intercepted || res6.Action != "stop" {
-		t.Errorf("expected /ai stop to produce action stop, got %+v", res6)
+		t.Errorf("expected /nexus stop to produce action stop, got %+v", res6)
 	}
 }
 

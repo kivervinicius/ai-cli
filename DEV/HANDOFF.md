@@ -1,5 +1,23 @@
 # Handoff
 
+## Atualização 2026-09-11 — Controle canônico Nexus
+
+O protocolo de comandos dentro de runtimes supervisionados foi padronizado em
+`/nexus` (ou `:nexus`). Os aliases `/ai`/`:ai` não são mais interceptados e
+devem ser tratados como texto do provider. O binário `ai` continua apenas como
+compatibilidade externa; o uso e a documentação novos devem usar `nexus`.
+
+Verificação: `go test ./internal/control/host` passou.
+
+## Atualização 2026-09-11 — Compatibilidade do terminal Codex
+
+Foi corrigida a exibição de sequências Kitty/CSI-u (`/e[47;1:3u` e similares)
+ao abrir `nexus codex`. O adapter direto e o driver supervisionado agora
+definem `CODEX_TUI_DISABLE_KEYBOARD_ENHANCEMENT=1`, compatível com o xterm.js
+5.3 usado pelo Nexus. Próxima ação: recompilar/reinstalar o binário Nexus e
+abrir uma nova sessão Codex; sessões já iniciadas precisam ser encerradas e
+reiniciadas para receber o ambiente novo.
+
 ## Atualização 2026-09-11 — Correção final dos gaps de roteamento
 
 O caminho de execução foi corrigido para não confundir capabilities de recurso
@@ -1312,3 +1330,14 @@ modified here. The branch remains uncommitted and retains the pre-existing
 dirty worktree changes. This closes only the first promotion gate;
 Attention Center final UX, Project Intelligence, provider UX/failover and
 native platform evidence remain outside this campaign.
+# Atualização 2026-09-11 — Alinhamento do destino de instalação
+
+`install.sh` não fixa mais o destino em `~/.local/bin` quando já existe um
+`nexus` anterior no `PATH`. Ele instala no primeiro diretório resolvido pelo
+shell, preservando `~/.local/bin` como fallback de instalação nova.
+
+Verificação: `bash -n install.sh`, `go test ./internal/release` e
+`git diff --check` passaram. Não houve commit/push.
+
+O instalador cria somente `nexus`; o alias `ai` não é mais preservado nem
+recriado durante a instalação.
