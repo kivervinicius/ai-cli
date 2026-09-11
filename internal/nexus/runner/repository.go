@@ -43,7 +43,10 @@ func cloneRun(in *MissionRun) *MissionRun {
 	_ = json.Unmarshal(b, &out)
 	return &out
 }
-func (m *MemoryRunRepository) SaveRun(_ context.Context, run *MissionRun) error {
+func (m *MemoryRunRepository) SaveRun(ctx context.Context, run *MissionRun) error {
+	if err := contextErr(ctx); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if run == nil || run.ID == "" {
@@ -66,7 +69,10 @@ func (m *MemoryRunRepository) SaveRun(_ context.Context, run *MissionRun) error 
 	m.runs[run.ID] = cloneRun(run)
 	return nil
 }
-func (m *MemoryRunRepository) GetRun(_ context.Context, id string) (*MissionRun, error) {
+func (m *MemoryRunRepository) GetRun(ctx context.Context, id string) (*MissionRun, error) {
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	r, ok := m.runs[id]
@@ -75,7 +81,10 @@ func (m *MemoryRunRepository) GetRun(_ context.Context, id string) (*MissionRun,
 	}
 	return cloneRun(r), nil
 }
-func (m *MemoryRunRepository) ListRuns(_ context.Context) ([]*MissionRun, error) {
+func (m *MemoryRunRepository) ListRuns(ctx context.Context) ([]*MissionRun, error) {
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([]*MissionRun, 0, len(m.runs))
@@ -84,7 +93,10 @@ func (m *MemoryRunRepository) ListRuns(_ context.Context) ([]*MissionRun, error)
 	}
 	return out, nil
 }
-func (m *MemoryRunRepository) AcquireLease(_ context.Context, id, owner string, ttl time.Duration) (*MissionRun, error) {
+func (m *MemoryRunRepository) AcquireLease(ctx context.Context, id, owner string, ttl time.Duration) (*MissionRun, error) {
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	r, ok := m.runs[id]
@@ -100,7 +112,10 @@ func (m *MemoryRunRepository) AcquireLease(_ context.Context, id, owner string, 
 	r.LeaseOwner, r.LeaseToken, r.LeaseExpiresAt, r.HeartbeatAt = owner, token, &expires, &now
 	return cloneRun(r), nil
 }
-func (m *MemoryRunRepository) RenewLease(_ context.Context, id, owner, token string, ttl time.Duration) error {
+func (m *MemoryRunRepository) RenewLease(ctx context.Context, id, owner, token string, ttl time.Duration) error {
+	if err := contextErr(ctx); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	r, ok := m.runs[id]
@@ -115,7 +130,10 @@ func (m *MemoryRunRepository) RenewLease(_ context.Context, id, owner, token str
 	r.HeartbeatAt, r.LeaseExpiresAt = &now, &expires
 	return nil
 }
-func (m *MemoryRunRepository) ReleaseLease(_ context.Context, id, owner, token string) error {
+func (m *MemoryRunRepository) ReleaseLease(ctx context.Context, id, owner, token string) error {
+	if err := contextErr(ctx); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	r, ok := m.runs[id]
@@ -127,6 +145,13 @@ func (m *MemoryRunRepository) ReleaseLease(_ context.Context, id, owner, token s
 	}
 	r.LeaseOwner, r.LeaseToken, r.LeaseExpiresAt = "", "", nil
 	return nil
+}
+
+func contextErr(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+	return ctx.Err()
 }
 
 // EvidenceRepository persists typed Step evidence independently from the run
@@ -158,7 +183,10 @@ func cloneReceipt(in *WorkReceipt) *WorkReceipt {
 	_ = json.Unmarshal(b, &out)
 	return &out
 }
-func (m *MemoryRunRepository) SaveContextCapsule(_ context.Context, capsule *ContextCapsule) error {
+func (m *MemoryRunRepository) SaveContextCapsule(ctx context.Context, capsule *ContextCapsule) error {
+	if err := contextErr(ctx); err != nil {
+		return err
+	}
 	if capsule == nil || capsule.RunID == "" || capsule.Step.ID == "" {
 		return fmt.Errorf("context capsule is required")
 	}
@@ -167,7 +195,10 @@ func (m *MemoryRunRepository) SaveContextCapsule(_ context.Context, capsule *Con
 	m.capsules[evidenceKey(capsule.RunID, capsule.Step.ID)] = cloneCapsule(capsule)
 	return nil
 }
-func (m *MemoryRunRepository) GetContextCapsule(_ context.Context, runID, stepID string) (*ContextCapsule, error) {
+func (m *MemoryRunRepository) GetContextCapsule(ctx context.Context, runID, stepID string) (*ContextCapsule, error) {
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	value, ok := m.capsules[evidenceKey(runID, stepID)]
@@ -176,7 +207,10 @@ func (m *MemoryRunRepository) GetContextCapsule(_ context.Context, runID, stepID
 	}
 	return cloneCapsule(value), nil
 }
-func (m *MemoryRunRepository) SaveWorkReceipt(_ context.Context, receipt *WorkReceipt) error {
+func (m *MemoryRunRepository) SaveWorkReceipt(ctx context.Context, receipt *WorkReceipt) error {
+	if err := contextErr(ctx); err != nil {
+		return err
+	}
 	if receipt == nil || receipt.RunID == "" || receipt.StepID == "" {
 		return fmt.Errorf("work receipt is required")
 	}
@@ -189,7 +223,10 @@ func (m *MemoryRunRepository) SaveWorkReceipt(_ context.Context, receipt *WorkRe
 	m.receipts[key] = cloneReceipt(receipt)
 	return nil
 }
-func (m *MemoryRunRepository) GetWorkReceipt(_ context.Context, runID, stepID string) (*WorkReceipt, error) {
+func (m *MemoryRunRepository) GetWorkReceipt(ctx context.Context, runID, stepID string) (*WorkReceipt, error) {
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	value, ok := m.receipts[evidenceKey(runID, stepID)]
