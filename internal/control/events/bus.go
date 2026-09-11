@@ -69,11 +69,15 @@ func (b *Bus) Publish(e Event) {
 	}
 
 	for _, ch := range targets {
-		select {
-		case ch <- e:
-		default:
-			// Non-blocking drop if channel buffer is full
-		}
+		// Protect against send-on-closed-channel when Unsubscribe races with Publish.
+		func(c chan Event) {
+			defer func() { recover() }() //nolint:errcheck // closed channel is expected race
+			select {
+			case c <- e:
+			default:
+				// Non-blocking drop if channel buffer is full
+			}
+		}(ch)
 	}
 }
 
