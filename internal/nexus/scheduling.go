@@ -103,12 +103,23 @@ func (n *Nexus) CancelMissionSchedule(ctx context.Context, id string) error {
 
 func (n *Nexus) StartScheduleLoop() {
 	n.schedulerOnce.Do(func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		n.scheduleCancel = cancel
 		go func() {
 			ticker := time.NewTicker(15 * time.Second)
 			defer ticker.Stop()
 			for {
-				_ = n.processMissionSchedules(context.Background())
-				<-ticker.C
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					_ = n.processMissionSchedules(ctx)
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+				}
 			}
 		}()
 	})

@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/kivervinicius/ai-cli/internal/browser"
+	"github.com/kivervinicius/ai-cli/internal/nexus"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -96,6 +97,7 @@ func (a *App) Startup(ctx context.Context) {
 
 // Shutdown is called by Wails when the application terminates.
 func (a *App) Shutdown(ctx context.Context) {
+	nexus.Default().Shutdown()
 }
 
 // GetCapabilities returns the native platform capabilities.

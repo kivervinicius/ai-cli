@@ -146,8 +146,14 @@ func (c *Core) Stop(ctx context.Context) error {
 	if c.server != nil {
 		shutdownCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		defer cancel()
-		return c.server.Shutdown(shutdownCtx)
+		if err := c.server.Shutdown(shutdownCtx); err != nil {
+			return err
+		}
 	}
+
+	// Shut down Nexus background services and close the SQLite store.
+	nexus.Default().Shutdown()
+
 	return nil
 }
 
