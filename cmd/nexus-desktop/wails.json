@@ -12,7 +12,7 @@
     "productName": "IAPro Nexus",
     "productVersion": "0.5.0-beta.23",
     "copyright": "Copyright © 2026 IAPro",
-    "comments": "Autonomous AI Orchestrator & Multi-Agent Workspace OS"
+    "comments": "Autonomous AI Orchestrator &amp; Multi-Agent Workspace OS"
   },
   "wailsjsdir": "../../web/src/wailsjs",
   "version": "2",
