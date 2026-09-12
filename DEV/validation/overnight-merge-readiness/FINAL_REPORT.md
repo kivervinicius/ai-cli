@@ -99,3 +99,10 @@ Human / follow-up sequence:
 5. Re-run `make quality` + independent red team → only then consider READY_FOR_MAIN.
 
 Merge/push to `main` **not** executed. Branch is **3 commits ahead** of `origin/feat/nexus-maximum-delivery` (local only).
+
+## Follow-up (post-audit notifications)
+
+- Restored Codex `info.ExpiresAt` from `ActiveUntil` (regression noted by [Red team merge reject](4e787dc4-4a9a-4cf6-9afa-b1a51f17441f)).
+- Evidence FAIL now wins over missing HEAD (MR-003 from [Backend behavior audit](383e8029-c4a4-4725-9e33-f05cbdac822e)).
+- MR-002 intent silent swallow already mitigated earlier via `intent_decision_status` facts.
+- Frontend i18n BLOCKERs from [Frontend QA audit](f86ed862-81c0-4574-8122-6bc72c3d0591) remain open → verdict still **NOT_READY_FOR_MAIN**.
