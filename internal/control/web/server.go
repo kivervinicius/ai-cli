@@ -62,7 +62,10 @@ func (s *Server) tunnelManager() *tunnelManager {
 // active, cookies must also be Secure even on loopback because traffic
 // traverses the internet.
 func (s *Server) cookieSecure() bool {
-	return !s.loopback || (s.auth != nil && s.auth.IsTunnelActive())
+	if s.auth == nil {
+		return !s.loopback
+	}
+	return s.auth.RequiresSecureCookie()
 }
 
 func NewServer(opts ServerOptions) (*Server, error) {

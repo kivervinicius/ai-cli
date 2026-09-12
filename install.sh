@@ -187,63 +187,42 @@ install_cli_from_dir() {
     fi
 }
 
-# Ed25519 public key for manifest signature verification.
-# Only the corresponding private key (in CI signing environment) can produce
-# signatures that verify against this key.
-NEXUS_PUBKEY="744c1de29c572a0c5d4d8dbb7b3e27e49a5e6d1b8e3f1a2c4d6e8f0a2b4c6d8e"
+# Ed25519 public key for manifest signature verification (matches internal/update ProductionTrustRoot).
+# Only the corresponding private key (release CI secret) can produce valid signatures.
+NEXUS_PUBKEY="8284672c22f6179ec76ea2c7c5007d5742e719a55de0b7dfff96a3560e0cd7b2"
 
 verify_manifest_signature() {
     local manifest_path="$1"
     local sig_path="$2"
     if [ ! -f "$sig_path" ]; then
-        echo "Warning: manifest signature file missing, skipping signature verification" >&2
-        return 0
+        echo "ERROR: update-manifest.sig missing — refusing unsigned install" >&2
+        return 1
     fi
     local sig_hex
     sig_hex="$(tr -d '[:space:]' < "$sig_path")"
     if [ -z "$sig_hex" ]; then
-        echo "Warning: manifest signature is empty, skipping verification" >&2
-        return 0
+        echo "ERROR: update-manifest.sig is empty — refusing unsigned install" >&2
+        return 1
     fi
 
-    # Try Python (most portable Ed25519 implementation)
     if command -v python3 >/dev/null 2>&1; then
         if python3 -c "
 import sys
-try:
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-    from cryptography.hazmat.primitives import serialization
-    pub_bytes = bytes.fromhex('$NEXUS_PUBKEY')
-    pub = Ed25519PublicKey.from_public_bytes(pub_bytes)
-    sig = bytes.fromhex('$sig_hex')
-    data = open('$manifest_path', 'rb').read()
-    pub.verify(sig, data)
-except Exception as e:
-    print(f'Verification failed: {e}', file=sys.stderr)
-    sys.exit(1)
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+pub = Ed25519PublicKey.from_public_bytes(bytes.fromhex('$NEXUS_PUBKEY'))
+sig = bytes.fromhex('$sig_hex')
+data = open('$manifest_path', 'rb').read()
+pub.verify(sig, data)
 " 2>/dev/null; then
             echo "Manifest signature VERIFIED (Ed25519)"
             return 0
         fi
+        echo "ERROR: manifest signature verification failed" >&2
+        return 1
     fi
 
-    # Try openssl (if compiled with Ed25519 support)
-    if command -v openssl >/dev/null 2>&1; then
-        local pubkey_file
-        pubkey_file="$(mktemp)"
-        # Write raw public key in SubjectPublicKeyInfo format
-        if echo "$NEXUS_PUBKEY" | xxd -r -p | base64 > "$pubkey_file" 2>/dev/null; then
-            if openssl pkeyutl -verify -pubin -inkey "$pubkey_file" -sigfile <(echo "$sig_hex" | xxd -r -p) -rawin -in "$manifest_path" 2>/dev/null; then
-                rm -f "$pubkey_file"
-                echo "Manifest signature VERIFIED (openssl)"
-                return 0
-            fi
-        fi
-        rm -f "$pubkey_file"
-    fi
-
-    echo "Warning: no Ed25519 verification tool available (need python3+cryptography or openssl), skipping signature check" >&2
-    return 0
+    echo "ERROR: python3+cryptography required to verify Ed25519 release manifests" >&2
+    return 1
 }
 
 extract_sha_from_manifest() {
@@ -275,49 +254,44 @@ download_and_verify_archive() {
 
     echo "Downloading Nexus v${version_plain}: ${archive_name}..."
 
-    # 1. Fetch signed manifest
-    if http_get "${release_url}/update-manifest.json" "$manifest_path" 2>/dev/null; then
-        echo "Signed manifest downloaded"
-        # 2. Fetch and verify signature
-        http_get "${release_url}/update-manifest.sig" "$sig_path" 2>/dev/null || true
-        verify_manifest_signature "$manifest_path" "$sig_path"
-        # 3. Extract SHA-256 from signed manifest
-        local expected
-        expected="$(extract_sha_from_manifest "$manifest_path" "$archive_name")"
-        if [ -n "$expected" ]; then
-            echo "Using SHA-256 from signed manifest"
-        fi
-    fi
+    local expected=""
 
-    # 4. Fallback to unsigned checksums.txt if manifest extraction failed
+    # 1. Fetch signed manifest (required)
+    if ! http_get "${release_url}/update-manifest.json" "$manifest_path"; then
+        echo "ERROR: signed update-manifest.json unavailable — refusing install" >&2
+        return 1
+    fi
+    echo "Signed manifest downloaded"
+    if ! http_get "${release_url}/update-manifest.sig" "$sig_path"; then
+        echo "ERROR: update-manifest.sig unavailable — refusing install" >&2
+        return 1
+    fi
+    if ! verify_manifest_signature "$manifest_path" "$sig_path"; then
+        return 1
+    fi
+    expected="$(extract_sha_from_manifest "$manifest_path" "$archive_name")"
     if [ -z "$expected" ]; then
-        echo "Falling back to unsigned checksums.txt" >&2
-        local checksums_path="${TMP_DIR}/checksums.txt"
-        if http_get "${release_url}/checksums.txt" "$checksums_path"; then
-            expected="$(awk -v name="$archive_name" '$2 == name { print $1; exit }' "$checksums_path")"
-        fi
+        echo "ERROR: artifact ${archive_name} missing from signed manifest" >&2
+        return 1
     fi
+    echo "Using SHA-256 from signed manifest"
 
-    # 5. Download artifact
+    # 2. Download artifact
     if ! http_get "${release_url}/${archive_name}" "$archive_path"; then
         echo "Failed to download ${archive_name}" >&2
         return 1
     fi
 
-    # 6. Verify SHA-256
-    if [ -n "$expected" ]; then
-        local actual
-        actual="$(sha256_file "$archive_path")"
-        if [ "$expected" != "$actual" ]; then
-            echo "Release checksum verification FAILED for ${archive_name}." >&2
-            echo "  expected: $expected" >&2
-            echo "  actual:   $actual" >&2
-            return 1
-        fi
-        echo "SHA-256 verified"
-    else
-        echo "Warning: no checksum available, skipping hash verification" >&2
+    # 3. Verify SHA-256 from signed manifest only
+    local actual
+    actual="$(sha256_file "$archive_path")"
+    if [ "$expected" != "$actual" ]; then
+        echo "Release checksum verification FAILED for ${archive_name}." >&2
+        echo "  expected: $expected" >&2
+        echo "  actual:   $actual" >&2
+        return 1
     fi
+    echo "SHA-256 verified"
 
     tar -xzf "$archive_path" -C "$TMP_DIR"
     install_cli_from_dir "$TMP_DIR"

@@ -148,14 +148,24 @@ func TestInstallersRequirePinnedArtifactsOrExplicitSourceBuild(t *testing.T) {
 		}
 	}
 
-	for _, required := range []string{"--version=", "--build-from-source", "checksums.txt", "sha256sum", "shasum -a 256", "resolve_latest_version", "--no-path", "NEXUS_RELEASE_REPO", "make build"} {
+	for _, required := range []string{"--version=", "--build-from-source", "update-manifest.json", "update-manifest.sig", "sha256sum", "shasum -a 256", "resolve_latest_version", "--no-path", "NEXUS_RELEASE_REPO", "make build", "NEXUS_PUBKEY", "refusing unsigned install"} {
 		if !strings.Contains(shText, required) {
 			t.Errorf("install.sh missing pinned/digest guard %q", required)
 		}
 	}
-	for _, required := range []string{"-Version", "-BuildFromSource", "checksums.txt", "Get-FileHash", "Resolve-LatestVersion", "NEXUS_RELEASE_REPO", "make build", "Ensure-Bun"} {
+	for _, forbidden := range []string{"Falling back to unsigned checksums.txt", "skipping signature verification", "skipping hash verification"} {
+		if strings.Contains(shText, forbidden) {
+			t.Errorf("install.sh must not weaken trust with %q", forbidden)
+		}
+	}
+	for _, required := range []string{"-Version", "-BuildFromSource", "update-manifest.json", "update-manifest.sig", "Get-FileHash", "Resolve-LatestVersion", "NEXUS_RELEASE_REPO", "make build", "Ensure-Bun", "NexusPubKey", "refusing unsigned"} {
 		if !strings.Contains(psText, required) {
 			t.Errorf("install.ps1 missing pinned/digest guard %q", required)
+		}
+	}
+	for _, forbidden := range []string{"falling back to checksums.txt", "skipping signature verification", "skipping hash verification"} {
+		if strings.Contains(psText, forbidden) {
+			t.Errorf("install.ps1 must not weaken trust with %q", forbidden)
 		}
 	}
 	for _, required := range []string{"Ensure-GoCompiler", "winget", "GoLang.Go", "go.dev/dl"} {

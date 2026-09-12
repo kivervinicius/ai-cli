@@ -85,3 +85,6 @@ yarn.lock
 DEV/validation/FRONTEND_20*.md
 DEV/validation/*.status
 DEV/validation/baseline/*.status
+
+# RC signing material (private)
+DEV/validation/rc1-secrets/

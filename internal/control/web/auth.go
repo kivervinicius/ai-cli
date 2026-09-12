@@ -31,17 +31,19 @@ type Session struct {
 }
 
 type AuthManager struct {
-	mu             sync.RWMutex
-	bootstrapToken string
-	usedBootstrap  bool
-	sessions       map[string]*Session
-	desktopSession *Session
-	listenHost     string
-	listenPort     string
-	storeDir       string
-	lastPersist    time.Time
-	entropy        io.Reader
-	tunnelActive   bool // true when a Cloudflare Quick Tunnel exposes this server to the internet
+	mu                 sync.RWMutex
+	bootstrapToken     string
+	bootstrapCreatedAt time.Time
+	usedBootstrap      bool
+	sessions           map[string]*Session
+	desktopSession     *Session
+	listenHost         string
+	listenPort         string
+	storeDir           string
+	lastPersist        time.Time
+	entropy            io.Reader
+	tunnelActive       bool // true when a Cloudflare Quick Tunnel exposes this server to the internet
+	clock              func() time.Time
 }
 
 func (a *AuthManager) SetDesktopSession(sess *Session) {
@@ -91,12 +93,13 @@ func NewAuthManagerWithStore(listenHost, listenPort, storeDir string) (*AuthMana
 	bootstrapToken := hex.EncodeToString(bytes)
 
 	auth := &AuthManager{
-		bootstrapToken: bootstrapToken,
-		sessions:       make(map[string]*Session),
-		listenHost:     listenHost,
-		listenPort:     listenPort,
-		storeDir:       strings.TrimSpace(storeDir),
-		entropy:        rand.Reader,
+		bootstrapToken:     bootstrapToken,
+		bootstrapCreatedAt: time.Now(),
+		sessions:           make(map[string]*Session),
+		listenHost:         listenHost,
+		listenPort:         listenPort,
+		storeDir:           strings.TrimSpace(storeDir),
+		entropy:            rand.Reader,
 	}
 	auth.mu.Lock()
 	auth.loadPersistedLocked()
@@ -267,12 +270,18 @@ func (a *AuthManager) RotateSession(oldSessionID string) (*Session, error) {
 }
 
 // SetTunnelActive informs the auth manager that a Cloudflare Quick Tunnel
-// is exposing this server to the internet. When active, bootstrap tokens are
-// one-time (even on loopback) and cookies must be Secure.
+// is exposing this server to the internet. Effective exposure becomes
+// PUBLIC_REMOTE: bootstrap is one-time, cookies must be Secure, and sessions
+// must not be persisted for later local restore.
 func (a *AuthManager) SetTunnelActive(active bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.tunnelActive = active
+	if active {
+		// Drop any on-disk session cache so a restart cannot revive remote
+		// privileges minted while the tunnel was open.
+		_ = a.clearPersistedSessionsLocked()
+	}
 }
 
 // IsTunnelActive reports whether a Cloudflare Quick Tunnel is currently
@@ -290,13 +299,13 @@ func (a *AuthManager) ExchangeBootstrapToken(token string) (*Session, bool) {
 	if token == "" || token != a.bootstrapToken {
 		return nil, false
 	}
-	// Remote/private binds and tunnel-active states keep one-time consume.
-	// Loopback reuses the printed Bootstrap URL for the life of the process
-	// so local re-auth does not require restarting `nexus web` after a cookie
-	// loss or accidental consume — unless a tunnel is active, in which case
-	// traffic traverses the internet and the bootstrap must be consumed once.
-	loopback := a.isLoopbackListen()
-	reusable := loopback && !a.tunnelActive
+	exposure := a.effectiveExposureLocked()
+	reusable := exposure == ExposureLoopback
+	if !reusable {
+		if !a.bootstrapCreatedAt.IsZero() && a.now().Sub(a.bootstrapCreatedAt) > remoteBootstrapTTL {
+			return nil, false
+		}
+	}
 	if a.usedBootstrap && !reusable {
 		return nil, false
 	}
@@ -313,7 +322,7 @@ func (a *AuthManager) ExchangeBootstrapToken(token string) (*Session, bool) {
 	}
 	csrfToken := hex.EncodeToString(csrfBytes)
 
-	now := time.Now()
+	now := a.now()
 	sess := &Session{
 		ID:           sessID,
 		CSRFToken:    csrfToken,
@@ -325,7 +334,10 @@ func (a *AuthManager) ExchangeBootstrapToken(token string) (*Session, bool) {
 		a.usedBootstrap = true
 	}
 	a.sessions[sessID] = sess
-	_ = a.persistLocked()
+	// Never persist sessions minted under PUBLIC_REMOTE / PRIVATE_NETWORK.
+	if exposure == ExposureLoopback {
+		_ = a.persistLocked()
+	}
 	return sess, true
 }
 

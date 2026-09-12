@@ -53,7 +53,7 @@ func loopbackAuthStoreDir() string {
 }
 
 func (a *AuthManager) persistLocked() error {
-	if a.storeDir == "" || !a.isLoopbackListen() {
+	if a.storeDir == "" || a.effectiveExposureLocked() != ExposureLoopback {
 		return nil
 	}
 	if err := os.MkdirAll(a.storeDir, webAuthDirMode); err != nil {
@@ -93,6 +93,17 @@ func (a *AuthManager) persistLocked() error {
 		return err
 	}
 	a.lastPersist = now
+	return nil
+}
+
+func (a *AuthManager) clearPersistedSessionsLocked() error {
+	if a.storeDir == "" {
+		return nil
+	}
+	path := filepath.Join(a.storeDir, sessionsFileName)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	return nil
 }
 

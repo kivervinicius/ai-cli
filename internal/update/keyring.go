@@ -29,13 +29,11 @@ var (
 
 func init() {
 	// Embed the production trust root at compile time.
-	// This is a placeholder - replace with actual generated key before production releases.
-	const hexKey = "REPLACE_WITH_GENERATED_HEX_PUBLIC_KEY"
+	// Private key lives only in release CI (GitHub secret); never commit it.
+	const hexKey = "8284672c22f6179ec76ea2c7c5007d5742e719a55de0b7dfff96a3560e0cd7b2"
 	pub, err := hex.DecodeString(hexKey)
 	if err != nil || len(pub) != ed25519.PublicKeySize {
-		// If the trust root is not properly embedded, the keyring will be empty
-		// and signature verification will fail with ErrUntrustedKeyID.
-		return
+		panic("nexus update: production trust root is invalid — refuse to build an unverifiable updater")
 	}
 	ProductionTrustRoot = ed25519.PublicKey(pub)
 }
