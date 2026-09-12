@@ -55,7 +55,10 @@ func TestInterventionResolutionSurvivesStoreReopen(t *testing.T) {
 	run := &runner.MissionRun{
 		ID: "run-restart", PlanID: plan.ID, PlanRevision: plan.CurrentRevision, ProjectID: project.ID,
 		State: runner.StateBlockedNeedsUser, Contract: contract, StartedAt: now, UpdatedAt: now,
-		PackageRuns: []runner.PackageRun{{ID: "pkg", PackageID: "pkg", State: runner.StateFailed, DispatchState: runner.DispatchFailedBeforeDispatch}},
+		PackageRuns: []runner.PackageRun{{
+			ID: "pkg", PackageID: "pkg", State: runner.StateFailed, DispatchState: runner.DispatchFailedBeforeDispatch,
+			RoutingDecisionJSON: `{"task_id":"pkg","selected_provider":"agy","selected_profile":"frontend","selected_model":"medium","reason":"task-aware fallback"}`,
+		}},
 		NeedsHuman: &runner.HumanIntervention{
 			ID: "intervention-restart", Version: 7, MissionID: "run-restart", TaskID: "pkg", Timestamp: now,
 			Options: []runner.InterventionOption{{ID: "replan-package", Operation: runner.InterventionReplanPackage, PackageID: "pkg"}},
@@ -99,6 +102,16 @@ func TestInterventionResolutionSurvivesStoreReopen(t *testing.T) {
 	}
 	if loaded.ResumeRequest == nil || loaded.ResumeRequest.IdempotencyKey == "" || loaded.ResumeRequest.Status != "PENDING" {
 		t.Fatalf("durable resume request did not survive restart: %+v", loaded.ResumeRequest)
+	}
+	if loaded.PackageRuns[0].RoutingDecisionJSON == "" {
+		t.Fatal("persisted routing decision was lost across restart")
+	}
+	report, err := BuildRoutingDecisionReport(loaded)
+	if err != nil {
+		t.Fatalf("reloaded routing decision was not explainable: %v", err)
+	}
+	if len(report.Decisions) != 1 || report.Decisions[0].Decision.SelectedModel != "medium" {
+		t.Fatalf("unexpected reloaded routing report: %+v", report)
 	}
 	duplicate, created, err := runner.NewMissionRunner(reopenedRepo, nil).ResolveInterventionWithOutcome(ctx, run.ID, "intervention-restart", 7, "replan-package", "another-retry")
 	if err != nil || created {

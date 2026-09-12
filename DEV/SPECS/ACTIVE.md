@@ -122,6 +122,12 @@ ValidationEvidenceStream instance, live provider failover/PIN/model escalation
 and semantic handoff are proven, native Windows/macOS runs exist for the same
 SHA, and the overnight scenario reaches a verified terminal state.
 
+The current continuation also records operational Project Intelligence facts
+(commands, frameworks, workspace topology and CI run commands) through the
+existing bounded scanner, and the run routing report projects the persisted
+intent decision alongside durable allocation decisions. These local contracts
+are tested, but do not replace authenticated/runtime/native evidence.
+
 ## Account isolation slice — 2026-09-10
 
 Introduzido `model.AccountScope` com chave canônica

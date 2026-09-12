@@ -219,9 +219,11 @@ export const DirectSessionLauncher: React.FC<{
                                 ? t('resources.exhausted')
                                 : quotaState === 'blocked'
                                   ? t('resources.rateLimited')
-                                  : quotaState === 'stale'
-                                    ? t('resources.stale')
-                                    : t('resources.unknown')}
+                                  : quotaState === 'unauthenticated'
+                                    ? t('resources.reauthRequired')
+                                    : quotaState === 'stale'
+                                      ? t('resources.stale')
+                                      : t('resources.unknown')}
                           </Badge>
                         </span>
                         <small>

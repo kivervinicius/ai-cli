@@ -1,5 +1,35 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-12 — Final closure continuation after routing/guidance integration
+
+- PASS — `go test ./... -count=1`.
+- PASS — `go test -race ./... -count=1`.
+- PASS — `go vet ./...` and `git diff --check`.
+- PASS — `make security`, `make build`, `make build-desktop`.
+- PASS — `make web-verify` (format, typecheck, lint, stylelint, null-array,
+  tests, i18n, build, embed-sync and UI markers).
+- PASS — task requirements now carry bounded generic `ExecutionGuidance` into
+  prompt compilation; persisted routing decisions project canonical Skill refs
+  and Maestro guidance refs only when an actual source/reference is present.
+- UNVERIFIED — authenticated Nexus provider Mission, durable production
+  evidence stream, live failover/escalation/handoff, Windows/macOS and
+  overnight acceptance remain unavailable.
+
+## 2026-09-12 — Final closure local autopilot continuation
+
+- PASS — `go test ./... -count=1` after the local autopilot acceptance test.
+- PASS — `go test -race ./... -count=1`.
+- PASS — `go vet ./...` and `git diff --check`.
+- PASS — `TestLocalAutopilotContractTraversesDiscoveryRoutingSkillsAndVerification`:
+  bounded discovery → `DIRECT` → Builtin Skill → task-aware model → Mission
+  Runner → `COMPLETED_VERIFIED`.
+- PASS — SQLite restart reload of `RoutingDecisionJSON` and durable routing
+  report projection.
+- PASS — persisted routing decisions now include Agent score/confidence/reason
+  and selected account scope in addition to provider/profile/model.
+- Release remains `NO-GO`: authenticated provider Mission, live failover/
+  handoff, native Windows/macOS and overnight evidence are unavailable.
+
 ## 2026-09-11 — Codex frescor + TUI Contas & Quotas
 
 - PASS — `go test ./internal/core/provider/adapters/codex ./internal/core/quota ./internal/profile ./internal/tui ./internal/control/host -count=1`.
@@ -981,7 +1011,6 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
   [`DEV/AI_CONTROL_DEFERRED.md`](AI_CONTROL_DEFERRED.md), item 6.
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-12T00:31:02Z
+## Frontend gate — 2026-09-12T02:02:48Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
-

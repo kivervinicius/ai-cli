@@ -59,11 +59,11 @@
 - Consumes the existing `ProjectContextSnapshot` and `ContextReadiness` contracts.
 - Produces a bounded context envelope containing only relevant facts with basis, confidence, source and identity metadata.
 
-- [ ] **Step 1: Add failing tests** proving Go/Node workspace topology, package/module paths, test/E2E/build/lint/CI command facts and secret redaction are represented with provenance.
-- [ ] **Step 2: Run tests and confirm current scanner/Composer fail the new assertions.**
-- [ ] **Step 3: Extend the existing scanner/parser only for evidence-backed metadata files and preserve all bounds/path protections.**
-- [ ] **Step 4: Pass a selected/bounded snapshot envelope to Composer `AnalyzeIntent` and `EvaluateAmbiguities`; do not send raw repository content.**
-- [ ] **Step 5: Verify stale identity invalidation and focused Composer/context tests.**
+- [x] **Step 1: Add failing tests** proving Go/Node workspace topology, package/module paths, test/E2E/build/lint/CI command facts and secret redaction are represented with provenance.
+- [x] **Step 2: Run tests and confirm current scanner/Composer fail the new assertions.**
+- [x] **Step 3: Extend the existing scanner/parser only for evidence-backed metadata files and preserve all bounds/path protections.**
+- [x] **Step 4: Pass a selected/bounded snapshot envelope to Composer `AnalyzeIntent` and `EvaluateAmbiguities`; do not send raw repository content.**
+- [x] **Step 5: Verify stale identity invalidation and focused Composer/context tests.**
 
 ### Task 3: Explicit Intent Decision and CLI/Composer Routing
 
@@ -96,11 +96,11 @@
 - Produces policy values with `AUTO`, `PREFER`, `PIN`, desired resource identity and actual allocation/reason.
 - Produces task-scoped model candidates/escalation without provider-name role hardcodes.
 
-- [ ] **Step 1: Write failing tests** for AUTO, PREFER fallback, PIN blocked, task override non-mutation, quota exhaustion, deterministic tie-break and model escalation after verification failure.
+- [x] **Step 1: Write failing tests** for AUTO, PREFER fallback, PIN blocked, task override non-mutation, quota exhaustion, deterministic tie-break and model escalation after verification failure.
 - [x] **Step 2: Run focused tests to confirm missing semantics.**
 - [x] **Step 3: Implement resolution as a pure layer over existing `ProviderAccount`/scheduler candidates.**
-- [ ] **Step 4: Integrate task requirements/AgentSpec/optional Maestro guidance as inputs while keeping provider/account/model allocation out of Agent identity.**
-- [ ] **Step 5: Verify focused routing tests, race-safe immutability and full Nexus package tests.**
+- [x] **Step 4: Integrate task requirements/AgentSpec/optional Maestro guidance as inputs while keeping provider/account/model allocation out of Agent identity.**
+- [x] **Step 5: Verify focused routing tests, race-safe immutability and full Nexus package tests.**
 
 ### Task 5: Persisted Execution Routing Decision
 
@@ -117,7 +117,7 @@
 - [x] **Step 2: Run them RED.**
 - [x] **Step 3: Add the smallest durable field/record using the existing Mission/WorkPackage persistence boundary; do not introduce another store.**
 - [x] **Step 4: Populate it at the canonical routing point and include desired-vs-actual data on fallback.**
-- [ ] **Step 5: Verify serialization, restart reload and deterministic tie-break tests.**
+- [x] **Step 5: Verify serialization, restart reload and deterministic tie-break tests.**
 
 ### Task 6: Maestro Lifecycle Adapter, Handoff Provenance and Evidence Projection
 
@@ -125,14 +125,14 @@
 - Modify: `internal/nexus/maestro.go`, `internal/nexus/intelligence/types.go`, existing handoff/capsule/receipt adapters and validation evidence helpers.
 - Create/modify focused tests and `DEV/validation/FINAL_CLOSURE_REPORT.md` only after fresh evidence.
 
-- [ ] **Step 1: Add failing tests** for PLAN/TASK/RECOVERY/VERIFY lifecycle advice, degraded Maestro mode, generic skill refs in capsules and evidence-chain projection.
+- [x] **Step 1: Add failing tests** for PLAN/TASK/RECOVERY/VERIFY lifecycle advice, degraded Maestro mode, generic skill refs in capsules and evidence-chain projection.
 - [x] **Step 2: Implement additive lifecycle metadata and generic skill provenance without changing Maestro ownership.**
 - [ ] **Step 3: Append closure scenario evidence to the existing `ValidationEvidenceStream`; verify the hash chain before projecting reports.**
 - [x] **Step 4: Run the adversarial code review and classify every finding using technical verification before changes.**
 
 ### Task 7: Global Verification and Release Verdict
 
-- [ ] Run fresh `go test ./...`, `go test -race ./...`, `go vet ./...`, Go build, `git diff --check`, Web format/lint/style/typecheck/test/build and repository canonical gates.
-- [ ] Run deterministic local autopilot scenarios and mark live/native/platform scenarios `UNVERIFIED` where no runner/credential exists.
+- [x] Run fresh `go test ./...`, `go test -race ./...`, `go vet ./...`, Go build, `git diff --check`, Web format/lint/style/typecheck/test/build and repository canonical gates.
+- [x] Run deterministic local autopilot scenarios and mark live/native/platform scenarios `UNVERIFIED` where no runner/credential exists.
 - [ ] Verify the evidence chain and record BASE SHA, FINAL SHA, stream ID, head hash, commands, results, risks and remaining work in `DEV/WORKLOG.md`, `DEV/VERIFY.md`, `DEV/HANDOFF.md` and the final report.
 - [ ] Emit `GO` only if zero P0/P1 central blockers and all required core scenarios have concrete evidence; otherwise emit `NO-GO` with specific blockers.

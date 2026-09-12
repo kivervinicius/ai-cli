@@ -133,8 +133,16 @@ func (d *AGYDriver) BuildCommand(ctx context.Context, p model.Profile, extraArgs
 	if err != nil {
 		return "", nil, nil, err
 	}
+	// Mirror the adapter's isolation contract. Inherited host XDG_* would point
+	// AGY at the developer's real config/cache, and an unset DBUS session bus
+	// address lets keyringAuth autolaunch onto the host Secret Service — which
+	// is how a foreign Google account can replace this profile's oauth file.
 	env := runtime.EnvSet(os.Environ(), map[string]string{
 		"HOME":                             home,
+		"XDG_CONFIG_HOME":                  filepath.Join(home, ".config"),
+		"XDG_CACHE_HOME":                   filepath.Join(home, ".cache"),
+		"XDG_DATA_HOME":                    filepath.Join(home, ".local", "share"),
+		"XDG_STATE_HOME":                   filepath.Join(home, ".local", "state"),
 		"AI_PROFILE":                       p.Name,
 		"AI_PROVIDER":                      "agy",
 		"PYTHON_KEYRING_BACKEND":           "keyring.backends.null.Keyring",
@@ -148,6 +156,10 @@ func (d *AGYDriver) BuildCommand(ctx context.Context, p model.Profile, extraArgs
 	// genuinely require keyring-backed credentials.
 	if os.Getenv("NEXUS_AGY_ENABLE_SECRET_SERVICE") == "1" {
 		wrappedBin, wrappedArgs = runtime.WrapWithIsolatedSecretService(bin, extraArgs)
+	} else {
+		env = runtime.EnvSet(env, map[string]string{
+			"DBUS_SESSION_BUS_ADDRESS": "unix:path=/dev/null",
+		}, "GNOME_KEYRING_CONTROL", "GNOME_KEYRING_PID")
 	}
 	return wrappedBin, wrappedArgs, env, nil
 }

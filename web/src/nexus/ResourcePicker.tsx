@@ -183,9 +183,11 @@ export const ResourcePicker: React.FC<Props> = ({ agentId, preferProvider, onSel
                             ? t('resources.exhausted')
                             : quotaState === 'blocked'
                               ? t('resources.rateLimited')
-                              : quotaState === 'stale'
-                                ? t('resources.stale')
-                                : t('resources.unknown')}
+                              : quotaState === 'unauthenticated'
+                                ? t('resources.reauthRequired')
+                                : quotaState === 'stale'
+                                  ? t('resources.stale')
+                                  : t('resources.unknown')}
                       </Badge>
                       {account.is_default && <Badge>{t('common.default')}</Badge>}
                       {selected && (

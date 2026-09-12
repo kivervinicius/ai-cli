@@ -239,7 +239,7 @@ func (s *Store) UpsertComposerSkillProposal(in ComposerSkillProposal) (*Composer
 	}
 	in.UpdatedAt = time.Now().UTC()
 	if in.Source == "" {
-		in.Source = "Maestro"
+		in.Source = "Nexus"
 	}
 	_, err := s.db.Exec(`INSERT INTO composer_skill_proposals(session_id,skill_id,state,reason,applicability,risk,source,version,available,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(session_id,skill_id) DO UPDATE SET state=excluded.state,reason=excluded.reason,applicability=excluded.applicability,risk=excluded.risk,source=excluded.source,version=excluded.version,available=excluded.available,updated_at=excluded.updated_at`, in.SessionID, in.SkillID, in.State, in.Reason, in.Applicability, in.Risk, in.Source, in.Version, boolToInt(in.Available), in.UpdatedAt.Format(time.RFC3339Nano))
 	if err != nil {

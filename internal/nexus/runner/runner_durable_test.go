@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -449,6 +451,46 @@ func TestMissionRunnerRecompilesImmutablePromptForRemediationAttempt(t *testing.
 	pkg := completed.PackageRuns[0]
 	if pkg.PromptVersionID != "prompt-v2" {
 		t.Fatalf("expected latest remediation prompt version, got %s", pkg.PromptVersionID)
+	}
+}
+
+type verificationEscalationExecutor struct {
+	fakeExecutor
+	workspace   string
+	allocations []int
+}
+
+func (e *verificationEscalationExecutor) Allocate(ctx context.Context, run *MissionRun, pkg *PackageRun) (AllocationResult, error) {
+	e.allocations = append(e.allocations, pkg.Attempt)
+	return e.fakeExecutor.Allocate(ctx, run, pkg)
+}
+
+func (e *verificationEscalationExecutor) Execute(ctx context.Context, run *MissionRun, pkg *PackageRun, prompt string) (ExecutionResult, error) {
+	if pkg.Attempt > 1 {
+		if err := os.WriteFile(filepath.Join(run.Workspace, "verified.marker"), []byte("verified"), 0600); err != nil {
+			return ExecutionResult{}, err
+		}
+	}
+	return e.fakeExecutor.Execute(ctx, run, pkg, prompt)
+}
+
+func TestVerificationFailureReturnsToAllocationForRuntimeEscalation(t *testing.T) {
+	workspace := t.TempDir()
+	exec := &verificationEscalationExecutor{fakeExecutor: fakeExecutor{reviewOK: true}, workspace: workspace}
+	r := NewMissionRunner(NewMemoryRunRepository(), exec)
+	contract := DefaultAutonomyContract()
+	contract.MaxRetries = 2
+	contract.VerificationCommands = []string{"test -f verified.marker"}
+	run, err := r.StartMissionRun(context.Background(), PlanSpec{ID: "model-escalation", ProjectID: "proj", Revision: 1, Packages: []PackageSpec{{ID: "pkg", Title: "Model escalation"}}}, workspace, contract, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed, err := r.RunToTerminal(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.State != StateCompletedVerified || len(exec.allocations) != 2 || exec.allocations[1] != 2 {
+		t.Fatalf("verification retry did not re-enter allocation: state=%s allocations=%v", completed.State, exec.allocations)
 	}
 }
 

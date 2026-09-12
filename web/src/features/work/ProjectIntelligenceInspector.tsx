@@ -10,9 +10,11 @@ import styles from './ProjectIntelligenceInspector.module.scss';
 const toneForScan = (state?: string) => {
   if (state === 'SUCCEEDED') return 'success';
   if (state === 'FAILED' || state === 'CANCELED') return 'danger';
-  if (state === 'RUNNING') return 'warning';
+  if (state === 'RUNNING' || state === 'QUEUED') return 'warning';
   return 'default';
 };
+
+const isScanInFlight = (state?: string) => state === 'QUEUED' || state === 'RUNNING';
 
 export const ProjectIntelligenceInspector: React.FC<{ projectId: string }> = ({ projectId }) => {
   const { t } = useTranslation();
@@ -34,6 +36,17 @@ export const ProjectIntelligenceInspector: React.FC<{ projectId: string }> = ({ 
     void refresh();
   }, [refresh]);
 
+  const scanState = view?.current_scan?.state;
+  useEffect(() => {
+    if (!isScanInFlight(scanState)) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void refresh();
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, [refresh, scanState]);
+
   const requestScan = async () => {
     setBusy(true);
     setError('');
@@ -51,6 +64,11 @@ export const ProjectIntelligenceInspector: React.FC<{ projectId: string }> = ({ 
   const scan = view?.current_scan;
   const facts = asArray<ProjectFact>(snapshot?.facts);
   const warnings = asArray<string>(snapshot?.warnings);
+  const scanning = busy || isScanInFlight(scan?.state);
+  const completenessLabel = snapshot
+    ? t(`work.projectIntelligence.completeness.${snapshot.completeness}`, snapshot.completeness)
+    : t('work.projectIntelligence.notReady');
+  const scanLabel = scan ? t(`work.projectIntelligence.scanState.${scan.state}`, scan.state) : '';
 
   return (
     <Card className={styles.inspector}>
@@ -59,6 +77,7 @@ export const ProjectIntelligenceInspector: React.FC<{ projectId: string }> = ({ 
           type="button"
           className={styles.toggle}
           aria-expanded={expanded}
+          aria-controls="project-intelligence-panel"
           onClick={() => setExpanded((current) => !current)}
         >
           {expanded ? (
@@ -66,7 +85,7 @@ export const ProjectIntelligenceInspector: React.FC<{ projectId: string }> = ({ 
           ) : (
             <ChevronRight size={15} aria-hidden="true" />
           )}
-          <span>{t('work.projectIntelligence.title', 'Project Intelligence')}</span>
+          <span>{t('work.projectIntelligence.title')}</span>
         </button>
         <div className={styles.actions}>
           <Badge
@@ -74,41 +93,45 @@ export const ProjectIntelligenceInspector: React.FC<{ projectId: string }> = ({ 
               snapshot ? (snapshot.completeness === 'COMPLETE' ? 'success' : 'warning') : 'default'
             }
           >
-            {snapshot
-              ? snapshot.completeness
-              : t('work.projectIntelligence.notReady', 'Not analyzed')}
+            {completenessLabel}
           </Badge>
-          <Button size="sm" tone="ghost" disabled={busy} onClick={() => void requestScan()}>
+          <Button size="sm" tone="ghost" disabled={scanning} onClick={() => void requestScan()}>
             <RefreshCw size={13} aria-hidden="true" />
-            {busy
-              ? t('work.projectIntelligence.scanning', 'Analyzing…')
-              : t('work.projectIntelligence.refresh', 'Analyze again')}
+            {scanning
+              ? t('work.projectIntelligence.scanning')
+              : t('work.projectIntelligence.refresh')}
           </Button>
         </div>
       </div>
+      {(error || scan?.error) && !expanded ? (
+        <p className={styles.error} role="status">
+          {error || scan?.error}
+        </p>
+      ) : null}
       {expanded && (
-        <div className={styles.body}>
+        <div className={styles.body} id="project-intelligence-panel">
           {error && <p className={styles.error}>{error}</p>}
           <div className={styles.meta}>
-            <span>{t('work.projectIntelligence.identity', 'Identity')}</span>
+            <span>{t('work.projectIntelligence.identity')}</span>
             <code>{view?.identity.identity_digest || '—'}</code>
           </div>
           {scan && (
             <div className={styles.meta}>
-              <span>{t('work.projectIntelligence.scan', 'Scan')}</span>
-              <Badge tone={toneForScan(scan.state)}>{scan.state}</Badge>
+              <span>{t('work.projectIntelligence.scan')}</span>
+              <Badge tone={toneForScan(scan.state)}>{scanLabel}</Badge>
             </div>
           )}
+          {scan?.error ? <p className={styles.error}>{scan.error}</p> : null}
           {warnings.length ? (
             <p className={styles.warning}>
-              {t('work.projectIntelligence.warnings', '{{count}} warnings', {
+              {t('work.projectIntelligence.warnings', {
                 count: warnings.length,
               })}
             </p>
           ) : null}
           <div className={styles.facts} aria-live="polite">
             {facts.length === 0 ? (
-              <p>{t('work.projectIntelligence.empty', 'No structured facts available yet.')}</p>
+              <p>{t('work.projectIntelligence.empty')}</p>
             ) : (
               facts.map((fact: ProjectFact) => (
                 <details key={`${fact.category}:${fact.key}`} className={styles.fact}>

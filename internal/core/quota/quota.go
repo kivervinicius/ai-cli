@@ -51,7 +51,12 @@ func (e *Engine) Trustworthy(snap model.UsageSnapshot) bool {
 		}
 		return false
 	}
-	if snap.Status != model.UsageLive && snap.Status != model.UsageCached && snap.Status != model.UsageEstimated {
+	// RATE_LIMITED belongs here: a provider that reports a block alongside exact
+	// window percentages has given us attributable data. Excluding it would throw
+	// away the most accurate reading we can get for an exhausted account.
+	switch snap.Status {
+	case model.UsageLive, model.UsageCached, model.UsageEstimated, model.UsageRateLimited:
+	default:
 		if debug {
 			slog.Debug("Trustworthy: false (bad status)", "status", snap.Status)
 		}
@@ -131,7 +136,7 @@ func (e *Engine) GetCachedUsage(provider, profileName string) (model.UsageSnapsh
 	// A cache file is not evidence of current capacity after the trust window.
 	// This applies to every provider, especially AGY where selecting a stale
 	// default profile can launch against the wrong Google account.
-	if (snap.Status == model.UsageCached || snap.Status == model.UsageLive || snap.Status == model.UsageEstimated) && !e.Trustworthy(snap) {
+	if statusHasMeasuredPercent(string(snap.Status)) && !e.Trustworthy(snap) {
 		if debug {
 			slog.Debug("GetCachedUsage: cache not trustworthy", "provider", provider, "profile", profileName, "status", snap.Status, "fetchedAt", snap.FetchedAt, "age", time.Since(snap.FetchedAt))
 		}
@@ -452,8 +457,14 @@ func RenderProgressBar(status model.UsageStatus, remainingPercent *float64, widt
 	}
 
 	switch status {
-	case model.UsageLive, model.UsageCached, model.UsageEstimated:
+	// RATE_LIMITED now carries exact percentages when it comes from the official
+	// provider read. Rendering the bar keeps the consumption visible; the status
+	// column is what tells the operator the account is blocked.
+	case model.UsageLive, model.UsageCached, model.UsageEstimated, model.UsageRateLimited:
 		if remainingPercent == nil {
+			if status == model.UsageRateLimited {
+				return formatProgressLabel("LIMITED", width)
+			}
 			return formatProgressLabel("UNKNOWN", width)
 		}
 		pct := *remainingPercent
@@ -476,9 +487,6 @@ func RenderProgressBar(status model.UsageStatus, remainingPercent *float64, widt
 			return "[" + strings.Repeat("#", fillCount) + strings.Repeat("-", emptyCount) + "]"
 		}
 		return "[" + strings.Repeat("█", fillCount) + strings.Repeat("░", emptyCount) + "]"
-
-	case model.UsageRateLimited:
-		return formatProgressLabel("LIMITED", width)
 
 	case model.UsageUnsupported:
 		return formatProgressLabel("UNSUPPORT", width)

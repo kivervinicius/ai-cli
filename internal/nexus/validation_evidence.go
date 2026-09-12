@@ -51,8 +51,12 @@ func (n *Nexus) recordMissionValidationEvidence(ctx context.Context, run *runner
 			break
 		}
 	}
-	if !passed || len(results) == 0 || identity.HeadSHA == "" {
+	switch {
+	case len(results) == 0 || identity.HeadSHA == "":
 		outcome = store.EvidenceNotVerified
+		confidence = store.EvidenceObserved
+	case !passed:
+		outcome = store.EvidenceFail
 		confidence = store.EvidenceObserved
 	}
 	environment, _ := json.Marshal(map[string]string{"go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH})

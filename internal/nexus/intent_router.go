@@ -166,8 +166,43 @@ func isMateriallyUnderspecified(goal string, snapshot *contextsnapshot.ProjectCo
 	if hasPlanSignals(goal) {
 		return false
 	}
-	if snapshot != nil && len(snapshot.Facts) > 0 {
+	if len(strings.Fields(goal)) >= 4 {
 		return false
 	}
-	return len(strings.Fields(goal)) < 4
+	// Facts only prevent clarification when they cover the concrete unknown.
+	// A random stack fact must not turn a vague goal into PLAN.
+	if snapshotFactsCoverGoal(goal, snapshot) {
+		return false
+	}
+	return true
+}
+
+// snapshotFactsCoverGoal reports whether Project Intelligence already observed
+// evidence for the topic named in the goal. Unrelated facts do not count.
+func snapshotFactsCoverGoal(goal string, snapshot *contextsnapshot.ProjectContextSnapshot) bool {
+	if snapshot == nil || len(snapshot.Facts) == 0 {
+		return false
+	}
+	needed := make([]string, 0, 4)
+	if containsAny(goal, "teste", "test") {
+		needed = append(needed, "test", "vitest", "go-test", "jest")
+	}
+	if containsAny(goal, "build", "compile", "compilar") {
+		needed = append(needed, "build", "commands")
+	}
+	if containsAny(goal, "lint", "format") {
+		needed = append(needed, "lint", "format", "eslint")
+	}
+	if len(needed) == 0 {
+		return false
+	}
+	for _, fact := range snapshot.Facts {
+		key := strings.ToLower(fact.Key + " " + fmt.Sprint(fact.Value))
+		for _, needle := range needed {
+			if strings.Contains(key, needle) {
+				return true
+			}
+		}
+	}
+	return false
 }

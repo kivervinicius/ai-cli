@@ -22,20 +22,7 @@ func ShowMenu() (*SelectionResult, error) {
 		acc := profile.GetAccountInfo(p.Provider, p.Name)
 		accs[p.Provider+":"+p.Name] = acc
 		qv := profile.GetQuotaView(p.Provider, p.Name, acc.Plan, acc.Email)
-
-		modelName := ""
-		if len(qv.ModelGroups) > 0 {
-			modelName = qv.ModelGroups[0].Name
-		}
-		rows = append(rows, UsageTableRow{
-			Provider:  p.Provider,
-			Profile:   p.Name,
-			Account:   acc.Email,
-			Plan:      acc.Plan,
-			ModelName: modelName,
-			Status:    qv.Status,
-			IsDefault: cfg.Defaults[p.Provider] == p.Name,
-		})
+		rows = append(rows, buildUsageRows(p.Provider, p.Name, qv, acc, cfg.Defaults)...)
 	}
 
 	cwd, _ := os.Getwd()

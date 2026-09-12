@@ -3,7 +3,9 @@ package nexus
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 
 	nexusskills "github.com/kivervinicius/ai-cli/internal/nexus/skills"
 )
@@ -61,6 +63,12 @@ func (s maestroSkillSource) Resolve(ctx context.Context, id string) (nexusskills
 
 func (n *Nexus) skillCatalogForProject(projectID string) (nexusskills.Catalog, error) {
 	sources := []nexusskills.Source{nexusskills.NewBuiltinSource()}
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		// Only the Nexus-owned user skill root. Do not scan ~/.codex/skills:
+		// that tree belongs to other tools and would pollute catalog resolution.
+		userRoots := []string{filepath.Join(home, ".nexus", "skills")}
+		sources = append(sources, nexusskills.NewDirectorySource("user", nexusskills.SourceUser, userRoots))
+	}
 	if projectID != "" {
 		st, err := n.OpenProject()
 		if err != nil {

@@ -79,6 +79,22 @@ func (s *RunApplicationService) Get(ctx context.Context, runID string) (*runner.
 	return s.nexus.Runner().GetRun(ctx, runID)
 }
 
+// Routing returns the persisted, explainable allocation decisions for a run.
+// It never recomputes a decision from current provider state.
+func (s *RunApplicationService) Routing(ctx context.Context, runID string) (RoutingDecisionReport, error) {
+	if err := s.ready(ctx); err != nil {
+		return RoutingDecisionReport{}, err
+	}
+	run, err := s.nexus.Runner().GetRun(ctx, runID)
+	if err != nil {
+		return RoutingDecisionReport{}, err
+	}
+	if plan, planErr := s.nexus.GetWorkPlan(ctx, run.PlanID); planErr == nil {
+		return BuildRoutingDecisionReportWithPlan(run, plan)
+	}
+	return BuildRoutingDecisionReport(run)
+}
+
 func (s *RunApplicationService) Step(ctx context.Context, runID string) (*RunStepResult, error) {
 	if err := s.ready(ctx); err != nil {
 		return nil, err

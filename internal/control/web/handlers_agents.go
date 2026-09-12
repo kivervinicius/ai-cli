@@ -176,8 +176,7 @@ func (h *NexusHandler) handleAgentAsk(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	client := nexus.NewMaestroClient()
-	compiled, err := nexus.CompileAgentPrompt(body.Prompt, body.SkillIDs, client)
+	compiled, err := h.nexus.CompileAgentPromptForProject(body.ProjectID, body.Prompt, body.SkillIDs)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

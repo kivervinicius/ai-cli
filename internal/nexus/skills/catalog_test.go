@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestCatalogResolvesBuiltinSkillsDeterministically(t *testing.T) {
@@ -65,6 +66,33 @@ func TestDirectorySourceReadsBoundedSkillMarkdown(t *testing.T) {
 	}
 }
 
+func TestCatalogSameVersionPrefersProjectOverMaestro(t *testing.T) {
+	project := staticSource{id: "project", skills: []Skill{{ID: "shared", Name: "project", Version: "1.0.0", Source: SourceProject}}}
+	maestro := staticSource{id: "maestro", skills: []Skill{{ID: "shared", Name: "maestro", Version: "1.0.0", Source: SourceMaestro}}}
+	catalog, err := NewCatalog(maestro, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, ok := catalog.Resolve("shared")
+	if !ok || resolved.Source != SourceProject {
+		t.Fatalf("project skill must outrank maestro at equal version, got %+v", resolved)
+	}
+}
+
+func TestNormalizeSkillHashIsStableAcrossObservationTime(t *testing.T) {
+	first, err := normalizeSkill(Skill{ID: "demo", Instructions: "do the thing", Source: SourceBuiltin}, string(SourceBuiltin))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := normalizeSkill(Skill{ID: "demo", Instructions: "do the thing", Source: SourceBuiltin, Provenance: Provenance{ObservedAt: first.Provenance.ObservedAt.Add(time.Hour)}}, string(SourceBuiltin))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Hash == "" || first.Hash != second.Hash {
+		t.Fatalf("skill hash must ignore ObservedAt: %q vs %q", first.Hash, second.Hash)
+	}
+}
+
 func TestCatalogWorksWhenOptionalSourcesAreUnavailable(t *testing.T) {
 	source := NewExternalSource("external", func(context.Context) ([]Skill, error) {
 		return nil, ErrSourceUnavailable
@@ -75,6 +103,22 @@ func TestCatalogWorksWhenOptionalSourcesAreUnavailable(t *testing.T) {
 	}
 	if _, ok := catalog.Resolve("testing"); !ok {
 		t.Fatal("builtin catalog must remain usable when optional source is unavailable")
+	}
+}
+
+func TestDirectorySourceSkipsCyclicOptionalRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "skills-loop")
+	if err := os.Symlink(root, root); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	source := NewDirectorySource("user", SourceUser, []string{root})
+	items, err := source.Discover(context.Background())
+	if err != nil {
+		t.Fatalf("cyclic optional source must degrade without failing catalog: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("cyclic root should not yield skills: %+v", items)
 	}
 }
 

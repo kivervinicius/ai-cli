@@ -1,5 +1,11 @@
 # IAPro Nexus — Final Production Validation
 
+> Historical report superseded by the final closure checkpoint. Its
+> `CONDITIONAL_GO` describes an earlier local-gates-only snapshot and is not a
+> release verdict. At current HEAD `a58cca4d73bdfd55678649b30c0ca64f73b7d410`,
+> the canonical verdict is `NO-GO` because authenticated Mission, native
+> Windows/macOS and overnight evidence remain unavailable.
+
 Verdict: CONDITIONAL_GO. Local source gates are green; external platform/provider/CI evidence is unavailable on this host.
 
 Environment: Linux, Go 1.25.0, Node 22.17.0, Bun 1.4.0. Source ZIP SHA-256 verified as `26cb2c9928c19b852c835371dbace8ca47e1afc6f46a2a4ea022cb3993e2240d`.

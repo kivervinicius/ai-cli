@@ -46,7 +46,7 @@ export function summarizeAccounts(accounts: ProviderAccount[]): UsageSummary {
   };
   for (const account of accounts) {
     const state = accountQuotaState(account);
-    if (state === 'blocked') summary.blocked += 1;
+    if (state === 'blocked' || state === 'unauthenticated') summary.blocked += 1;
     else if (state === 'exhausted') summary.exhausted += 1;
     else if (state === 'unknown') summary.unknown += 1;
     else if (account.available) summary.usable += 1;

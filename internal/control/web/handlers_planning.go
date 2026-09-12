@@ -652,6 +652,26 @@ func (h *NexusHandler) handleRunEvidence(w http.ResponseWriter, r *http.Request,
 	})
 }
 
+// handleRunRouting exposes the persisted allocation explanation for one run.
+// The response is a read model of the decision captured before provider
+// execution; it never re-runs routing against current health or quota.
+func (h *NexusHandler) handleRunRouting(w http.ResponseWriter, r *http.Request, runID string) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if _, err := h.runs.Get(r.Context(), runID); err != nil {
+		writeError(w, http.StatusNotFound, "run not found")
+		return
+	}
+	report, err := h.runs.Routing(r.Context(), runID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, report)
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {

@@ -52,12 +52,15 @@ func TestMaestroCapabilitiesMergeProfileAndCanonicalCatalog(t *testing.T) {
 
 func TestMaestroUnavailableNeverFabricatesAdvice(t *testing.T) {
 	c := &MaestroClient{status: MaestroStatus{Available: false, Mode: MaestroOff}, maestroBin: ""}
-	resp, err := c.GetAdvice(AdviceContext{ProjectID: "p1"}, "ship product")
+	resp, err := c.GetAdvice(AdviceContext{ProjectID: "p1", Lifecycle: MaestroLifecycleRecovery}, "ship product")
 	if err == nil {
 		t.Fatal("expected degraded error")
 	}
 	if !resp.Degraded || len(resp.Required) != 0 || len(resp.Recommended) != 0 || len(resp.Optional) != 0 {
 		t.Fatalf("degraded Maestro must not fabricate recommendations: %+v", resp)
+	}
+	if resp.Lifecycle != MaestroLifecycleRecovery {
+		t.Fatalf("lifecycle was not preserved in degraded advice: %+v", resp)
 	}
 }
 

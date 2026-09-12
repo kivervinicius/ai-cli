@@ -14,10 +14,10 @@ func TestCompileExecutionContext_ComposesPersistentAndTaskRolesWithProvenance(t 
 			Strengths:    []string{"systems-thinking"},
 			Tags:         []string{"persistent-specialist"},
 		},
-		Project: ProjectContext{ProjectID: "project-1", Facts: map[string]string{"branch": "main"}},
-		Task:    WorkPackageContext{Title: "Review release", Goal: "Review the release", Priority: "HIGH", Role: "reviewer", AcceptanceCriteria: []string{"evidence exists"}},
-		Maestro: MaestroGuidance{Enabled: true, Instructions: []string{"Use the configured quality gate"}},
-		Runtime: RuntimeConstraints{Provider: "claude", Model: "sonnet", Workspace: "/workspace", Isolation: "worktree", Capabilities: []string{"submit_prompt"}},
+		Project:  ProjectContext{ProjectID: "project-1", Facts: map[string]string{"branch": "main"}},
+		Task:     WorkPackageContext{Title: "Review release", Goal: "Review the release", Priority: "HIGH", Role: "reviewer", AcceptanceCriteria: []string{"evidence exists"}},
+		Guidance: ExecutionGuidance{Enabled: true, Instructions: []string{"Use the configured quality gate"}, Source: "maestro"},
+		Runtime:  RuntimeConstraints{Provider: "claude", Model: "sonnet", Workspace: "/workspace", Isolation: "worktree", Capabilities: []string{"submit_prompt"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -25,8 +25,8 @@ func TestCompileExecutionContext_ComposesPersistentAndTaskRolesWithProvenance(t 
 	if !containsSection(compiled.Sections, "agent", "senior developer") || !containsSection(compiled.Sections, "task", "reviewer") {
 		t.Fatalf("missing role provenance: %#v", compiled.Sections)
 	}
-	if !containsSection(compiled.Sections, "maestro", "quality gate") {
-		t.Fatalf("missing Maestro provenance: %#v", compiled.Sections)
+	if !containsSection(compiled.Sections, "guidance", "quality gate") {
+		t.Fatalf("missing generic guidance provenance: %#v", compiled.Sections)
 	}
 	if compiled.SystemInstructions == "" || compiled.TaskInstructions == "" || !contains(compiled.SystemInstructions, "Persistent specialization: senior developer") || !contains(compiled.SystemInstructions, "systems-thinking") || !contains(compiled.SystemInstructions, "persistent-specialist") || !contains(compiled.SystemInstructions, "Task role: reviewer") {
 		t.Fatalf("compiled context is incomplete: %#v", compiled)
@@ -47,6 +47,30 @@ func TestCompileExecutionContext_MaestroOffDoesNotAddGuidance(t *testing.T) {
 	for _, section := range compiled.Sections {
 		if section.Source == "maestro" {
 			t.Fatalf("Maestro OFF unexpectedly changed Direct context: %#v", compiled.Sections)
+		}
+	}
+}
+
+func TestCompileExecutionContextUsesGenericGuidanceWithoutMaestro(t *testing.T) {
+	compiled, err := NewNexusEngine(nil).CompileExecutionContext(context.Background(), ExecutionContextRequest{
+		Agent: AgentSpec{Role: "tester"},
+		Task:  WorkPackageContext{Title: "Verify", Goal: "Verify the change"},
+		Guidance: ExecutionGuidance{
+			Enabled:      true,
+			Instructions: []string{"Use reproducible checks"},
+			Skills:       []string{"verification"},
+			Source:       "nexus",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsSection(compiled.Sections, "guidance", "reproducible checks") || !containsSection(compiled.Sections, "guidance", "verification") {
+		t.Fatalf("generic guidance was not compiled: %#v", compiled.Sections)
+	}
+	for _, section := range compiled.Sections {
+		if section.Source == "maestro" {
+			t.Fatalf("generic guidance leaked Maestro provenance: %#v", compiled.Sections)
 		}
 	}
 }

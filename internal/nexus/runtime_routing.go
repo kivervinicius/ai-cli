@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/kivervinicius/ai-cli/internal/core/model"
 )
 
 type AffinityMode string
@@ -41,30 +43,53 @@ type ModelCandidate struct {
 }
 
 type RuntimeRoutingDecision struct {
-	TaskID             string                `json:"task_id,omitempty"`
-	PlanRevision       int                   `json:"work_plan_revision,omitempty"`
-	AgentID            string                `json:"agent_id,omitempty"`
-	Requirements       TaskRequirements      `json:"task_requirements"`
-	Desired            RuntimeAffinityPolicy `json:"desired"`
-	AffinityPolicy     RuntimeAffinityPolicy `json:"affinity_policy"`
-	Actual             ModelCandidate        `json:"actual"`
-	SelectedEngine     string                `json:"selected_engine,omitempty"`
-	SelectedProvider   string                `json:"selected_provider,omitempty"`
-	SelectedProfile    string                `json:"selected_profile,omitempty"`
-	SelectedModel      string                `json:"selected_model,omitempty"`
-	SelectedReasoning  string                `json:"selected_reasoning,omitempty"`
-	Alternatives       []ModelCandidate      `json:"alternatives,omitempty"`
-	Fallback           bool                  `json:"fallback"`
-	Reason             string                `json:"reason"`
-	Rejected           []string              `json:"rejected,omitempty"`
-	RejectedCandidates []string              `json:"rejected_candidates,omitempty"`
-	TaskClass          string                `json:"task_class,omitempty"`
-	CreatedAt          time.Time             `json:"created_at"`
+	TaskID               string                `json:"task_id,omitempty"`
+	PlanRevision         int                   `json:"work_plan_revision,omitempty"`
+	AgentID              string                `json:"agent_id,omitempty"`
+	AgentScore           float64               `json:"agent_score,omitempty"`
+	AgentConfidence      string                `json:"agent_confidence,omitempty"`
+	AgentReason          string                `json:"agent_reason,omitempty"`
+	Requirements         TaskRequirements      `json:"task_requirements"`
+	Desired              RuntimeAffinityPolicy `json:"desired"`
+	AffinityPolicy       RuntimeAffinityPolicy `json:"affinity_policy"`
+	Actual               ModelCandidate        `json:"actual"`
+	SelectedEngine       string                `json:"selected_engine,omitempty"`
+	SelectedProvider     string                `json:"selected_provider,omitempty"`
+	SelectedProfile      string                `json:"selected_profile,omitempty"`
+	SelectedAccountScope model.AccountScope    `json:"selected_account_scope,omitempty"`
+	SelectedModel        string                `json:"selected_model,omitempty"`
+	SelectedReasoning    string                `json:"selected_reasoning,omitempty"`
+	SkillRefs            []string              `json:"skill_refs,omitempty"`
+	MaestroGuidanceRef   string                `json:"maestro_guidance_ref,omitempty"`
+	Alternatives         []ModelCandidate      `json:"alternatives,omitempty"`
+	Fallback             bool                  `json:"fallback"`
+	Reason               string                `json:"reason"`
+	Rejected             []string              `json:"rejected,omitempty"`
+	RejectedCandidates   []string              `json:"rejected_candidates,omitempty"`
+	TaskClass            string                `json:"task_class,omitempty"`
+	CreatedAt            time.Time             `json:"created_at"`
 }
 
 type ExecutionRoutingDecision = RuntimeRoutingDecision
 
 var ErrBlockedResource = errors.New("blocked resource")
+
+// ResolveTaskModel selects a model for one WorkUnit after the provider/profile
+// scheduler has selected an account. Model candidates are configuration
+// metadata; health, authentication and quota are always taken from the live
+// account/candidate evidence supplied by the caller.
+func ResolveTaskModel(req TaskRequirements, preference AffinityPreference, account ProviderAccount, models []ModelCandidate) (ModelCandidate, bool, string, error) {
+	pool, fallback, fallbackReason, err := resolveTaskModelPool(req, preference, account, models)
+	if err != nil {
+		return ModelCandidate{}, fallback, "", err
+	}
+	selected := chooseTaskModel(pool, req)
+	reason := fmt.Sprintf("selected %s for task class %s at escalation level %d", selected.Model, req.TaskKind, req.EscalationLevel)
+	if fallbackReason != "" {
+		reason = fmt.Sprintf("%s: %s", fallbackReason, reason)
+	}
+	return selected, fallback, reason, nil
+}
 
 func ResolveRuntimeRouting(req TaskRequirements, policy RuntimeAffinityPolicy, accounts []ProviderAccount, models []ModelCandidate) (RuntimeRoutingDecision, error) {
 	decision := RuntimeRoutingDecision{Desired: policy, AffinityPolicy: policy, Requirements: req, TaskClass: req.TaskKind, CreatedAt: time.Now().UTC()}
@@ -104,28 +129,19 @@ func ResolveRuntimeRouting(req TaskRequirements, policy RuntimeAffinityPolicy, a
 	})
 	chosenAccount := filtered[0]
 
-	modelPool := filterModels(models, chosenAccount, policy)
-	if len(modelPool) == 0 {
-		if policy.Model.Mode == AffinityPin {
-			return decision, fmt.Errorf("%w: pinned model has no eligible candidate", ErrBlockedResource)
-		}
-		if policy.Model.Mode == AffinityPrefer {
-			decision.Fallback = true
-			policy.Model = AffinityPreference{Mode: AffinityAuto}
-			modelPool = filterModels(models, chosenAccount, policy)
-		}
-		if len(modelPool) == 0 {
-			return decision, fmt.Errorf("%w: no model candidate for %s:%s", ErrBlockedResource, chosenAccount.Provider, chosenAccount.Profile)
-		}
+	modelPool, modelFallback, modelReason, err := resolveTaskModelPool(req, policy.Model, chosenAccount, models)
+	if err != nil {
+		return decision, err
+	}
+	decision.Fallback = decision.Fallback || modelFallback
+	if modelReason != "" {
+		decision.Reason = firstNonEmpty(decision.Reason, modelReason)
 	}
 	chosenModel := chooseTaskModel(modelPool, req)
-	if policy.Model.Mode == AffinityPrefer && chosenModel.Model != policy.Model.Value {
-		decision.Fallback = true
-		decision.Reason = firstNonEmpty(decision.Reason, "preferred model unavailable; cheaper capable model selected")
-	}
 	decision.Actual = chosenModel
 	decision.SelectedProvider = chosenModel.Provider
 	decision.SelectedProfile = chosenModel.Profile
+	decision.SelectedAccountScope = chosenAccount.Scope
 	decision.SelectedModel = chosenModel.Model
 	decision.SelectedReasoning = fmt.Sprintf("cost_rank=%d; reasoning_rank=%d", chosenModel.CostRank, chosenModel.ReasoningRank)
 	for _, candidate := range modelPool {
@@ -138,6 +154,36 @@ func ResolveRuntimeRouting(req TaskRequirements, policy RuntimeAffinityPolicy, a
 		decision.Reason = fmt.Sprintf("selected %s for task class %s using %s affinity", chosenModel.Model, req.TaskKind, affinitySummary(policy))
 	}
 	return decision, nil
+}
+
+func resolveTaskModelPool(req TaskRequirements, preference AffinityPreference, account ProviderAccount, models []ModelCandidate) ([]ModelCandidate, bool, string, error) {
+	allPool := filterModels(models, account, RuntimeAffinityPolicy{Model: AffinityPreference{Mode: AffinityAuto}})
+	preferredPool := filterModels(models, account, RuntimeAffinityPolicy{Model: preference})
+	pool := allPool
+	fallback := false
+	if preference.Mode == AffinityPin {
+		if len(preferredPool) == 0 || !hasTaskCapableModel(preferredPool, req) {
+			return nil, false, "", fmt.Errorf("%w: pinned model %q unavailable or incapable for task", ErrBlockedResource, preference.Value)
+		}
+		pool = preferredPool
+	} else if preference.Mode == AffinityPrefer {
+		if len(preferredPool) > 0 && hasTaskCapableModel(preferredPool, req) {
+			pool = preferredPool
+		} else {
+			fallback = true
+		}
+	}
+	if len(pool) == 0 {
+		return nil, fallback, "", fmt.Errorf("%w: no model candidate for %s:%s", ErrBlockedResource, account.Provider, account.Profile)
+	}
+	if !hasTaskCapableModel(pool, req) {
+		return nil, fallback, "", fmt.Errorf("%w: no capable model candidate for task %s", ErrBlockedResource, req.TaskKind)
+	}
+	reason := ""
+	if fallback && preference.Mode == AffinityPrefer {
+		reason = fmt.Sprintf("preferred model %q unavailable or incapable; capable fallback selected", preference.Value)
+	}
+	return pool, fallback, reason, nil
 }
 
 func eligibleAccounts(accounts []ProviderAccount) []ProviderAccount {
@@ -195,16 +241,41 @@ func chooseTaskModel(models []ModelCandidate, req TaskRequirements) ModelCandida
 		}
 		return models[i].Model < models[j].Model
 	})
-	minimumReasoning := 1
-	if req.TaskKind == "architecture" || req.TaskKind == "security" || req.EstimatedComplexity == "high" {
-		minimumReasoning = 3
-	}
+	minimumReasoning := minimumReasoningForTask(req)
+	capable := make([]ModelCandidate, 0, len(models))
 	for _, model := range models {
 		if model.ReasoningRank >= minimumReasoning {
-			return model
+			capable = append(capable, model)
 		}
 	}
-	return models[len(models)-1]
+	if len(capable) == 0 {
+		capable = models
+	}
+	level := req.EscalationLevel
+	if level < 0 {
+		level = 0
+	}
+	if level >= len(capable) {
+		level = len(capable) - 1
+	}
+	return capable[level]
+}
+
+func minimumReasoningForTask(req TaskRequirements) int {
+	if req.TaskKind == "architecture" || req.TaskKind == "security" || req.EstimatedComplexity == "high" {
+		return 3
+	}
+	return 1
+}
+
+func hasTaskCapableModel(models []ModelCandidate, req TaskRequirements) bool {
+	minimum := minimumReasoningForTask(req)
+	for _, model := range models {
+		if model.ReasoningRank >= minimum {
+			return true
+		}
+	}
+	return false
 }
 
 func containsAccount(accounts []ProviderAccount, field, value string) bool {

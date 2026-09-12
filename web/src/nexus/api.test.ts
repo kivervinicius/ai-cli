@@ -147,6 +147,26 @@ describe('mission manual-control API routes', () => {
   });
 });
 
+describe('mission routing explainability API', () => {
+  it('uses the durable routing report projection', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          run_id: 'run-1',
+          decisions: [{ package_id: 'step-1', decision: { selected_model: 'mimo' } }],
+        }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(nexusApi.getRunRouting('run-1')).resolves.toMatchObject({
+      run_id: 'run-1',
+      decisions: [{ decision: { selected_model: 'mimo' } }],
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/v1/runs/run-1/routing');
+  });
+});
+
 describe('mission CRUD API contracts', () => {
   it('keeps mission list and detail payloads typed at the client boundary', async () => {
     const fetchMock = vi

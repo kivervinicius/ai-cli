@@ -258,6 +258,23 @@ func TestFreshnessLineNamesStatusSourceAndAge(t *testing.T) {
 	}
 }
 
+func TestFormatResetLineStripsEnglishPrefixes(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"Refreshes in 46h 13m", "Reset em 46h 13m"},
+		{"refreshes in 46h 53m", "Reset em 46h 53m"},
+		{"resets 08:37 on 15 Sep", "Reset em 08:37 15 Sep"},
+		{"Quota available", "Quota disponível"},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		if got := formatResetLine(tc.in); got != tc.want {
+			t.Fatalf("formatResetLine(%q)=%q want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestFormatQuotaWindowShowsNumbersWhenRateLimited(t *testing.T) {
 	windows := []quota.Window{{Kind: "5h", Remaining: 0, ResetDesc: "resets 21:55"}}
 	got := formatQuotaWindow(windows, "5h", string(model.UsageRateLimited))

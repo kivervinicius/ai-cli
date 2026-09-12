@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kivervinicius/ai-cli/internal/nexus/maestrogates"
 	nexusskills "github.com/kivervinicius/ai-cli/internal/nexus/skills"
 )
 
@@ -67,10 +66,10 @@ func CompileAgentPromptWithValidatedSkills(userPrompt string, validatedSkills []
 	return CompileAgentPromptWithContracts(userPrompt, validatedSkills, nil)
 }
 
-// CompileAgentPromptWithContracts embeds the complete selected skill
+// CompileAgentPromptWithContracts embeds the complete selected generic Skill
 // contracts. IDs alone are insufficient because the receiving Agent may not
-// share the same local Maestro installation.
-func CompileAgentPromptWithContracts(userPrompt string, validatedSkills []string, contracts []CatalogSkill) *CompiledAgentPrompt {
+// share the same local catalog.
+func CompileAgentPromptWithContracts(userPrompt string, validatedSkills []string, contracts []nexusskills.Skill) *CompiledAgentPrompt {
 	var compiled string
 	if len(validatedSkills) == 0 {
 		compiled = userPrompt
@@ -83,11 +82,11 @@ func CompileAgentPromptWithContracts(userPrompt string, validatedSkills []string
 			b.WriteString("- " + s + "\n")
 		}
 		for _, skill := range contracts {
-			if strings.TrimSpace(skill.Contract) == "" {
+			if strings.TrimSpace(skill.Instructions) == "" {
 				continue
 			}
 			b.WriteString("\n--- Skill contract: " + skill.ID + " (" + string(skill.Source) + ") ---\n")
-			b.WriteString(skill.Contract)
+			b.WriteString(skill.Instructions)
 			b.WriteString("\n--- End skill contract ---\n")
 		}
 		b.WriteString("\nUser request:\n")
@@ -179,48 +178,10 @@ func (n *Nexus) CompileAgentPromptForProject(projectID, userPrompt string, reque
 	return CompileAgentPromptWithSkillContracts(userPrompt, selected), nil
 }
 
-func contractIDs(skills []CatalogSkill) []string {
+func contractIDs(skills []nexusskills.Skill) []string {
 	ids := make([]string, 0, len(skills))
 	for _, skill := range skills {
 		ids = append(ids, skill.ID)
 	}
 	return ids
-}
-
-// CompileAgentPrompt compiles user request and optional Maestro skill ids into an
-// honest execution envelope.
-func CompileAgentPrompt(userPrompt string, requestedSkills []string, maestroClient *MaestroClient) (*CompiledAgentPrompt, error) {
-	userPrompt = strings.TrimSpace(userPrompt)
-	if userPrompt == "" {
-		return nil, fmt.Errorf("prompt is required")
-	}
-
-	var validatedSkills []string
-	if len(requestedSkills) > 0 {
-		if maestroClient == nil {
-			maestroClient = NewMaestroClient()
-		}
-		status := maestroClient.Status()
-		var cause error
-		if status.Error != "" {
-			cause = fmt.Errorf("%s", status.Error)
-		}
-		var catalog []string
-		if status.Capabilities != nil {
-			catalog = status.Capabilities.SkillIDs()
-		}
-		var err error
-		validatedSkills, err = maestrogates.ValidateStrict(requestedSkills, status.Available, catalog, cause)
-		if err != nil {
-			return nil, fmt.Errorf("skill validation failed: %w", err)
-		}
-	}
-
-	contracts := make([]CatalogSkill, 0, len(validatedSkills))
-	for _, id := range validatedSkills {
-		if skill, ok := maestroClient.CatalogSkill(id); ok {
-			contracts = append(contracts, skill)
-		}
-	}
-	return CompileAgentPromptWithContracts(userPrompt, validatedSkills, contracts), nil
 }

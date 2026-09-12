@@ -95,8 +95,9 @@ func readHostAuthLedgerLocked(path string) ([]hostAuthObservation, error) {
 }
 
 // hostOwnedAt reports whether accountID owned the host login at the given time.
-// Before the first observation, ownership is granted only when the ledger has a
-// single account (never switched) or is empty and current host auth matches.
+// With no ledger yet, the current authenticated host account is the only
+// available ownership evidence. Once a ledger exists, historical attribution
+// is bounded by its observations below.
 func hostOwnedAt(accountID string, at time.Time, currentHostAccountID string) bool {
 	accountID = strings.TrimSpace(accountID)
 	if accountID == "" {
@@ -115,15 +116,8 @@ func hostOwnedAt(accountID string, at time.Time, currentHostAccountID string) bo
 		}
 	}
 	if owner == "" {
-		// Rollout predates every observation. Attribute only when the ledger
-		// never recorded a switch (single owner throughout).
-		first := entries[0].AccountID
-		for _, e := range entries[1:] {
-			if !strings.EqualFold(e.AccountID, first) {
-				return false
-			}
-		}
-		return strings.EqualFold(accountID, first)
+		// Rollout predates every observation — fail closed.
+		return false
 	}
 	return strings.EqualFold(accountID, owner)
 }

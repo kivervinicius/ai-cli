@@ -8,7 +8,8 @@ export interface DirectResourceLike {
   available: boolean;
 }
 
-export type QuotaTruthState = 'confirmed' | 'exhausted' | 'stale' | 'unknown' | 'blocked';
+export type QuotaTruthState =
+  'confirmed' | 'exhausted' | 'stale' | 'unknown' | 'blocked' | 'unauthenticated';
 
 export function quotaTruthState(resource: {
   available: boolean;
@@ -18,7 +19,7 @@ export function quotaTruthState(resource: {
   quota_view?: { status?: string; model_groups?: QuotaGroupLike[] };
 }): QuotaTruthState {
   // Unauthenticated accounts (e.g. expired token) must never show confirmed quota.
-  if (resource.authenticated === false) return 'blocked';
+  if (resource.authenticated === false) return 'unauthenticated';
   if (resource.rate_limited || resource.avail_reasons?.rate_limited) return 'blocked';
   if ((resource.avail_reasons?.exhausted_windows || []).length > 0) return 'exhausted';
   const status = String(resource.quota_view?.status || '').toUpperCase();

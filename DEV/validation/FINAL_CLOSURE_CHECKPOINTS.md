@@ -73,7 +73,7 @@
 - `test_results`: Go/frontend/security/build/race/vet gates PASS. Linux CLI and desktop builds PASS. `make web-verify` PASS with the current frontend report. AGY smoke PASS. Codex smoke reached the authenticated CLI but was rejected by provider usage limit; the other Codex profile has a local rules symlink loop.
 - `decisions`: no PASS is assigned to Windows/macOS, overnight, OpenCode, or authenticated Mission E2E without direct evidence. No commit/push was created.
 - `evidence`: `DEV/validation/FRONTEND_LATEST.md`, command outputs from the final gate runs, `./nexus doctor --json`, and the test suites above.
-- `known_risks`: legacy Maestro-named compatibility contracts remain in Nexus types/Flow payloads; live account/model routing and durable explainability projection are partial; no real Mission stream ID was produced.
+- `known_risks`: legacy Maestro-named compatibility contracts remain in Nexus types/Flow payloads; live account/model routing and model escalation remain partial; no real Mission stream ID was produced.
 - `remaining_work`: remove/encapsulate remaining Maestro skill-type leakage; execute authenticated Mission scenarios 1–15; prove provider failover/PIN/model escalation/handoff/restart; native Windows/macOS and overnight runs.
 - `unlocked_dependencies`: none for GO; campaign is correctly stopped at NO-GO until external/runtime evidence exists.
 
@@ -103,6 +103,77 @@
 - `test_results`: PASS. Corrupt persisted routing JSON fails closed; valid decisions project selected provider/profile/model and reason; intent metadata preserves existing facts; degraded Maestro preserves lifecycle without fabricating advice.
 - `decisions`: explainability is read from persisted decisions and never recomputed from live quota/health; the routing report reuses RunApplicationService; lifecycle is additive and defaults to `TASK`.
 - `evidence`: `internal/nexus/routing_report_test.go`, `internal/nexus/intent_router_test.go`, `internal/nexus/maestro_test.go`, `web/src/nexus/api.test.ts`.
-- `known_risks`: full task-aware live model escalation and lifecycle matrix remain incomplete; intent evidence is stored in WorkPlan metadata, but not yet projected as a separate ledger entry.
+- `known_risks`: full task-aware live model escalation and lifecycle matrix remain incomplete; intent evidence is stored in WorkPlan metadata and report projection, but not yet appended as a separate ledger entry.
 - `remaining_work`: complete model/escalation integration, append intent/closure evidence to the canonical ledger, and obtain authenticated Mission/native/overnight proof.
 - `unlocked_dependencies`: consumers can query durable routing explanations without provider access.
+
+## Work Package A/B/C/I — scanner and decision-report continuation
+
+- `work_package`: A/B/C/I continuation
+- `status`: GREEN (local implementation slice; campaign remains NO-GO)
+- `base_sha`: `2925ca746c198334f20d1e0cef7feb51e4f4e3`
+- `current_sha`: `a58cca4d73bdfd55678649b30c0ca64f73b7d410` plus uncommitted worktree changes
+- `files_changed`: `internal/nexus/contextsnapshot/discovery.go`, its discovery tests, `internal/nexus/routing_report.go`, `internal/nexus/routing_report_test.go`, `internal/nexus/run_application.go`, plan/audit docs.
+- `tests_run`: `go test ./internal/nexus/contextsnapshot -count=1`; focused report/intent tests; `go test ./internal/nexus/... -count=1`.
+- `test_results`: PASS. The new scanner test was first observed RED, then GREEN. Operational facts now include package scripts, recognized frameworks, Go workspace uses, nested package topology and CI `run` commands with provenance. Routing reports project persisted intent and reject corrupt persisted intent/routing JSON.
+- `decisions`: reused `contextsnapshot.Discover`; no second scanner or report store was created. CI and manifests remain static inputs; no project commands are executed during discovery. Explainability remains a projection of durable WorkPlan/package state.
+- `evidence`: focused command outputs and package test results; no authenticated provider Mission was produced.
+- `known_risks`: model escalation/live allocation, restart reload, authenticated Mission evidence, native Windows/macOS and overnight proof remain unverified. Existing Maestro-named compatibility payloads remain intentionally readable.
+- `remaining_work`: complete live runtime integration and evidence scenarios, then rerun global quality gates and adversarial review.
+- `unlocked_dependencies`: Project Intelligence facts and intent/routing projections are available to downstream Composer/Web consumers.
+
+## External smoke status — 2026-09-12
+
+- `NEXUS_E2E_PROFILE_SOURCE=/home/desenvolvedor/.local/share/ai-manager NEXUS_E2E_PROVIDER=agy go run ./scripts/nexus-e2e-local.go -start` reached bootstrap but could not establish an authenticated session because `sudo` authentication failed while updating `/etc/hosts`.
+- Classification: `UNVERIFIED` / environment bootstrap blocker; this is not provider PASS evidence and no secret was recorded.
+
+## Work Package E/G — task-aware model escalation and coupling cleanup — 2026-09-12
+
+- `work_package`: E/G continuation
+- `status`: GREEN (local contract slice; campaign remains NO-GO)
+- `base_sha`: `2925ca746c198334f20d1e0cef7feb51e4f4e3`
+- `current_sha`: `a58cca4d73bdfd55678649b30c0ca64f73b7d410` plus uncommitted worktree changes
+- `files_changed`: `internal/nexus/runtime_routing.go`, `runtime_routing_test.go`, `resource_recommendation.go`, `config.go`, `mission_executor.go`, `runner/runner.go`, `runner/runner_durable_test.go`, generic prompt/intelligence adapters and optional Skill source handling.
+- `tests_run`: focused routing/runner/skills/intelligence tests; `go test ./... -count=1`; `go test -race ./... -count=1`; `go vet ./...`; `make security`; `make build`; `make build-desktop`; `make web-verify`; `git diff --check`.
+- `test_results`: PASS after RED→GREEN. Architecture/security tasks reject incapable preferred models; PREFER fallback preserves desired policy; PIN fails closed; escalation re-enters allocation after verification failure; tie-break is deterministic; cyclic optional Skill roots degrade safely; Intelligence no longer accepts a Maestro-specific guidance field; frontend and build gates are green.
+- `decisions`: shared task-model pool resolution is used by pure and integrated runtime routing; live account health/auth/quota overwrites model metadata before selection; compatibility validation remains isolated in `maestro_prompt_compat.go`; canonical prompt/intelligence paths consume generic contracts.
+- `evidence`: frontend report `DEV/validation/FRONTEND_LATEST.md` generated `2026-09-12T01:10:08Z`; Linux `./nexus doctor --json` generated `2026-09-12T01:10:47Z`.
+- `known_risks`: no authenticated Mission produced a durable evidence stream ID in this campaign; live provider failover/model escalation, cross-provider semantic handoff, native Windows/macOS and overnight acceptance remain unverified. Compatibility payload fields still exist in Flow/runner/store for persisted transport migration.
+- `remaining_work`: append real Mission closure scenarios to `ValidationEvidenceStream`; prove provider/account/model failover and handoff; complete restart/Attention matrix; native platform and overnight proof; final adversarial review and release verdict.
+- `unlocked_dependencies`: local task-aware routing and generic prompt/intelligence boundaries are ready for authenticated Mission validation.
+
+### Follow-up verification
+
+- Routing decision JSON now has a SQLite reopen regression: the persisted
+  package decision reloads after restart and is projected by
+  `BuildRoutingDecisionReport` without recomputation. Deterministic provider,
+  profile and model tie-break coverage remains green.
+
+- Added `TestLocalAutopilotContractTraversesDiscoveryRoutingSkillsAndVerification`:
+  bounded Project Intelligence → `DIRECT` intent → generic Builtin Skill →
+  task-aware model selection → Mission Runner → verified terminal state. This
+  is deterministic local proof only and does not replace authenticated provider
+  or native-platform evidence.
+
+- `RuntimeRoutingDecision` now persists the selected `AccountScope` alongside
+  provider/profile/model, keeping explainability and future account handoff
+  evidence identity-scoped.
+
+- Agent matching evidence (`score`, `confidence`, `reason`) is now projected at
+  the canonical allocation point into the same durable routing decision; Agent
+  identity remains independent from runtime allocation.
+
+## Final local gate checkpoint — 2026-09-12
+
+- `work_package`: FINAL-LOCAL-VERIFICATION
+- `status`: NO-GO (implementation gates green; external evidence blockers remain)
+- `base_sha`: `2925ca746c198334f20d1e0cef7feb51e4f4f4e3`
+- `current_sha`: `a58cca4d73bdfd55678649b30c0ca64f73b7d410` plus uncommitted worktree changes
+- `files_changed`: `web/src/types.ts` contract projection plus generated frontend verification report and durable closure docs.
+- `tests_run`: `make web-verify`; `go test ./... -count=1`; `go test -race ./... -count=1`; `go vet ./...`; `make security`; `make build`; `make build-desktop`; `./nexus doctor --json`; `git diff --check`.
+- `test_results`: all commands PASS. Frontend report generated at `2026-09-12T01:34:01Z`; Linux/amd64 doctor PASS for installed providers, PTY and WebKitGTK; desktop shell SKIPPED.
+- `decisions`: no provider installation status is promoted to authenticated Mission success; no platform or overnight claim is promoted without same-SHA evidence; no stream ID is fabricated.
+- `evidence`: `DEV/validation/FRONTEND_LATEST.md`, doctor JSON output, full Go/race/vet/security/build outputs and deterministic local autopilot/routing/evidence-chain tests.
+- `known_risks`: live provider failover, model escalation, cross-provider semantic handoff, native Windows/macOS, native desktop shell and overnight acceptance remain unverified; compatibility Maestro payloads remain for migration.
+- `remaining_work`: obtain authenticated Mission evidence and external/native runners, then verify the real stream chain and rerun release review.
+- `unlocked_dependencies`: local implementation and quality gates are green; release promotion is still blocked by external evidence.

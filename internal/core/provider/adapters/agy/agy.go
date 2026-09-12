@@ -124,7 +124,10 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 		return model.Failure{Kind: model.FailureCommand, Message: err.Error()}, err
 	}
 
-	// Set isolated environment
+	// Set isolated environment. Unsetting DBUS_SESSION_BUS_ADDRESS alone is not
+	// enough: AGY's keyring client autolaunches onto the host session bus and
+	// then ChainedAuth prefers that token over the profile's oauth file — which
+	// is how kivervinicius leaked into the kiveromegasistemas splash.
 	envOverrides := map[string]string{
 		"HOME":                             home,
 		"XDG_CONFIG_HOME":                  filepath.Join(home, ".config"),
@@ -142,6 +145,12 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 	wrappedBin, wrappedArgs := bin, args
 	if agySecretServiceEnabled() {
 		wrappedBin, wrappedArgs = runtime.WrapWithIsolatedSecretService(bin, args)
+	} else {
+		// Keep AI_HOST_DBUS for the browser helper; only the session bus that
+		// feeds AGY's keyringAuth must fail closed.
+		env = runtime.EnvSet(env, map[string]string{
+			"DBUS_SESSION_BUS_ADDRESS": "unix:path=/dev/null",
+		}, "GNOME_KEYRING_CONTROL", "GNOME_KEYRING_PID")
 	}
 	return runtime.RunInteractive(wrappedBin, wrappedArgs, env, cwd)
 }

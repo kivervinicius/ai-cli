@@ -113,17 +113,19 @@ export interface ProfileInfo {
   is_default: boolean;
 }
 
+export interface AccountScope {
+  provider_id: string;
+  profile_id: string;
+  account_id: string;
+  identity_version: string;
+  credential_scope?: string;
+}
+
 export interface RegisteredProfile {
   provider: string;
   name: string;
   created_at?: string;
-  account_scope?: {
-    provider_id: string;
-    profile_id: string;
-    account_id: string;
-    identity_version: string;
-    credential_scope?: string;
-  };
+  account_scope?: AccountScope;
 }
 
 export interface ProviderAccount {
@@ -689,6 +691,7 @@ export interface WorkPackage {
   resource_policy?: 'BALANCED' | 'PRESERVE_QUOTA' | 'PREFER_PROVIDER' | 'MANUAL' | string;
   provider?: string;
   profile?: string;
+  skill_ids?: string[];
   maestro_gates?: string[];
   maestro_skills?: string[];
   relevant_paths?: string[];
@@ -966,6 +969,7 @@ export interface ContextCapsule {
   relevant_paths: string[];
   durable_context_refs: string[];
   dependency_receipts: WorkReceipt[];
+  skill_ids: string[];
   maestro_skills: string[];
   acceptance_criteria: string[];
   constraints: string[];
@@ -976,6 +980,84 @@ export interface FlowRunEvidence {
   run_id: string;
   capsules: ContextCapsule[];
   receipts: WorkReceipt[];
+}
+
+export interface RoutingAffinityPreference {
+  mode: string;
+  value?: string;
+}
+
+export interface RoutingAffinityPolicy {
+  engine: RoutingAffinityPreference;
+  provider: RoutingAffinityPreference;
+  profile: RoutingAffinityPreference;
+  model: RoutingAffinityPreference;
+}
+
+export interface RoutingModelCandidate {
+  provider: string;
+  profile: string;
+  model: string;
+  capabilities?: string[];
+  healthy: boolean;
+  authenticated: boolean;
+  quota_available: boolean;
+  cost_rank: number;
+  reasoning_rank: number;
+}
+
+export interface RoutingDecision {
+  task_id?: string;
+  work_plan_revision?: number;
+  agent_id?: string;
+  agent_score?: number;
+  agent_confidence?: string;
+  agent_reason?: string;
+  task_requirements: Record<string, unknown>;
+  desired: RoutingAffinityPolicy;
+  affinity_policy: RoutingAffinityPolicy;
+  actual: RoutingModelCandidate;
+  selected_engine?: string;
+  selected_provider?: string;
+  selected_profile?: string;
+  selected_account_scope?: AccountScope;
+  selected_model?: string;
+  selected_reasoning?: string;
+  skill_refs?: string[];
+  maestro_guidance_ref?: string;
+  alternatives?: RoutingModelCandidate[];
+  fallback: boolean;
+  reason: string;
+  rejected?: string[];
+  rejected_candidates?: string[];
+  task_class?: string;
+  created_at: string;
+}
+
+export interface RoutingDecisionReportEntry {
+  package_id: string;
+  title?: string;
+  state?: string;
+  decision: RoutingDecision;
+}
+
+export interface RoutingDecisionReport {
+  run_id: string;
+  plan_id?: string;
+  work_plan_revision?: number;
+  intent?: {
+    strategy: string;
+    confidence: string;
+    known_facts?: string[];
+    assumptions?: string[];
+    unknowns?: string[];
+    blocking_questions?: string[];
+    evidence?: string[];
+    recommended_next_action: string;
+    snapshot_identity?: string;
+    snapshot_completeness?: string;
+  };
+  decisions: RoutingDecisionReportEntry[];
 }
 
 export interface PackageRun {
@@ -991,6 +1073,8 @@ export interface PackageRun {
   workspace?: string;
   prompt_version_id?: string;
   dependencies?: string[];
+  skill_ids?: string[];
+  maestro_skills?: string[];
   parallel_group?: string;
   verifications?: VerificationResult[];
   verdicts?: ReviewVerdict[];
@@ -1090,6 +1174,7 @@ export interface FlowDecompositionRequest {
   artifact_id?: string;
   goal: string;
   source_prompt?: string;
+  skill_ids?: string[];
   maestro_skills?: string[];
   simple?: boolean;
 }

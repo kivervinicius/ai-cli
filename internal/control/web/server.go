@@ -363,6 +363,12 @@ func (s *Server) routeRun(h *NexusHandler) http.HandlerFunc {
 				return
 			}
 		}
+		path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/runs/"), "/")
+		parts := strings.Split(path, "/")
+		if len(parts) == 2 && strings.EqualFold(parts[1], "routing") {
+			h.handleRunRouting(w, r, parts[0])
+			return
+		}
 		h.handleRunDetail(w, r)
 	}
 }

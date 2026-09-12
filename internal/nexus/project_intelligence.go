@@ -46,7 +46,26 @@ func (n *Nexus) RequestProjectIntelligenceScan(ctx context.Context, projectID st
 		return nil, err
 	}
 	for _, candidate := range scans {
-		if candidate.IdentityDigest == identity.IdentityDigest && (candidate.State == store.ScanQueued || candidate.State == store.ScanRunning || candidate.State == store.ScanSucceeded) {
+		if candidate.IdentityDigest != identity.IdentityDigest {
+			continue
+		}
+		switch candidate.State {
+		case store.ScanQueued:
+			// Re-dispatch stuck QUEUED rows (e.g. OpenProject failed in the worker).
+			go n.executeProjectIntelligenceScan(projectID, candidate.ID)
+			return &candidate, nil
+		case store.ScanRunning, store.ScanSucceeded:
+			return &candidate, nil
+		case store.ScanFailed, store.ScanCanceled:
+			candidate.State = store.ScanQueued
+			candidate.Error = ""
+			candidate.StartedAt = nil
+			candidate.FinishedAt = nil
+			candidate.LeaseOwner = ""
+			if err := st.UpdateProjectIntelligenceScan(candidate); err != nil {
+				return nil, err
+			}
+			go n.executeProjectIntelligenceScan(projectID, candidate.ID)
 			return &candidate, nil
 		}
 	}
@@ -56,14 +75,27 @@ func (n *Nexus) RequestProjectIntelligenceScan(ctx context.Context, projectID st
 		ScannerVersion: contextsnapshot.ScannerVersion,
 	})
 	if err != nil {
-		// A concurrent creator won the unique identity key. Re-read and return
-		// its attempt instead of surfacing a spurious conflict to the client.
+		// A concurrent creator won the unique identity key. Re-read and reuse
+		// (including FAILED → requeue) instead of surfacing a spurious conflict.
 		latest, listErr := st.ListProjectIntelligenceScans(projectID)
 		if listErr == nil {
 			for _, candidate := range latest {
-				if candidate.IdentityDigest == identity.IdentityDigest {
-					return &candidate, nil
+				if candidate.IdentityDigest != identity.IdentityDigest {
+					continue
 				}
+				if candidate.State == store.ScanFailed || candidate.State == store.ScanCanceled {
+					candidate.State = store.ScanQueued
+					candidate.Error = ""
+					candidate.StartedAt = nil
+					candidate.FinishedAt = nil
+					candidate.LeaseOwner = ""
+					if updateErr := st.UpdateProjectIntelligenceScan(candidate); updateErr == nil {
+						go n.executeProjectIntelligenceScan(projectID, candidate.ID)
+					}
+				} else if candidate.State == store.ScanQueued {
+					go n.executeProjectIntelligenceScan(projectID, candidate.ID)
+				}
+				return &candidate, nil
 			}
 		}
 		return nil, err

@@ -2,6 +2,7 @@ package skills
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -27,7 +28,7 @@ func NewCatalog(sources ...Source) (Catalog, error) {
 		}
 		items, err := source.Discover(context.Background())
 		if err != nil {
-			if err == ErrSourceUnavailable {
+			if errors.Is(err, ErrSourceUnavailable) {
 				continue
 			}
 			return Catalog{}, fmt.Errorf("discover skills from %s: %w", source.ID(), err)
@@ -107,13 +108,13 @@ func better(left, right Skill) bool {
 
 func sourcePriority(source SourceID) int {
 	switch source {
-	case SourceMaestro:
-		return 5
-	case SourceBuiltin:
-		return 4
 	case SourceProject:
-		return 3
+		return 5
 	case SourceUser:
+		return 4
+	case SourceBuiltin:
+		return 3
+	case SourceMaestro:
 		return 2
 	case SourceExternal:
 		return 1

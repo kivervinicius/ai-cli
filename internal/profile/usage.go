@@ -221,11 +221,24 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 	}
 
 	// A failed refresh must not destroy the last successful observation. Keep
-	// it visible as ESTIMATED, with an explicit diagnostic, while ensuring it
-	// cannot pass the normal freshness check or masquerade as live quota.
+	// official RATE_LIMITED blocks intact so AUTO/PREFER cannot select a
+	// backend-blocked account. Other last-known snapshots are shown as
+	// ESTIMATED with an explicit diagnostic.
 	if hasLastKnown && len(lastKnown.Windows) > 0 {
 		lastKnown.ProviderID = providerName
 		lastKnown.ProfileID = name
+		if lastKnown.Status == model.UsageRateLimited {
+			if lastKnown.Error == "" {
+				lastKnown.Error = fmt.Sprintf("official rate limit still in effect from %s", quota.FormatFreshness(lastKnown.FetchedAt))
+			}
+			if scopeOK {
+				_ = qEng.SaveUsageForScope(scope, lastKnown)
+			}
+			if debug {
+				slog.Debug("loadUsageSnapshot: preserving RATE_LIMITED lastKnown", "provider", providerName, "profile", name, "lastKnownFetchedAt", lastKnown.FetchedAt)
+			}
+			return lastKnown
+		}
 		lastKnown.Status = model.UsageEstimated
 		lastKnown.Error = fmt.Sprintf("live usage refresh failed; showing last known observation from %s", quota.FormatFreshness(lastKnown.FetchedAt))
 		if scopeOK {
@@ -297,7 +310,12 @@ func snapshotBelongsToProfile(snap model.UsageSnapshot, providerName, profileNam
 			}
 		}
 	}
-	if expectedAccount == "" || snap.Account == "" {
+	if expectedAccount == "" {
+		// Without an authenticated identity, no snapshot can be attributed.
+		return false
+	}
+	if snap.Account == "" {
+		// Snapshot omitted account but already passed provider/profile/scope checks.
 		return true
 	}
 	if strings.EqualFold(expectedAccount, snap.Account) {

@@ -171,14 +171,27 @@ func (s *QuotaMonitorService) check() {
 			continue
 		}
 		snapshot := profile.GetUsageSnapshot(p.Provider, p.Name)
-		if snapshot.Status != model.UsageLive && snapshot.Status != model.UsageCached {
+		// RATE_LIMITED is an accurate reading, not a failed one: the provider
+		// told us the account is blocked. Alerting on it is the monitor's job.
+		switch snapshot.Status {
+		case model.UsageLive, model.UsageCached, model.UsageRateLimited:
+		default:
 			s.emitDegraded(p.Provider+":"+p.Name, fmt.Sprintf("quota read is %s", snapshot.Status))
 			continue
 		}
 		s.clearDegraded(p.Provider + ":" + p.Name)
 		view := quota.BuildQuotaView(snapshot, account.Email, account.Plan)
+		// Match GetAccountInfo: Codex scopes by chatgpt_account_id, others by email.
+		identity := account.Email
+		if p.Provider == "codex" && strings.TrimSpace(account.ExternalAccountID) != "" {
+			identity = account.ExternalAccountID
+		}
 		acc := ProviderAccount{Provider: p.Provider, Profile: p.Name, DisplayName: account.Email, Authenticated: true, QuotaView: &view, QuotaRemaining: 0, QuotaTotal: 1, LastChecked: time.Now()}
-		if scope, scopeErr := profile.AccountScope(p.Provider, p.Name, account.Email); scopeErr == nil {
+		if view.AvailReasons.RateLimited || snapshot.Status == model.UsageRateLimited {
+			acc.RateLimited = true
+			acc.Available = false
+		}
+		if scope, scopeErr := profile.AccountScope(p.Provider, p.Name, identity); scopeErr == nil {
 			acc.Scope = scope
 		}
 		if remaining, ok := view.BestGroupRemaining(); ok {

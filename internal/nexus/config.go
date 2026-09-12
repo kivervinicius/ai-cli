@@ -20,6 +20,7 @@ type AgentConfig struct {
 	Provider         string                 `json:"provider"`
 	Profile          string                 `json:"profile"`
 	Model            string                 `json:"model,omitempty"`
+	ModelCandidates  []ModelCandidate       `json:"model_candidates,omitempty"`
 	Options          map[string]any         `json:"options,omitempty"`
 	Workspace        string                 `json:"workspace,omitempty"`
 	Isolation        string                 `json:"isolation,omitempty"`         // "project" | "global" | "none"

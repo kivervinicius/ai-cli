@@ -21,6 +21,32 @@ authenticated Mission produced a durable stream instance ID in this run, and
 real provider/native-platform/overnight evidence is incomplete. See
 `DEV/validation/FINAL_CLOSURE_CHECKPOINTS.md` for resumable state and blockers.
 
+## Atualização 2026-09-12 — Model routing e remoção de acoplamento interno
+
+O roteamento de modelo passou a compartilhar uma única resolução task-aware nos
+caminhos puro e integrado. Candidatos configuráveis são filtrados pela conta
+live selecionada; `PREFER` pode fazer fallback, `PIN` bloqueia, e escalonamento
+por falha de verificação reentra em `ALLOCATING` sem mutar a preferência.
+Também foi adicionado tie-break determinístico e teste de raiz Skill opcional
+com symlink cíclico.
+
+O PromptCompiler canônico não referencia mais `CatalogSkill`,
+`MaestroSkillDesc`, `MaestroClient` ou `maestrogates`; a compatibilidade legada
+foi isolada em `maestro_prompt_compat.go`. `ExecutionContextRequest` recebe
+somente `ExecutionGuidance` genérico, e a Intelligence não faz fallback para
+campo Maestro.
+
+Verificação fresca: `go test ./... -count=1`, `go test -race ./... -count=1`,
+`go vet ./...`, `make security`, `make build`, `make build-desktop`,
+`make web-verify` e `git diff --check` passaram. O ambiente ainda não fornece
+Mission autenticada com `ValidationEvidenceStream` real, Windows/macOS nativos
+ou overnight; o verdict global permanece `NO-GO`.
+
+O teste composto `TestLocalAutopilotContractTraversesDiscoveryRoutingSkillsAndVerification`
+agora comprova a cadeia local bounded discovery → `DIRECT` → Skill → model
+task-aware → Mission Runner → `COMPLETED_VERIFIED`. A decisão de routing também
+é recarregada após reopen SQLite e projetada sem recomputação.
+
 ## Atualização 2026-09-11 — Entrada PTY separada do controle Nexus
 
 O caminho `CmdInput` do `SessionHost` está transparente byte a byte: não usa
@@ -1391,6 +1417,37 @@ failover/PIN/model-escalation/handoff scenarios, native Windows/macOS same-SHA
 validation, and overnight acceptance. Model inventory/escalation remains a
 contract-level slice in the live Mission executor; do not claim those scenarios
 as PASS without fresh evidence.
+
+## Handoff — 2026-09-12 scanner and report continuation
+
+Current HEAD is `a58cca4d73bdfd55678649b30c0ca64f73b7d410`, with uncommitted
+scanner/report changes preserved in the worktree. The existing Project
+Intelligence scanner now emits bounded observed facts for operational commands,
+frameworks, Go workspace uses, nested packages and CI workflow commands. The
+existing run routing report now includes the persisted intent decision when the
+WorkPlan is available and rejects corrupt durable JSON.
+
+Focused contextsnapshot, report/intent and full Nexus tests passed. A real local
+AGY bootstrap attempt remained `UNVERIFIED` because sudo authentication failed
+while configuring `/etc/hosts`; no authenticated Mission stream ID exists.
+Continue with model/escalation integration, evidence/native/overnight scenarios,
+then rerun all quality gates. Do not report GO from local unit/package tests.
+
+## Handoff — 2026-09-12 final local verification
+
+The persisted routing contract is now also represented in `web/src/types.ts`:
+Agent score/confidence/reason and the identity-scoped selected account are
+available to the existing routing report client. No new UI or store was added.
+
+Fresh gates all passed: `make web-verify`, `go test ./... -count=1`,
+`go test -race ./... -count=1`, `go vet ./...`, `make security`, `make build`,
+`make build-desktop`, and `git diff --check`. `./nexus doctor --json` was
+recorded on Linux/amd64 at `2026-09-12T01:36:44Z`.
+
+Release remains `NO-GO`: no authenticated Mission produced a durable
+ValidationEvidenceStream ID; live provider/account/model failover, native
+Windows/macOS, overnight and native desktop shell evidence remain
+`UNVERIFIED`/`SKIPPED`. No commit or push was created.
 # Atualização 2026-09-11 — Alinhamento do destino de instalação
 
 `install.sh` não fixa mais o destino em `~/.local/bin` quando já existe um

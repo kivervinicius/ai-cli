@@ -107,11 +107,8 @@ type ExecutionGuidance struct {
 	Instructions []string `json:"instructions,omitempty"`
 	Skills       []string `json:"skills,omitempty"`
 	Source       string   `json:"source,omitempty"`
+	Reference    string   `json:"reference,omitempty"`
 }
-
-// MaestroGuidance is retained as a source-compatible type alias for older
-// callers. New code should use ExecutionGuidance.
-type MaestroGuidance = ExecutionGuidance
 
 type RuntimeConstraints struct {
 	Provider     string   `json:"provider,omitempty"`
@@ -127,7 +124,6 @@ type ExecutionContextRequest struct {
 	Task     WorkPackageContext `json:"task"`
 	Skills   []string           `json:"skills,omitempty"`
 	Guidance ExecutionGuidance  `json:"guidance,omitempty"`
-	Maestro  MaestroGuidance    `json:"maestro,omitempty"` // legacy compatibility
 	Runtime  RuntimeConstraints `json:"runtime"`
 }
 

@@ -103,6 +103,10 @@ func run(ctx context.Context, safeApply bool) error {
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return fmt.Errorf("invalid NEXUS_BOOTSTRAP_URL")
 	}
+	bootstrapToken, err := bootstrapTokenFromURL(u)
+	if err != nil {
+		return err
+	}
 	base := u.Scheme + "://" + u.Host
 	projectPath := strings.TrimSpace(os.Getenv("NEXUS_E2E_PROJECT_PATH"))
 	if projectPath == "" {
@@ -121,18 +125,10 @@ func run(ctx context.Context, safeApply bool) error {
 
 	jar, _ := cookiejar.New(nil)
 	hc := &http.Client{Jar: jar, Timeout: 30 * time.Second}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, bootstrap, nil)
-	resp, err := hc.Do(req)
-	if err != nil {
-		return fmt.Errorf("bootstrap: %w", err)
-	}
-	io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		return fmt.Errorf("bootstrap returned HTTP %d", resp.StatusCode)
-	}
-
 	api := &apiClient{base: base, http: hc}
+	if err := api.do(ctx, http.MethodPost, "/api/v1/auth/bootstrap", map[string]string{"token": bootstrapToken}, nil); err != nil {
+		return fmt.Errorf("bootstrap exchange: %w", err)
+	}
 	var session struct {
 		Authenticated bool   `json:"authenticated"`
 		CSRF          string `json:"csrf_token"`
@@ -274,7 +270,7 @@ func run(ctx context.Context, safeApply bool) error {
 	if prompt == "" {
 		prompt = "Reply with exactly NEXUS_E2E_OK and nothing else."
 	}
-	if err := ws.WriteJSON(map[string]any{"type": "input", "data": prompt + "\n"}); err != nil {
+	if err := ws.WriteJSON(map[string]any{"type": "input", "data": prompt + "\r"}); err != nil {
 		return fmt.Errorf("send prompt: %w", err)
 	}
 
@@ -284,7 +280,7 @@ func run(ctx context.Context, safeApply bool) error {
 		_ = ws.SetReadDeadline(deadline)
 		var msg map[string]any
 		if err := ws.ReadJSON(&msg); err != nil {
-			return fmt.Errorf("wait for provider output after prompt: %w", err)
+			return fmt.Errorf("wait for provider output after prompt: %w; sanitized transcript: %q", err, transcriptExcerpt(sanitizeTranscript(providerOutput.String())))
 		}
 		if msg["type"] == "output" {
 			if s, ok := msg["data"].(string); ok && s != "" {
@@ -429,7 +425,7 @@ func verifySafeApply(ctx context.Context, api *apiClient, bootstrap *url.URL, ja
 			break
 		}
 	}
-	if err := ws.WriteJSON(map[string]any{"type": "input", "data": "Reply with exactly NEXUS_E2E_OK and nothing else.\n"}); err != nil {
+	if err := ws.WriteJSON(map[string]any{"type": "input", "data": "Reply with exactly NEXUS_E2E_OK and nothing else.\r"}); err != nil {
 		return fmt.Errorf("send Safe Apply marker prompt: %w", err)
 	}
 	var transcript strings.Builder
@@ -592,21 +588,26 @@ func copyProfileTree(source, destination string) error {
 	for _, entry := range entries {
 		from := filepath.Join(source, entry.Name())
 		to := filepath.Join(destination, entry.Name())
+		// DirEntry.Info may describe a symlink target on some filesystems;
+		// reject the directory entry itself before doing any metadata lookup so
+		// an isolated E2E profile can never follow a link loop or escape source.
+		if entry.Type()&os.ModeSymlink != 0 {
+			continue
+		}
 		entryInfo, err := entry.Info()
 		if err != nil {
 			return err
 		}
-		// Do not follow links into the live host home or provider caches.
-		if entryInfo.Mode()&os.ModeSymlink != 0 {
-			continue
-		}
-		info, err := os.Stat(from)
+		info, err := os.Lstat(from)
 		if err != nil {
 			if os.IsNotExist(err) {
 				// Ignore dangling provider-cache symlinks.
 				continue
 			}
 			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || entryInfo.Mode()&os.ModeSymlink != 0 {
+			continue
 		}
 		if info.IsDir() {
 			if profileCopyExcludedDirs[entry.Name()] {
@@ -663,6 +664,25 @@ func parseBootstrapURL(u string) string {
 		return ""
 	}
 	return parsed.String()
+}
+
+func bootstrapTokenFromURL(bootstrap *url.URL) (string, error) {
+	if bootstrap == nil {
+		return "", fmt.Errorf("bootstrap URL is required")
+	}
+	if token := strings.TrimSpace(bootstrap.Query().Get("token")); token != "" {
+		return token, nil
+	}
+	const prefix = "nexus_bootstrap="
+	fragment := strings.TrimSpace(bootstrap.Fragment)
+	if !strings.HasPrefix(fragment, prefix) {
+		return "", fmt.Errorf("bootstrap URL does not contain a token")
+	}
+	token, err := url.QueryUnescape(strings.TrimPrefix(fragment, prefix))
+	if err != nil || strings.TrimSpace(token) == "" {
+		return "", fmt.Errorf("bootstrap URL contains an invalid token")
+	}
+	return strings.TrimSpace(token), nil
 }
 
 type redactWriter struct{ dst io.Writer }

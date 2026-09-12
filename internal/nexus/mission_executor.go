@@ -11,6 +11,7 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/control/events"
 	"github.com/kivervinicius/ai-cli/internal/nexus/autonomyguard"
+	"github.com/kivervinicius/ai-cli/internal/nexus/intelligence"
 	"github.com/kivervinicius/ai-cli/internal/nexus/runner"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
@@ -48,14 +49,17 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 
 	strategy := strings.ToUpper(strings.TrimSpace(pkg.AssignmentStrategy))
 	var agent store.Agent
+	var agentEvidence agentSelectionEvidence
 	switch strategy {
 	case "": // legacy WorkPlan behavior
 		if strings.TrimSpace(pkg.AssignedAgent) != "" {
 			agent, err = st.GetAgent(pkg.AssignedAgent, run.ProjectID)
+			agentEvidence = agentSelectionEvidence{Confidence: "PINNED", Reason: "existing Agent assignment"}
 		} else {
-			agent, err = e.selectReusableAgent(st, run, pkg)
+			agent, agentEvidence, err = e.selectReusableAgent(st, run, pkg)
 			if err == store.ErrNotFound {
 				agent, err = createMissionAgent(st, run.ProjectID, pkg, "Mission · ")
+				agentEvidence = agentSelectionEvidence{Confidence: "CREATED", Reason: "created from task requirements"}
 			}
 		}
 	case string(FlowAssignmentExisting):
@@ -66,12 +70,15 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 			return runner.AllocationResult{}, fmt.Errorf("agent %s is already assigned to another active Flow Step", pkg.AssignedAgent)
 		}
 		agent, err = st.GetAgent(pkg.AssignedAgent, run.ProjectID)
+		agentEvidence = agentSelectionEvidence{Confidence: "PINNED", Reason: "existing Flow Agent assignment"}
 	case string(FlowAssignmentCreate):
 		agent, err = createMissionAgent(st, run.ProjectID, pkg, "Flow · ")
+		agentEvidence = agentSelectionEvidence{Confidence: "CREATED", Reason: "created from Flow task requirements"}
 	case string(FlowAssignmentAuto):
-		agent, err = e.selectReusableAgent(st, run, pkg)
+		agent, agentEvidence, err = e.selectReusableAgent(st, run, pkg)
 		if err == store.ErrNotFound {
 			agent, err = createMissionAgent(st, run.ProjectID, pkg, "Auto · ")
+			agentEvidence = agentSelectionEvidence{Confidence: "CREATED", Reason: "created from task requirements"}
 		}
 	default:
 		return runner.AllocationResult{}, fmt.Errorf("unsupported Flow assignment strategy %q", pkg.AssignmentStrategy)
@@ -94,15 +101,25 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 	current, _ := currentAgentConfig(st, agent)
 	isFailover := pkg.Attempt > 1 && (pkg.RetryFrom == runner.StateAllocating || isQuotaOrRateLimitFailure(pkg.ErrorMessage))
 
-	candidateAccounts := accounts
-	if !isFailover {
-		candidateAccounts = filterFlowResourceAccounts(accounts, pkg.Provider, pkg.Profile)
-	} else if current.Provider != "" {
-		// Exclude the failing provider/profile to prevent looping failover
-		candidateAccounts = filterOutFailingResource(accounts, current.Provider, current.Profile)
+	desiredProvider := strings.TrimSpace(pkg.DesiredProvider)
+	desiredProfile := strings.TrimSpace(pkg.DesiredProfile)
+	if desiredProvider == "" && pkg.Attempt <= 1 {
+		desiredProvider = strings.TrimSpace(pkg.Provider)
 	}
+	if desiredProfile == "" && pkg.Attempt <= 1 {
+		desiredProfile = strings.TrimSpace(pkg.Profile)
+	}
+	pkg.DesiredProvider, pkg.DesiredProfile = desiredProvider, desiredProfile
+	preferenceMode := missionAffinityMode(policy, desiredProvider, desiredProfile)
 
+	candidateAccounts, candidateErr := selectMissionCandidateAccounts(accounts, pkg, current, preferenceMode, isFailover)
+	if candidateErr != nil {
+		return runner.AllocationResult{}, candidateErr
+	}
 	if len(candidateAccounts) == 0 {
+		if preferenceMode == AffinityPin {
+			return runner.AllocationResult{}, fmt.Errorf("%w: pinned runtime has no eligible account for Flow Step %s", ErrBlockedResource, pkg.PackageID)
+		}
 		return runner.AllocationResult{}, fmt.Errorf("no eligible alternative provider profiles available for Flow Step %s after quota/rate limit failure", pkg.PackageID)
 	}
 
@@ -115,34 +132,47 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 	if !keepCurrent {
 		recommendation := RecommendResources(candidateAccounts, req, policy)
 		if recommendation.Recommended == nil {
+			if preferenceMode == AffinityPin {
+				return runner.AllocationResult{}, fmt.Errorf("%w: pinned runtime unavailable for Flow Step %s: %s", ErrBlockedResource, pkg.PackageID, recommendation.Explanation)
+			}
 			return runner.AllocationResult{}, fmt.Errorf("no provider/profile satisfies Flow Step %s requirements: %s", pkg.PackageID, recommendation.Explanation)
 		}
 		selected = recommendation.Recommended.Account
 		routingReason = recommendation.Explanation
 	}
 
-	desiredProvider := strings.TrimSpace(pkg.DesiredProvider)
-	desiredProfile := strings.TrimSpace(pkg.DesiredProfile)
-	if desiredProvider == "" && pkg.Attempt <= 1 {
-		desiredProvider = strings.TrimSpace(pkg.Provider)
-	}
-	if desiredProfile == "" && pkg.Attempt <= 1 {
-		desiredProfile = strings.TrimSpace(pkg.Profile)
-	}
-	pkg.DesiredProvider, pkg.DesiredProfile = desiredProvider, desiredProfile
 	current.Provider, current.Profile = selected.Provider, selected.Profile
-	pkg.Provider, pkg.Profile = selected.Provider, selected.Profile
-	preferenceMode := AffinityAuto
-	if desiredProvider != "" || desiredProfile != "" {
-		preferenceMode = AffinityPrefer
-		if policy == PolicyManual {
-			preferenceMode = AffinityPin
+	if pkg.Attempt > 1 && pkg.RetryFrom == runner.StateAllocating && req.EscalationLevel < pkg.Attempt-1 {
+		req.EscalationLevel = pkg.Attempt - 1
+	}
+	modelFallback := false
+	modelReason := ""
+	modelPreference := AffinityPreference{Mode: AffinityAuto}
+	if req.RuntimeAffinity != nil {
+		modelPreference = req.RuntimeAffinity.Model
+	}
+	modelCandidates := configuredModelCandidates(current, selected, req.ModelCandidates...)
+	if len(modelCandidates) > 0 {
+		model, fallback, reason, modelErr := ResolveTaskModel(req, modelPreference, selected, modelCandidates)
+		if modelErr != nil {
+			return runner.AllocationResult{}, fmt.Errorf("resolve task model: %w", modelErr)
 		}
+		current.Model = model.Model
+		modelFallback, modelReason = fallback, reason
+	} else if modelPreference.Mode == AffinityPin {
+		return runner.AllocationResult{}, fmt.Errorf("resolve task model: %w: model inventory unavailable", ErrBlockedResource)
+	} else if modelPreference.Mode == AffinityPrefer && modelPreference.Value != "" && !strings.EqualFold(current.Model, modelPreference.Value) {
+		modelFallback = true
+		modelReason = fmt.Sprintf("preferred model %q unavailable in runtime inventory; retained configured model %q", modelPreference.Value, current.Model)
 	}
-	routingDecision := buildMissionRoutingDecision(pkg, agent, req, selected, current, desiredProvider, desiredProfile, preferenceMode, isFailover, routingReason)
-	if raw, marshalErr := json.Marshal(routingDecision); marshalErr == nil {
-		pkg.RoutingDecisionJSON = string(raw)
+	pkg.Provider, pkg.Profile = selected.Provider, selected.Profile
+	routingReason = strings.TrimSpace(strings.Join([]string{routingReason, modelReason}, "; "))
+	routingDecision := buildMissionRoutingDecision(pkg, agent, req, selected, current, desiredProvider, desiredProfile, preferenceMode, isFailover || modelFallback, routingReason, agentEvidence)
+	raw, marshalErr := json.Marshal(routingDecision)
+	if marshalErr != nil {
+		return runner.AllocationResult{}, fmt.Errorf("persist routing decision: %w", marshalErr)
 	}
+	pkg.RoutingDecisionJSON = string(raw)
 
 	if isFailover {
 		events.DefaultBus().Publish(events.NewEventWithCorrelation(
@@ -189,30 +219,51 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 // existing resource scheduler into the durable, explainable routing contract.
 // It intentionally does not mutate the desired affinity when a fallback is
 // selected and leaves engine unset when the scheduler has no engine evidence.
-func buildMissionRoutingDecision(pkg *runner.PackageRun, agent store.Agent, req TaskRequirements, selected ProviderAccount, current AgentConfig, desiredProvider, desiredProfile string, preferenceMode AffinityMode, isFailover bool, routingReason string) ExecutionRoutingDecision {
+func buildMissionRoutingDecision(pkg *runner.PackageRun, agent store.Agent, req TaskRequirements, selected ProviderAccount, current AgentConfig, desiredProvider, desiredProfile string, preferenceMode AffinityMode, isFailover bool, routingReason string, evidence ...agentSelectionEvidence) ExecutionRoutingDecision {
+	modelPreference := AffinityPreference{Mode: AffinityAuto}
+	if req.RuntimeAffinity != nil {
+		modelPreference = req.RuntimeAffinity.Model
+	}
 	affinity := RuntimeAffinityPolicy{
 		Provider: AffinityPreference{Mode: preferenceMode, Value: desiredProvider},
 		Profile:  AffinityPreference{Mode: preferenceMode, Value: desiredProfile},
-		Model:    AffinityPreference{Mode: AffinityAuto},
+		Model:    modelPreference,
 	}
 	fallback := isFailover || (desiredProvider != "" && desiredProvider != selected.Provider) || (desiredProfile != "" && desiredProfile != selected.Profile)
 	reason := firstNonEmpty(routingReason, "selected by existing Nexus resource scheduler")
-	return ExecutionRoutingDecision{
-		TaskID:            pkg.PackageID,
-		AgentID:           agent.ID,
-		Requirements:      req,
-		Desired:           affinity,
-		AffinityPolicy:    affinity,
-		Actual:            ModelCandidate{Provider: selected.Provider, Profile: selected.Profile, Model: current.Model, Healthy: selected.Health == "healthy", Authenticated: selected.Authenticated, QuotaAvailable: selected.Available},
-		SelectedProvider:  selected.Provider,
-		SelectedProfile:   selected.Profile,
-		SelectedModel:     current.Model,
-		SelectedReasoning: reason,
-		Fallback:          fallback,
-		Reason:            reason,
-		TaskClass:         req.TaskKind,
-		CreatedAt:         time.Now().UTC(),
+	agentSelection := agentSelectionEvidence{Confidence: "UNKNOWN", Reason: "Agent selection evidence unavailable"}
+	if len(evidence) > 0 {
+		agentSelection = evidence[0]
 	}
+	return ExecutionRoutingDecision{
+		TaskID:               pkg.PackageID,
+		AgentID:              agent.ID,
+		AgentScore:           agentSelection.Score,
+		AgentConfidence:      agentSelection.Confidence,
+		AgentReason:          agentSelection.Reason,
+		Requirements:         req,
+		Desired:              affinity,
+		AffinityPolicy:       affinity,
+		Actual:               ModelCandidate{Provider: selected.Provider, Profile: selected.Profile, Model: current.Model, Healthy: selected.Health == "healthy", Authenticated: selected.Authenticated, QuotaAvailable: selected.Available},
+		SelectedProvider:     selected.Provider,
+		SelectedProfile:      selected.Profile,
+		SelectedAccountScope: selected.Scope,
+		SelectedModel:        current.Model,
+		SelectedReasoning:    reason,
+		SkillRefs:            packageRunSkillIDs(pkg),
+		MaestroGuidanceRef:   maestroGuidanceReference(req.Guidance),
+		Fallback:             fallback,
+		Reason:               reason,
+		TaskClass:            req.TaskKind,
+		CreatedAt:            time.Now().UTC(),
+	}
+}
+
+func maestroGuidanceReference(guidance *intelligence.ExecutionGuidance) string {
+	if guidance == nil || !strings.EqualFold(strings.TrimSpace(guidance.Source), "maestro") {
+		return ""
+	}
+	return strings.TrimSpace(guidance.Reference)
 }
 
 func createMissionAgent(st *store.Store, projectID string, pkg *runner.PackageRun, prefix string) (store.Agent, error) {
@@ -223,10 +274,16 @@ func createMissionAgent(st *store.Store, projectID string, pkg *runner.PackageRu
 	return st.CreateAgent(store.Agent{ProjectID: projectID, Name: prefix + name, Role: defaultRole(pkg.Role, "implementer")})
 }
 
-func (e *nexusPackageExecutor) selectReusableAgent(st *store.Store, run *runner.MissionRun, pkg *runner.PackageRun) (store.Agent, error) {
+type agentSelectionEvidence struct {
+	Score      float64
+	Confidence string
+	Reason     string
+}
+
+func (e *nexusPackageExecutor) selectReusableAgent(st *store.Store, run *runner.MissionRun, pkg *runner.PackageRun) (store.Agent, agentSelectionEvidence, error) {
 	agents, err := st.ListAgents(run.ProjectID)
 	if err != nil {
-		return store.Agent{}, err
+		return store.Agent{}, agentSelectionEvidence{}, err
 	}
 	reserved := reservedAgentsInRun(run, pkg.PackageID)
 	candidates := make([]AgentMatchCandidate, 0, len(agents))
@@ -263,9 +320,11 @@ func (e *nexusPackageExecutor) selectReusableAgent(st *store.Store, run *runner.
 		Constraints:           requirements.Constraints,
 	})
 	if match.Recommended == nil {
-		return store.Agent{}, store.ErrNotFound
+		return store.Agent{}, agentSelectionEvidence{}, store.ErrNotFound
 	}
-	return match.Recommended.Agent, nil
+	return match.Recommended.Agent, agentSelectionEvidence{
+		Score: match.Recommended.Score, Confidence: match.Recommended.Confidence, Reason: match.Explanation,
+	}, nil
 }
 
 func agentRequiredCapabilities(capabilities []string) []string {
@@ -319,6 +378,58 @@ func flowResourcePolicy(raw string) SchedulerPolicy {
 		return PolicyManual
 	default:
 		return PolicyBalanced
+	}
+}
+
+func missionAffinityMode(policy SchedulerPolicy, desiredProvider, desiredProfile string) AffinityMode {
+	if strings.TrimSpace(desiredProvider) == "" && strings.TrimSpace(desiredProfile) == "" {
+		return AffinityAuto
+	}
+	if policy == PolicyManual {
+		return AffinityPin
+	}
+	return AffinityPrefer
+}
+
+// selectMissionCandidateAccounts applies AUTO/PREFER/PIN before RecommendResources.
+// PIN never opens the full pool on failover: a pinned runtime that fails stays blocked.
+func selectMissionCandidateAccounts(accounts []ProviderAccount, pkg *runner.PackageRun, current AgentConfig, preferenceMode AffinityMode, isFailover bool) ([]ProviderAccount, error) {
+	pinProvider := strings.TrimSpace(pkg.DesiredProvider)
+	pinProfile := strings.TrimSpace(pkg.DesiredProfile)
+	if pinProvider == "" {
+		pinProvider = strings.TrimSpace(pkg.Provider)
+	}
+	if pinProfile == "" {
+		pinProfile = strings.TrimSpace(pkg.Profile)
+	}
+
+	switch preferenceMode {
+	case AffinityPin:
+		if isFailover {
+			return nil, fmt.Errorf("%w: pinned runtime %s:%s unavailable after quota/rate limit", ErrBlockedResource, pinProvider, pinProfile)
+		}
+		return filterFlowResourceAccounts(accounts, pinProvider, pinProfile), nil
+	case AffinityPrefer:
+		if !isFailover {
+			preferred := filterFlowResourceAccounts(accounts, pinProvider, pinProfile)
+			if len(preferred) > 0 {
+				return preferred, nil
+			}
+			// Preferred identity unavailable on first attempt: open the pool for fallback.
+			return accounts, nil
+		}
+		if current.Provider != "" {
+			return filterOutFailingResource(accounts, current.Provider, current.Profile), nil
+		}
+		return accounts, nil
+	default: // AUTO
+		if !isFailover {
+			return filterFlowResourceAccounts(accounts, pkg.Provider, pkg.Profile), nil
+		}
+		if current.Provider != "" {
+			return filterOutFailingResource(accounts, current.Provider, current.Profile), nil
+		}
+		return accounts, nil
 	}
 }
 
@@ -626,6 +737,15 @@ func missionTaskRequirements(pkg *runner.PackageRun) TaskRequirements {
 			req.PreferProvider = explicit.PreferProvider
 			req.AgentPreference = explicit.AgentPreference
 			req.ProjectPolicy = explicit.ProjectPolicy
+			req.RuntimeAffinity = explicit.RuntimeAffinity
+			req.ModelCandidates = append([]ModelCandidate(nil), explicit.ModelCandidates...)
+			req.EscalationLevel = explicit.EscalationLevel
+			if explicit.Guidance != nil {
+				guidance := *explicit.Guidance
+				guidance.Instructions = append([]string(nil), explicit.Guidance.Instructions...)
+				guidance.Skills = append([]string(nil), explicit.Guidance.Skills...)
+				req.Guidance = &guidance
+			}
 			req.RequiredCapabilities = mergeRequiredCapabilities(req.RequiredCapabilities, explicit.RequiredCapabilities)
 			req.PreferredCapabilities = append([]string(nil), explicit.PreferredCapabilities...)
 			req.DesiredStrengths = append([]string(nil), explicit.DesiredStrengths...)
@@ -633,6 +753,33 @@ func missionTaskRequirements(pkg *runner.PackageRun) TaskRequirements {
 		}
 	}
 	return req
+}
+
+// configuredModelCandidates binds declarative model metadata to the live
+// account selected by the existing resource scheduler. Configuration can
+// describe names, capabilities and cost/reasoning ranks, but it cannot assert
+// health, authentication or quota; those fields always come from the account.
+func configuredModelCandidates(cfg AgentConfig, account ProviderAccount, taskCandidates ...ModelCandidate) []ModelCandidate {
+	configured := append([]ModelCandidate(nil), taskCandidates...)
+	if len(configured) == 0 {
+		configured = append(configured, cfg.ModelCandidates...)
+	}
+	if len(configured) == 0 && strings.TrimSpace(cfg.Model) != "" {
+		configured = []ModelCandidate{{Model: strings.TrimSpace(cfg.Model), CostRank: 1, ReasoningRank: 1}}
+	}
+	result := make([]ModelCandidate, 0, len(configured))
+	for _, candidate := range configured {
+		if strings.TrimSpace(candidate.Model) == "" {
+			continue
+		}
+		candidate.Provider = account.Provider
+		candidate.Profile = account.Profile
+		candidate.Healthy = strings.EqualFold(account.Health, "healthy") || strings.TrimSpace(account.Health) == ""
+		candidate.Authenticated = account.Authenticated
+		candidate.QuotaAvailable = account.Available && !account.RateLimited
+		result = append(result, candidate)
+	}
+	return result
 }
 
 func mergeRequiredCapabilities(base, extra []string) []string {

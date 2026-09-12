@@ -156,11 +156,13 @@ func compileTargetPackagePrompt(ctx context.Context, plan *store.WorkPlan, targe
 }
 
 func compileTargetPackagePromptForAgent(ctx context.Context, plan *store.WorkPlan, targetPkg *store.WorkPackage, agentSpec intelligence.AgentSpec, validatedSkills []string) (*intelligence.PromptCompilationResult, error) {
+	guidance := guidanceForWorkPackage(targetPkg)
 	compiled, err := intelligence.NewNexusEngine(nil).CompileExecutionContext(ctx, intelligence.ExecutionContextRequest{
-		Agent:   agentSpec,
-		Project: intelligence.ProjectContext{Facts: plan.StructuredFacts},
-		Task:    intelligence.WorkPackageContext{Title: targetPkg.Title, Goal: targetPkg.Goal, Priority: targetPkg.Priority, Role: targetPkg.Role, AcceptanceCriteria: targetPkg.AcceptanceCriteria},
-		Skills:  append([]string(nil), validatedSkills...),
+		Agent:    agentSpec,
+		Project:  intelligence.ProjectContext{Facts: plan.StructuredFacts},
+		Task:     intelligence.WorkPackageContext{Title: targetPkg.Title, Goal: targetPkg.Goal, Priority: targetPkg.Priority, Role: targetPkg.Role, AcceptanceCriteria: targetPkg.AcceptanceCriteria},
+		Skills:   append([]string(nil), validatedSkills...),
+		Guidance: guidance,
 	})
 	if err != nil {
 		return nil, err
@@ -175,6 +177,20 @@ func compileTargetPackagePromptForAgent(ctx context.Context, plan *store.WorkPla
 		EstimatedTokens: (len(compiled.SystemInstructions) + len(compiled.TaskInstructions)) / 4,
 		CompiledAt:      time.Now().UTC(),
 	}, nil
+}
+
+func guidanceForWorkPackage(pkg *store.WorkPackage) intelligence.ExecutionGuidance {
+	if pkg == nil || strings.TrimSpace(pkg.TaskRequirements) == "" {
+		return intelligence.ExecutionGuidance{}
+	}
+	var req TaskRequirements
+	if err := json.Unmarshal([]byte(pkg.TaskRequirements), &req); err != nil || req.Guidance == nil {
+		return intelligence.ExecutionGuidance{}
+	}
+	guidance := *req.Guidance
+	guidance.Instructions = append([]string(nil), req.Guidance.Instructions...)
+	guidance.Skills = append([]string(nil), req.Guidance.Skills...)
+	return guidance
 }
 
 // compilePackagePromptFromExecutionSnapshot trusts only Maestro gates already

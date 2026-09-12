@@ -103,10 +103,28 @@ func normalizeSkill(skill Skill, sourceID string) (Skill, error) {
 		skill.Provenance.ObservedAt = time.Now().UTC()
 	}
 	if skill.Hash == "" {
-		payload := skill
-		payload.Hash = ""
-		payload.Copies = 0
-		raw, err := json.Marshal(payload)
+		// Hash content only — ObservedAt and Copies must not destabilize the digest.
+		canonical := struct {
+			ID           string       `json:"id"`
+			Name         string       `json:"name"`
+			Description  string       `json:"description,omitempty"`
+			Source       SourceID     `json:"source"`
+			Version      string       `json:"version,omitempty"`
+			Capabilities []string     `json:"capabilities,omitempty"`
+			Triggers     []string     `json:"triggers,omitempty"`
+			Instructions string       `json:"instructions,omitempty"`
+			Dependencies []string     `json:"dependencies,omitempty"`
+			Permissions  []string     `json:"permissions,omitempty"`
+			Path         string       `json:"path,omitempty"`
+			Availability Availability `json:"availability"`
+			Mode         string       `json:"activation_mode,omitempty"`
+		}{
+			ID: skill.ID, Name: skill.Name, Description: skill.Description, Source: skill.Source,
+			Version: skill.Version, Capabilities: skill.Capabilities, Triggers: skill.Triggers,
+			Instructions: skill.Instructions, Dependencies: skill.Dependencies, Permissions: skill.Permissions,
+			Path: skill.Provenance.Path, Availability: skill.Availability, Mode: skill.Mode,
+		}
+		raw, err := json.Marshal(canonical)
 		if err != nil {
 			return Skill{}, fmt.Errorf("hash skill %s: %w", skill.ID, err)
 		}

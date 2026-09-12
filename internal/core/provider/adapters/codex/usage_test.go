@@ -3,6 +3,7 @@ package codex
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,6 +40,22 @@ func writeRollout(t *testing.T, path string, used5h, usedWeekly float64, resetsA
 		t.Fatal(err)
 	}
 	_ = os.Chtimes(path, timestamp, timestamp)
+}
+
+func seedHostAuthObservation(t *testing.T, dataDir, accountID string, at time.Time) {
+	t.Helper()
+	path := filepath.Join(dataDir, "codex-host-auth-history.jsonl")
+	rec := hostAuthObservation{ObservedAt: at.UTC(), AccountID: accountID}
+	raw, err := json.Marshal(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(raw, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestCodexAdapterGetUsageFromIsolatedRollout(t *testing.T) {
@@ -97,6 +114,8 @@ func TestCodexEmailInRolloutTextDoesNotStealAttribution(t *testing.T) {
 	writeAuth(t, filepath.Join(gmailHome, "auth.json"), gmailID, "kiver.omegaedu@gmail.com")
 	// Host auth is omega — gmail must NOT get host rollouts even if text cites gmail email.
 	writeAuth(t, filepath.Join(hostHome, ".codex", "auth.json"), omegaID, "kiver@omegasistemas.net.br")
+	// Establish host ownership before any rollout so attribution is prospective.
+	seedHostAuthObservation(t, dataDir, omegaID, time.Now().Add(-time.Minute))
 
 	hostSessions := filepath.Join(hostHome, ".codex", "sessions", "2026", "09", "11")
 	now := time.Now()
@@ -134,6 +153,7 @@ func TestCodexAttributionInvariantAtMostOneProfilePerRollout(t *testing.T) {
 		writeAuth(t, filepath.Join(home, "auth.json"), ids[i], name+"@example.com")
 	}
 	writeAuth(t, filepath.Join(hostHome, ".codex", "auth.json"), ids[0], "p1@example.com")
+	seedHostAuthObservation(t, dataDir, ids[0], time.Now().Add(-time.Minute))
 	now := time.Now()
 	writeRollout(t, filepath.Join(hostHome, ".codex", "sessions", "2026", "09", "11", "rollout-x.jsonl"), 10, 20, now.Add(time.Hour).Unix(), now, "")
 
@@ -465,6 +485,23 @@ func TestCodexTolerantToPartiallyWrittenLastLine(t *testing.T) {
 	}
 	if *snap.Windows[0].RemainingPercent != 88 {
 		t.Fatalf("remaining=%v want 88", *snap.Windows[0].RemainingPercent)
+	}
+}
+
+func TestHostOwnedAtFailsClosedBeforeFirstObservation(t *testing.T) {
+	dataDir := codexTestEnv(t)
+	path := filepath.Join(dataDir, "codex-host-auth-history.jsonl")
+	now := time.Now().UTC()
+	entry := hostAuthObservation{ObservedAt: now, AccountID: "acct-current"}
+	raw, _ := json.Marshal(entry)
+	if err := os.WriteFile(path, append(raw, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if hostOwnedAt("acct-current", now.Add(-time.Hour), "acct-current") {
+		t.Fatal("rollouts before the first ledger observation must not be attributed")
+	}
+	if !hostOwnedAt("acct-current", now.Add(time.Minute), "acct-current") {
+		t.Fatal("rollouts after the observation should belong to the recorded owner")
 	}
 }
 

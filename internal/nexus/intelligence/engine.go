@@ -185,10 +185,6 @@ func (e *NexusEngine) CompileExecutionContext(_ context.Context, req ExecutionCo
 		sections = append(sections, ContextSection{Source: "project", Name: "project facts", Content: strings.Join(facts, "\n")})
 	}
 	guidance := req.Guidance
-	legacyMaestroGuidance := isEmptyExecutionGuidance(guidance) && !isEmptyExecutionGuidance(req.Maestro)
-	if legacyMaestroGuidance {
-		guidance = req.Maestro
-	}
 	skillIDs := req.Skills
 	if len(skillIDs) == 0 {
 		skillIDs = guidance.Skills
@@ -196,11 +192,7 @@ func (e *NexusEngine) CompileExecutionContext(_ context.Context, req ExecutionCo
 	if len(skillIDs) > 0 || guidance.Enabled && len(guidance.Instructions) > 0 {
 		instructions := append([]string{}, guidance.Instructions...)
 		content := append(instructions, skillIDs...)
-		source, name := "guidance", "execution guidance"
-		if legacyMaestroGuidance {
-			source, name = "maestro", "optional guidance"
-		}
-		sections = append(sections, ContextSection{Source: source, Name: name, Content: strings.Join(content, "\n")})
+		sections = append(sections, ContextSection{Source: "guidance", Name: "execution guidance", Content: strings.Join(content, "\n")})
 	}
 	if req.Runtime.Provider != "" || req.Runtime.Model != "" || req.Runtime.Workspace != "" || req.Runtime.Isolation != "" || len(req.Runtime.Capabilities) > 0 {
 		runtimeContent := fmt.Sprintf("Provider: %s\nModel: %s\nWorkspace: %s\nIsolation: %s\nCapabilities: %s", req.Runtime.Provider, req.Runtime.Model, req.Runtime.Workspace, req.Runtime.Isolation, strings.Join(req.Runtime.Capabilities, ", "))
@@ -226,10 +218,6 @@ func (e *NexusEngine) CompileExecutionContext(_ context.Context, req ExecutionCo
 		AcceptanceCriteria: append([]string(nil), req.Task.AcceptanceCriteria...),
 		Sections:           sections,
 	}, nil
-}
-
-func isEmptyExecutionGuidance(guidance ExecutionGuidance) bool {
-	return !guidance.Enabled && len(guidance.Instructions) == 0 && len(guidance.Skills) == 0 && strings.TrimSpace(guidance.Source) == ""
 }
 
 func formatFacts(facts map[string]string) []string {

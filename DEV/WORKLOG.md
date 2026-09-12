@@ -1,5 +1,30 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-12 — Final closure routing/guidance and provider-proof correction
+
+- Extended the existing `TaskRequirements` and `ExecutionGuidance` contracts
+  so persisted generic guidance reaches the canonical prompt compiler without
+  coupling Agent identity to provider/account/model allocation.
+- Extended the existing durable `RuntimeRoutingDecision` with deduplicated
+  canonical `skill_refs` and an optional `maestro_guidance_ref` only when an
+  actual Maestro-sourced reference is present. Web projection types carry the
+  same fields; no new API/store was introduced.
+- Added focused RED → GREEN coverage for guidance propagation and routing
+  explainability. `go test ./internal/nexus/... ./scripts/... -count=1` PASS.
+- Fixed and tested the local E2E harness bootstrap POST/token exchange,
+  carriage-return PTY submission, and symlink/cycle-safe isolated profile copy.
+  These fixes do not count as provider Mission proof.
+- Fresh gates PASS: `go test ./... -count=1`, `go test -race ./... -count=1`,
+  `go vet ./...`, `git diff --check`, `make security`, `make build`,
+  `make build-desktop`, and `make web-verify`.
+- Provider evidence was corrected conservatively: direct host Codex marker is
+  provider-availability evidence only; Nexus Codex isolated runtime stayed at
+  `model: loading`; AGY runtime reported not signed in; OpenCode remains
+  pending auth. No durable authenticated Mission stream ID exists.
+- Release verdict remains `NO-GO`; Windows/macOS, live failover/escalation/
+  handoff, native desktop launch and overnight acceptance remain UNVERIFIED or
+  SKIPPED. No commit or push was created.
+
 ## 2026-09-11 — Final closure consolidation slice
 
 - Consolidated canonical `SkillIDs` transport across WorkPlan, Flow, runner
@@ -22,6 +47,33 @@
   and durable package `routing_decision` JSON preserving desired vs actual.
 - Focused Nexus and Codex tests pass. No commit or push was created. Live
   providers, overnight, and native Windows/macOS evidence remain unverified.
+
+## 2026-09-12 — Nexus final closure: model routing and generic boundary hardening
+
+- O model router agora é task-scoped: requisitos, candidatos configuráveis,
+  custo/capacidade, quota/health/autenticação e nível de escalonamento entram
+  na decisão. `AUTO`, `PREFER` e `PIN` têm semântica explícita; preferência
+  incapaz para arquitetura/segurança não vence a capacidade mínima da tarefa.
+- Falha de verificação retorna o pacote para `ALLOCATING`, permitindo nova
+  resolução de recurso/modelo com evidência de tentativa anterior; o runner
+  não aceita `DONE` sem verificação.
+- O PromptCompiler canônico deixou de depender de `CatalogSkill`,
+  `MaestroSkillDesc` ou `MaestroClient`; a compatibilidade antiga foi isolada
+  no adapter `maestro_prompt_compat.go`. Intelligence usa somente
+  `ExecutionGuidance` genérico.
+- Fontes de Skills opcionais com symlink quebrado/cíclico agora degradam sem
+  derrubar Builtin/Project resolution. A atribuição Codex mantém host-auth
+  quando não há ledger e continua fail-closed para rollouts anteriores a
+  observações existentes.
+- Verificação: foco, suíte Go completa, race, vet, security, build, desktop,
+  frontend verify e diff-check PASS. O relatório frontend atual é
+  `DEV/validation/FRONTEND_LATEST.md`.
+- Sem commit/push. O veredito global continua `NO-GO` por falta de Mission
+  autenticada com stream durável, provas live/native/overnight e cenários E2E
+  de failover/handoff completos.
+- O acceptance test local composto agora percorre descoberta bounded, roteamento
+  `DIRECT`, Skill Builtin, seleção de modelo, Mission Runner e verificação até
+  `COMPLETED_VERIFIED`; ele é explicitamente evidência local, não provider proof.
 
 ## 2026-09-11 — Evolution corrective closure
 
@@ -4039,6 +4091,41 @@ build` PASS e Web reiniciado em HTTP 200.
 - Verdict continua `NO-GO`: ainda faltam Mission autenticada com stream de
   evidência real, prova completa de providers/failover/escalation/handoff,
   execução nativa Windows/macOS e overnight representativo.
+
+## 2026-09-12 — Nexus final closure: intelligence inventory and decision report
+
+- O scanner existente `contextsnapshot.Discover` foi estendido, sem criar um
+  segundo mecanismo, para registrar comandos observados de build/test/lint/e2e,
+  frameworks reconhecidos, usos de `go.work`, pacotes `package.json` aninhados
+  e comandos estáticos de workflows CI. O teste operacional foi observado RED
+  antes da implementação e GREEN depois; limites, redaction e proibição de
+  execução de comandos foram preservados.
+- `/api/v1/runs/{id}/routing` agora projeta também a decisão de intenção
+  persistida no WorkPlan quando disponível. Intent/routing corrompidos falham
+  fechados; nenhuma decisão é recalculada a partir de quota/health atuais.
+- Verificação: `go test ./internal/nexus/contextsnapshot -count=1`, testes
+  focados de report/intent e `go test ./internal/nexus/... -count=1` PASS.
+- O smoke local real AGY não chegou a uma sessão autenticada nesta tentativa:
+  o bootstrap falhou por autenticação `sudo` ao atualizar `/etc/hosts`.
+  Classificação correta: `UNVERIFIED`, sem promover isso a PASS.
+- HEAD observado: `a58cca4d73bdfd55678649b30c0ca64f73b7d410`; sem commit/push
+  adicional feito por este trabalho. O veredito permanece `NO-GO`.
+
+## 2026-09-12 — Nexus final closure: final local gate and contract projection
+
+- O contrato Web de `RoutingDecision` agora projeta `agent_score`,
+  `agent_confidence`, `agent_reason` e `selected_account_scope` usando o
+  mesmo `AccountScope` já exposto em perfis registrados; não foi criada nova
+  API nem nova fonte de verdade.
+- Verificação fresca: `make web-verify`, `go test ./... -count=1`,
+  `go test -race ./... -count=1`, `go vet ./...`, `make security`,
+  `make build`, `make build-desktop` e `git diff --check` PASS.
+- `./nexus doctor --json` em Linux/amd64 PASS para diretórios, Secret
+  Service, PTY, WebKitGTK e providers instalados; shell desktop permanece
+  `SKIPPED` por exigir lançamento nativo.
+- A revisão adversarial não encontrou novo P0 local. Permanecem P1 de
+  evidência externa: Mission autenticada com stream real, failover/handoff/
+  escalation live, Windows/macOS e overnight. O veredito é `NO-GO`.
 # 2026-09-11 — Installer follows first PATH-resolved Nexus
 
 - `install.sh` agora escolhe como `TARGET_DIR` o primeiro diretório do `PATH`

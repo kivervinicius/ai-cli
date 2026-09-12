@@ -119,6 +119,16 @@ func addFact(state *discoveryState, category, key string, valueType FactValueTyp
 	state.facts = append(state.facts, ProjectFact{Category: category, Key: key, ValueType: valueType, Value: value, Basis: FactObserved, Confidence: confidence, ObservedAt: state.observedAt, Provenance: []FactProvenance{{SourcePath: filepath.ToSlash(source), Locator: locator, Extractor: extractor, Digest: digest, ObservedAt: state.observedAt}}})
 }
 
+// addDistinctFact keeps the stable short key for the first observation while
+// retaining additional evidence from another manifest/workflow instead of
+// silently discarding it through the global category/key deduplication.
+func addDistinctFact(state *discoveryState, category, key string, valueType FactValueType, value any, confidence FactConfidence, source, locator, extractor, digest string) {
+	if state.seen[category+"\x00"+key] {
+		key += "@" + filepath.ToSlash(source)
+	}
+	addFact(state, category, key, valueType, value, confidence, source, locator, extractor, digest)
+}
+
 func readDiscoveryFile(state *discoveryState, path string) ([]byte, string, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
@@ -167,6 +177,37 @@ func parseManifest(state *discoveryState, relative string, data []byte, digest s
 			addFact(state, "stack", "go.version", FactString, goVersion, ConfidenceHigh, source, "go", "go.mod", digest)
 		}
 		addFact(state, "stack", "go", FactBool, true, ConfidenceHigh, source, "", "go.mod", digest)
+		addFact(state, "frameworks", "go-test", FactString, "go test", ConfidenceHigh, source, "", "go.mod", digest)
+		// Do not invent commands.build/test from go.mod alone. Only observed
+		// scripts (Makefile, package.json, CI) may occupy the commands category.
+	case "go.work":
+		uses := make([]string, 0, 4)
+		inUseBlock := false
+		scanner := bufio.NewScanner(strings.NewReader(string(data)))
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "use (" {
+				inUseBlock = true
+				continue
+			}
+			if inUseBlock && line == ")" {
+				inUseBlock = false
+				continue
+			}
+			if strings.HasPrefix(line, "use ") {
+				line = strings.TrimSpace(strings.TrimPrefix(line, "use "))
+			}
+			if inUseBlock || strings.HasPrefix(strings.TrimSpace(scanner.Text()), "use ") {
+				line = strings.Trim(strings.TrimSpace(line), "\"")
+				if line != "" && !strings.HasPrefix(line, "//") {
+					uses = append(uses, line)
+				}
+			}
+		}
+		if len(uses) > 0 {
+			addFact(state, "workspace", "go.use", FactList, uses, ConfidenceHigh, source, "use", "go.work", digest)
+		}
+		addFact(state, "workspace", "go.work", FactBool, true, ConfidenceHigh, source, "", "go.work", digest)
 	case "package.json":
 		var manifest struct {
 			Name            string                     `json:"name"`
@@ -186,8 +227,15 @@ func parseManifest(state *discoveryState, relative string, data []byte, digest s
 			addFact(state, "dependencies", "package_manager", FactString, manifest.PackageManager, ConfidenceHigh, source, "packageManager", "package.json", digest)
 		}
 		scripts := make([]string, 0, len(manifest.Scripts))
-		for name := range manifest.Scripts {
+		for name, raw := range manifest.Scripts {
 			scripts = append(scripts, name)
+			var command string
+			if json.Unmarshal(raw, &command) == nil && strings.TrimSpace(command) != "" {
+				switch name {
+				case "build", "test", "lint", "e2e", "typecheck", "format", "format:check":
+					addDistinctFact(state, "commands", name, FactString, command, ConfidenceHigh, source, "scripts."+name, "package.json", digest)
+				}
+			}
 		}
 		sort.Strings(scripts)
 		if len(scripts) > 0 {
@@ -204,6 +252,18 @@ func parseManifest(state *discoveryState, relative string, data []byte, digest s
 		if len(deps) > 0 {
 			addFact(state, "dependencies", "node", FactList, deps, ConfidenceMedium, source, "dependencies", "package.json", digest)
 		}
+		for _, dependency := range deps {
+			if framework, ok := recognizedFramework(dependency); ok {
+				addDistinctFact(state, "frameworks", framework, FactString, dependency, ConfidenceHigh, source, "dependencies."+dependency, "package.json", digest)
+			}
+		}
+		if relativeDir := filepath.ToSlash(filepath.Dir(relative)); relativeDir != "." {
+			workspaceName := manifest.Name
+			if workspaceName == "" {
+				workspaceName = relativeDir
+			}
+			addFact(state, "workspace", "package."+relativeDir, FactString, workspaceName, ConfidenceHigh, source, "name", "package.json", digest)
+		}
 	case "Cargo.toml":
 		addFact(state, "stack", "rust", FactBool, true, ConfidenceHigh, source, "", "Cargo.toml", digest)
 	case "pyproject.toml", "requirements.txt":
@@ -212,6 +272,48 @@ func parseManifest(state *discoveryState, relative string, data []byte, digest s
 		addFact(state, "scripts", "make", FactBool, true, ConfidenceHigh, source, "", "Makefile", digest)
 	case "Dockerfile":
 		addFact(state, "architecture", "containerized", FactBool, true, ConfidenceMedium, source, "", "Dockerfile", digest)
+	}
+}
+
+func recognizedFramework(dependency string) (string, bool) {
+	switch dependency {
+	case "react", "react-dom":
+		return "react", true
+	case "vite":
+		return "vite", true
+	case "vitest":
+		return "vitest", true
+	case "@playwright/test", "playwright":
+		return "playwright", true
+	case "cypress":
+		return "cypress", true
+	case "jest":
+		return "jest", true
+	case "next":
+		return "next", true
+	case "typescript":
+		return "typescript", true
+	case "eslint":
+		return "eslint", true
+	default:
+		return "", false
+	}
+}
+
+func parseCIWorkflow(state *discoveryState, relative string, data []byte, digest string) {
+	commands := make([]string, 0, 8)
+	for _, rawLine := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(rawLine)
+		if !strings.HasPrefix(line, "- run:") {
+			continue
+		}
+		command := strings.TrimSpace(strings.TrimPrefix(line, "- run:"))
+		if command != "" {
+			commands = append(commands, command)
+		}
+	}
+	if len(commands) > 0 {
+		addDistinctFact(state, "ci", "commands", FactList, commands, ConfidenceHigh, filepath.ToSlash(relative), "run", "ci-workflow", digest)
 	}
 }
 
@@ -252,7 +354,12 @@ func discoverPath(state *discoveryState, path string, entry os.DirEntry, root st
 	if len(data) == 0 {
 		return nil
 	}
-	parseManifest(state, relative, []byte(security.Redact(string(data))), digest)
+	redacted := []byte(security.Redact(string(data)))
+	parseManifest(state, relative, redacted, digest)
+	slash := filepath.ToSlash(relative)
+	if strings.HasPrefix(slash, ".github/workflows/") || strings.HasPrefix(slash, ".gitlab/") {
+		parseCIWorkflow(state, relative, redacted, digest)
+	}
 	return nil
 }
 

@@ -33,6 +33,56 @@ func TestGetQuotaDetails(t *testing.T) {
 	}
 }
 
+func TestGetUsageSnapshotPreservesRateLimitedLastKnown(t *testing.T) {
+	tempData := t.TempDir()
+	t.Setenv("AI_CLI_DATA_DIR", tempData)
+	t.Setenv("AI_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv("NEXUS_CODEX_APP_SERVER", "0")
+	if _, err := Create("agy", "blocked"); err != nil {
+		t.Fatal(err)
+	}
+	home, _ := Home("agy", "blocked")
+	if err := os.MkdirAll(filepath.Join(home, ".gemini"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".gemini", "google_accounts.json"), []byte(`{"active":"blocked@example.test"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	remaining := 90.0
+	used := 10.0
+	eng := quota.NewEngine(time.Minute)
+	scope, err := AccountScope("agy", "blocked", "blocked@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.SaveUsageForScope(scope, model.UsageSnapshot{
+		ProviderID: "agy",
+		ProfileID:  "blocked",
+		Status:     model.UsageRateLimited,
+		Source:     model.SourceOfficialAPI,
+		FetchedAt:  time.Now().Add(-time.Hour),
+		Error:      "provedor bloqueou uso incluso",
+		Windows: []model.UsageWindow{{
+			Kind:             "5h",
+			Group:            "gemini",
+			RemainingPercent: &remaining,
+			UsedPercent:      &used,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	snap := GetUsageSnapshot("agy", "blocked")
+	if snap.Status != model.UsageRateLimited {
+		t.Fatalf("status=%s, want RATE_LIMITED preserved from last-known official block", snap.Status)
+	}
+	view := quota.BuildQuotaView(snap, "blocked@example.test", "")
+	if view.Available {
+		t.Fatal("RATE_LIMITED last-known must keep Available=false")
+	}
+}
+
 func TestGetUsageSnapshotPreservesStaleWindowsAsEstimatedAfterRefreshFailure(t *testing.T) {
 	tempData := t.TempDir()
 	t.Setenv("AI_CLI_DATA_DIR", tempData)

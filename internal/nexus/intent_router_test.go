@@ -18,15 +18,29 @@ func TestDecideIntentUsesProjectFactsBeforeClarifying(t *testing.T) {
 		Completeness: contextsnapshot.CompletenessComplete,
 		Identity:     contextsnapshot.CodeIdentity{IdentityDigest: "sha"},
 		Facts: []contextsnapshot.ProjectFact{{
-			Key: "tests.present", Value: true,
+			Key: "commands.test", Value: "go test ./...",
 		}},
 	}
-	decision := DecideIntent("quero melhorar os testes automatizados deste projeto", snapshot)
+	// Short goal without plan verbs: facts about tests cover the unknown.
+	decision := DecideIntent("rodar testes", snapshot)
 	if decision.Strategy == IntentClarify {
-		t.Fatalf("known repository facts should prevent ritual clarification: %+v", decision)
+		t.Fatalf("covering repository facts should prevent ritual clarification: %+v", decision)
 	}
 	if len(decision.KnownFacts) != 1 || decision.SnapshotIdentity != "sha" {
 		t.Fatalf("expected bounded fact grounding: %+v", decision)
+	}
+}
+
+func TestDecideIntentUnrelatedFactsDoNotSkipClarification(t *testing.T) {
+	snapshot := &contextsnapshot.ProjectContextSnapshot{
+		Completeness: contextsnapshot.CompletenessPartial,
+		Facts: []contextsnapshot.ProjectFact{{
+			Key: "stack.go", Value: true,
+		}},
+	}
+	decision := DecideIntent("faz algo", snapshot)
+	if decision.Strategy != IntentClarify {
+		t.Fatalf("unrelated facts must not silence material clarification: %+v", decision)
 	}
 }
 

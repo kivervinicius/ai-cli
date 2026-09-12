@@ -18,8 +18,18 @@ type FlowDecompositionRequest struct {
 	ArtifactID    string   `json:"artifact_id,omitempty"`
 	Goal          string   `json:"goal"`
 	SourcePrompt  string   `json:"source_prompt,omitempty"`
+	SkillIDs      []string `json:"skill_ids,omitempty"`
 	MaestroSkills []string `json:"maestro_skills,omitempty"`
 	Simple        bool     `json:"simple,omitempty"`
+}
+
+// resolvedSkillIDs prefers the canonical skill_ids field and falls back to the
+// legacy maestro_skills transport alias.
+func (req FlowDecompositionRequest) resolvedSkillIDs() []string {
+	if len(req.SkillIDs) > 0 {
+		return append([]string(nil), req.SkillIDs...)
+	}
+	return append([]string(nil), req.MaestroSkills...)
 }
 
 // FlowDecompositionProposal represents an inspectable candidate flow DAG before final persistence (PLAN 04).
@@ -117,6 +127,7 @@ func (n *Nexus) DecomposePromptIntoFlowProposal(ctx context.Context, req FlowDec
 	}
 
 	if isAtomic {
+		skills := req.resolvedSkillIDs()
 		flow.Steps = []FlowStep{
 			{
 				ID:                       "step_" + ids.NewRuntimeID(),
@@ -131,12 +142,14 @@ func (n *Nexus) DecomposePromptIntoFlowProposal(ctx context.Context, req FlowDec
 				AssignmentStrategy:       FlowAssignmentAuto,
 				AcceptanceCriteria:       []string{"Ajuste concluído com validação dos testes"},
 				VerificationRequirements: verification,
-				MaestroSkills:            req.MaestroSkills,
+				SkillIDs:                 skills,
+				MaestroSkills:            skills,
 				CompiledPrompt:           sourcePrompt,
 			},
 		}
 	} else {
 		// Multi-step structured decomposition (Implementer -> Tester/Reviewer)
+		skills := req.resolvedSkillIDs()
 		step1ID := "step_" + ids.NewRuntimeID()
 		step2ID := "step_" + ids.NewRuntimeID()
 		flow.Steps = []FlowStep{
@@ -153,7 +166,8 @@ func (n *Nexus) DecomposePromptIntoFlowProposal(ctx context.Context, req FlowDec
 				AssignmentStrategy:       FlowAssignmentAuto,
 				AcceptanceCriteria:       []string{"Funcionalidade implementada sem regressões de build"},
 				VerificationRequirements: verification,
-				MaestroSkills:            req.MaestroSkills,
+				SkillIDs:                 skills,
+				MaestroSkills:            skills,
 				CompiledPrompt:           sourcePrompt,
 			},
 			{

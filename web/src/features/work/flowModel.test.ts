@@ -51,6 +51,7 @@ const fixture = (): WorkPlan => ({
           parallel_group: 'impl',
           role: 'implementer',
           assignment_strategy: 'CREATE',
+          skill_ids: ['backend'],
           maestro_skills: ['backend'],
           relevant_paths: ['internal'],
           acceptance_criteria: ['b'],
@@ -103,6 +104,15 @@ describe('Flow editor compatibility model', () => {
     const flow = flowFromWorkPlan(plan);
     expect(flow.policy).toBe('AUTONOMOUS');
     expect(flowFromWorkPlan(workPlanFromFlow(flow, plan))).toEqual(flow);
+  });
+
+  it('round-trips canonical skill_ids while retaining legacy aliases', () => {
+    const plan = fixture();
+    const flow = flowFromWorkPlan(plan);
+    expect(flow.steps.find((step) => step.id === 'B')?.skillIds).toEqual(['backend']);
+    const roundTrip = workPlanFromFlow(flow, plan);
+    expect(roundTrip.phases[0].packages[1].skill_ids).toEqual(['backend']);
+    expect(roundTrip.phases[0].packages[1].maestro_skills).toEqual(['backend']);
   });
 
   it('treats nullable API phase collections as empty', () => {

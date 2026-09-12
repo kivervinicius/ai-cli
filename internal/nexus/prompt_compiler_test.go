@@ -1,8 +1,13 @@
 package nexus
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	"github.com/kivervinicius/ai-cli/internal/nexus/intelligence"
+	nexusskills "github.com/kivervinicius/ai-cli/internal/nexus/skills"
+	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
 
 func TestCompileAgentPromptWithoutSkills(t *testing.T) {
@@ -19,6 +24,24 @@ func TestCompileAgentPromptWithoutSkills(t *testing.T) {
 	}
 	if compiled.PromptHash == "" {
 		t.Fatal("expected prompt hash to be calculated")
+	}
+}
+
+func TestCompileTargetPackagePromptUsesPersistedGenericGuidance(t *testing.T) {
+	plan := &store.WorkPlan{StructuredFacts: map[string]string{"framework": "go"}}
+	pkg := &store.WorkPackage{
+		Title:              "Run verification",
+		Goal:               "Verify the implementation",
+		Role:               "reviewer",
+		TaskRequirements:   `{"guidance":{"enabled":true,"source":"maestro","reference":"advice:verify-1","instructions":["use the independent verification gate"]}}`,
+		AcceptanceCriteria: []string{"verification is recorded"},
+	}
+	compiled, err := compileTargetPackagePromptForAgent(context.Background(), plan, pkg, intelligence.AgentSpec{Role: "reviewer"}, []string{"testing"})
+	if err != nil {
+		t.Fatalf("compile prompt: %v", err)
+	}
+	if !strings.Contains(compiled.SystemPrompt, "use the independent verification gate") {
+		t.Fatalf("persisted guidance was not included in compiled prompt: %s", compiled.SystemPrompt)
 	}
 }
 
@@ -75,15 +98,33 @@ func TestCompileAgentPromptRejectsDegradedMaestro(t *testing.T) {
 	}
 }
 
+func TestCompileAgentPromptForProjectResolvesBuiltinSkillWithoutMaestro(t *testing.T) {
+	n := openTestNexus(t)
+	n.maestroStatus = func() MaestroStatus {
+		return MaestroStatus{Available: false, Mode: MaestroOff, Error: "maestro offline"}
+	}
+
+	compiled, err := n.CompileAgentPromptForProject("", "run the tests", []string{"testing"})
+	if err != nil {
+		t.Fatalf("builtin skill resolution must not require Maestro: %v", err)
+	}
+	if len(compiled.ValidatedSkills) != 1 || compiled.ValidatedSkills[0] != "testing" {
+		t.Fatalf("unexpected validated skills: %#v", compiled.ValidatedSkills)
+	}
+	if !strings.Contains(compiled.CompiledPrompt, "testing") {
+		t.Fatalf("compiled prompt omitted the generic skill: %s", compiled.CompiledPrompt)
+	}
+}
+
 func TestCompilePromptVariantsAreTraceableAndDistinct(t *testing.T) {
 	brief := newComposerBrief("Implement a notes feature", "Implement a notes feature with tests")
-	variants := CompilePromptVariants(brief, []MaestroSkillDesc{{ID: "skill-go", Version: "1.2.0"}}, "codex")
+	variants := CompilePromptVariants(brief, []nexusskills.Skill{{ID: "skill-go", Source: nexusskills.SourceBuiltin, Version: "1.2.0"}}, "codex")
 	if len(variants) != 3 {
 		t.Fatalf("got %d variants", len(variants))
 	}
 	seen := map[PromptVariantKind]bool{}
 	for _, variant := range variants {
-		if variant.Hash == "" || variant.Content == "" || !strings.Contains(variant.Content, "source: Maestro") {
+		if variant.Hash == "" || variant.Content == "" || !strings.Contains(variant.Content, "source: builtin") {
 			t.Fatalf("variant lacks traceability: %+v", variant)
 		}
 		seen[variant.Kind] = true

@@ -678,7 +678,12 @@ export const PlanBuilderSurface: React.FC<{
           goal: selectedStep.goal.trim(),
           acceptanceCriteria: unique(selectedStep.acceptanceCriteria),
           relevantPaths: unique(selectedStep.relevantPaths),
-          maestroSkills: unique(selectedStep.maestroSkills),
+          skillIds: unique(
+            selectedStep.skillIds.length ? selectedStep.skillIds : selectedStep.maestroSkills,
+          ),
+          maestroSkills: unique(
+            selectedStep.skillIds.length ? selectedStep.skillIds : selectedStep.maestroSkills,
+          ),
           verificationRequirements: unique(selectedStep.verificationRequirements),
         }),
       );

@@ -31,6 +31,18 @@ const (
 	MaestroOrchestrate MaestroMode = "ORCHESTRATE"
 )
 
+// MaestroLifecycle identifies the phase for which optional Maestro guidance
+// is requested. Nexus owns execution and resource allocation; Maestro only
+// advises the phase-specific process.
+type MaestroLifecycle string
+
+const (
+	MaestroLifecyclePlan     MaestroLifecycle = "PLAN"
+	MaestroLifecycleTask     MaestroLifecycle = "TASK"
+	MaestroLifecycleRecovery MaestroLifecycle = "RECOVERY"
+	MaestroLifecycleVerify   MaestroLifecycle = "VERIFY"
+)
+
 // MaestroSkillDesc describes a single canonical skill provided by Maestro.
 type MaestroSkillDesc struct {
 	ID          string   `json:"id"`
@@ -271,26 +283,29 @@ func (mc *MaestroCapability) SkillIDs() []string {
 
 // AdviceRequest is the structured request sent to Maestro for recommendations.
 type AdviceRequest struct {
-	Version string         `json:"version"`
-	Context AdviceContext  `json:"context"`
-	Intent  string         `json:"intent"`
-	Scope   string         `json:"scope"` // "project" | "agent" | "task"
-	Extra   map[string]any `json:"extra,omitempty"`
+	Version   string           `json:"version"`
+	Context   AdviceContext    `json:"context"`
+	Intent    string           `json:"intent"`
+	Scope     string           `json:"scope"` // "project" | "agent" | "task"
+	Lifecycle MaestroLifecycle `json:"lifecycle"`
+	Extra     map[string]any   `json:"extra,omitempty"`
 }
 
 // AdviceContext provides project/agent context for Maestro decisions.
 type AdviceContext struct {
-	ProjectID   string `json:"project_id"`
-	AgentID     string `json:"agent_id,omitempty"`
-	AgentStatus string `json:"agent_status,omitempty"`
-	Provider    string `json:"provider,omitempty"`
-	Profile     string `json:"profile,omitempty"`
+	ProjectID   string           `json:"project_id"`
+	AgentID     string           `json:"agent_id,omitempty"`
+	AgentStatus string           `json:"agent_status,omitempty"`
+	Provider    string           `json:"provider,omitempty"`
+	Profile     string           `json:"profile,omitempty"`
+	Lifecycle   MaestroLifecycle `json:"lifecycle,omitempty"`
 }
 
 // AdviceResponse is the structured response from Maestro.
 type AdviceResponse struct {
 	Version     string           `json:"version"`
 	Mode        MaestroMode      `json:"mode"`
+	Lifecycle   MaestroLifecycle `json:"lifecycle"`
 	Required    []Recommendation `json:"required"`
 	Recommended []Recommendation `json:"recommended"`
 	Optional    []Recommendation `json:"optional"`
@@ -696,20 +711,16 @@ func (c *MaestroClient) ListSkills(ctx context.Context) ([]string, error) {
 
 // GetAdvice requests recommendations from Maestro for the given context.
 func (c *MaestroClient) GetAdvice(ctx AdviceContext, intent string) (*AdviceResponse, error) {
+	lifecycle := normalizeMaestroLifecycle(ctx.Lifecycle)
 	if !c.status.Available || c.maestroBin == "" {
 		return &AdviceResponse{
-			Version:  MaestroVersion,
-			Mode:     MaestroOff,
-			Degraded: true,
+			Version: MaestroVersion, Mode: MaestroOff, Lifecycle: lifecycle, Degraded: true,
 		}, fmt.Errorf("maestro unavailable (MAESTRO_DEGRADED)")
 	}
 
 	// 1. Try CLI advise command if supported
 	req := AdviceRequest{
-		Version: MaestroVersion,
-		Context: ctx,
-		Intent:  intent,
-		Scope:   "project",
+		Version: MaestroVersion, Context: ctx, Intent: intent, Scope: "project", Lifecycle: lifecycle,
 	}
 	reqBytes, _ := json.Marshal(req)
 	cmdAdvise := exec.Command(c.maestroBin, "advise", "--json")
@@ -717,6 +728,9 @@ func (c *MaestroClient) GetAdvice(ctx AdviceContext, intent string) (*AdviceResp
 	if out, err := cmdAdvise.Output(); err == nil {
 		var resp AdviceResponse
 		if err := json.Unmarshal(out, &resp); err == nil && len(resp.Recommended) > 0 {
+			if resp.Lifecycle == "" {
+				resp.Lifecycle = lifecycle
+			}
 			return &resp, nil
 		}
 	}
@@ -728,10 +742,21 @@ func (c *MaestroClient) GetAdvice(ctx AdviceContext, intent string) (*AdviceResp
 		version = c.status.Capabilities.Version
 	}
 	return &AdviceResponse{
-		Version:  version,
-		Mode:     MaestroOff,
-		Degraded: true,
+		Version: version, Mode: MaestroOff, Lifecycle: lifecycle, Degraded: true,
 	}, fmt.Errorf("maestro advise unavailable or returned an invalid contract (MAESTRO_DEGRADED)")
+}
+
+func normalizeMaestroLifecycle(value MaestroLifecycle) MaestroLifecycle {
+	switch MaestroLifecycle(strings.ToUpper(strings.TrimSpace(string(value)))) {
+	case MaestroLifecyclePlan:
+		return MaestroLifecyclePlan
+	case MaestroLifecycleRecovery:
+		return MaestroLifecycleRecovery
+	case MaestroLifecycleVerify:
+		return MaestroLifecycleVerify
+	default:
+		return MaestroLifecycleTask
+	}
 }
 
 func stringToReader(b []byte) *stringReader {

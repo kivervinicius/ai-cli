@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kivervinicius/ai-cli/internal/nexus/runner"
 	nexusskills "github.com/kivervinicius/ai-cli/internal/nexus/skills"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
@@ -13,6 +14,16 @@ import (
 // readable when the canonical field is absent. MaestroGates are process
 // requirements, not Skills, and must never be sent to the SkillCatalog.
 func packageSkillIDs(pkg store.WorkPackage) []string {
+	if len(pkg.SkillIDs) > 0 {
+		return uniqueStrings(pkg.SkillIDs)
+	}
+	return uniqueStrings(pkg.MaestroSkills)
+}
+
+func packageRunSkillIDs(pkg *runner.PackageRun) []string {
+	if pkg == nil {
+		return nil
+	}
 	if len(pkg.SkillIDs) > 0 {
 		return uniqueStrings(pkg.SkillIDs)
 	}

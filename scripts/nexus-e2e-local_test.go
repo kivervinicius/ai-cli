@@ -2,6 +2,10 @@ package main
 
 import (
 	"errors"
+	"net/url"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -23,6 +27,63 @@ func TestParseBootstrapURLAcceptsPersistedFragmentToken(t *testing.T) {
 	}
 	if got := parseBootstrapURL("http://127.0.0.1:13000/"); got != "" {
 		t.Fatalf("accepted tokenless URL: %q", got)
+	}
+}
+
+func TestBootstrapTokenFromURLExchangesFragmentToken(t *testing.T) {
+	parsed, err := url.Parse("http://127.0.0.1:13000/#nexus_bootstrap=abc123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := bootstrapTokenFromURL(parsed)
+	if err != nil || got != "abc123" {
+		t.Fatalf("fragment token = %q, err=%v", got, err)
+	}
+
+	parsed, err = url.Parse("http://127.0.0.1:13000/?token=query123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = bootstrapTokenFromURL(parsed)
+	if err != nil || got != "query123" {
+		t.Fatalf("query token = %q, err=%v", got, err)
+	}
+
+	parsed, err = url.Parse("http://127.0.0.1:13000/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bootstrapTokenFromURL(parsed); err == nil {
+		t.Fatal("tokenless bootstrap URL was accepted")
+	}
+}
+
+func TestCopyProfileTreeSkipsSymlinksAndCycles(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires platform privileges on Windows")
+	}
+	source := t.TempDir()
+	destination := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "auth.json"), []byte("redacted-test-fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(".", filepath.Join(source, "self")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(source, "auth.json"), filepath.Join(source, "auth-link.json")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := copyProfileTree(source, destination); err != nil {
+		t.Fatalf("copyProfileTree followed a symlink: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(destination, "auth.json")); err != nil {
+		t.Fatalf("regular profile file was not copied: %v", err)
+	}
+	for _, name := range []string{"self", "auth-link.json"} {
+		if _, err := os.Lstat(filepath.Join(destination, name)); !os.IsNotExist(err) {
+			t.Fatalf("symlink %q was copied into isolated profile", name)
+		}
 	}
 }
 

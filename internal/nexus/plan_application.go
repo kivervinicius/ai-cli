@@ -41,7 +41,7 @@ func (s *PlanApplicationService) Create(ctx context.Context, projectID, title, d
 		Title:           title,
 		Description:     description,
 		Phases:          phases,
-		StructuredFacts: facts,
+		StructuredFacts: s.ensureIntentDecisionFacts(ctx, projectID, title, description, phases, facts),
 	}
 	for pi := range plan.Phases {
 		if plan.Phases[pi].ID == "" {
@@ -55,6 +55,42 @@ func (s *PlanApplicationService) Create(ctx context.Context, projectID, title, d
 	}
 
 	return st.CreateWorkPlan(plan)
+}
+
+// ensureIntentDecisionFacts persists a deterministic intent decision on every
+// WorkPlan creation path (CLI, Web, Composer) unless the caller already did.
+func (s *PlanApplicationService) ensureIntentDecisionFacts(ctx context.Context, projectID, title, description string, phases []store.PlanPhase, facts map[string]string) map[string]string {
+	out := facts
+	if out == nil {
+		out = map[string]string{}
+	}
+	if _, ok := out[IntentDecisionFactKey]; ok {
+		return out
+	}
+	goal := strings.TrimSpace(description)
+	if goal == "" {
+		goal = strings.TrimSpace(title)
+	}
+	for _, phase := range phases {
+		for _, pkg := range phase.Packages {
+			if g := strings.TrimSpace(pkg.Goal); g != "" {
+				goal = g
+				break
+			}
+		}
+		if goal != "" && goal != strings.TrimSpace(title) {
+			break
+		}
+	}
+	decision, err := s.nexus.DecideIntentForProject(ctx, projectID, goal)
+	if err != nil {
+		return out
+	}
+	enriched, err := PersistIntentDecisionFacts(out, decision)
+	if err != nil {
+		return out
+	}
+	return enriched
 }
 
 func (s *PlanApplicationService) Get(ctx context.Context, planID string) (*store.WorkPlan, error) {

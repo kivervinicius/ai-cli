@@ -96,6 +96,34 @@ func TestComposerFinalizationCreatesPromptWithoutWorkPlan(t *testing.T) {
 	}
 }
 
+func TestComposerCanApplyBuiltinSkillWithoutMaestro(t *testing.T) {
+	n := openTestNexus(t)
+	n.maestroStatus = func() MaestroStatus { return MaestroStatus{Available: false, Mode: MaestroOff} }
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := st.CreateProject(store.Project{Name: "Composer builtin", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := n.CreateComposerSession(context.Background(), project.ID, "Improve test coverage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := n.FinalizeComposerSession(context.Background(), view.Session.ID, []string{"testing"}, true)
+	if err != nil {
+		t.Fatalf("builtin skill must be selectable without Maestro: %v", err)
+	}
+	var skillIDs []string
+	if err := json.Unmarshal([]byte(artifact.SkillIDsJSON), &skillIDs); err != nil {
+		t.Fatal(err)
+	}
+	if len(skillIDs) != 1 || skillIDs[0] != "testing" {
+		t.Fatalf("unexpected skill IDs: %v", skillIDs)
+	}
+}
+
 func TestMaterializePromptArtifactPreservesLineage(t *testing.T) {
 	n := openTestNexus(t)
 	st, err := n.OpenProject()

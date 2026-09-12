@@ -166,11 +166,14 @@ export const FlowStepInspector: React.FC<{
         />
       </label>
       <label>
-        <span>{t('flowInspector.maestroSkills', 'Maestro skills · real catalog IDs only')}</span>
+        <span>{t('flowInspector.skills')}</span>
         <Textarea
           rows={3}
-          value={joined(step.maestroSkills)}
-          onChange={(value) => onChange({ maestroSkills: lines(value) })}
+          value={joined(step.skillIds.length ? step.skillIds : step.maestroSkills)}
+          onChange={(value) => {
+            const skillIds = lines(value);
+            onChange({ skillIds, maestroSkills: skillIds });
+          }}
         />
       </label>
       <label>

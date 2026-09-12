@@ -390,10 +390,31 @@ func compactResetDesc(reset string) string {
 	if reset == "" {
 		return "?"
 	}
+	if strings.EqualFold(reset, "Quota available") {
+		return "disponível"
+	}
+	// AGY emits a complete English sentence; keep only the duration so the
+	// Portuguese "Reset em" prefix in the detail modal does not double-speak.
+	lower := strings.ToLower(reset)
+	if strings.HasPrefix(lower, "refreshes in ") {
+		return strings.TrimSpace(reset[len("Refreshes in "):])
+	}
 	reset = strings.TrimPrefix(reset, "resets ")
 	reset = strings.TrimPrefix(reset, "Resets ")
 	reset = strings.ReplaceAll(reset, " on ", " ")
 	return reset
+}
+
+// formatResetLine renders a provider reset description for the detail modal.
+func formatResetLine(reset string) string {
+	compact := compactResetDesc(reset)
+	if compact == "?" {
+		return ""
+	}
+	if compact == "disponível" {
+		return "Quota disponível"
+	}
+	return "Reset em " + compact
 }
 
 func miniQuotaBar(remaining float64, width int) string {
@@ -1214,8 +1235,8 @@ func (m usageTableModel) renderQuotaModal(width int) string {
 		for _, w := range group.Windows {
 			hasWindows = true
 			fmt.Fprintf(&sb, "  %s: %s\n", w.Label, w.Bar)
-			if w.ResetDesc != "" {
-				sb.WriteString(subStyle.Render(fmt.Sprintf("                  Reset em %s\n", w.ResetDesc)))
+			if line := formatResetLine(w.ResetDesc); line != "" {
+				sb.WriteString(subStyle.Render(fmt.Sprintf("                  %s\n", line)))
 			}
 		}
 	}

@@ -83,3 +83,84 @@ func TestDiscoverReturnsStructuredFactsWithProvenance(t *testing.T) {
 		}
 	}
 }
+
+func TestDiscoverExtractsOperationalProjectIntelligence(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "packages", "web"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "go.work"), []byte("go 1.25\n\nuse (\n ./services/api\n ./packages/web\n)\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"name":"workspace","scripts":{"build":"vite build","test":"vitest run","lint":"eslint .","e2e":"playwright test"},"devDependencies":{"@playwright/test":"1.0.0","vite":"1.0.0","vitest":"1.0.0","react":"1.0.0"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "packages", "web", "package.json"), []byte(`{"name":"web"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".github", "workflows"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".github", "workflows", "ci.yml"), []byte("steps:\n  - run: npm run lint\n  - run: npm run test\n  - run: npm run build\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := Discover(root, Metadata{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	values := map[string]any{}
+	for _, fact := range snapshot.Facts {
+		values[fact.Category+":"+fact.Key] = fact.Value
+	}
+	for key, expected := range map[string]string{
+		"commands:build":        "vite build",
+		"commands:test":         "vitest run",
+		"commands:lint":         "eslint .",
+		"commands:e2e":          "playwright test",
+		"frameworks:vite":       "vite",
+		"frameworks:vitest":     "vitest",
+		"frameworks:playwright": "@playwright/test",
+	} {
+		if values[key] != expected {
+			t.Fatalf("missing operational fact %s=%q, got %v", key, expected, values[key])
+		}
+	}
+	uses, ok := values["workspace:go.use"].([]string)
+	if !ok || len(uses) != 2 || uses[0] != "./services/api" || uses[1] != "./packages/web" {
+		t.Fatalf("unexpected go workspace facts: %#v", values["workspace:go.use"])
+	}
+	if _, ok := values["workspace:package.packages/web"]; !ok {
+		t.Fatalf("expected nested workspace package fact, got keys %v", values)
+	}
+	if _, ok := values["ci:commands"]; !ok {
+		t.Fatalf("expected CI command fact, got keys %v", values)
+	}
+}
+
+func TestDiscoverPreservesCommandsAcrossMultipleManifests(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example\n\ngo 1.25\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"scripts":{"build":"vite build","test":"vitest run"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := Discover(root, Metadata{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]any{}
+	for _, fact := range snapshot.Facts {
+		if fact.Category == "commands" {
+			values[fact.Key] = fact.Value
+		}
+	}
+	if values["build"] != "vite build" || values["test"] != "vitest run" {
+		t.Fatalf("package.json command facts were lost or overwritten by synthetic go.mod commands: %#v", values)
+	}
+	if _, invented := values["build@go.mod"]; invented {
+		t.Fatalf("go.mod must not invent command facts: %#v", values)
+	}
+}

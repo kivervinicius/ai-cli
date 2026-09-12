@@ -339,7 +339,11 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 		if verificationPassed(results, run.Contract.RequireVerification) {
 			pkg.State = StateReviewing
 		} else {
-			if terminalErr := r.markRemediation(run, pkg, StateCompiling, verificationFailureContext(results)); terminalErr != nil {
+			// A verification failure is evidence that the current execution
+			// strategy did not satisfy the task. Re-enter allocation so the Nexus
+			// runtime router can apply a different model/resource strategy on the
+			// next attempt instead of merely replaying the same runtime.
+			if terminalErr := r.markRemediation(run, pkg, StateAllocating, verificationFailureContext(results)); terminalErr != nil {
 				run.UpdatedAt = time.Now().UTC()
 				_ = r.saveRun(ctx, run)
 				return run, false, terminalErr

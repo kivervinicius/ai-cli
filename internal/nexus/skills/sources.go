@@ -93,12 +93,28 @@ func (s directorySource) Discover(ctx context.Context) ([]Skill, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		info, err := os.Stat(root)
+		info, err := os.Lstat(root)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
 			return nil, err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			resolved, resolveErr := filepath.EvalSymlinks(root)
+			if resolveErr != nil {
+				// A broken or cyclic optional source must not take down the
+				// built-in catalog. The source remains unavailable for this scan.
+				continue
+			}
+			root = resolved
+			info, err = os.Stat(root)
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					continue
+				}
+				return nil, err
+			}
 		}
 		if !info.IsDir() {
 			continue
