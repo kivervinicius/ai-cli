@@ -20,7 +20,9 @@
 - The Makefile build targets now disable redundant Go VCS stamping because the
   build already injects Nexus metadata and Go can resolve the nested worktree's
   ancestor incorrectly; both canonical builds pass.
-- Authenticated provider E2E remains unverified; no push or merge was performed.
+- A real supervised Codex smoke reached no provider output: IPC handshake
+  timed out and `nexus ps --json` confirmed no orphan runtime. It remains
+  `UNVERIFIED`; no push or merge was performed.
 
 ## 2026-09-12 — Codex CrossAccountResume restore
 

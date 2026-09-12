@@ -23,6 +23,11 @@ route complete prompts while preserving the existing raw PTY path for ordinary
 `control attach`; real authenticated provider E2E and provider-level Mission
 evidence remain `UNVERIFIED` in this environment.
 
+The attempted real Codex smoke with the reported authenticated profile ended
+at the supervised IPC handshake timeout; `nexus ps --json` was empty afterward,
+so no orphan runtime remained. This is recorded as `UNVERIFIED`, not provider
+success or Mission evidence.
+
 ## Codex CrossAccountResume — 2026-09-12
 
 Cross-account Codex resume is restored without re-symlinking `sessions` to the

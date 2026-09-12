@@ -1102,6 +1102,8 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
   the interactive policy metadata.
 - UNVERIFIED — authenticated `nexus agy`/Codex provider session, real provider
   prompts and a durable authenticated Mission evidence stream remain unavailable.
+- UNVERIFIED — the attempted supervised Codex smoke timed out during IPC
+  handshake; no runtime remained registered afterward.
 
 <!-- frontend-verify:latest -->
 ## Frontend gate — 2026-09-12T05:53:08Z
