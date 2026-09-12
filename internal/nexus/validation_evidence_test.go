@@ -105,7 +105,35 @@ func TestMissionValidationEvidenceRecordsFailedResultsAsFail(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(entries) != 1 || entries[0].Outcome != store.EvidenceFail || entries[0].Confidence != store.EvidenceObserved {
-		t.Fatalf("failed verification must record FAIL: %+v", entries)
+		t.Fatalf("unexpected fail evidence: %+v", entries)
+	}
+}
+
+func TestMissionValidationEvidenceFailedNonGitIsStillFail(t *testing.T) {
+	n := openTestNexus(t)
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := st.CreateProject(store.Project{Name: "fail-nongit", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := &runner.MissionRun{ID: "run-fail-nongit", PlanID: "plan", PlanRevision: 1, ProjectID: project.ID}
+	result := runner.VerificationResult{Command: "go test ./...", Passed: false, ExitCode: 1}
+	if err := n.recordMissionValidationEvidence(context.Background(), run, "mission/test", result.Command, []runner.VerificationResult{result}, "OpenCode", "profile-a", "", 1); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := st.GetValidationEvidenceStreamByName(project.ID, missionEvidenceStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := st.ListValidationEvidenceEntries(stream.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].RepositoryState != "NON_GIT" || entries[0].Outcome != store.EvidenceFail {
+		t.Fatalf("failed verification in non-git must be FAIL, got: %+v", entries)
 	}
 }
 

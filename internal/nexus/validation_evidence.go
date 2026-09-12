@@ -124,11 +124,13 @@ func (n *Nexus) recordMissionValidationEvidence(ctx context.Context, run *runner
 		}
 	}
 	switch {
+	case !passed:
+		// Assertive failure wins over missing HEAD — a failed verification must
+		// never be recorded as NOT_VERIFIED just because the workspace is non-git.
+		outcome = store.EvidenceFail
+		confidence = store.EvidenceObserved
 	case len(results) == 0 || identity.HeadSHA == "":
 		outcome = store.EvidenceNotVerified
-		confidence = store.EvidenceObserved
-	case !passed:
-		outcome = store.EvidenceFail
 		confidence = store.EvidenceObserved
 	}
 	environment, err := validationEnvironment(ctx, project.CanonicalPath)

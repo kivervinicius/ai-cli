@@ -238,17 +238,22 @@ func (a *Adapter) InspectAuth(ctx context.Context, p model.Profile) model.Accoun
 	if accountID == "" && email == "" {
 		return info
 	}
+	var expiresAt time.Time
 	if activeUntil != "" {
-		if until, err := time.Parse(time.RFC3339, activeUntil); err == nil && time.Now().After(until) {
-			info.Status = "Subscription expired"
-			info.Health = model.HealthAuthRequired
-			info.Authenticated = false
-			info.Email = email
-			info.ExternalAccountID = accountID
-			if plan != "" {
-				info.Plan = plan
+		if until, err := time.Parse(time.RFC3339, activeUntil); err == nil {
+			expiresAt = until
+			if time.Now().After(until) {
+				info.Status = "Subscription expired"
+				info.Health = model.HealthAuthRequired
+				info.Authenticated = false
+				info.Email = email
+				info.ExternalAccountID = accountID
+				info.ExpiresAt = expiresAt
+				if plan != "" {
+					info.Plan = plan
+				}
+				return info
 			}
-			return info
 		}
 	}
 
@@ -257,6 +262,7 @@ func (a *Adapter) InspectAuth(ctx context.Context, p model.Profile) model.Accoun
 	info.Health = model.HealthHealthy
 	info.Email = email
 	info.ExternalAccountID = accountID
+	info.ExpiresAt = expiresAt
 	if plan != "" {
 		info.Plan = plan
 	} else {
