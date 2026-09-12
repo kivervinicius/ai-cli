@@ -1,3 +1,7 @@
+> **HISTORICAL — NOT CURRENT RELEASE EVIDENCE**
+>
+> Canonical current status: `DEV/validation/current/RELEASE_STATUS.md`.
+
 # Nexus Final Closure Checkpoints
 
 ## Work Package E — Codex legacy configuration migration

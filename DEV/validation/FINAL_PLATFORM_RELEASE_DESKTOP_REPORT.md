@@ -1,3 +1,7 @@
+> **HISTORICAL — NOT CURRENT RELEASE EVIDENCE**
+>
+> Canonical current status: `DEV/validation/current/RELEASE_STATUS.md`.
+
 # IAPro Nexus — Final Platform / Release / Desktop Report
 
 Date: 2026-09-06  

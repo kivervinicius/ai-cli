@@ -2,6 +2,10 @@
 
 Guia e índice de navegação estruturada da documentação de engenharia e governança do IAPro Nexus.
 
+**Current release status for HEAD:** [`validation/current/RELEASE_STATUS.md`](validation/current/RELEASE_STATUS.md)
+
+Reports under `validation/FINAL_*.md` are historical unless they live in `validation/current/` and carry matching `GIT_SHA`.
+
 O código canônico utiliza o binário `nexus`, mantendo `ai` como alias transparente de compatibilidade.
 
 ---

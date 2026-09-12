@@ -1,3 +1,7 @@
+> **HISTORICAL — NOT CURRENT RELEASE EVIDENCE**
+>
+> Canonical current status: `DEV/validation/current/RELEASE_STATUS.md`.
+
 # IAPro Nexus — Final Production Validation
 
 > Historical report superseded by the final closure checkpoint. Its

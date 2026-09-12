@@ -1,3 +1,7 @@
+> **HISTORICAL — NOT CURRENT RELEASE EVIDENCE**
+>
+> Canonical current status: `DEV/validation/current/RELEASE_STATUS.md`.
+
 # IAPro Nexus — Current State Audit
 
 Updated: 2026-09-10 (consolidation continuation)

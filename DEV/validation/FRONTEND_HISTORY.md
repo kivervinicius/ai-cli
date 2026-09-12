@@ -1,3 +1,7 @@
+> **HISTORICAL — NOT CURRENT RELEASE EVIDENCE**
+>
+> Canonical current status: `DEV/validation/current/RELEASE_STATUS.md`.
+
 # Frontend verification history
 
 - 2026-09-03T11:38:37Z · FAIL · feat/nexus-maximum-delivery@c0cc4dc · failed=[typecheck,lint,test,i18n,build,ui-markers] · DEV/validation/FRONTEND_2026-09-03T11-38-37Z.md
