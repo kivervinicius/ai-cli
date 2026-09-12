@@ -1,5 +1,24 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-12 — automatic delegation interactive Lead closure
+
+- Connected supervised provider launches to a durable `Nexus Interactive Lead`
+  using the existing Agent/AgentRevision/RuntimeGeneration model.
+- Resolved the Lead by the canonical current workspace path and auto-registered
+  the normal Project record when an interactive workspace had not been seen
+  before; this removed the incorrect MRU-project binding.
+- Added labeled runtime metadata for `interactive_lead` and delegation mode.
+- Added a line-oriented Lead attachment boundary: provider output and existing
+  raw `control attach` remain unchanged, while complete interactive prompts
+  enter the deterministic delegation policy and compound AUTO requests use the
+  existing Mission Runner. Completion is synthesized back into the Lead.
+- Added regression coverage for persisted launcher labels, session/env policy
+  precedence and Lead runtime generation lifecycle.
+- Added restart/crash coverage proving a dead `WORKING` runtime resolves to the
+  same persistent Lead identity instead of creating a duplicate.
+- Focused tests, full Go tests, full race tests, vet and diff-check pass.
+  Authenticated provider E2E remains unverified; no push or merge was performed.
+
 ## 2026-09-12 — Codex CrossAccountResume restore
 
 - Restored CrossAccountResume without re-sharing the whole `sessions` tree:

@@ -35,6 +35,7 @@ func TestRuntimeLauncher_StandaloneLaunchAndHandshake(t *testing.T) {
 		Workspace:  os.TempDir(),
 		Standalone: true,
 		Timeout:    3 * time.Second,
+		Labels:     map[string]string{"nexus.interactive_lead": "true"},
 	}
 
 	sess, err := l.Launch(ctx, opts)
@@ -47,5 +48,8 @@ func TestRuntimeLauncher_StandaloneLaunchAndHandshake(t *testing.T) {
 	}
 	if sess.State != "RUNNING" {
 		t.Errorf("expected state RUNNING, got %s", sess.State)
+	}
+	if sess.Labels["nexus.interactive_lead"] != "true" {
+		t.Fatalf("expected launcher labels to persist, got %#v", sess.Labels)
 	}
 }

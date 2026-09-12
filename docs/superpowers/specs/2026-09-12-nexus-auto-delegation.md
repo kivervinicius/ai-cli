@@ -33,5 +33,8 @@ in AgentSpec.
 
 Focused tests cover anti-overdelegation, modes, collisions, deterministic
 workstream requirements, rich auto-created AgentSpec, and lead/delegation fact
-round trips. The full Nexus suite and repository gates remain required before
-promotion.
+round trips. The supervised `nexus <provider>` entrypoint now resolves a
+persistent Lead by the current workspace, routes complete prompts through the
+same policy, and returns Mission completion to that Lead for synthesis. The
+full Nexus suite and repository gates remain required before promotion; real
+authenticated provider E2E is an external evidence gate.

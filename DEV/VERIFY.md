@@ -1090,19 +1090,18 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
 - Controle estruturado (aprovações/eventos) segue diferido — ver
   [`DEV/AI_CONTROL_DEFERRED.md`](AI_CONTROL_DEFERRED.md), item 6.
 
+## 2026-09-12 — automatic delegation interactive Lead closure
+
+- PASS — focused `go test ./internal/app ./internal/control/launcher ./internal/nexus -count=1`.
+- PASS — `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`
+  and `git diff --check`.
+- PASS — canonical workspace lookup/registration, persistent Lead binding and
+  runtime generation lifecycle are covered locally; launcher labels preserve
+  the interactive policy metadata.
+- UNVERIFIED — authenticated `nexus agy`/Codex provider session, real provider
+  prompts and a durable authenticated Mission evidence stream remain unavailable.
+
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-12T05:21:11Z
+## Frontend gate — 2026-09-12T05:53:08Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
-
-## 2026-09-12 — automatic delegation slice
-
-- `go test ./... -count=1`, `go test -race ./internal/nexus/... -count=1`,
-  `go vet ./...`, `make quality`, `make security`, `make web-verify` e
-  `git diff --check` — PASS.
-- `make build` e `make build-desktop` compilaram o frontend, mas ficaram
-  `UNVERIFIED` no stamping VCS do Go (`error obtaining VCS status: exit 128`).
-  Os binários Nexus e Desktop compilaram com `go build -buildvcs=false`.
-- O caminho de execução por WorkPlan/Flow/Mission está coberto; o comando
-  provider-interativo `nexus agy` ainda mantém o passthrough PTY existente e
-  não foi declarado como E2E de delegação nesta branch.

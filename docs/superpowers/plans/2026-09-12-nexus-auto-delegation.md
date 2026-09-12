@@ -15,3 +15,7 @@ Base: `37b9ddec49ce72d869bbeb2ad402a1d4dd2bc674`
 5. Verify focused tests, the Nexus package suite, race/vet/full repository
    gates, and review the diff for duplicate schedulers or provider-bound Agent
    identities.
+6. Connect supervised interactive provider input to the persistent Lead by the
+   current workspace, route complete prompts through the policy, and return
+   delegated Mission completion to the Lead without changing raw `control
+   attach` semantics.
