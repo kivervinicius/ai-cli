@@ -1,11 +1,44 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-12 — Mission evidence isolation
+
+- PASS — two persisted Missions in the same project receive only their own
+  validation entries from the shared canonical stream.
+- PASS — the complete hash chain is verified before the per-Mission filter;
+  invalid or missing `run_id` metadata fails closed (`TestRunApplicationRejectsMissionEvidenceWithoutRunID`).
+- PASS — `TestRunApplicationProjectsCompleteMissionEvidenceBeyondDefaultPage`
+  projects 101 entries without inheriting the bounded 100-entry list page.
+
+## 2026-09-12 — Nexus Codex TUI lock / flag compatibility
+
+- PASS — `go test ./internal/core/provider/adapters/codex ./internal/control/flags ./internal/control/driver ./internal/control/host ./internal/profile -count=1`.
+- PASS — `go test ./internal/core/provider/adapters/codex -race -count=1`.
+- PASS — `go vet` on the touched packages; focused `Quota|Monitor` Nexus tests.
+- PASS — TUI lock blocks `runAppServerRateLimits` / `GetUsage` app-server spawn;
+  rollout windows still returned; `thread_history` symlink untouched on usage path.
+- PASS — Codex `-c`/`-p` pass through; `--continue` → `resume --last`;
+  `--print` → `exec`; `--effort` → `-c model_reasoning_effort=...`.
+- PASS — Prepare creates canonical `sessions` + `config.toml` only (no second
+  `.codex/sessions` write tree).
+- PASS — legacy `.codex/config.toml` is migrated before canonical defaults are
+  appended; the regression test preserves the legacy model setting.
+- PASS — profile preparation waits for an active per-home TUI lock before
+  touching configuration/session artifacts.
+- PASS — E2E profile import resolves the real host home when `HOME` points at an
+  isolated provider home; explicit source override precedence is covered.
+- UNVERIFIED — live authenticated `nexus codex` mid-turn interrupt / `model:
+  loading` reproduction after the fix (requires interactive provider session).
+
 ## 2026-09-12 — Canonical validation evidence projection
 
 - PASS — `go test ./internal/nexus ./internal/control/web -count=1`.
 - PASS — `RunApplicationService.ValidationEvidence` reads the existing
   append-only Mission stream, verifies its hash chain before projection and
   returns explicit empty/no-chain state when no stream exists.
+- PASS — the projection test closes and reopens the same SQLite store, then
+  reloads the run, stream, entry and verified chain successfully.
+- PASS — Codex TUI lock tests cover non-blocking ownership, app-server rate
+  limit suppression, session migration safety and canonical home preparation.
 - PASS — Web route `GET /api/v1/runs/{id}/validation-evidence` exposes that same
   projection; no second ledger or report store was introduced.
 - PASS — Web client typed method `getRunValidationEvidence` and its transport
@@ -1044,6 +1077,6 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
   [`DEV/AI_CONTROL_DEFERRED.md`](AI_CONTROL_DEFERRED.md), item 6.
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-12T03:02:41Z
+## Frontend gate — 2026-09-12T03:43:44Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).

@@ -34,7 +34,6 @@ func bootstrapProfile(provider string, p model.Profile) (string, error) {
 		})
 		// Ensure isolated session dirs exist (do not symlink host sessions).
 		_ = os.MkdirAll(filepath.Join(home, "sessions"), 0700)
-		_ = os.MkdirAll(filepath.Join(home, ".codex", "sessions"), 0700)
 	case "agy":
 		linkConversationArtifacts(filepath.Join(home, ".gemini"), filepath.Join(hostHome, ".gemini"), []string{
 			"antigravity-cli/history.jsonl", "antigravity-cli/conversation_summaries.db",

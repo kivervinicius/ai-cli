@@ -38,11 +38,10 @@ var BuiltinAliases = map[string]CanonicalAlias{
 		},
 	},
 	"-c": {
-		Description: "Short alias for --continue",
+		Description: "Short alias for --continue (AGY/Claude only; Codex uses native -c/--config)",
 		ProviderFlags: map[string][]string{
 			"agy":    {"--continue"},
 			"claude": {"--continue"},
-			"codex":  {"resume", "--last"},
 		},
 	},
 	"--resume": {
@@ -72,11 +71,10 @@ var BuiltinAliases = map[string]CanonicalAlias{
 		},
 	},
 	"-p": {
-		Description: "Short alias for --print",
+		Description: "Short alias for --print (AGY/Claude only; Codex uses native -p/--profile)",
 		ProviderFlags: map[string][]string{
 			"agy":    {"--print"},
 			"claude": {"--print"},
-			"codex":  {"exec"},
 		},
 	},
 	"--effort": {

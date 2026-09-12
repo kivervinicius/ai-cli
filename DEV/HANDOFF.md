@@ -1,5 +1,28 @@
 # Handoff
 
+## Mission evidence isolation — 2026-09-12
+
+The canonical `RunApplicationService.ValidationEvidence` projection now
+verifies the complete append-only stream and then filters entries by the
+persisted `run_id` envelope. Two Missions sharing a project therefore cannot
+receive each other's validation claims. Missing/invalid mission identity in an
+entry fails closed instead of silently broadening the report. The projection
+uses the explicit complete-stream store read, so it does not truncate after
+the normal 100-entry list page. Focused isolation, negative-metadata and
+101-entry tests are GREEN; external authenticated Mission evidence remains
+unavailable, so release is still NO-GO.
+
+## Nexus Codex TUI lock — 2026-09-12
+
+`nexus codex` no longer lets the quota app-server probe compete with a live
+interactive TUI on the same isolated `CODEX_HOME`. Direct and supervised
+launches acquire `$CODEX_HOME/nexus-tui.lock`; probes back off to last-known
+official CACHED or isolated rollout evidence. Codex short flags `-c`/`-p` are
+native again; use `--continue` / `--print` for Nexus aliases. Prepare writes a
+single CODEX_HOME. Focused unit/race tests pass; live mid-turn interrupt with a
+real Codex session is still UNVERIFIED. No additional commit/push was made by
+this continuation; the existing campaign-autopilot commit is preserved.
+
 ## Canonical evidence projection — 2026-09-12
 
 The existing append-only `ValidationEvidenceStream` now has a single
@@ -12,12 +35,20 @@ production Mission stream was available; release remains NO-GO.
 The Web client now exposes typed `getRunValidationEvidence` against this route;
 its RED → GREEN transport test, typecheck and production build pass.
 
+Codex runtime ownership was hardened with a per-profile OS lock. Interactive
+TUI sessions hold the lock; quota/app-server probes fail closed or use bounded
+last-known data while it is held, and the canonical profile home no longer
+creates a competing `.codex/sessions` tree. Focused, full and race tests pass.
+The stable-root real Codex retry still stopped at `model: loading`, so this is
+not provider Mission evidence.
+
 ## Final closure continuation — 2026-09-12
 
-Current commit HEAD is `50fd440cbe42b3a0ac1ed44f0d17c38cb697e282`, matching
-`origin/feat/nexus-maximum-delivery`; follow-up routing/evidence tests,
-AGY/runtime hardening and final documentation remain uncommitted in the
-worktree.
+Current commit HEAD is `42c22137a4a57ff6b6b80df8125b5a138f32b9e1`, matching
+`origin/feat/nexus-maximum-delivery`; the complete-stream evidence projection
+follow-up and final documentation remain uncommitted in the worktree. The
+preceding finalization commit was created externally by the campaign
+autopilot; it is preserved and was revalidated before continuation.
 
 The existing routing contract now carries generic persisted `ExecutionGuidance`
 through task requirements into prompt compilation. Durable routing decisions
@@ -50,6 +81,15 @@ only for host availability; Nexus Codex isolated runtime UNVERIFIED at model
 loading (reproduced with the live-quota profile); AGY runtime UNVERIFIED
 because it reported not signed in; OpenCode UNVERIFIED/pending auth. No durable authenticated Mission
 `ValidationEvidenceStream` ID exists.
+
+The follow-up RED → GREEN test also fixed legacy Codex configuration migration:
+`Prepare` now copies a non-empty `home/.codex/config.toml` before adding the
+canonical credentials-store default, preserving existing model/settings data.
+Profile preparation itself waits on the same per-home lock, so setup cannot
+mutate session/config artifacts while the TUI is active.
+The local E2E harness also resolves its default imported-profile source from
+`security.FindHostHome`, avoiding a provider-rewritten `HOME`; explicit source
+configuration remains supported.
 
 Release remains `NO-GO` with P1 evidence blockers for authenticated Mission,
 live failover/escalation/handoff, Windows/macOS same-SHA and overnight proof.

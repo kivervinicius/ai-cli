@@ -1,28 +1,141 @@
 # Nexus Final Closure Checkpoints
 
+## Work Package E — Codex legacy configuration migration
+
+- `work_package`: E/provider continuity
+- `status`: GREEN locally; release remains `NO-GO`
+- `base_sha`: `2925ca746c198334f20d1e0cef7feb51e4f4e3`
+- `current_sha`: `42c22137a4a57ff6b6b80df8125b5a138f32b9e1` plus uncommitted
+  provider-safety code, regression test and documentation
+- `files_changed`: `internal/core/provider/adapters/codex/codex.go` and
+  `internal/core/provider/adapters/codex/tui_lock_test.go`
+- `tests_run`: RED test first observed the canonical config losing the legacy
+  contents; GREEN focused migration/canonical-home tests; focused provider,
+  host, flags and profile tests; race tests; Windows cross-compile; `git diff --check`
+- `test_results`: PASS. `Prepare` copies a non-empty legacy config before
+  appending the canonical credentials-store default and waits for an active
+  TUI lock before mutating profile artifacts.
+- `decisions`: preserve canonical single-home writes while keeping readable
+  legacy migration; never create a competing `.codex/sessions` tree.
+- `evidence`: `TestPrepareMigratesLegacyConfigBeforeCreatingCanonicalConfig`,
+  `TestPrepareUsesCanonicalHomeOnly` and `TestPrepareWaitsForActiveTUILock`.
+- `known_risks`: native provider authentication and live Mission evidence remain
+  unavailable; Windows cross-compile is not native Windows validation.
+- `remaining_work`: obtain authenticated Mission/provider, native platform and
+  overnight evidence before reconsidering the release verdict.
+- `unlocked_dependencies`: none for local implementation; external evidence is
+  still the release blocker.
+
+## Work Package P — E2E profile-source hardening
+
+- `work_package`: P/provider proof harness
+- `status`: GREEN locally; release remains `NO-GO`
+- `base_sha`: `2925ca746c198334f20d1e0cef7feb51e4f4e3`
+- `current_sha`: `42c22137a4a57ff6b6b80df8125b5a138f32b9e1` plus uncommitted
+  harness code, tests and documentation
+- `files_changed`: `scripts/nexus-e2e-local.go` and
+  `scripts/nexus-e2e-local_test.go`
+- `tests_run`: RED compile test for missing resolver; GREEN focused resolver
+  tests and `git diff --check`
+- `test_results`: PASS. Imported profile source defaults to the real host home
+  and an explicit `NEXUS_E2E_PROFILE_SOURCE` remains authoritative.
+- `decisions`: reuse `security.FindHostHome`; do not infer host profile data
+  from mutable provider `HOME`.
+- `evidence`: `TestResolveE2EProfileSourceUsesHostHomeNotProviderHome` and
+  `TestResolveE2EProfileSourceHonorsExplicitOverride`.
+- `known_risks`: real Codex remains at `model: loading`; AGY reports `not
+  signed in`; no authenticated Mission stream was produced.
+- `remaining_work`: external authentication/provider health and native platform
+  evidence remain required for GO.
+- `unlocked_dependencies`: the E2E harness can now discover imported profiles
+  correctly without a manual source override.
+
+## Final local verification — 2026-09-12
+
+- `work_package`: FINAL-LOCAL-VERIFICATION
+- `status`: NO-GO; all local implementation gates are GREEN, external proof is
+  still absent
+- `base_sha`: `2925ca746c198334f20d1e0cef7feb51e4f4e3`
+- `current_sha`: `42c22137a4a57ff6b6b80df8125b5a138f32b9e1` plus uncommitted
+  source, tests and evidence documentation
+- `files_changed`: Codex per-profile lock/migration/flag handling, complete
+  Mission evidence projection, quota safety, focused tests and closure docs.
+- `tests_run`: `go test ./... -count=1`, `go test -race ./... -count=1`,
+  touched-package race tests, `go vet ./...`, `make quality`, `make security`,
+  `make build`, `make build-desktop`, `make web-verify`, Windows Codex
+  cross-compile and `git diff --check`.
+- `test_results`: PASS. No race, vet, build, frontend, security or diff-check
+  failure was observed. Native Windows/macOS and real provider Mission proof
+  remain unverified.
+- `decisions`: retain `NO-GO`; do not promote installed-provider, cross-compile
+  or deterministic fake-Mission evidence to authenticated production proof.
+- `evidence`: `DEV/validation/FINAL_CLOSURE_REPORT.md`,
+  `DEV/validation/FINAL_PROVIDER_MATRIX.md`, `DEV/VERIFY.md` and the focused
+  Codex/evidence test names above.
+- `known_risks`: no durable authenticated Mission stream; live failover,
+  escalation, handoff, native platforms, desktop shell and overnight remain
+  unavailable.
+- `remaining_work`: obtain external authenticated/provider/platform/overnight
+  evidence, then rerun the release verdict.
+- `unlocked_dependencies`: none for local implementation; release remains
+  externally blocked.
+
+## Work Package L — per-Mission evidence isolation
+
+- `work_package`: L/read-model isolation
+- `status`: GREEN locally; release remains `NO-GO`
+- `base_sha`: `2925ca746c198334f20d1e0cef7feb51e4f4e3`
+- `current_sha`: `42c22137a4a57ff6b6b80df8125b5a138f32b9e1` plus uncommitted
+  evidence-isolation code, tests and documentation
+- `files_changed`: `internal/nexus/store/validation_evidence.go`,
+  `internal/nexus/validation_evidence.go` and focused tests/docs
+- `tests_run`: focused Nexus/Store tests, Nexus/Store race tests, full
+  `go test ./...`, full `go test -race ./...`, `go vet ./...`, `make quality`,
+  `make security`, `make build`, `make build-desktop`, `make web-verify`, and
+  `git diff --check`
+- `test_results`: PASS. The full canonical stream is hash-verified first;
+  projection then selects the persisted `run_id`, and malformed/missing
+  mission identity fails closed. Complete-stream projection does not truncate
+  after the default 100-entry list page.
+- `decisions`: retain the existing bounded list API for ordinary consumers and
+  add an explicit complete-stream read only at the canonical report boundary;
+  do not create a second evidence store or infer claims from documentation.
+- `evidence`: `TestRunApplicationProjectsOnlyEvidenceForRequestedMission`
+  persists two Missions in one project and proves one-entry isolation for each;
+  `TestRunApplicationRejectsMissionEvidenceWithoutRunID` proves the negative
+  boundary; `TestRunApplicationProjectsCompleteMissionEvidenceBeyondDefaultPage`
+  proves 101-entry completeness.
+- `known_risks`: no authenticated Mission produced a durable production stream;
+  external provider/platform/overnight proof remains unavailable.
+- `remaining_work`: authenticate a real Mission/provider and rerun the global
+  release evidence gate.
+- `unlocked_dependencies`: long-run evidence reports are now complete and
+  Mission-isolated; only external authenticated/native/overnight proof remains
+  release-blocking.
+
 ## Work Package L — canonical validation evidence projection
 
 - `work_package`: L/report projection
 - `status`: GREEN locally; release remains `NO-GO`
 - `base_sha`: `2925ca746c198334f20d1e0cef7feb51e4f4e3`
-- `current_sha`: `50fd440cbe42b3a0ac1ed44f0d17c38cb697e282` plus uncommitted
-  evidence projection, route, tests and documentation
+- `current_sha`: `42c22137a4a57ff6b6b80df8125b5a138f32b9e1` plus uncommitted
+  evidence projection, route, tests, Codex locking and documentation
 - `files_changed`: `internal/nexus/validation_evidence.go`, its focused test,
   `internal/control/web/server.go`, `handlers_planning.go`, typed Web client
   API/test and closure docs
-- `tests_run`: `go test ./internal/nexus ./internal/control/web -count=1`
+- `tests_run`: `go test ./internal/nexus ./internal/control/web -count=1`;
+  restart projection and full Codex lock tests
 - `test_results`: PASS. The application projection verifies the canonical hash
   chain before exposing entries; missing streams remain explicit with
-  `chain_verified=false`. Web client transport/typecheck/build also pass.
+  `chain_verified=false`; the same projection survives close/reopen of the
+  SQLite store. Web client transport/typecheck/build also pass.
 - `decisions`: reuse `ValidationEvidenceStream` as the sole source of truth;
   expose a read-only run projection and do not synthesize validation claims.
 - `evidence`: focused Nexus/Web test output and the canonical stream contract.
 - `known_risks`: no authenticated Mission produced a durable production stream;
-  evidence projection restart reload and external provider/platform proof stay
-  unverified.
-- `remaining_work`: authenticate a real Mission/provider, validate the stream
-  across restart, prove live failover/escalation/handoff, native platforms and
-  overnight acceptance.
+  external provider/platform proof stays unverified.
+- `remaining_work`: authenticate a real Mission/provider, then prove live
+  failover/escalation/handoff, native platforms and overnight acceptance.
 - `unlocked_dependencies`: Web/report consumers can now read canonical Mission
   evidence without accessing the store or reconstructing claims.
 
@@ -31,11 +144,12 @@
 - `work_package`: E/G/P
 - `status`: GREEN locally; release remains `NO-GO`
 - `base_sha`: `2925ca746c198334f20d1e0cef7feb51e4f4f4e3`
-- `current_sha`: `50fd440cbe42b3a0ac1ed44f0d17c38cb697e282` plus uncommitted routing/evidence tests, AGY/runtime hardening and documentation
+- `current_sha`: `42c22137a4a57ff6b6b80df8125b5a138f32b9e1` plus uncommitted routing/evidence tests, AGY/runtime hardening and documentation
 - `files_changed`: existing routing/prompt contracts, Web routing type,
   Skill resolution provenance, local E2E/evidence tests and stable-root
   harness support, bounded toolchain evidence capture, AGY/runtime quota
-  hardening, validation reports and durable project docs.
+  hardening, Codex profile locking/native flag handling, validation reports and
+  durable project docs.
 - `tests_run`: `go test ./... -count=1`; `go test -race ./... -count=1`;
   `go vet ./...`; `git diff --check`; `make security`; `make build`;
   `make build-desktop`; `make web-verify`; `make quality`.
@@ -43,6 +157,7 @@
   PASS. Frontend verification is 10/10 PASS. Local autopilot also emits and
   verifies package/global canonical evidence entries with a Git SHA. AGY and
   runtime focused tests pass, including expired-token/no-browser behavior.
+  Codex TUI/app-server lock and native flag tests pass.
   The aggregate quality gate also passes; one existing ESLint unused-variable
   warning remains non-blocking. The stable-root E2E smoke was retried against
   Codex and remained `model: loading`; AGY reported `not signed in`.

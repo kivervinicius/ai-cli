@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/kivervinicius/ai-cli/internal/core/security"
 )
 
 type apiClient struct {
@@ -540,10 +541,7 @@ func startLocalNexus(ctx context.Context, port int, keep bool, browser bool) (fu
 	cmd := exec.CommandContext(ctx, bin, "web", "--listen", "127.0.0.1", "--port", fmt.Sprint(port), "--no-open")
 	dataDir := filepath.Join(root, "data")
 	if os.Getenv("NEXUS_E2E_IMPORT_PROFILES") == "1" {
-		source := strings.TrimSpace(os.Getenv("NEXUS_E2E_PROFILE_SOURCE"))
-		if source == "" {
-			source = filepath.Join(os.Getenv("HOME"), ".local", "share", "ai-manager")
-		}
+		source := resolveE2EProfileSource()
 		if err := copyProfileTree(filepath.Join(source, "profiles"), filepath.Join(dataDir, "profiles")); err != nil {
 			cleanupRoot()
 			return nil, fmt.Errorf("copy authenticated profiles to isolated data: %w", err)
@@ -628,6 +626,19 @@ func startLocalNexus(ctx context.Context, port int, keep bool, browser bool) (fu
 		cleanupRoot()
 		return nil, ctx.Err()
 	}
+}
+
+// resolveE2EProfileSource identifies the host data root used to import
+// authenticated profiles. HOME may be rewritten by an isolated provider
+// runtime, so it is not a reliable source of the real Nexus profile store.
+func resolveE2EProfileSource() string {
+	if source := strings.TrimSpace(os.Getenv("NEXUS_E2E_PROFILE_SOURCE")); source != "" {
+		return source
+	}
+	if hostHome := security.FindHostHome(); hostHome != "" {
+		return filepath.Join(hostHome, ".local", "share", "ai-manager")
+	}
+	return filepath.Join(os.Getenv("HOME"), ".local", "share", "ai-manager")
 }
 
 func copyProfileTree(source, destination string) error {

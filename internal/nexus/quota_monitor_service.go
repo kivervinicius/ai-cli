@@ -175,6 +175,13 @@ func (s *QuotaMonitorService) check() {
 		// told us the account is blocked. Alerting on it is the monitor's job.
 		switch snapshot.Status {
 		case model.UsageLive, model.UsageCached, model.UsageRateLimited:
+		case model.UsageEstimated:
+			// Honest deferred quota while a Codex TUI owns the profile home,
+			// or rollout evidence from the live session, must not look degraded.
+			if len(snapshot.Windows) > 0 {
+				break
+			}
+			fallthrough
 		default:
 			s.emitDegraded(p.Provider+":"+p.Name, fmt.Sprintf("quota read is %s", snapshot.Status))
 			continue

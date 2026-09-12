@@ -33,8 +33,11 @@ type ValidationEvidenceReport struct {
 	ChainVerified bool                            `json:"chain_verified"`
 }
 
-// ValidationEvidence projects the durable stream for one MissionRun. Missing
-// evidence is represented explicitly rather than synthesized as a PASS.
+// ValidationEvidence projects the durable stream for one MissionRun. The full
+// stream is verified first, then entries are selected by their persisted
+// run_id envelope so two Missions in one project cannot see each other's
+// evidence. Missing evidence is represented explicitly rather than synthesized
+// as a PASS.
 func (s *RunApplicationService) ValidationEvidence(ctx context.Context, runID string) (ValidationEvidenceReport, error) {
 	if err := s.ready(ctx); err != nil {
 		return ValidationEvidenceReport{}, err
@@ -61,9 +64,24 @@ func (s *RunApplicationService) ValidationEvidence(ctx context.Context, runID st
 	if err := st.VerifyValidationEvidenceChain(stream.ID); err != nil {
 		return ValidationEvidenceReport{}, err
 	}
-	entries, err := st.ListValidationEvidenceEntries(stream.ID, 0)
+	allEntries, err := st.ListAllValidationEvidenceEntries(stream.ID)
 	if err != nil {
 		return ValidationEvidenceReport{}, err
+	}
+	entries := make([]store.ValidationEvidenceEntry, 0, len(allEntries))
+	for _, entry := range allEntries {
+		var metadata struct {
+			RunID string `json:"run_id"`
+		}
+		if err := json.Unmarshal([]byte(entry.EvidenceJSON), &metadata); err != nil {
+			return ValidationEvidenceReport{}, fmt.Errorf("decode mission evidence %s: %w", entry.ID, err)
+		}
+		if strings.TrimSpace(metadata.RunID) == "" {
+			return ValidationEvidenceReport{}, fmt.Errorf("mission evidence %s has no run id", entry.ID)
+		}
+		if metadata.RunID == run.ID {
+			entries = append(entries, entry)
+		}
 	}
 	report.Stream = &stream
 	report.Entries = entries

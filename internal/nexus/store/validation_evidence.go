@@ -259,6 +259,16 @@ func (s *Store) ListValidationEvidenceEntries(streamID string, limit int) ([]Val
 	return s.listValidationEvidenceEntries(streamID, &limit)
 }
 
+// ListAllValidationEvidenceEntries returns the complete immutable stream in
+// sequence order. It is intentionally separate from the bounded list API so
+// report projections can make their no-truncation requirement explicit.
+func (s *Store) ListAllValidationEvidenceEntries(streamID string) ([]ValidationEvidenceEntry, error) {
+	if strings.TrimSpace(streamID) == "" {
+		return nil, fmt.Errorf("%w: stream id is required", ErrValidationEvidenceInvalid)
+	}
+	return s.listValidationEvidenceEntries(streamID, nil)
+}
+
 func (s *Store) listValidationEvidenceEntries(streamID string, limit *int) ([]ValidationEvidenceEntry, error) {
 	query := `SELECT id, stream_id, sequence, git_sha, identity_digest, repository_state,
 		environment_json, provider, profile, model, scenario, command_display,

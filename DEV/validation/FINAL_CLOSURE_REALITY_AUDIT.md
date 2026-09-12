@@ -12,8 +12,8 @@ after the implementation slices; historical “ADD/EXTEND” actions below are
 the starting characterization, while the resumable result is in
 `FINAL_CLOSURE_CHECKPOINTS.md`.
 
-Continuation observed at commit HEAD `50fd440cbe42b3a0ac1ed44f0d17c38cb697e282`
-with additional uncommitted scanner, routing and evidence-projection changes.
+Continuation observed at commit HEAD `42c22137a4a57ff6b6b80df8125b5a138f32b9e1`
+with additional uncommitted complete-stream evidence-projection changes.
 The original base SHA above remains the campaign baseline.
 
 ## Capability matrix
@@ -50,8 +50,8 @@ The original base SHA above remains the campaign baseline.
    prompt compilation are source-agnostic, but complete storage migration is
    not claimed.
 2. Intent, routing and canonical validation evidence now have typed report
-   projections; full restart reload proof for the evidence read model remains
-   open.
+   projections; the evidence read model now has a same-database restart test.
+   External authenticated stream proof remains open.
 3. The effective Mission path still combines `RecommendResources` with the
    existing scheduler; the unified live allocation contract is not fully
    proven.

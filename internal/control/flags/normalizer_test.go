@@ -50,7 +50,22 @@ func TestNormalizeYolo(t *testing.T) {
 		{
 			provider: "codex",
 			args:     []string{"-c"},
+			expected: []string{"-c"},
+		},
+		{
+			provider: "codex",
+			args:     []string{"--continue"},
 			expected: []string{"resume", "--last"},
+		},
+		{
+			provider: "codex",
+			args:     []string{"-c", `model_reasoning_effort="high"`},
+			expected: []string{"-c", `model_reasoning_effort="high"`},
+		},
+		{
+			provider: "codex",
+			args:     []string{"-p", "work"},
+			expected: []string{"-p", "work"},
 		},
 		{
 			provider: "agy",
@@ -69,8 +84,13 @@ func TestNormalizeYolo(t *testing.T) {
 		},
 		{
 			provider: "codex",
-			args:     []string{"-p"},
+			args:     []string{"--print"},
 			expected: []string{"exec"},
+		},
+		{
+			provider: "codex",
+			args:     []string{"-p"},
+			expected: []string{"-p"},
 		},
 		{
 			provider: "agy",

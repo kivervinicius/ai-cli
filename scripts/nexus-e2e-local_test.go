@@ -169,6 +169,29 @@ func TestResolveE2ERootCreatesDisposableTemporaryDirectory(t *testing.T) {
 	}
 }
 
+func TestResolveE2EProfileSourceUsesHostHomeNotProviderHome(t *testing.T) {
+	hostHome := t.TempDir()
+	t.Setenv("AI_REAL_HOME", hostHome)
+	t.Setenv("HOME", filepath.Join(hostHome, "profiles", "codex", "isolated", "home"))
+	t.Setenv("NEXUS_E2E_PROFILE_SOURCE", "")
+
+	got := resolveE2EProfileSource()
+	want := filepath.Join(hostHome, ".local", "share", "ai-manager")
+	if got != want {
+		t.Fatalf("resolveE2EProfileSource=%q, want %q", got, want)
+	}
+}
+
+func TestResolveE2EProfileSourceHonorsExplicitOverride(t *testing.T) {
+	override := filepath.Join(t.TempDir(), "profiles-source")
+	t.Setenv("AI_REAL_HOME", t.TempDir())
+	t.Setenv("NEXUS_E2E_PROFILE_SOURCE", override)
+
+	if got := resolveE2EProfileSource(); got != override {
+		t.Fatalf("resolveE2EProfileSource=%q, want explicit override %q", got, override)
+	}
+}
+
 func TestProviderMarkerRequiresLiteralMarkerAndSanitizesANSI(t *testing.T) {
 	if providerMarkerSeen("banner only\nNEXUS_E2E_O") {
 		t.Fatal("accepted partial provider marker")

@@ -215,7 +215,6 @@ export const AgentTerminal: React.FC<{
     const roleRef: { current: TerminalRole } = { current: 'VIEW_ONLY' };
     const kickoffRef = { current: normalizeInitialPrompt(initialPrompt), sent: false };
     let lastError = '';
-    let leased = false;
     let termInstance: Terminal | null = null;
     const redrawTimers: number[] = [];
     let openFrame: number | undefined;
@@ -459,7 +458,6 @@ export const AgentTerminal: React.FC<{
       setConnection('CONNECTING');
       if (!openedOnce) setMessage('');
       lastError = '';
-      leased = false;
 
       const previous = wsRef.current;
       if (previous) {
@@ -534,7 +532,6 @@ export const AgentTerminal: React.FC<{
             }
           } else if (payload.type === 'lease') {
             const next = normalizeTerminalRole(payload.role);
-            leased = true;
             reconnectAttempt = 0;
             roleRef.current = next;
             setRole(next);

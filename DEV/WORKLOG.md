@@ -1,5 +1,46 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-12 — Mission evidence projection isolation
+
+- Fixed a concrete read-model boundary bug: the validation endpoint selected a
+  project stream but returned every Mission's entries for the requested run.
+- The projection now verifies the whole hash chain, decodes the persisted
+  `run_id` envelope, fails closed on missing identity, and returns only entries
+  belonging to the requested Mission.
+- It now uses an explicit complete-stream store read for the report path;
+  long Missions are not silently truncated at the normal 100-entry query page.
+- Added RED → GREEN coverage with two durable Missions sharing one project;
+  both reports remain chain-verified and isolated, plus a negative test for
+  valid JSON without a persisted mission identity and a 101-entry projection.
+
+## 2026-09-12 — Nexus Codex TUI lock and flag compatibility
+
+- Interactive `nexus codex` now holds an exclusive flock on
+  `$CODEX_HOME/nexus-tui.lock` (direct adapter.Run and supervised SessionHost).
+- Official `codex app-server` quota probes try the same lock non-blocking; when
+  the TUI owns the home they skip spawn/Kill and fall back to last-known
+  official CACHED or isolated rollout windows. Quota monitor accepts ESTIMATED
+  with windows instead of marking the account degraded.
+- `GetUsage` no longer calls `migrateAwayFromSharedSessions` or mutates
+  `thread_history` / sessions (migration stays in Prepare/Run/Resume only).
+- Canonical aliases no longer map Codex `-c`/`-p` (native `--config`/`--profile`);
+  `--continue` still becomes `resume --last`, `--print` still becomes `exec`,
+  `--effort` still emits `-c model_reasoning_effort=...`.
+- Prepare/bootstrap write a single CODEX_HOME tree; legacy `home/.codex` remains
+  readable for auth/config migration but is not created for sessions/sqlite.
+- Fixed the migration ordering bug found by RED → GREEN testing: legacy
+  `.codex/config.toml` is copied before `ensureConfigFile` appends canonical
+  defaults, so existing model/config settings are not silently discarded.
+- Protected `Prepare` itself with the same per-profile lock and added a
+  concurrency regression test, closing the setup-time mutation window before
+  `Run` acquires its interactive lock.
+- Hardened the local provider E2E harness profile import: it now resolves the
+  host data root through `security.FindHostHome` instead of trusting a possibly
+  provider-rewritten `HOME`; an explicit `NEXUS_E2E_PROFILE_SOURCE` still wins.
+- Focused tests: codex TUI lock + GetUsage, flags normalizer, host/driver/
+  profile packages, `go test -race` on codex adapter. Live mid-turn interrupt
+  with a real authenticated Codex session remains UNVERIFIED in this environment.
+
 ## 2026-09-12 — Canonical validation evidence read model
 
 - Added `ValidationEvidenceReport` to the existing `RunApplicationService`;
@@ -12,9 +53,25 @@
 - RED → GREEN test covers a real persisted WorkPlan/MissionRun, canonical
   stream entry, chain verification and projection. Focused Nexus/Web tests
   pass.
+- Added restart coverage that closes and reopens the same SQLite store before
+  projecting the run evidence; the durable stream and verified chain survive.
 - This closes the local evidence-projection gap but not the external release
   gate: no authenticated Mission stream ID, live provider failover, native
   Windows/macOS or overnight proof exists.
+
+## 2026-09-12 — Codex profile ownership and provider retry
+
+- Added OS-specific per-profile TUI locking across Codex runtime, SessionHost,
+  app-server quota probes and usage hot paths. The lock prevents concurrent
+  session migration/app-server mutation and preserves last-known quota while a
+  TUI is active.
+- Consolidated Codex isolated writes on the canonical profile home and stopped
+  creating the competing `.codex/sessions` tree; legacy files remain readable
+  for migration.
+- Corrected provider-specific `-c`/`-p` normalization so native Codex flags are
+  not rewritten as AGY/Claude aliases; focused/full/race tests pass.
+- A new stable-root authenticated Codex Direct Work retry still remained at
+  `model: loading`; it is recorded as UNVERIFIED, not provider PASS.
 
 ## 2026-09-12 — Final closure routing/guidance and provider-proof correction
 
@@ -66,7 +123,7 @@
 - Release verdict remains `NO-GO`; Windows/macOS, live failover/escalation/
   handoff, native desktop launch and overnight acceptance remain UNVERIFIED or
   SKIPPED. The target branch advanced concurrently to
-  `50fd440cbe42b3a0ac1ed44f0d17c38cb697e282`; follow-up routing/evidence
+  `42c22137a4a57ff6b6b80df8125b5a138f32b9e1`; follow-up routing/evidence
   tests, AGY/runtime hardening and final evidence-document updates remain
   uncommitted.
 

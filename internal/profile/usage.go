@@ -129,6 +129,20 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 		// the used_percent written by a more recent session.
 		useCache = snap.Source == model.SourceOfficialAPI && time.Since(snap.FetchedAt) < codexUsageTTL
 	}
+	// While an interactive Codex TUI owns this profile home, prefer last-known
+	// official quota as CACHED instead of spawning a competing app-server.
+	if !useCache && !refresh && providerName == "codex" {
+		if home, err := config.ProfileHome("codex", name); err == nil && codex.IsTUILocked(home) {
+			if found && snap.Source == model.SourceOfficialAPI && len(snap.Windows) > 0 {
+				snap.Status = model.UsageCached
+				useCache = true
+			} else if hasLastKnown && lastKnown.Source == model.SourceOfficialAPI && len(lastKnown.Windows) > 0 {
+				lastKnown.Status = model.UsageCached
+				lastKnown.Error = "TUI Codex ativo; usando última cota oficial"
+				return lastKnown
+			}
+		}
+	}
 	if debug {
 		slog.Debug("loadUsageSnapshot: cache decision", "provider", providerName, "profile", name, "useCache", useCache, "trustworthy", qEng.Trustworthy(snap))
 	}

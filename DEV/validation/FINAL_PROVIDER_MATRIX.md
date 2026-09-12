@@ -2,12 +2,13 @@
 
 > Historical snapshot. For the current closure decision use the canonical
 > `ValidationEvidenceStream` projections and `./nexus doctor --json` recorded
-> at HEAD `50fd440cbe42b3a0ac1ed44f0d17c38cb697e282`. Binary installation is
+> at HEAD `42c22137a4a57ff6b6b80df8125b5a138f32b9e1`. Binary installation is
 > not authenticated Mission evidence; current release verdict is `NO-GO`.
 
-The current doctor snapshot was refreshed at `2026-09-12T03:02:22Z`. The
-2026-09-12 retry used the explicit stable-root harness mode so Codex was
-not placed under `/tmp`; it still remained at `model: loading`. AGY reached
+The current doctor snapshot was refreshed at `2026-09-12T03:34:53Z`. The
+2026-09-12 retry used the explicit stable-root harness mode and canonical
+Codex home/profile lock so Codex was not placed under `/tmp`; it still remained
+at `model: loading`. AGY reached
 its runtime but reported `not signed in`. Both remain `UNVERIFIED`.
 
 | Provider | Binary probe | Authenticated real E2E |

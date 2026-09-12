@@ -269,11 +269,24 @@ func appServerEnabled() bool {
 	return true
 }
 
+// errTUIBusy is returned when an interactive Codex TUI owns the profile home.
+var errTUIBusy = errors.New("codex TUI holds CODEX_HOME lock")
+
 // runAppServerRateLimits performs the full stdio JSON-RPC exchange against a
 // transient `codex app-server` subprocess bound to codexHome.
 func runAppServerRateLimits(ctx context.Context, codexHome string) (*getAccountRateLimitsResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, appServerTimeout)
 	defer cancel()
+
+	// Never compete with a live interactive TUI for the same CODEX_HOME.
+	probeLock, ok, err := TryAcquireTUILock(codexHome)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errTUIBusy
+	}
+	defer func() { _ = probeLock.Release() }()
 
 	cmd, err := appServerCommand(ctx, codexHome)
 	if err != nil {

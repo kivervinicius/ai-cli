@@ -91,11 +91,13 @@ func (a *Adapter) Prepare(ctx context.Context, p model.Profile) error {
 	if err != nil {
 		return err
 	}
-	dotCodex := filepath.Join(home, ".codex")
-	for _, d := range []string{home, dotCodex} {
-		if err := os.MkdirAll(d, 0700); err != nil {
-			return err
-		}
+	lock, err := AcquireTUILock(home)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Release() }()
+	if err := os.MkdirAll(home, 0700); err != nil {
+		return err
 	}
 
 	// Apply isolation preset policies
@@ -105,43 +107,40 @@ func (a *Adapter) Prepare(ctx context.Context, p model.Profile) error {
 		return err
 	}
 
-	// Configure file auth store inside isolated home and .codex
+	// Single canonical CODEX_HOME: auth and config live at the profile home root.
+	// Legacy home/.codex is still readable for migration, but we no longer write
+	// a second sessions/sqlite tree that competes with the official CLI.
 	configFile := filepath.Join(home, "config.toml")
-	_ = ensureConfigFile(configFile)
-	dotConfigFile := filepath.Join(dotCodex, "config.toml")
-	_ = ensureConfigFile(dotConfigFile)
-
-	// Sync auth.json between home and home/.codex if one exists
 	authHome := filepath.Join(home, "auth.json")
-	authDot := filepath.Join(dotCodex, "auth.json")
-	if data, err := os.ReadFile(authHome); err == nil && len(data) > 0 {
-		_ = os.WriteFile(authDot, data, 0600)
-	} else if data, err := os.ReadFile(authDot); err == nil && len(data) > 0 {
-		_ = os.WriteFile(authHome, data, 0600)
+	legacyAuth := filepath.Join(home, ".codex", "auth.json")
+	if data, err := os.ReadFile(authHome); err != nil || len(data) == 0 {
+		if data, err := os.ReadFile(legacyAuth); err == nil && len(data) > 0 {
+			_ = os.WriteFile(authHome, data, 0600)
+		}
 	}
+	legacyConfig := filepath.Join(home, ".codex", "config.toml")
+	if data, err := os.ReadFile(configFile); err != nil || len(data) == 0 {
+		if data, err := os.ReadFile(legacyConfig); err == nil && len(data) > 0 {
+			_ = os.WriteFile(configFile, data, 0600)
+		}
+	}
+	_ = ensureConfigFile(configFile)
 
 	// Isolate session history per profile so quota attribution is deterministic.
 	// Rules/skills/customizations remain shared from the host.
 	migrateAwayFromSharedSessions(home)
-	migrateAwayFromSharedSessions(dotCodex)
 	hostHome := security.FindHostHome()
 	if hostHome != "" {
 		hostCodex := filepath.Join(hostHome, ".codex")
 		if _, err := os.Stat(hostCodex); err == nil {
 			linkSharedCodexItems(home, hostCodex)
-			linkSharedCodexItems(dotCodex, hostCodex)
 		}
 		// Keep a durable ledger of which chatgpt_account_id owns host auth.
 		if id := readCodexAuthAccountID(filepath.Join(hostCodex, "auth.json")); id != "" {
 			recordHostAuthObservation(id)
 		}
 	}
-	for _, d := range []string{
-		filepath.Join(home, "sessions"),
-		filepath.Join(dotCodex, "sessions"),
-	} {
-		_ = os.MkdirAll(d, 0700)
-	}
+	_ = os.MkdirAll(filepath.Join(home, "sessions"), 0700)
 
 	return nil
 }
@@ -155,6 +154,12 @@ func (a *Adapter) Run(ctx context.Context, p model.Profile, args []string) (mode
 		return model.Failure{Kind: model.FailureProvider, Message: "codex binary not found"}, err
 	}
 	home, _ := config.ProfileHome(string(a.ID()), p.Name)
+	lock, lockErr := AcquireTUILock(home)
+	if lockErr != nil {
+		return model.Failure{Kind: model.FailureCommand, Message: lockErr.Error()}, lockErr
+	}
+	defer func() { _ = lock.Release() }()
+
 	cwd, _ := os.Getwd()
 	envOverrides := map[string]string{
 		"HOME":             home,
@@ -264,19 +269,20 @@ func (a *Adapter) usage(ctx context.Context, p model.Profile, force bool) model.
 		FetchedAt:  time.Now(),
 	}
 
-	// Ensure session stores are isolated even when the user only opens `nexus usage`
-	// (Prepare normally runs on launch).
-	if home, err := config.ProfileHome(string(a.ID()), p.Name); err == nil {
-		migrateAwayFromSharedSessions(home)
-		migrateAwayFromSharedSessions(filepath.Join(home, ".codex"))
-		_ = os.MkdirAll(filepath.Join(home, "sessions"), 0700)
-		_ = os.MkdirAll(filepath.Join(home, ".codex", "sessions"), 0700)
+	home := ""
+	if h, err := config.ProfileHome(string(a.ID()), p.Name); err == nil {
+		home = h
 	}
+	tuiBusy := home != "" && IsTUILocked(home)
 
-	// 1. Official quota read. Works for any authenticated account without a
-	// session, a prompt or quota consumption.
-	if apiSnap, ok := a.appServerUsage(ctx, p, force); ok {
-		return apiSnap
+	// Never mutate session stores from the quota hot path: a concurrent TUI
+	// may own thread_history / sessions under this CODEX_HOME.
+	if !tuiBusy {
+		// 1. Official quota read. Works for any authenticated account without a
+		// session, a prompt or quota consumption.
+		if apiSnap, ok := a.appServerUsage(ctx, p, force); ok {
+			return apiSnap
+		}
 	}
 
 	// 2. Rollout evidence written by this profile's own sessions.
@@ -285,8 +291,8 @@ func (a *Adapter) usage(ctx context.Context, p model.Profile, force bool) model.
 	}
 
 	// 3. Same chatgpt_account_id as host: adopt the newest eligible host rollout
-	// into the isolated store, then re-read.
-	if a.tryAdoptLatestHostRollout(ctx, p) {
+	// into the isolated store, then re-read. Skip while the TUI owns the home.
+	if !tuiBusy && a.tryAdoptLatestHostRollout(ctx, p) {
 		if rollSnap, ok := a.getUsageFromRollouts(ctx, p); ok {
 			return rollSnap
 		}
@@ -298,7 +304,11 @@ func (a *Adapter) usage(ctx context.Context, p model.Profile, force bool) model.
 		if snap.Account == "" {
 			snap.Account = info.Email
 		}
-		snap.Error = "cota oficial indisponível e nenhuma sessão isolada registrada"
+		if tuiBusy {
+			snap.Error = "cota oficial adiada: TUI Codex ativo neste perfil"
+		} else {
+			snap.Error = "cota oficial indisponível e nenhuma sessão isolada registrada"
+		}
 	}
 
 	// Persisted observations are loaded by profile.GetUsageSnapshot through the

@@ -3,6 +3,7 @@ package nexus
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -192,5 +193,188 @@ func TestRunApplicationProjectsCanonicalValidationEvidence(t *testing.T) {
 	}
 	if report.Entries[0].Scenario != "mission/report" || report.Entries[0].Outcome != store.EvidenceNotVerified {
 		t.Fatalf("unexpected projected evidence entry: %+v", report.Entries[0])
+	}
+}
+
+func TestRunApplicationProjectsOnlyEvidenceForRequestedMission(t *testing.T) {
+	n := openTestNexus(t)
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	project, err := st.CreateProject(store.Project{Name: "evidence-isolation", CanonicalPath: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := newStoreRunRepository(st)
+	runA := &runner.MissionRun{ID: "run-evidence-a", PlanID: "plan-a", PlanRevision: 1, ProjectID: project.ID}
+	runB := &runner.MissionRun{ID: "run-evidence-b", PlanID: "plan-b", PlanRevision: 1, ProjectID: project.ID}
+	for _, planID := range []string{"plan-a", "plan-b"} {
+		if _, err := st.CreateWorkPlan(store.WorkPlan{ID: planID, ProjectID: project.ID, Title: planID}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, run := range []*runner.MissionRun{runA, runB} {
+		if err := repo.SaveRun(context.Background(), run); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, fixture := range []struct {
+		run      *runner.MissionRun
+		scenario string
+	}{
+		{run: runA, scenario: "mission/a"},
+		{run: runB, scenario: "mission/b"},
+	} {
+		result := runner.VerificationResult{Command: "true", Passed: true, ExitCode: 0}
+		if err := n.recordMissionValidationEvidence(context.Background(), fixture.run, fixture.scenario, result.Command, []runner.VerificationResult{result}, "local", "test", "economy", 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	service := NewRunApplicationService(n)
+	for _, fixture := range []struct {
+		run      *runner.MissionRun
+		scenario string
+	}{
+		{run: runA, scenario: "mission/a"},
+		{run: runB, scenario: "mission/b"},
+	} {
+		report, err := service.ValidationEvidence(context.Background(), fixture.run.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !report.ChainVerified || len(report.Entries) != 1 {
+			t.Fatalf("mission %s received non-isolated evidence: %+v", fixture.run.ID, report)
+		}
+		if report.Entries[0].Scenario != fixture.scenario {
+			t.Fatalf("mission %s received scenario %q, want %q", fixture.run.ID, report.Entries[0].Scenario, fixture.scenario)
+		}
+	}
+}
+
+func TestRunApplicationRejectsMissionEvidenceWithoutRunID(t *testing.T) {
+	n := openTestNexus(t)
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := st.CreateProject(store.Project{Name: "evidence-metadata", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateWorkPlan(store.WorkPlan{ID: "plan-metadata", ProjectID: project.ID, Title: "Metadata"}); err != nil {
+		t.Fatal(err)
+	}
+	run := &runner.MissionRun{ID: "run-metadata", PlanID: "plan-metadata", PlanRevision: 1, ProjectID: project.ID}
+	if err := newStoreRunRepository(st).SaveRun(context.Background(), run); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := st.CreateValidationEvidenceStream(project.ID, missionEvidenceStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AppendValidationEvidence(store.ValidationEvidenceAppendRequest{
+		StreamID: stream.ID,
+		Entry: store.ValidationEvidenceEntry{
+			ID: "entry-without-run-id", Scenario: "mission/legacy", Outcome: store.EvidencePass,
+			Confidence: store.EvidenceObserved, EvidenceJSON: `{"plan_id":"plan-metadata"}`,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewRunApplicationService(n).ValidationEvidence(context.Background(), run.ID); err == nil {
+		t.Fatal("evidence without a persisted run_id must fail closed")
+	}
+}
+
+func TestRunApplicationProjectsCompleteMissionEvidenceBeyondDefaultPage(t *testing.T) {
+	n := openTestNexus(t)
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := st.CreateProject(store.Project{Name: "evidence-complete", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateWorkPlan(store.WorkPlan{ID: "plan-complete", ProjectID: project.ID, Title: "Complete"}); err != nil {
+		t.Fatal(err)
+	}
+	run := &runner.MissionRun{ID: "run-complete", PlanID: "plan-complete", PlanRevision: 1, ProjectID: project.ID}
+	if err := newStoreRunRepository(st).SaveRun(context.Background(), run); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := st.CreateValidationEvidenceStream(project.ID, missionEvidenceStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 101; i++ {
+		if _, err := st.AppendValidationEvidence(store.ValidationEvidenceAppendRequest{
+			StreamID: stream.ID,
+			Entry: store.ValidationEvidenceEntry{
+				ID: fmt.Sprintf("entry-complete-%03d", i), Scenario: fmt.Sprintf("mission/step/%03d", i),
+				Outcome: store.EvidencePass, Confidence: store.EvidenceObserved,
+				EvidenceJSON: `{"run_id":"run-complete"}`,
+			},
+		}); err != nil {
+			t.Fatalf("append evidence %d: %v", i, err)
+		}
+	}
+	report, err := NewRunApplicationService(n).ValidationEvidence(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.ChainVerified || len(report.Entries) != 101 {
+		t.Fatalf("complete evidence report was truncated: chain=%v entries=%d", report.ChainVerified, len(report.Entries))
+	}
+}
+
+func TestRunApplicationProjectsValidationEvidenceAfterStoreRestart(t *testing.T) {
+	n := openTestNexus(t)
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	project, err := st.CreateProject(store.Project{Name: "evidence-restart", CanonicalPath: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateWorkPlan(store.WorkPlan{ID: "evidence-restart-plan", ProjectID: project.ID, Title: "Evidence restart"}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := n.Runner().StartMissionRun(context.Background(), runner.PlanSpec{
+		ID: "evidence-restart-plan", ProjectID: project.ID, Revision: 1,
+		Packages: []runner.PackageSpec{{ID: "package-1", Title: "Evidence"}},
+	}, root, runner.DefaultAutonomyContract(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := runner.VerificationResult{Command: "true", Passed: true, ExitCode: 0}
+	if err := n.recordMissionValidationEvidence(context.Background(), run, "mission/restart", result.Command, []runner.VerificationResult{result}, "local", "test", "economy", 1); err != nil {
+		t.Fatal(err)
+	}
+
+	dbPath := filepath.Join(os.Getenv("AI_CLI_DATA_DIR"), "nexus.db")
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	restarted := &Nexus{st: reopened}
+	report, err := NewRunApplicationService(restarted).ValidationEvidence(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.RunID != run.ID || report.Stream == nil || !report.ChainVerified || len(report.Entries) != 1 {
+		t.Fatalf("restart evidence report = %+v", report)
+	}
+	if report.Entries[0].Scenario != "mission/restart" {
+		t.Fatalf("unexpected restart evidence entry: %+v", report.Entries[0])
 	}
 }

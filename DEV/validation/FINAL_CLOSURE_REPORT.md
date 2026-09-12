@@ -6,11 +6,12 @@
 
 ## FINAL SHA
 
-`50fd440cbe42b3a0ac1ed44f0d17c38cb697e282` is the current commit on the target
+`42c22137a4a57ff6b6b80df8125b5a138f32b9e1` is the current commit on the target
 branch and matches `origin/feat/nexus-maximum-delivery`. The working tree has
-follow-up routing/evidence tests, AGY/runtime hardening, stable-root E2E
-harness support and final evidence-document updates not yet included in that
-commit.
+complete-stream evidence projection tests, provider-safety follow-ups and
+final documentation updates not yet included in that commit. The preceding
+finalization commit was created externally by the campaign autopilot and is
+preserved.
 
 ## REUSED
 
@@ -35,6 +36,17 @@ commit.
   and chain verification is required before entries are exposed.
 - Web client types/API now consume the same projection without recomputing or
   interpreting evidence locally.
+- The projection verifies the shared stream before filtering by persisted
+  `run_id`, preventing cross-Mission evidence leakage when Missions share a
+  project; missing/invalid mission identity fails closed.
+- The report path uses an explicit complete-stream read, avoiding silent
+  truncation at the ordinary 100-entry list page.
+- Codex legacy `home/.codex/config.toml` migration is now tested and ordered
+  before canonical defaults, so existing settings are preserved.
+- Codex profile preparation also honors the per-home TUI lock before mutating
+  configuration/session artifacts.
+- The provider E2E harness resolves imported profiles from the real host home,
+  not a provider-rewritten `HOME`, with explicit override precedence tested.
 
 ## REFACTORED
 
@@ -189,7 +201,7 @@ test store, sequence 2, head
 
 ## HEAD HASH
 
-Commit HEAD: `50fd440cbe42b3a0ac1ed44f0d17c38cb697e282`.
+Commit HEAD: `42c22137a4a57ff6b6b80df8125b5a138f32b9e1`.
 The working-tree follow-up source/tests and evidence-document diff are not
 represented by a commit hash.
 
@@ -201,6 +213,14 @@ verify or promote.
 
 ## LATEST VERIFICATION DELTA — 2026-09-12
 
+- PASS — after the final Codex setup-lock adjustment: `go test ./... -count=1`,
+  `go test -race ./... -count=1`, focused touched-package race tests,
+  `go vet` and `git diff --check`.
+- PASS — final `make quality`, `make build`, `make build-desktop`,
+  `make security` and `make web-verify`; frontend remains 345/345 tests and
+  the existing non-blocking ESLint warning is unchanged.
+- PASS — `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -c` for the Codex
+  adapter; this is a cross-compile check, not native Windows evidence.
 - PASS — `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, `git diff --check`.
 - PASS — `make security`, `make build`, `make build-desktop`, `make web-verify`.
 - PASS — `make quality` after fixing one misspelled diagnostic comment and
@@ -223,10 +243,28 @@ verify or promote.
 - PASS — canonical Mission evidence now records bounded Go/OS/architecture
   metadata and detects Node/package-manager versions when the project uses
   them; version probes use fixed arguments, no shell and a two-second timeout.
+- PASS — Mission evidence projection isolates entries by persisted `run_id`,
+  rejects missing mission identity, and returns all 101 entries in the
+  complete-stream regression test instead of truncating at the default page.
+- PASS — Codex legacy configuration migration preserves existing settings
+  before `ensureConfigFile` adds the canonical default.
+- PASS — `Prepare` waits for an active Codex TUI lock before setup mutation.
+- PASS — E2E profile-source resolution uses `security.FindHostHome` and honors
+  `NEXUS_E2E_PROFILE_SOURCE` overrides.
+- OBSERVED — fresh `./nexus doctor --json` at `2026-09-12T03:34:53Z` confirms
+  all announced provider binaries are installed, but this read-only probe does
+  not establish provider authentication or Mission completion; desktop shell
+  remains explicitly `SKIPPED`.
 - PASS — the run application now projects the canonical validation stream via
   `ValidationEvidence`, verifies the chain before returning entries and exposes
   `GET /api/v1/runs/{id}/validation-evidence`; a missing stream is explicit
   `chain_verified=false`, never a fabricated PASS.
+- PASS — the evidence projection was reopened against the same SQLite database
+  after store close; run identity, stream, entry and verified chain survived
+  the restart test.
+- PASS — Codex TUI/app-server ownership now uses an OS-specific profile lock;
+  quota probes skip mutation/app-server access while the TUI owns the profile,
+  with focused lock, migration and rate-limit tests.
 - PASS — Web client RED → GREEN coverage adds typed
   `getRunValidationEvidence`; `npm --prefix web run typecheck` and the full
   frontend test suite pass (345 tests).
@@ -239,10 +277,9 @@ verify or promote.
 - OBSERVED — provider inventory reports Codex profiles with live quota data and
   AGY registered/authenticated status, but this does not prove a completed
   Nexus Mission or evidence-ledger emission.
-- UNVERIFIED — repeated Codex Direct Work with the live-quota profile reached
-  the authenticated TUI but remained at `model: loading`; retrying with an
-  explicit non-temporary root removed the `/tmp` helper-path warning but did
-  not change the provider result. The local startup also could not update
+- UNVERIFIED — the 2026-09-12 stable-root Codex retry reached the authenticated
+  TUI but remained at `model: loading`; the canonical-home/profile-lock change
+  did not remove the provider boundary. The local startup also could not update
   `/etc/hosts` because sudo authentication was not available. The failure is
   retained as evidence, not promoted to PASS.
 - UNVERIFIED — AGY Direct Work reached the real runtime but reported `not

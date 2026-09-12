@@ -20,6 +20,7 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/control/registry"
 	"github.com/kivervinicius/ai-cli/internal/control/terminal"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/codex"
 	"github.com/kivervinicius/ai-cli/internal/core/security"
 	"github.com/kivervinicius/ai-cli/internal/profile"
 )
@@ -55,6 +56,7 @@ type SessionHost struct {
 	doneChan     chan struct{}
 	detector     *AttentionDetector
 	stopOnce     sync.Once
+	codexTUILock interface{ Release() error }
 }
 
 // NewSessionHost creates a new SessionHost for a given runtime.
@@ -156,8 +158,22 @@ func (sh *SessionHost) Start() error {
 	setStage(registry.StartupTerminalStarting, "")
 	setStage(registry.StartupProviderStarting, "")
 
+	if strings.EqualFold(sh.session.ProviderID, "codex") {
+		if home := codex.EnvCODEXHome(sh.cfg.Env); home != "" {
+			lock, err := codex.AcquireTUILock(home)
+			if err != nil {
+				setStage(registry.StartupProviderStarting, registry.StartupFaultProcessSupervision)
+				_ = sh.listener.Close()
+				sh.listener = nil
+				return fmt.Errorf("failed to acquire Codex TUI lock: %w", err)
+			}
+			sh.codexTUILock = lock
+		}
+	}
+
 	if err := sh.termBackend.Start(sh.cmd, rows, cols); err != nil {
 		setStage(registry.StartupProviderStarting, registry.StartupFaultConPTYStartFailed)
+		sh.releaseCodexTUILock()
 		_ = sh.listener.Close()
 		sh.listener = nil
 		return fmt.Errorf("failed to start terminal backend: %w", err)
@@ -167,6 +183,7 @@ func (sh *SessionHost) Start() error {
 		_ = sh.termBackend.Kill()
 		_ = sh.termBackend.Wait()
 		_ = sh.termBackend.Close()
+		sh.releaseCodexTUILock()
 		_ = sh.listener.Close()
 		sh.listener = nil
 		return fmt.Errorf("failed to supervise provider process: %w", err)
@@ -788,6 +805,7 @@ func (sh *SessionHost) waitProcess() {
 	defer sh.mu.Unlock()
 
 	_ = sh.termBackend.Close()
+	sh.releaseCodexTUILockLocked()
 
 	// Tear down IPC surfaces so attached clients disconnect cleanly instead of
 	// hanging on a dead runtime.
@@ -833,6 +851,19 @@ func (sh *SessionHost) waitProcess() {
 	))
 
 	close(sh.doneChan)
+}
+
+func (sh *SessionHost) releaseCodexTUILock() {
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	sh.releaseCodexTUILockLocked()
+}
+
+func (sh *SessionHost) releaseCodexTUILockLocked() {
+	if sh.codexTUILock != nil {
+		_ = sh.codexTUILock.Release()
+		sh.codexTUILock = nil
+	}
 }
 
 // lifecycleEventData adds ownership metadata to runtime/process events when
@@ -904,6 +935,7 @@ func (sh *SessionHost) Terminate() error {
 	}
 	sh.fanout.Close()
 	_ = sh.termBackend.Close()
+	sh.releaseCodexTUILockLocked()
 	refreshUsageAfterSession(provider, profileName)
 	return nil
 }
