@@ -557,7 +557,6 @@ echo "Quick Start:"
 echo "  nexus doctor            # Check provider & platform dependencies"
 echo "  nexus web               # Launch IAPro Nexus Workspace OS (Web UI)"
 echo ""
-echo "Note: --version=latest uses GitHub tag resolution + checksums.txt integrity only;"
-echo "it is not a cryptographically signed pin until the update manifest is wired here."
+echo "Note: --version=latest resolves a GitHub tag, then still requires a signed update-manifest.json + Ed25519 signature."
 
 exit "$MAESTRO_EXIT"

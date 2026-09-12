@@ -146,6 +146,15 @@ async function main() {
 
     context = await browser.newContext();
     page = await context.newPage();
+    // Deterministic clean onboarding/layout state (no timeout-driven residue).
+    await context.addInitScript(() => {
+      try {
+        window.localStorage.clear();
+        window.sessionStorage.clear();
+      } catch (_) {
+        /* ignore quota/security errors in headless */
+      }
+    });
     page.on('pageerror', (error) => pageErrors.push(String(error?.message || error)));
     page.on('console', (message) => {
       if (message.type() === 'error') consoleErrors.push(message.text());
@@ -206,7 +215,14 @@ async function main() {
       /\/terminals$/,
       'Terminal tab must own the terminals route',
     );
-    await page.waitForTimeout(750);
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('.nx-workspace-tab[data-kind="terminals"]')
+          ?.getAttribute('aria-selected') === 'true',
+      undefined,
+      { timeout: 5000 },
+    );
     assert.equal(
       await terminalsProductTab.getAttribute('aria-selected'),
       'true',
@@ -295,8 +311,8 @@ async function main() {
     console.log('5. Testing Breakpoints and Create Menu Button...');
     for (const vp of viewports) {
       await page.setViewportSize({ width: vp.width, height: vp.height });
-      // Allow responsive layout/portal positioning to settle before hit testing.
-      await page.waitForTimeout(100);
+      // Wait for shell to remain mounted after viewport change (deterministic).
+      await page.waitForSelector('.nx-os-shell', { state: 'visible', timeout: 5000 });
 
       const createBtn = page.locator('[data-testid="topbar-create-menu-btn"]').first();
       await createBtn.waitFor({ state: 'visible', timeout: 5000 });
