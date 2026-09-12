@@ -84,12 +84,17 @@ func (s *PlanApplicationService) ensureIntentDecisionFacts(ctx context.Context, 
 	}
 	decision, err := s.nexus.DecideIntentForProject(ctx, projectID, goal)
 	if err != nil {
+		out["intent_decision_status"] = "error"
+		out["intent_decision_error"] = err.Error()
 		return out
 	}
 	enriched, err := PersistIntentDecisionFacts(out, decision)
 	if err != nil {
+		out["intent_decision_status"] = "error"
+		out["intent_decision_error"] = err.Error()
 		return out
 	}
+	enriched["intent_decision_status"] = "ok"
 	return enriched
 }
 

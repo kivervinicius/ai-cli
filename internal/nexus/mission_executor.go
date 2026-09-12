@@ -161,9 +161,12 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 		modelFallback, modelReason = fallback, reason
 	} else if modelPreference.Mode == AffinityPin {
 		return runner.AllocationResult{}, fmt.Errorf("resolve task model: %w: model inventory unavailable", ErrBlockedResource)
-	} else if modelPreference.Mode == AffinityPrefer && modelPreference.Value != "" && !strings.EqualFold(current.Model, modelPreference.Value) {
-		modelFallback = true
-		modelReason = fmt.Sprintf("preferred model %q unavailable in runtime inventory; retained configured model %q", modelPreference.Value, current.Model)
+	} else {
+		current.Model = ""
+		if modelPreference.Mode == AffinityPrefer && modelPreference.Value != "" {
+			modelFallback = true
+			modelReason = fmt.Sprintf("preferred model %q unavailable in runtime inventory; no WorkUnit model selected", modelPreference.Value)
+		}
 	}
 	pkg.Provider, pkg.Profile = selected.Provider, selected.Profile
 	routingReason = strings.TrimSpace(strings.Join([]string{routingReason, modelReason}, "; "))
@@ -768,9 +771,6 @@ func configuredModelCandidates(cfg AgentConfig, account ProviderAccount, taskCan
 	configured := append([]ModelCandidate(nil), taskCandidates...)
 	if len(configured) == 0 {
 		configured = append(configured, cfg.ModelCandidates...)
-	}
-	if len(configured) == 0 && strings.TrimSpace(cfg.Model) != "" {
-		configured = []ModelCandidate{{Model: strings.TrimSpace(cfg.Model), CostRank: 1, ReasoningRank: 1}}
 	}
 	result := make([]ModelCandidate, 0, len(configured))
 	for _, candidate := range configured {

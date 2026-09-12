@@ -106,6 +106,14 @@ func DecideIntent(goal string, snapshot *contextsnapshot.ProjectContextSnapshot)
 		decision.Evidence = append(decision.Evidence, "atomic-action-language")
 		return decision
 	}
+	if hasConflictingProductBehavior(lower) {
+		decision.Strategy = IntentClarify
+		decision.Confidence = "HIGH"
+		decision.Unknowns = append(decision.Unknowns, "conflicting_product_behavior")
+		decision.BlockingQuestions = append(decision.BlockingQuestions, "Which of the conflicting behaviors should win?")
+		decision.RecommendedAction = "request_material_clarification"
+		return decision
+	}
 	if isMateriallyUnderspecified(lower, snapshot) {
 		decision.Strategy = IntentClarify
 		decision.Confidence = "MEDIUM"
@@ -150,12 +158,29 @@ func (n *Nexus) DecideIntentForProject(ctx context.Context, projectID, goal stri
 	return decision, nil
 }
 
+// ComposerIsRequired reports whether the bounded intent needs interactive
+// refinement. DIRECT and PLAN never require Composer.
+func ComposerIsRequired(decision IntentDecision) bool {
+	return decision.Strategy == IntentClarify
+}
+
+// FlowIsRequired is always false: Flow is an optional WorkPlan projection.
+func FlowIsRequired(IntentDecision) bool {
+	return false
+}
+
 func isDirectIntent(goal string) bool {
 	if containsAny(goal, "fix this broken test", "corrija este teste", "corrija esse teste", "fix typo", "ajuste de digitação", "quick fix") {
 		return true
 	}
 	words := strings.Fields(goal)
 	return len(words) <= 8 && containsAny(goal, "corrija", "corrigir", "fix", "ajuste", "update") && !hasPlanSignals(goal)
+}
+
+func hasConflictingProductBehavior(goal string) bool {
+	must := strings.Contains(goal, "deve ") || strings.Contains(goal, "must ")
+	mustNot := strings.Contains(goal, "não deve") || strings.Contains(goal, "nao deve") || strings.Contains(goal, "must not")
+	return must && mustNot
 }
 
 func hasPlanSignals(goal string) bool {

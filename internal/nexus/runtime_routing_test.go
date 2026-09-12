@@ -307,6 +307,28 @@ func TestMissionAllocatePreferMayOpenPoolAfterRateLimit(t *testing.T) {
 	}
 }
 
+func TestConfiguredModelCandidatesDoesNotInheritAgentModel(t *testing.T) {
+	account := ProviderAccount{Provider: "agy", Profile: "frontend", Health: "healthy", Authenticated: true, Available: true}
+	got := configuredModelCandidates(AgentConfig{Model: "opus-expensive"}, account)
+	if len(got) != 0 {
+		t.Fatalf("AUTO must not mint a leftover AgentConfig.Model pool: %+v", got)
+	}
+	got = configuredModelCandidates(AgentConfig{
+		Model: "opus-expensive",
+		ModelCandidates: []ModelCandidate{
+			{Model: "cheap", CostRank: 1, ReasoningRank: 1},
+			{Model: "opus-expensive", CostRank: 5, ReasoningRank: 5},
+		},
+	}, account)
+	selected, _, _, err := ResolveTaskModel(TaskRequirements{TaskKind: "testing"}, AffinityPreference{Mode: AffinityAuto}, account, got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.Model != "cheap" {
+		t.Fatalf("testing WorkUnit must not inherit expensive leftover model, got %s", selected.Model)
+	}
+}
+
 func TestMissionAffinityModeManualIsPin(t *testing.T) {
 	if got := missionAffinityMode(PolicyManual, "codex", "main"); got != AffinityPin {
 		t.Fatalf("expected PIN, got %s", got)

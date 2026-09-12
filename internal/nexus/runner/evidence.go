@@ -364,6 +364,13 @@ func (r *MissionRunner) saveRun(ctx context.Context, run *MissionRun) error {
 	if err := validateMissionRunLifecycle(run); err != nil {
 		return err
 	}
+	if run.watchFingerprint != "" {
+		current := progressFingerprint(run)
+		if current != run.watchFingerprint {
+			run.LastProgressAt = time.Now().UTC()
+			run.watchFingerprint = current
+		}
+	}
 	for i := range run.PackageRuns {
 		if err := r.ensureWorkReceipt(ctx, run, &run.PackageRuns[i]); err != nil {
 			return err

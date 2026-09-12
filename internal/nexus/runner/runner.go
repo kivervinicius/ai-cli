@@ -93,7 +93,7 @@ func (r *MissionRunner) StartMissionRun(ctx context.Context, plan PlanSpec, work
 
 	now := time.Now().UTC()
 	run := &MissionRun{ID: "run_" + ids.NewRuntimeID(), PlanID: plan.ID, PlanRevision: plan.Revision, ExecutionSnapshotID: plan.ExecutionSnapshotID, ProjectID: plan.ProjectID,
-		Workspace: workspace, State: StateExecuting, Contract: contract, Autonomous: plan.Autonomous, StartedAt: now, UpdatedAt: now}
+		Workspace: workspace, State: StateExecuting, Contract: contract, Autonomous: plan.Autonomous, StartedAt: now, LastProgressAt: now, UpdatedAt: now}
 	for _, spec := range plan.Packages {
 		state := StatePending
 		if len(spec.Dependencies) == 0 {
@@ -191,6 +191,14 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 	if run.State == StatePaused {
 		return run, false, fmt.Errorf("mission run is paused: %s", run.PausedReason)
 	}
+	now := time.Now().UTC()
+	if ApplyProgressWatchdog(run, now) {
+		if err := r.saveRun(ctx, run); err != nil {
+			return run, false, err
+		}
+		return run, false, fmt.Errorf("mission stalled: no durable progress within stall timeout")
+	}
+	run.watchFingerprint = progressFingerprint(run)
 	if run.ResumeRequest != nil && run.ResumeRequest.Status == "PENDING" {
 		now := time.Now().UTC()
 		run.ResumeRequest.Status = "STARTED"

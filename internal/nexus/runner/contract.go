@@ -6,6 +6,7 @@ type AutonomyContract struct {
 	MaxRetries                 int                     `json:"max_retries"`
 	MaxTotalIterations         int                     `json:"max_total_iterations"`
 	MaxNoProgress              int                     `json:"max_no_progress"`
+	StallTimeoutSeconds        int                     `json:"stall_timeout_seconds,omitempty"`
 	PackageTimeoutSeconds      int                     `json:"package_timeout_seconds"`
 	AutoRemediate              bool                    `json:"auto_remediate"`
 	RequireVerification        bool                    `json:"require_verification"`
@@ -98,6 +99,7 @@ func DefaultAutonomyContract() AutonomyContract {
 		MaxRetries:                 3,
 		MaxTotalIterations:         120,
 		MaxNoProgress:              2,
+		StallTimeoutSeconds:        900,
 		PackageTimeoutSeconds:      3600,
 		AutoRemediate:              true,
 		RequireVerification:        true,

@@ -284,11 +284,14 @@ type MissionRun struct {
 	HeartbeatAt         *time.Time            `json:"heartbeat_at,omitempty"`
 	PausedReason        string                `json:"paused_reason,omitempty"`
 	StartedAt           time.Time             `json:"started_at"`
+	LastProgressAt      time.Time             `json:"last_progress_at,omitempty"`
 	UpdatedAt           time.Time             `json:"updated_at"`
 	CompletedAt         *time.Time            `json:"completed_at,omitempty"`
 	GlobalVerifications []VerificationResult  `json:"global_verifications,omitempty"`
 	NeedsHuman          *HumanIntervention    `json:"needs_human,omitempty"`
 	ResumeRequest       *MissionResumeRequest `json:"resume_request,omitempty"`
+
+	watchFingerprint string `json:"-"`
 }
 
 type AllocationResult struct {

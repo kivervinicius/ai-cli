@@ -7,7 +7,7 @@ ifeq ($(shell go env GOOS),linux)
 DESKTOP_TAGS = production,webkit2_41
 endif
 
-.PHONY: all build build-desktop build-desktop-wails web web-verify docs-verify test race vet install install-local release-local bump clean format format-check lint-frontend lint-styles lint-styles-fix lint-fix lint-go typecheck test-frontend test-go test-e2e security quality quality-full golangci-lint version-check test-updater-negative test-update-integration release-dry-run browser-functional browser-a11y browser-visual browser-all verify-update
+.PHONY: all build build-desktop build-desktop-wails web web-verify docs-verify test race vet install install-local release-local bump clean format format-check lint-frontend lint-styles lint-styles-fix lint-fix lint-go typecheck test-frontend test-go test-e2e security quality quality-full golangci-lint version-check test-updater-negative test-update-integration release-dry-run browser-functional browser-a11y browser-visual browser-all verify-update coverage e2e attention-e2e overnight-smoke overnight-soak release-proof
 
 all: build
 
@@ -61,8 +61,35 @@ test-frontend:
 test-go:
 	@go test -v ./...
 
+test: test-go test-frontend
+
 test-e2e:
 	@go test -race -v -count=1 ./internal/control/terminal/... ./internal/control/protocol/... ./internal/control/host/... ./internal/control/web/...
+
+e2e: test-e2e
+
+attention-e2e:
+	@go test -count=1 -timeout 10m ./internal/nexus/runner -run 'Test(MultiMissionIndependentProgression|ResolveInterventionIdempotent|StaleInterventionRejected|ResumeFromDurableCheckpoint|QuotaFailoverNoAttention|NotificationDedupKey|AutonomyContractRespected|CrossProjectAggregation|FaultInjectionStoreReopenPreservesIntervention|FaultInjectionDuplicateInterventionResolvesOnce)'
+
+coverage:
+	@mkdir -p DEV/validation/current
+	@go test ./... -coverprofile=DEV/validation/current/coverage.out -covermode=atomic
+	@go tool cover -func=DEV/validation/current/coverage.out | tee DEV/validation/current/coverage-func.txt
+	@echo "Frontend coverage plugin is not installed; vitest statement coverage remains UNVERIFIED."
+
+overnight-smoke:
+	@go test -count=1 -timeout 20m ./internal/nexus/runner -run 'Test(OvernightAcceptanceSandbox|OvernightSoakHarnessBounded|ProgressWatchdog|FaultInjection)'
+
+DURATION ?= 30s
+overnight-soak:
+	@echo "OVERNIGHT_SOAK_DURATION=$(DURATION) (ordinary CI must not use 8h)"
+	@OVERNIGHT_SOAK_DURATION=$(DURATION) go test -count=1 -timeout 24h ./internal/nexus/runner -run TestOvernightSoakHarnessBounded
+
+release-proof: format-check lint-frontend lint-styles typecheck lint-go test-go test-frontend vet race coverage attention-e2e overnight-smoke security version-check
+	@echo "OVERNIGHT_SOAK_EVIDENCE=MISSING (opt-in: make overnight-soak DURATION=8h)"
+	@echo "NATIVE_WINDOWS=UNVERIFIED"
+	@echo "NATIVE_MACOS=UNVERIFIED"
+	@echo "release-proof local gates finished"
 
 race:
 	@go test -race ./...
