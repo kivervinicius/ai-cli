@@ -50,6 +50,7 @@ O código canônico utiliza o binário `nexus`, mantendo `ai` como alias transpa
 - [`validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md): Último gate do frontend (`make web-verify`).
 - [`validation/FRONTEND_HISTORY.md`](validation/FRONTEND_HISTORY.md): Histórico compacto dos gates de frontend.
 - [`validation/CURRENT_STATE_AUDIT.md`](validation/CURRENT_STATE_AUDIT.md): Inventário evidence-backed da campanha atual.
+- [`validation/FINAL_CLOSURE_REALITY_AUDIT.md`](validation/FINAL_CLOSURE_REALITY_AUDIT.md) e [`validation/FINAL_CLOSURE_CHECKPOINTS.md`](validation/FINAL_CLOSURE_CHECKPOINTS.md): auditoria e checkpoints resumíveis da consolidação final.
 - [`validation/FINAL_PLATFORM_RELEASE_DESKTOP_REPORT.md`](validation/FINAL_PLATFORM_RELEASE_DESKTOP_REPORT.md): Relatório final de plataforma, Desktop, Update e release.
 - Após alterações em `web/`, execute `make web-verify` (ou `npm --prefix web run verify`).
 - Em caso de inconsistência visual na Web, faça o rebuild completo do binário com `make build` e reinicie o processo.

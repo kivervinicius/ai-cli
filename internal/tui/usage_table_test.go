@@ -1,9 +1,13 @@
 package tui
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/kivervinicius/ai-cli/internal/core/model"
+	"github.com/kivervinicius/ai-cli/internal/core/quota"
 )
 
 func TestFilterUsageRowsFindsAcrossIdentityAndGroup(t *testing.T) {
@@ -77,8 +81,8 @@ func TestUnifiedUsageUnconfiguredCLIsRendered(t *testing.T) {
 	for _, r := range m.allAccounts {
 		if r.Provider == "claude" {
 			foundClaude = true
-			if !r.IsUnconfigured || r.Status != "NÃO CONFIGURADO" {
-				t.Fatalf("expected Claude to be unconfigured, got %#v", r)
+			if !r.IsUnconfigured || r.Status != "OFF" {
+				t.Fatalf("expected Claude to be unconfigured OFF, got %#v", r)
 			}
 		}
 	}
@@ -166,5 +170,215 @@ func TestUnifiedUsageRestoresSelectionAfterEmptyFilter(t *testing.T) {
 	}
 	if m.chosenResult.ProfileName != "work" {
 		t.Fatalf("expected first restored row to be selected, got %#v", m.chosenResult)
+	}
+}
+
+func TestUsageColumnsAdaptiveWidths(t *testing.T) {
+	for _, width := range []int{80, 132, 160} {
+		cols := usageColumns(width)
+		sum := 0
+		statusW := 0
+		hasModel := false
+		for _, c := range cols {
+			sum += c.Width
+			if c.Title == "STATUS" {
+				statusW = c.Width
+			}
+			if c.Title == "MODELO" || c.Title == "MODEL" {
+				hasModel = true
+			}
+		}
+		if hasModel {
+			t.Fatalf("width %d should not include MODELO column", width)
+		}
+		if statusW < 10 {
+			t.Fatalf("width %d STATUS=%d want >=10 so SEM DADOS fits", width, statusW)
+		}
+		if sum > width {
+			t.Fatalf("width %d column sum %d exceeds terminal width", width, sum)
+		}
+	}
+}
+
+func TestUsageStatusLabelsFitStatusColumn(t *testing.T) {
+	labels := []string{"OK", "ESGOTADA", "SEM DADOS", "OFF", "ESTIMADA"}
+	for _, width := range []int{80, 132, 160} {
+		cols := usageColumns(width)
+		statusW := 0
+		for _, c := range cols {
+			if c.Title == "STATUS" {
+				statusW = c.Width
+			}
+		}
+		for _, label := range labels {
+			if len([]rune(label)) > statusW {
+				t.Fatalf("label %q len=%d exceeds STATUS width %d at cols=%d", label, len([]rune(label)), statusW, width)
+			}
+			if strings.Contains(label, "…") || strings.Contains(label, "..") {
+				t.Fatalf("status label must not be truncated form: %q", label)
+			}
+		}
+	}
+}
+
+func TestTableBodyHeightFillsTerminal(t *testing.T) {
+	// Screenshot-like terminal with 10 account rows must leave table tall enough.
+	h := tableBodyHeight(30)
+	if h < 10 {
+		t.Fatalf("tableBodyHeight(30)=%d want >=10 to fill chrome-compact layout", h)
+	}
+	if h != 30-usageChromeLines {
+		t.Fatalf("tableBodyHeight(30)=%d want %d", h, 30-usageChromeLines)
+	}
+}
+
+func TestFormatGroupStatusHonestLabels(t *testing.T) {
+	if got := formatGroupStatus(quota.ModelGroup{}, string(model.UsageUnknown)); got != "SEM DADOS" {
+		t.Fatalf("unknown=%q", got)
+	}
+	zero := 0.0
+	exhausted := quota.ModelGroup{Windows: []quota.Window{{Kind: "5h", Remaining: zero}}}
+	if got := formatGroupStatus(exhausted, string(model.UsageLive)); got != "ESGOTADA" {
+		t.Fatalf("exhausted=%q", got)
+	}
+}
+
+func TestFreshnessLineNamesStatusSourceAndAge(t *testing.T) {
+	got := freshnessLine(string(model.UsageLive), string(model.SourceOfficialAPI), time.Now())
+	if got != "AO VIVO · API oficial · agora" {
+		t.Fatalf("live=%q", got)
+	}
+	got = freshnessLine(string(model.UsageEstimated), string(model.SourceObservation), time.Now().Add(-7*time.Minute))
+	if got != "ESTIMADA · rollout local · há 7m" {
+		t.Fatalf("estimated=%q", got)
+	}
+	got = freshnessLine(string(model.UsageUnknown), string(model.SourceNone), time.Time{})
+	if got != "SEM DADOS · sem fonte · nunca" {
+		t.Fatalf("unknown=%q", got)
+	}
+}
+
+func TestFormatQuotaWindowShowsNumbersWhenRateLimited(t *testing.T) {
+	windows := []quota.Window{{Kind: "5h", Remaining: 0, ResetDesc: "resets 21:55"}}
+	got := formatQuotaWindow(windows, "5h", string(model.UsageRateLimited))
+	if !strings.Contains(got, "0%") || !strings.Contains(got, "21:55") {
+		t.Fatalf("rate limited window must keep its measured values, got %q", got)
+	}
+	if strings.Contains(got, "rate ltd") {
+		t.Fatalf("rate limited window must not hide numbers behind a label, got %q", got)
+	}
+}
+
+func TestBuildUsageRowsCarriesSourceAndRawStatus(t *testing.T) {
+	remaining := 56.0
+	snap := model.UsageSnapshot{
+		ProviderID: "codex",
+		ProfileID:  "kivergmail",
+		Status:     model.UsageLive,
+		Source:     model.SourceOfficialAPI,
+		FetchedAt:  time.Now(),
+		Windows: []model.UsageWindow{
+			{Kind: "weekly", Group: "claude_gpt", RemainingPercent: &remaining, ResetDescription: "resets 08:37 on 15 Sep"},
+		},
+	}
+	qv := quota.BuildQuotaView(snap, "kiver.omegaedu@gmail.com", "ChatGPT Plus")
+	rows := buildUsageRows("codex", "kivergmail", qv, model.AccountInfo{Email: "kiver.omegaedu@gmail.com"}, nil)
+	if len(rows) != 1 {
+		t.Fatalf("rows=%d", len(rows))
+	}
+	if rows[0].Source != string(model.SourceOfficialAPI) {
+		t.Fatalf("source=%q", rows[0].Source)
+	}
+	if rows[0].SnapshotStatus != string(model.UsageLive) {
+		t.Fatalf("snapshot status=%q", rows[0].SnapshotStatus)
+	}
+	if rows[0].FetchedAt.IsZero() {
+		t.Fatal("FetchedAt must be carried to the row")
+	}
+}
+
+func TestBuildUsageRowsWithoutGroupsIsSemDados(t *testing.T) {
+	qv := quota.QuotaView{Provider: "codex", Profile: "novo", Status: string(model.UsageUnknown), Source: string(model.SourceNone)}
+	rows := buildUsageRows("codex", "novo", qv, model.AccountInfo{}, nil)
+	if len(rows) != 1 || rows[0].Status != "SEM DADOS" {
+		t.Fatalf("rows=%#v", rows)
+	}
+}
+
+func TestRefreshKeyMarksAccountInFlight(t *testing.T) {
+	opts := UnifiedUsageOptions{
+		Rows: []UsageTableRow{{Provider: "codex", Profile: "work", Status: "OK"}},
+	}
+	m := newUnifiedUsageModel(opts)
+	res, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	m = res.(usageTableModel)
+	if cmd == nil {
+		t.Fatal("expected an async refresh command")
+	}
+	if !m.refreshing["codex:work"] {
+		t.Fatalf("expected codex:work marked in flight, got %#v", m.refreshing)
+	}
+	if m.quitting {
+		t.Fatal("refresh must not quit the TUI")
+	}
+	// A second press while in flight must not enqueue another probe.
+	res2, cmd2 := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	if cmd2 != nil {
+		t.Fatal("expected no second command while a refresh is in flight")
+	}
+	if len(res2.(usageTableModel).refreshing) != 1 {
+		t.Fatal("expected a single in-flight refresh")
+	}
+}
+
+func TestAccountRefreshedReplacesOnlyThatAccount(t *testing.T) {
+	opts := UnifiedUsageOptions{
+		Rows: []UsageTableRow{
+			{Provider: "codex", Profile: "work", Status: "SEM DADOS"},
+			{Provider: "agy", Profile: "personal", Status: "OK"},
+		},
+		UnconfiguredCLIs: []InstalledProviderInfo{{ID: "claude", Name: "Claude Code", Installed: true, Profiles: 0}},
+	}
+	m := newUnifiedUsageModel(opts)
+	m.refreshing = map[string]bool{"codex:work": true}
+
+	res, _ := m.Update(accountRefreshedMsg{
+		provider: "codex",
+		profile:  "work",
+		rows: []UsageTableRow{{
+			Provider: "codex", Profile: "work", Status: "OK",
+			SnapshotStatus: string(model.UsageLive), Source: string(model.SourceOfficialAPI),
+			FetchedAt: time.Now(),
+		}},
+		acc: model.AccountInfo{Email: "work@example.com"},
+	})
+	m = res.(usageTableModel)
+
+	if m.refreshing["codex:work"] {
+		t.Fatal("in-flight marker must be cleared")
+	}
+	var codexStatus, agyStatus string
+	claudeKept := false
+	for _, row := range m.allAccounts {
+		switch {
+		case row.Provider == "codex" && row.Profile == "work":
+			codexStatus = row.Status
+		case row.Provider == "agy":
+			agyStatus = row.Status
+		case row.Provider == "claude":
+			claudeKept = true
+		}
+	}
+	if codexStatus != "OK" {
+		t.Fatalf("codex status=%q want refreshed OK", codexStatus)
+	}
+	if agyStatus != "OK" {
+		t.Fatalf("agy row must be untouched, got %q", agyStatus)
+	}
+	if !claudeKept {
+		t.Fatal("unconfigured CLI rows must survive a single-account refresh")
+	}
+	if !strings.Contains(m.statusMsg, "AO VIVO") {
+		t.Fatalf("status message should report the new freshness, got %q", m.statusMsg)
 	}
 }

@@ -50,6 +50,7 @@ type FlowStep struct {
 	ResourcePolicy           string                 `json:"resource_policy,omitempty"`
 	Provider                 string                 `json:"provider,omitempty"`
 	Profile                  string                 `json:"profile,omitempty"`
+	SkillIDs                 []string               `json:"skill_ids,omitempty"`
 	MaestroGates             []string               `json:"maestro_gates,omitempty"`
 	MaestroSkills            []string               `json:"maestro_skills,omitempty"`
 	RelevantPaths            []string               `json:"relevant_paths,omitempty"`
@@ -136,7 +137,7 @@ func FlowFromWorkPlan(plan store.WorkPlan) FlowDefinition {
 				Priority: pkg.Priority, Status: pkg.Status, Dependencies: cloneStrings(pkg.Dependencies), ParallelGroup: pkg.ParallelGroup,
 				Role: pkg.Role, TaskRequirements: pkg.TaskRequirements, AssignmentStrategy: assignmentForPackage(pkg), AgentID: pkg.AgentAllocation,
 				ResourcePolicy: pkg.ResourcePolicy, Provider: pkg.Provider, Profile: pkg.Profile,
-				MaestroGates: cloneStrings(pkg.MaestroGates), MaestroSkills: cloneStrings(pkg.MaestroSkills), RelevantPaths: cloneStrings(pkg.RelevantPaths),
+				SkillIDs: cloneStrings(pkg.SkillIDs), MaestroGates: cloneStrings(pkg.MaestroGates), MaestroSkills: cloneStrings(pkg.MaestroSkills), RelevantPaths: cloneStrings(pkg.RelevantPaths),
 				AcceptanceCriteria: cloneStrings(pkg.AcceptanceCriteria), VerificationRequirements: cloneStrings(pkg.VerificationRequirements),
 				SharedArtifacts: cloneStrings(pkg.SharedArtifacts), CompiledPrompt: pkg.CompiledPrompt,
 			})
@@ -183,7 +184,7 @@ func WorkPlanFromFlow(flow FlowDefinition) store.WorkPlan {
 			ID: step.ID, Title: step.Title, Goal: step.Goal, Priority: step.Priority, Status: step.Status,
 			Dependencies: cloneStrings(step.Dependencies), ParallelGroup: step.ParallelGroup, Role: step.Role, TaskRequirements: step.TaskRequirements,
 			AgentAllocation: step.AgentID, AssignmentStrategy: string(step.AssignmentStrategy), ResourcePolicy: step.ResourcePolicy,
-			Provider: step.Provider, Profile: step.Profile, MaestroGates: cloneStrings(step.MaestroGates), MaestroSkills: cloneStrings(step.MaestroSkills),
+			Provider: step.Provider, Profile: step.Profile, SkillIDs: cloneStrings(step.SkillIDs), MaestroGates: cloneStrings(step.MaestroGates), MaestroSkills: cloneStrings(step.MaestroSkills),
 			RelevantPaths: cloneStrings(step.RelevantPaths), AcceptanceCriteria: cloneStrings(step.AcceptanceCriteria),
 			VerificationRequirements: cloneStrings(step.VerificationRequirements), SharedArtifacts: cloneStrings(step.SharedArtifacts), CompiledPrompt: step.CompiledPrompt,
 		})

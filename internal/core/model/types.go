@@ -158,15 +158,16 @@ type Profile struct {
 
 // AccountInfo summarizes identity and status information for a profile.
 type AccountInfo struct {
-	AccountScope  AccountScope   `json:"account_scope,omitempty"`
-	Email         string         `json:"email"`
-	Plan          string         `json:"plan"`
-	Status        string         `json:"status"`
-	Health        ProviderHealth `json:"health"`
-	Authenticated bool           `json:"authenticated"`
-	ExpiresAt     time.Time      `json:"expires_at,omitempty"`
-	Limits        []string       `json:"limits,omitempty"`
-	Usage         UsageSnapshot  `json:"usage"`
+	AccountScope      AccountScope   `json:"account_scope,omitempty"`
+	Email             string         `json:"email"`
+	ExternalAccountID string         `json:"external_account_id,omitempty"`
+	Plan              string         `json:"plan"`
+	Status            string         `json:"status"`
+	Health            ProviderHealth `json:"health"`
+	Authenticated     bool           `json:"authenticated"`
+	ExpiresAt         time.Time      `json:"expires_at,omitempty"`
+	Limits            []string       `json:"limits,omitempty"`
+	Usage             UsageSnapshot  `json:"usage"`
 }
 
 // Session represents a universal session index entry across providers.

@@ -294,9 +294,13 @@ func (r *MissionRunner) ensureContextCapsule(ctx context.Context, run *MissionRu
 	branch := gitText(ctx, pkg.Workspace, "branch", "--show-current")
 	head := gitText(ctx, pkg.Workspace, "rev-parse", "HEAD")
 	baseline := workspaceMutationSnapshot(ctx, pkg.Workspace)
+	skillIDs := append([]string(nil), pkg.SkillIDs...)
+	if len(skillIDs) == 0 {
+		skillIDs = append(skillIDs, pkg.MaestroSkills...)
+	}
 	capsule := &ContextCapsule{ID: "capsule_" + ids.NewRuntimeID(), RunID: run.ID, ProjectID: run.ProjectID, FlowID: run.PlanID, FlowRevision: run.PlanRevision, Branch: branch, Head: head, DirtyFingerprint: snapshotFingerprint(baseline),
 		Step:          ContextCapsuleStep{ID: pkg.PackageID, Title: pkg.Title, Goal: pkg.Goal, Role: pkg.Role, Dependencies: capStrings(pkg.Dependencies, maxCapsuleStrings), AssignmentStrategy: pkg.AssignmentStrategy, VerificationRequirements: capStrings(pkg.VerificationRequirements, maxCapsuleStrings)},
-		RelevantPaths: capStrings(pkg.RelevantPaths, maxCapsuleStrings), DurableContextRefs: durableContextRefs(pkg.Workspace), DependencyReceipts: r.directDependencyReceipts(ctx, run, pkg), MaestroSkills: capStrings(pkg.MaestroSkills, maxCapsuleStrings), AcceptanceCriteria: capStrings(pkg.AcceptanceCriteria, maxCapsuleStrings), Constraints: capsuleConstraints(run.Contract), BaselineWorkspaceSnapshot: baseline, CreatedAt: time.Now().UTC()}
+		RelevantPaths: capStrings(pkg.RelevantPaths, maxCapsuleStrings), DurableContextRefs: durableContextRefs(pkg.Workspace), DependencyReceipts: r.directDependencyReceipts(ctx, run, pkg), SkillIDs: capStrings(skillIDs, maxCapsuleStrings), MaestroSkills: capStrings(pkg.MaestroSkills, maxCapsuleStrings), AcceptanceCriteria: capStrings(pkg.AcceptanceCriteria, maxCapsuleStrings), Constraints: capsuleConstraints(run.Contract), BaselineWorkspaceSnapshot: baseline, CreatedAt: time.Now().UTC()}
 	if err := evidence.SaveContextCapsule(ctx, capsule); err != nil {
 		// Keep storage/SQL details out of the user-facing error while retaining
 		// an errors.Is classification for the runner and telemetry.
@@ -412,8 +416,11 @@ func RenderContextCapsule(capsule *ContextCapsule) string {
 	if len(capsule.RelevantPaths) > 0 {
 		b.WriteString("Relevant paths:\n- " + strings.Join(capsule.RelevantPaths, "\n- ") + "\n")
 	}
-	if len(capsule.MaestroSkills) > 0 {
-		b.WriteString("Maestro skills:\n- " + strings.Join(capsule.MaestroSkills, "\n- ") + "\n")
+	if len(capsule.SkillIDs) > 0 {
+		b.WriteString("Selected skills:\n- " + strings.Join(capsule.SkillIDs, "\n- ") + "\n")
+	} else if len(capsule.MaestroSkills) > 0 {
+		// Compatibility for capsules created before the generic SkillIDs field.
+		b.WriteString("Selected skills:\n- " + strings.Join(capsule.MaestroSkills, "\n- ") + "\n")
 	}
 	if len(capsule.DependencyReceipts) > 0 {
 		b.WriteString("Dependency Work Receipts:\n")

@@ -68,6 +68,7 @@ func BuildQuotaView(snap model.UsageSnapshot, account, plan string) QuotaView {
 			Label:     displayLabel,
 			Remaining: remaining,
 			ResetDesc: w.ResetDescription,
+			ResetTime: w.ResetTime,
 			Status:    string(snap.Status),
 			Bar:       bar,
 		}

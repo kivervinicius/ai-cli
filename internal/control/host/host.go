@@ -861,11 +861,13 @@ func (sh *SessionHost) Stop() error {
 	sh.stopOnce.Do(func() { close(sh.stopChan) })
 	sh.mu.Lock()
 	provider := sh.session.ProviderID
+	profileName := sh.session.ProfileID
 	_ = sh.termBackend.Signal(gracefulStopSignal(provider))
 	sh.mu.Unlock()
 
 	select {
 	case <-sh.doneChan:
+		refreshUsageAfterSession(provider, profileName)
 		return nil
 	case <-time.After(gracefulStopWait(provider)):
 		return sh.Terminate()
@@ -892,6 +894,8 @@ func gracefulStopSignal(providerID string) os.Signal {
 func (sh *SessionHost) Terminate() error {
 	sh.stopOnce.Do(func() { close(sh.stopChan) })
 	sh.mu.Lock()
+	provider := sh.session.ProviderID
+	profileName := sh.session.ProfileID
 	defer sh.mu.Unlock()
 
 	_ = sh.termBackend.Kill()
@@ -900,5 +904,23 @@ func (sh *SessionHost) Terminate() error {
 	}
 	sh.fanout.Close()
 	_ = sh.termBackend.Close()
+	refreshUsageAfterSession(provider, profileName)
 	return nil
+}
+
+// refreshUsageAfterSession re-reads provider quota after a session ends so
+// Codex rollouts written during the session become visible without opening
+// `nexus usage` manually. Non-blocking.
+func refreshUsageAfterSession(providerID, profileID string) {
+	providerID = strings.TrimSpace(providerID)
+	profileID = strings.TrimSpace(profileID)
+	if providerID == "" || profileID == "" {
+		return
+	}
+	if !strings.EqualFold(providerID, "codex") && !strings.EqualFold(providerID, "agy") {
+		return
+	}
+	go func() {
+		_ = profile.RefreshUsageSnapshot(providerID, profileID)
+	}()
 }

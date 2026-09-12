@@ -1,5 +1,26 @@
 # Handoff
 
+## Final closure consolidation — 2026-09-11
+
+Current working tree contains the final-closure audit/plan and a verified
+backend slice. Native Skills are now source-agnostic at the catalog boundary;
+Maestro is optional. Composer receives bounded Project Intelligence and uses
+explicit intent routing. Runtime affinity and task-aware model candidate
+resolution preserve desired preferences separately from actual allocation, and
+mission package state carries an explainable `routing_decision` JSON record.
+Canonical `SkillIDs` now survives WorkPlan → Flow → runner → ContextCapsule;
+`MaestroSkills`/`MaestroGates` remain compatibility aliases, and builtin
+skills resolve deterministically without Maestro. Handoff dependency receipts
+remain intact after this transport change.
+Mission verification now records concrete package/global results in the existing
+append-only `ValidationEvidenceStream` and verifies its chain before promotion.
+
+Focused and full local verification are green for the backend, frontend and
+Codex adapter. No commit/push was made. The campaign remains `NO-GO`: no
+authenticated Mission produced a durable stream instance ID in this run, and
+real provider/native-platform/overnight evidence is incomplete. See
+`DEV/validation/FINAL_CLOSURE_CHECKPOINTS.md` for resumable state and blockers.
+
 ## Atualização 2026-09-11 — Entrada PTY separada do controle Nexus
 
 O caminho `CmdInput` do `SessionHost` está transparente byte a byte: não usa
@@ -1346,6 +1367,30 @@ modified here. The branch remains uncommitted and retains the pre-existing
 dirty worktree changes. This closes only the first promotion gate;
 Attention Center final UX, Project Intelligence, provider UX/failover and
 native platform evidence remain outside this campaign.
+
+## Handoff — Final closure continuation — 2026-09-11
+
+The current working tree remains based on `2925ca746c198334f20d1e0cef7feb51e4f4e3`; no commit or push was created. Preserve the broad pre-existing staged and unstaged changes.
+
+The native SkillCatalog slice is now used by Agent prompt execution and
+Composer selection. Generic `ExecutionGuidance` is available to Intelligence,
+while the Maestro field/type is compatibility-only. Legacy `MaestroGates` are
+kept separate from catalog Skills. Mission allocation serializes a durable
+explainability projection with desired affinity and actual provider/profile/model
+selection. Codex usage snapshots accept only prior identities in the same
+persisted account scope.
+
+Fresh local verification passed: `go test ./... -count=1`,
+`go test -race ./... -count=1`, `go vet ./...`, `make build`,
+`make build-desktop`, `make web-verify`, and `git diff --check`.
+
+The campaign is still `NO-GO` for release. Remaining blockers are external or
+runtime evidence: authenticated Mission execution with a real
+`ValidationEvidenceStream` ID, complete Codex/OpenCode/AGY provider and
+failover/PIN/model-escalation/handoff scenarios, native Windows/macOS same-SHA
+validation, and overnight acceptance. Model inventory/escalation remains a
+contract-level slice in the live Mission executor; do not claim those scenarios
+as PASS without fresh evidence.
 # Atualização 2026-09-11 — Alinhamento do destino de instalação
 
 `install.sh` não fixa mais o destino em `~/.local/bin` quando já existe um

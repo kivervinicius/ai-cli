@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/nexus/intelligence"
-	"github.com/kivervinicius/ai-cli/internal/nexus/maestrogates"
+	nexusskills "github.com/kivervinicius/ai-cli/internal/nexus/skills"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
 
@@ -128,28 +128,33 @@ func (n *Nexus) CreateComposerSessionWithPrompt(ctx context.Context, projectID, 
 	if err != nil {
 		return nil, err
 	}
-	seedComposerSkillProposals(st, session.ID, brief, n.currentMaestroStatus())
+	if catalog, catalogErr := n.skillCatalogForProject(projectID); catalogErr == nil {
+		seedComposerSkillProposals(st, session.ID, brief, catalog)
+	}
 	return n.composeSessionView(st, *session, brief)
 }
 
-func seedComposerSkillProposals(st *store.Store, sessionID string, brief LivingBrief, status MaestroStatus) {
-	if !status.Available || status.Capabilities == nil {
-		return
-	}
-	for _, skill := range status.Capabilities.Skills {
+func seedComposerSkillProposals(st *store.Store, sessionID string, brief LivingBrief, catalog nexusskills.Catalog) {
+	for _, skill := range catalog.Library {
+		// Builtins remain resolvable for explicit task selection, but are not
+		// auto-suggested into every Composer session; this preserves the existing
+		// proposal surface for project/user/optional external skills.
+		if skill.Source == nexusskills.SourceBuiltin {
+			continue
+		}
 		if !skillRelevantToComposer(skill, brief) {
 			continue
 		}
 		_, _ = st.UpsertComposerSkillProposal(store.ComposerSkillProposal{
 			SessionID: sessionID, SkillID: skill.ID, State: store.ComposerSkillSuggested,
-			Reason:        "Discovered from the live Maestro capability catalog.",
+			Reason:        "Discovered from the source-agnostic Nexus Skill Catalog.",
 			Applicability: firstNonEmpty(skill.Description, "Compatible with this Composer brief."),
-			Risk:          skill.Risk, Source: "Maestro", Version: firstNonEmpty(skill.Version, status.Capabilities.Version), Available: true,
+			Risk:          skill.Risk, Source: string(skill.Source), Version: firstNonEmpty(skill.Version, "1.0.0"), Available: true,
 		})
 	}
 }
 
-func skillRelevantToComposer(skill MaestroSkillDesc, brief LivingBrief) bool {
+func skillRelevantToComposer(skill nexusskills.Skill, brief LivingBrief) bool {
 	text := strings.ToLower(skill.ID + " " + skill.Name + " " + skill.Description + " " + strings.Join(skill.Triggers, " "))
 	if len(brief.Constraints.Security) > 0 || brief.Intent.Archetype == PromptArchetypeSecurity {
 		return strings.Contains(text, "secur") || strings.Contains(text, "auth")
@@ -215,7 +220,11 @@ func (n *Nexus) AddComposerTurnExpected(ctx context.Context, sessionID, role, co
 	if role == store.ComposerUser {
 		mergeTextIntoBrief(&brief, content, "USER")
 		if provider, providerErr := n.ConfiguredIntelligenceProvider(ctx, session.ProjectID); providerErr == nil && provider.Available(ctx) {
-			analysis, analyzeErr := provider.AnalyzeIntent(ctx, content, map[string]any{"project_id": session.ProjectID, "brief": brief})
+			contextData := map[string]any{"project_id": session.ProjectID, "brief": brief}
+			if grounded, groundedErr := n.BoundedProjectIntelligenceContext(ctx, session.ProjectID); groundedErr == nil {
+				contextData["project_intelligence"] = grounded
+			}
+			analysis, analyzeErr := provider.AnalyzeIntent(ctx, content, contextData)
 			if analyzeErr != nil {
 				intelligenceNotice = "Inteligência local indisponível nesta rodada: " + analyzeErr.Error()
 			}
@@ -228,7 +237,13 @@ func (n *Nexus) AddComposerTurnExpected(ctx context.Context, sessionID, role, co
 				}
 			}
 			if analysis != nil {
-				unknowns, unknownErr := provider.EvaluateAmbiguities(ctx, analysis)
+				var unknowns []intelligence.AmbiguityItem
+				var unknownErr error
+				if contextual, contextualOK := provider.(intelligence.ContextualAmbiguityEvaluator); contextualOK {
+					unknowns, unknownErr = contextual.EvaluateAmbiguitiesWithContext(ctx, analysis, contextData)
+				} else {
+					unknowns, unknownErr = provider.EvaluateAmbiguities(ctx, analysis)
+				}
 				if unknownErr != nil {
 					intelligenceNotice = "Inteligência local não conseguiu avaliar as lacunas: " + unknownErr.Error()
 				}
@@ -288,15 +303,42 @@ func (n *Nexus) FinalizeComposerSession(ctx context.Context, sessionID string, s
 	if len(brief.OpenQuestions) > 0 && !confirmGaps {
 		return nil, fmt.Errorf("composer has open questions; confirm gaps before finalizing")
 	}
+	catalog, err := n.skillCatalogForProject(session.ProjectID)
+	if err != nil {
+		return nil, err
+	}
 	skills, err := st.ListComposerSkillProposals(sessionID)
 	if err != nil {
 		return nil, err
 	}
-	validatedSkills, err := n.validateComposerSelectedSkills(selectedSkills, skills)
+	validatedSkills, err := n.validateComposerSelectedSkills(selectedSkills, skills, catalog)
 	if err != nil {
 		return nil, err
 	}
-	compiled, err := compileComposerPrompt(renderCanonicalPrompt(brief), validatedSkills, n.currentMaestroStatus())
+	proposalIDs := make(map[string]struct{}, len(skills))
+	for _, proposal := range skills {
+		proposalIDs[proposal.SkillID] = struct{}{}
+	}
+	for _, skillID := range validatedSkills {
+		if _, exists := proposalIDs[skillID]; exists {
+			continue
+		}
+		skill, ok := catalog.Resolve(skillID)
+		if !ok {
+			return nil, fmt.Errorf("selected skill %s is no longer available", skillID)
+		}
+		proposal, proposalErr := st.UpsertComposerSkillProposal(store.ComposerSkillProposal{
+			SessionID: sessionID, SkillID: skill.ID, State: store.ComposerSkillSuggested,
+			Reason: "Selected from the source-agnostic Nexus Skill Catalog.", Applicability: skill.Description,
+			Risk: skill.Risk, Source: string(skill.Source), Version: skill.Version, Available: true,
+		})
+		if proposalErr != nil {
+			return nil, proposalErr
+		}
+		skills = append(skills, *proposal)
+		proposalIDs[skillID] = struct{}{}
+	}
+	compiled, err := compileComposerPromptWithCatalog(renderCanonicalPrompt(brief), validatedSkills, catalog)
 	if err != nil {
 		return nil, err
 	}
@@ -311,17 +353,14 @@ func (n *Nexus) FinalizeComposerSession(ctx context.Context, sessionID string, s
 	if err != nil {
 		return nil, err
 	}
-	status := n.currentMaestroStatus()
-	var desc []MaestroSkillDesc
-	if status.Capabilities != nil {
-		for _, candidate := range status.Capabilities.Skills {
-			if containsString(validatedSkills, candidate.ID) {
-				desc = append(desc, candidate)
-			}
+	var desc []nexusskills.Skill
+	for _, candidate := range catalog.Library {
+		if containsString(validatedSkills, candidate.ID) {
+			desc = append(desc, candidate)
 		}
 	}
-	for _, variant := range CompilePromptVariants(brief, desc, "") {
-		rawCaps, _ := json.Marshal(map[string]any{"maestro_available": status.Available})
+	for _, variant := range compilePromptVariantsFromSkills(brief, desc, "") {
+		rawCaps, _ := json.Marshal(map[string]any{"skill_sources": skillSources(desc)})
 		_, _ = st.CreatePromptVariant(store.PromptVariant{ArtifactID: artifact.ID, Variant: string(variant.Kind), Target: variant.Target, Content: variant.Content, CapabilitiesJSON: string(rawCaps)})
 	}
 	for _, skill := range skills {
@@ -428,7 +467,9 @@ func (n *Nexus) composeSessionView(st *store.Store, session store.ComposerSessio
 	if err != nil {
 		return nil, err
 	}
-	skills = reconcileComposerSkillAvailability(st, session.ID, skills, n.currentMaestroStatus())
+	if catalog, catalogErr := n.skillCatalogForProject(session.ProjectID); catalogErr == nil {
+		skills = reconcileComposerSkillAvailability(st, session.ID, skills, catalog)
+	}
 	artifacts, err := st.ListPromptArtifacts(session.ID)
 	if err != nil {
 		return nil, err
@@ -493,7 +534,7 @@ func composerSessionStateFromBrief(brief LivingBrief) string {
 	}
 }
 
-func (n *Nexus) validateComposerSelectedSkills(selected []string, available []store.ComposerSkillProposal) ([]string, error) {
+func (n *Nexus) validateComposerSelectedSkills(selected []string, available []store.ComposerSkillProposal, catalog nexusskills.Catalog) ([]string, error) {
 	if len(selected) == 0 {
 		return nil, nil
 	}
@@ -509,7 +550,12 @@ func (n *Nexus) validateComposerSelectedSkills(selected []string, available []st
 		}
 		item, ok := allowed[skillID]
 		if !ok {
-			return nil, fmt.Errorf("selected skill %s is not part of this composer session", skillID)
+			resolved, resolvedOK := catalog.Resolve(skillID)
+			if !resolvedOK || resolved.Availability != nexusskills.AvailabilityAvailable {
+				return nil, fmt.Errorf("selected skill %s is not available in the resolved Nexus catalog", skillID)
+			}
+			filtered = appendUnique(filtered, skillID)
+			continue
 		}
 		if item.State == store.ComposerSkillUnavailable {
 			return nil, fmt.Errorf("selected skill %s is no longer available", skillID)
@@ -519,48 +565,41 @@ func (n *Nexus) validateComposerSelectedSkills(selected []string, available []st
 	return filtered, nil
 }
 
-func compileComposerPrompt(userPrompt string, requestedSkills []string, status MaestroStatus) (*CompiledAgentPrompt, error) {
+func compileComposerPromptWithCatalog(userPrompt string, requestedSkills []string, catalog nexusskills.Catalog) (*CompiledAgentPrompt, error) {
 	userPrompt = strings.TrimSpace(userPrompt)
 	if userPrompt == "" {
 		return nil, fmt.Errorf("prompt is required")
 	}
-	validatedSkills := []string{}
-	if len(requestedSkills) > 0 {
-		catalog := []string{}
-		if status.Capabilities != nil {
-			catalog = status.Capabilities.SkillIDs()
+	selected := make([]nexusskills.Skill, 0, len(requestedSkills))
+	for _, id := range requestedSkills {
+		skill, ok := catalog.Resolve(id)
+		if !ok {
+			return nil, fmt.Errorf("skill validation failed: skill %q is unavailable", id)
 		}
-		var cause error
-		if status.Error != "" {
-			cause = fmt.Errorf("%s", status.Error)
-		}
-		var err error
-		validatedSkills, err = maestrogates.ValidateStrict(requestedSkills, status.Available, catalog, cause)
-		if err != nil {
-			return nil, fmt.Errorf("skill validation failed: %w", err)
-		}
+		selected = append(selected, skill)
 	}
-	return CompileAgentPromptWithValidatedSkills(userPrompt, validatedSkills), nil
+	return CompileAgentPromptWithSkillContracts(userPrompt, selected), nil
 }
 
-func reconcileComposerSkillAvailability(st *store.Store, sessionID string, skills []store.ComposerSkillProposal, status MaestroStatus) []store.ComposerSkillProposal {
-	if !status.Available || status.Capabilities == nil {
-		return skills
-	}
-	available := map[string]struct{}{}
-	for _, skillID := range status.Capabilities.SkillIDs() {
-		available[skillID] = struct{}{}
-	}
-	for i := range skills {
-		skills[i].Available = false
-		if _, ok := available[skills[i].SkillID]; ok {
-			skills[i].Available = true
+func reconcileComposerSkillAvailability(st *store.Store, sessionID string, proposals []store.ComposerSkillProposal, catalog nexusskills.Catalog) []store.ComposerSkillProposal {
+	for i := range proposals {
+		proposals[i].Available = false
+		if _, ok := catalog.Resolve(proposals[i].SkillID); ok {
+			proposals[i].Available = true
 			continue
 		}
-		skills[i].State = store.ComposerSkillUnavailable
-		_ = st.SetComposerSkillState(sessionID, skills[i].SkillID, store.ComposerSkillUnavailable)
+		proposals[i].State = store.ComposerSkillUnavailable
+		_ = st.SetComposerSkillState(sessionID, proposals[i].SkillID, store.ComposerSkillUnavailable)
 	}
-	return skills
+	return proposals
+}
+
+func skillSources(items []nexusskills.Skill) []string {
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		result = append(result, string(item.Source))
+	}
+	return result
 }
 
 func writePromptList(b *strings.Builder, title string, values []string) {

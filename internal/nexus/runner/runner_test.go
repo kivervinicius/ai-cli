@@ -114,7 +114,7 @@ func TestMissionRunnerPreservesFlowStepExecutionContracts(t *testing.T) {
 	spec := PackageSpec{
 		ID: "step", Title: "Step", Goal: "Goal", Role: "tester",
 		AssignmentStrategy: "AUTO", ResourcePolicy: "PRESERVE_QUOTA", Provider: "codex", Profile: "fast",
-		MaestroSkills: []string{"verification"}, RelevantPaths: []string{"internal/nexus"},
+		SkillIDs: []string{"testing"}, MaestroSkills: []string{"verification"}, RelevantPaths: []string{"internal/nexus"},
 		VerificationRequirements: []string{"echo step-specific"}, AcceptanceCriteria: []string{"verified"},
 	}
 	run, err := r.StartMissionRun(context.Background(), PlanSpec{ID: "flow", ProjectID: "p", Revision: 2, Packages: []PackageSpec{spec}}, t.TempDir(), contract, "legacy-default")
@@ -128,7 +128,7 @@ func TestMissionRunnerPreservesFlowStepExecutionContracts(t *testing.T) {
 	if pkg.AssignmentStrategy != "AUTO" || pkg.ResourcePolicy != "PRESERVE_QUOTA" || pkg.Provider != "codex" || pkg.Profile != "fast" {
 		t.Fatalf("flow execution contract lost: %+v", pkg)
 	}
-	if !reflect.DeepEqual(pkg.MaestroSkills, []string{"verification"}) || !reflect.DeepEqual(pkg.RelevantPaths, []string{"internal/nexus"}) || !reflect.DeepEqual(pkg.VerificationRequirements, []string{"echo step-specific"}) {
+	if !reflect.DeepEqual(pkg.SkillIDs, []string{"testing"}) || !reflect.DeepEqual(pkg.MaestroSkills, []string{"verification"}) || !reflect.DeepEqual(pkg.RelevantPaths, []string{"internal/nexus"}) || !reflect.DeepEqual(pkg.VerificationRequirements, []string{"echo step-specific"}) {
 		t.Fatalf("bounded step context lost: %+v", pkg)
 	}
 }

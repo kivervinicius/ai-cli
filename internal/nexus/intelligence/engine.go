@@ -57,9 +57,15 @@ func (e *NexusEngine) Analyze(ctx context.Context, goal string, projectID string
 	if err != nil {
 		return nil, nil, err
 	}
-	unknowns, err := e.provider.EvaluateAmbiguities(ctx, intent)
-	if err != nil {
-		return intent, nil, err
+	var unknowns []AmbiguityItem
+	var unknownErr error
+	if contextual, ok := e.provider.(ContextualAmbiguityEvaluator); ok {
+		unknowns, unknownErr = contextual.EvaluateAmbiguitiesWithContext(ctx, intent, e.mergedContext(projectID))
+	} else {
+		unknowns, unknownErr = e.provider.EvaluateAmbiguities(ctx, intent)
+	}
+	if unknownErr != nil {
+		return intent, nil, unknownErr
 	}
 	return intent, unknowns, nil
 }
@@ -137,14 +143,14 @@ func (e *NexusEngine) CompilePrompt(
 	ctx context.Context,
 	pkg WorkPackageOutline,
 	facts map[string]string,
-	maestroSkills []string,
+	skillIDs []string,
 ) (*PromptCompilationResult, error) {
 	factsList := formatFacts(facts)
 	compiled, err := e.CompileExecutionContext(ctx, ExecutionContextRequest{
 		Agent:   AgentSpec{Role: pkg.Role},
 		Project: ProjectContext{Facts: facts},
 		Task:    WorkPackageContext{Title: pkg.Title, Goal: pkg.Goal, Priority: pkg.Priority, Role: pkg.Role, AcceptanceCriteria: append([]string(nil), pkg.Acceptance...)},
-		Maestro: MaestroGuidance{Enabled: len(maestroSkills) > 0, Skills: append([]string(nil), maestroSkills...)},
+		Skills:  append([]string(nil), skillIDs...),
 	})
 	if err != nil {
 		return nil, err
@@ -158,7 +164,7 @@ func (e *NexusEngine) CompilePrompt(
 		PackageTitle:    pkg.Title,
 		SystemPrompt:    sysPrompt,
 		UserPrompt:      userPrompt,
-		MaestroRules:    append([]string(nil), maestroSkills...),
+		Skills:          append([]string(nil), skillIDs...),
 		AcceptanceGates: pkg.Acceptance,
 		Constraints:     factsList,
 		EstimatedTokens: estTokens,
@@ -178,8 +184,23 @@ func (e *NexusEngine) CompileExecutionContext(_ context.Context, req ExecutionCo
 	if len(facts) > 0 {
 		sections = append(sections, ContextSection{Source: "project", Name: "project facts", Content: strings.Join(facts, "\n")})
 	}
-	if req.Maestro.Enabled && (len(req.Maestro.Instructions) > 0 || len(req.Maestro.Skills) > 0) {
-		sections = append(sections, ContextSection{Source: "maestro", Name: "optional guidance", Content: strings.Join(append(append([]string{}, req.Maestro.Instructions...), req.Maestro.Skills...), "\n")})
+	guidance := req.Guidance
+	legacyMaestroGuidance := isEmptyExecutionGuidance(guidance) && !isEmptyExecutionGuidance(req.Maestro)
+	if legacyMaestroGuidance {
+		guidance = req.Maestro
+	}
+	skillIDs := req.Skills
+	if len(skillIDs) == 0 {
+		skillIDs = guidance.Skills
+	}
+	if len(skillIDs) > 0 || guidance.Enabled && len(guidance.Instructions) > 0 {
+		instructions := append([]string{}, guidance.Instructions...)
+		content := append(instructions, skillIDs...)
+		source, name := "guidance", "execution guidance"
+		if legacyMaestroGuidance {
+			source, name = "maestro", "optional guidance"
+		}
+		sections = append(sections, ContextSection{Source: source, Name: name, Content: strings.Join(content, "\n")})
 	}
 	if req.Runtime.Provider != "" || req.Runtime.Model != "" || req.Runtime.Workspace != "" || req.Runtime.Isolation != "" || len(req.Runtime.Capabilities) > 0 {
 		runtimeContent := fmt.Sprintf("Provider: %s\nModel: %s\nWorkspace: %s\nIsolation: %s\nCapabilities: %s", req.Runtime.Provider, req.Runtime.Model, req.Runtime.Workspace, req.Runtime.Isolation, strings.Join(req.Runtime.Capabilities, ", "))
@@ -201,10 +222,14 @@ func (e *NexusEngine) CompileExecutionContext(_ context.Context, req ExecutionCo
 		TaskInstructions:   task,
 		Context:            facts,
 		Constraints:        append([]string(nil), req.Task.Constraints...),
-		Skills:             append([]string(nil), req.Maestro.Skills...),
+		Skills:             append([]string(nil), skillIDs...),
 		AcceptanceCriteria: append([]string(nil), req.Task.AcceptanceCriteria...),
 		Sections:           sections,
 	}, nil
+}
+
+func isEmptyExecutionGuidance(guidance ExecutionGuidance) bool {
+	return !guidance.Enabled && len(guidance.Instructions) == 0 && len(guidance.Skills) == 0 && strings.TrimSpace(guidance.Source) == ""
 }
 
 func formatFacts(facts map[string]string) []string {

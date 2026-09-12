@@ -1,5 +1,42 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-11 — Codex frescor + TUI Contas & Quotas
+
+- PASS — `go test ./internal/core/provider/adapters/codex ./internal/core/quota ./internal/profile ./internal/tui ./internal/control/host -count=1`.
+- PASS — host same-account ingest + adopt; parser aceita qualquer evento com `rate_limits.primary`; evento velho → `ESTIMATED`.
+- PASS — `AvailabilityLabel` UNKNOWN → `SEM DADOS` (nunca DISPONIVEL); 5h=0 → `QUOTA ESGOTADA`.
+- PASS — last-known Codex aceita bump de `IdentityVersion` (email → `chatgpt_account_id`) com mesmo `AccountID` durável.
+- PASS — TUI: chrome compacto (`usageChromeLines=6`), colunas sem MODELO, STATUS `OK`/`ESGOTADA`/`SEM DADOS`/`OFF` cabem em width 80/132/160.
+- PASS — `SessionHost.Stop`/`Terminate` disparam `RefreshUsageSnapshot` async para codex/agy.
+- PASS — `nexus usage --json` pós-rebuild: `codex:kiver.omegasistemas` LIVE; `codex:kivergmail` ESTIMATED com last-known (rollout isolado tinha `primary:null` do Codex — sem inventar LIVE).
+- NOTE — cota LIVE da gmail exige sessão isolada que grave `rate_limits.primary` (não só splash com primary null).
+
+## 2026-09-11 — Native Skill contract transport continuation
+
+- PASS — `go test ./internal/nexus/... -count=1` after adding canonical
+  `SkillIDs` to WorkPlan, Flow, runner packages and ContextCapsule.
+- PASS — builtin `coding`/`testing` resolve with Maestro unavailable; unknown
+  IDs reject deterministically and legacy/generic packages can coexist.
+- PASS — the actual execution freeze path accepts a real project plan with
+  builtin `SkillIDs` while Maestro is offline and preserves compatibility aliases.
+- PASS — `go test ./... -count=1` and `go test -race ./... -count=1` after
+  correcting handoff receipts and reconciling latest Codex/TUI contracts.
+- PASS — `go vet ./...`, `gofmt` cleanliness and `git diff --check`.
+- PASS — `make web-verify`, `make build`, `make build-desktop`,
+  `git diff --check` and repository-wide `gofmt` cleanliness.
+- Release remains NO-GO for missing authenticated Mission/provider/platform
+  evidence.
+
+## 2026-09-11 — Codex quota attribution by chatgpt_account_id + isolated sessions
+
+- PASS — `go test ./internal/core/provider/adapters/codex ./internal/core/provider/adapters/agy ./internal/core/scheduler ./internal/profile ./internal/core/quota ./internal/tui ./internal/app`.
+- PASS — e-mails no texto do rollout **não** roubam atribuição; no máximo um perfil reivindica cada rollout host.
+- PASS — `FetchedAt` vem do evento `token_count`; `resets_at` no passado vira `window rolled over` e não conta como esgotado.
+- PASS — AGY com `refresh_token` permanece autenticado (`Token refresh pending`) e o probe de quota pode rodar com `BROWSER=false`.
+- PASS — `nexus usage --json` após rebuild: `codex:kiver.omegasistemas` LIVE com 5h/weekly alinhados ao `/status` Codex (reset weekly `05:35 on 15 Sep`); `codex:kivergmail` UNKNOWN com erro `aguardando primeira sessão isolada desta conta` (esperado até a primeira sessão isolada).
+- PASS — symlinks `sessions` → `~/.codex/sessions` migrados para diretórios reais por perfil no `GetUsage`/`Prepare`.
+- PASS — scheduler prefere conta Codex com capacidade sobre 5h esgotado (`TestCodexExhaustedFiveHourLosesToHealthyAccount`).
+
 ## 2026-09-11 — Codex/CSI-u no terminal Nexus
 
 - PASS — `go test ./internal/control/driver ./internal/core/provider/adapters/codex ./internal/runtime`.
@@ -916,52 +953,35 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
 - `make -n install` — PASS; fluxo local padrão e fluxo `DESTDIR` ficam explícitos
   no Makefile.
 
+## Cota oficial do Codex via app-server — 2026-09-11
+
+- Fonte primária nova: `codex app-server --stdio` + `account/rateLimits/read`
+  (`internal/core/provider/adapters/codex/app_server_usage.go`). Rollouts e
+  last-known continuam como fallback honesto, nessa ordem.
+- `go test ./... -count=1` — PASS (suíte completa).
+- `go test -race -count=1` em `internal/profile`, `internal/core/quota`,
+  `internal/core/provider/adapters/codex`, `internal/tui`, `internal/nexus` — PASS.
+- `go vet ./...`, `gofmt -l internal/` e `git diff --check` — PASS.
+- Validação real com as duas contas, sem abrir sessão e sem enviar prompt:
+  - `codex:kivergmail` — `RATE_LIMITED` / `OFFICIAL_API`; 5h em `0%` restante
+    (reset 21:55) e semanal em `56%` restante (reset 08:37 de 15 Sep). Confere
+    com o splash oficial do Codex CLI.
+  - `codex:kiver.omegasistemas` — `LIVE` / `OFFICIAL_API`; 5h `98%` e semanal
+    `58%`, com `accountId` próprio. As duas contas não se contaminam.
+- `RATE_LIMITED` passou a ser leitura confiável: `quota.Engine.Trustworthy`,
+  as barras e o monitor tratam o bloqueio informado pelo provedor como dado
+  exato, em vez de descartá-lo para `SEM DADOS`.
+- TTL de 60s vale também entre processos para leituras `OFFICIAL_API`; uma
+  segunda chamada de `nexus usage` dentro da janela reaproveita o cache e não
+  sobe outro app-server. Cache derivado de rollout nunca é reaproveitado.
+- Identidade: a sonda exige `chatgpt_account_id` verificável, confere o
+  `accountId` da resposta e o `codexHome` ecoado pelo `initialize`. Qualquer
+  divergência descarta o payload. Desligável por `NEXUS_CODEX_APP_SERVER=0`.
+- Controle estruturado (aprovações/eventos) segue diferido — ver
+  [`DEV/AI_CONTROL_DEFERRED.md`](AI_CONTROL_DEFERRED.md), item 6.
+
 <!-- frontend-verify:latest -->
-## `/nexus` e rebuild — 2026-09-11
-
-- PASS — `go test ./internal/update ./internal/control/host ./internal/control/driver -count=1`
-- PASS — `go build -o /tmp/nexus-current ./cmd/nexus`
-- PASS — `/tmp/nexus-current version --json` e `--help`
-- PASS — `git diff --check`
-- Regressão coberta: `/nexus` intercepta controle, `//nexus` escapa para o
-  provider e prefixos não-Nexus continuam sendo encaminhados.
-
-## Prefixo de controle canônico — 2026-09-11
-
-- `go test ./internal/control/host` — PASS.
-- `/nexus` e `:nexus` continuam interceptados; aliases `/ai` e `:ai` passam
-  literalmente para o provider — PASS.
-## Frontend gate — 2026-09-11T17:53:45Z
+## Frontend gate — 2026-09-12T00:31:02Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
-# Verification — 2026-09-11
 
-## Terminal input/control separation
-
-- PASS — `go test ./internal/control/host ./internal/control/protocol ./internal/control/tui -count=20`.
-- PASS — `go test -race ./internal/control/host ./internal/control/protocol ./internal/control/web ./internal/control/tui`.
-- PASS — `go test ./internal/control/web -run '^$'` (compile gate).
-- PASS — `npm --prefix web run typecheck`, focused `agentTerminalModel` tests and ESLint.
-- PASS — `npm --prefix web run test -- --run` (342 tests), `lint:styles` and production build.
-- PASS — `git diff --check`.
-- Added byte-for-byte regressions for Delete/arrows/Home/End/PageUp/PageDown,
-  isolated Escape, Ctrl+C, UTF-8, chunks, writer lease and literal `/nexus`.
-- The repeated Web package gate still has environmental pre-existing failures
-  requiring sudo to edit `/etc/hosts`; no new failure was observed in the
-  touched control contracts.
-
-## Independent release gate
-
-- Audited SHA: `c8747481fc04c65614b38b5c9d9da106f56858c3`.
-- Merge simulation and diff check passed; Windows/macOS/browser same-SHA evidence is absent.
-- Updater trust root and archive installation are P0 FAIL.
-- Verdict: `NO_GO_FOR_MERGE`; see `DEV/validation/FINAL_INDEPENDENT_VALIDATION.md`.
-
-## Installer PATH alignment
-
-- PASS — `bash -n install.sh`
-- PASS — `go test ./internal/release`
-- PASS — `git diff --check`
-- Behavior — installer scans `PATH` in shell resolution order and installs to
-  the first directory containing executable `nexus`; otherwise uses
-  `~/.local/bin`.

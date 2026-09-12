@@ -493,6 +493,9 @@ func ValidateProfileName(name string) error {
 	if len(name) > 64 {
 		return errors.New("profile name too long (max 64 characters)")
 	}
+	if strings.HasPrefix(name, "-") {
+		return errors.New("profile name cannot start with '-' (looks like a CLI flag)")
+	}
 	for _, ch := range name {
 		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' || ch == '.' {
 			continue

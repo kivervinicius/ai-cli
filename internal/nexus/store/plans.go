@@ -49,11 +49,15 @@ type WorkPackage struct {
 	ResourcePolicy           string   `json:"resource_policy,omitempty"`
 	Provider                 string   `json:"provider,omitempty"`
 	Profile                  string   `json:"profile,omitempty"`
+	DesiredProvider          string   `json:"desired_provider,omitempty"`
+	DesiredProfile           string   `json:"desired_profile,omitempty"`
+	SkillIDs                 []string `json:"skill_ids,omitempty"`
 	MaestroGates             []string `json:"maestro_gates,omitempty"` // legacy compatibility
 	MaestroSkills            []string `json:"maestro_skills,omitempty"`
 	RelevantPaths            []string `json:"relevant_paths,omitempty"`
 	AcceptanceCriteria       []string `json:"acceptance_criteria"`
 	VerificationRequirements []string `json:"verification_requirements,omitempty"`
+	RoutingDecisionJSON      string   `json:"routing_decision,omitempty"`
 	SharedArtifacts          []string `json:"shared_artifacts,omitempty"`
 	CompiledPrompt           string   `json:"compiled_prompt,omitempty"`
 }

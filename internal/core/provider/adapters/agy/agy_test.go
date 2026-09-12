@@ -99,11 +99,14 @@ func TestInspectAuthExpiredTokenWithRefreshToken(t *testing.T) {
 	}
 
 	info := New().InspectAuth(context.Background(), model.Profile{Provider: "agy", Name: "expired-with-refresh"})
-	if info.Authenticated {
-		t.Fatal("expired token with refresh_token must also NOT be authenticated (prevents browser spam)")
+	if !info.Authenticated {
+		t.Fatal("expired token with refresh_token must remain authenticated so quota probes can run")
 	}
-	if info.Status != "Token expired" {
-		t.Fatalf("status=%q want 'Token expired'", info.Status)
+	if info.Status != "Token refresh pending" {
+		t.Fatalf("status=%q want 'Token refresh pending'", info.Status)
+	}
+	if info.Health != model.HealthHealthy {
+		t.Fatalf("health=%q want HEALTHY", info.Health)
 	}
 }
 
@@ -137,8 +140,8 @@ func TestInspectAuthExpiredTokenResolvesEmailFromGoogleAccounts(t *testing.T) {
 	}
 
 	info := New().InspectAuth(context.Background(), model.Profile{Provider: "agy", Name: "expired-with-email"})
-	if info.Authenticated {
-		t.Fatal("expired token must NOT be authenticated")
+	if !info.Authenticated {
+		t.Fatal("expired token with refresh_token must remain authenticated for probes")
 	}
 	if info.Email != "user@gmail.com" {
 		t.Fatalf("email=%q want 'user@gmail.com' (must resolve even when expired)", info.Email)

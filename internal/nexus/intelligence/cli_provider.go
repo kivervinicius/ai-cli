@@ -80,14 +80,20 @@ Context: %s`, input, string(ctxJSON))
 }
 
 func (p *CLIProvider) EvaluateAmbiguities(ctx context.Context, intent *IntentAnalysis) ([]AmbiguityItem, error) {
+	return p.EvaluateAmbiguitiesWithContext(ctx, intent, nil)
+}
+
+func (p *CLIProvider) EvaluateAmbiguitiesWithContext(ctx context.Context, intent *IntentAnalysis, contextData map[string]any) ([]AmbiguityItem, error) {
 	if !p.Available(ctx) {
 		return nil, ErrIntelligenceUnavailable
 	}
 	intentJSON, _ := json.Marshal(intent)
+	contextJSON, _ := json.Marshal(contextData)
 	prompt := fmt.Sprintf(`Return ONLY a JSON object. Do not wrap it in prose.
 Identify requirement ambiguities. BLOCKING means execution cannot safely continue; IMPORTANT materially changes design; LOW_IMPACT has a safe default.
 Schema: {"unknowns":[{"key":"...","level":"BLOCKING|IMPORTANT|LOW_IMPACT","question":"...","rationale":"...","suggested_options":["..."],"default_choice":"..."}]}
-Intent: %s`, string(intentJSON))
+Intent: %s
+Project context: %s`, string(intentJSON), string(contextJSON))
 	out, err := p.run(ctx, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("run %s ambiguity analysis: %w", p.Name(), err)

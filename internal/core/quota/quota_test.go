@@ -454,3 +454,33 @@ func TestCodexLegacyQuotaPreservesRemainingAndGroup(t *testing.T) {
 		t.Fatalf("BestGroupRemaining=%v ok=%v want 70 (min of 70/95, no phantom 0)", best, ok)
 	}
 }
+
+func TestAvailabilityLabelUnknownIsSemDadosNotDisponivel(t *testing.T) {
+	qv := &QuotaView{Status: string(model.UsageUnknown)}
+	qv.ComputeAvailability()
+	if got := qv.AvailabilityLabel(); got != "SEM DADOS" {
+		t.Fatalf("AvailabilityLabel=%q want SEM DADOS (never DISPONIVEL for unknown)", got)
+	}
+}
+
+func TestAvailabilityLabelExhaustedFiveHour(t *testing.T) {
+	zero := 0.0
+	fifty := 56.0
+	qv := &QuotaView{
+		Status: string(model.UsageLive),
+		ModelGroups: []ModelGroup{{
+			Name: "Codex",
+			Windows: []Window{
+				{Kind: "5h", Remaining: zero, Status: string(model.UsageLive)},
+				{Kind: "weekly", Remaining: fifty, Status: string(model.UsageLive)},
+			},
+		}},
+	}
+	qv.ComputeAvailability()
+	if qv.IsAvailable() {
+		t.Fatal("5h=0 must not be available")
+	}
+	if got := qv.AvailabilityLabel(); got != "QUOTA ESGOTADA" {
+		t.Fatalf("AvailabilityLabel=%q want QUOTA ESGOTADA", got)
+	}
+}

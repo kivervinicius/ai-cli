@@ -87,10 +87,21 @@ var (
 		regexp.MustCompile(`(?i)searching|pesquisando`),
 	}
 
+	// Live process failures only: anchored at start of the useful line so
+	// agent narration quoting "CreateProcessW failed: …" or checklist rows
+	// (FC-01 | … | STILL_PRESENT | CI run …) does not OS-notify.
 	errorPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)\berror:\s+\S+`),
-		regexp.MustCompile(`(?i)\bfailed:\s+\S+`),
-		regexp.MustCompile(`(?i)exited with code [1-9]`),
+		regexp.MustCompile(`(?i)^error:\s+\S+`),
+		regexp.MustCompile(`(?i)^failed:\s+\S+`),
+		regexp.MustCompile(`(?i)^exited with code [1-9]`),
+	}
+
+	errorCitationNoise = []*regexp.Regexp{
+		regexp.MustCompile("`"),
+		regexp.MustCompile(`\|`),
+		regexp.MustCompile(`(?i)\bFC-\d+\b`),
+		regexp.MustCompile(`(?i)\bSTILL_PRESENT\b`),
+		regexp.MustCompile(`(?i)\bCI\s+run\b`),
 	}
 )
 
@@ -286,17 +297,12 @@ func (d *AttentionDetector) ProcessChunk(chunk []byte) {
 			}
 		}
 
-		if reason == "" && lastLine != "" {
-			for _, p := range errorPatterns {
-				if p.MatchString(lastLine) {
-					state = registry.StateFailed
-					reason = "ERROR"
-					kind = AttentionError
-					attentionCtx = lastLine
-					dynamicTitle = d.projectName + " · erro"
-					break
-				}
-			}
+		if reason == "" && lastLine != "" && isLiveErrorLine(lastLine) {
+			state = registry.StateFailed
+			reason = "ERROR"
+			kind = AttentionError
+			attentionCtx = lastLine
+			dynamicTitle = d.projectName + " · erro"
 		}
 
 		if reason == "" && lastLine != "" {
@@ -625,6 +631,27 @@ func isChromeLine(line string) bool {
 		return true
 	}
 	for _, p := range chromeLinePatterns {
+		if p.MatchString(trimmed) {
+			return true
+		}
+	}
+	return false
+}
+
+// isLiveErrorLine reports whether the last useful PTY line is a real process
+// failure (error:/failed:/exited with code N) rather than agent narration that
+// quotes those tokens inside backticks, markdown tables, or CI checklist rows.
+func isLiveErrorLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return false
+	}
+	for _, p := range errorCitationNoise {
+		if p.MatchString(trimmed) {
+			return false
+		}
+	}
+	for _, p := range errorPatterns {
 		if p.MatchString(trimmed) {
 			return true
 		}

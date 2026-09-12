@@ -52,7 +52,7 @@ type PromptCompilationResult struct {
 	PackageTitle    string    `json:"package_title"`
 	SystemPrompt    string    `json:"system_prompt"`
 	UserPrompt      string    `json:"user_prompt"`
-	MaestroRules    []string  `json:"maestro_rules"`
+	Skills          []string  `json:"skills,omitempty"`
 	AcceptanceGates []string  `json:"acceptance_gates"`
 	SharedArtifacts []string  `json:"shared_artifacts"`
 	Constraints     []string  `json:"constraints"`
@@ -99,11 +99,19 @@ type WorkPackageContext struct {
 	Constraints        []string `json:"constraints,omitempty"`
 }
 
-type MaestroGuidance struct {
+// ExecutionGuidance is source-agnostic operational guidance attached to an
+// execution context. Sources such as Nexus or Maestro may provide it, but
+// consumers only depend on the generic contract.
+type ExecutionGuidance struct {
 	Enabled      bool     `json:"enabled,omitempty"`
 	Instructions []string `json:"instructions,omitempty"`
 	Skills       []string `json:"skills,omitempty"`
+	Source       string   `json:"source,omitempty"`
 }
+
+// MaestroGuidance is retained as a source-compatible type alias for older
+// callers. New code should use ExecutionGuidance.
+type MaestroGuidance = ExecutionGuidance
 
 type RuntimeConstraints struct {
 	Provider     string   `json:"provider,omitempty"`
@@ -114,11 +122,13 @@ type RuntimeConstraints struct {
 }
 
 type ExecutionContextRequest struct {
-	Agent   AgentSpec          `json:"agent"`
-	Project ProjectContext     `json:"project"`
-	Task    WorkPackageContext `json:"task"`
-	Maestro MaestroGuidance    `json:"maestro"`
-	Runtime RuntimeConstraints `json:"runtime"`
+	Agent    AgentSpec          `json:"agent"`
+	Project  ProjectContext     `json:"project"`
+	Task     WorkPackageContext `json:"task"`
+	Skills   []string           `json:"skills,omitempty"`
+	Guidance ExecutionGuidance  `json:"guidance,omitempty"`
+	Maestro  MaestroGuidance    `json:"maestro,omitempty"` // legacy compatibility
+	Runtime  RuntimeConstraints `json:"runtime"`
 }
 
 type ContextSection struct {
@@ -158,6 +168,13 @@ type IntelligenceProvider interface {
 	GeneratePlanOutline(ctx context.Context, intent *IntentAnalysis, facts map[string]string, contextData map[string]any) ([]WorkPackageOutline, error)
 }
 
+// ContextualAmbiguityEvaluator is an optional extension that preserves the
+// original provider contract while allowing ambiguity analysis to use the same
+// bounded project envelope as intent analysis.
+type ContextualAmbiguityEvaluator interface {
+	EvaluateAmbiguitiesWithContext(context.Context, *IntentAnalysis, map[string]any) ([]AmbiguityItem, error)
+}
+
 // OneshotPlanner collapses intent + ambiguities + packages into a single model call.
 // CLI providers implement this to avoid three sequential headless execs.
 type OneshotPlanner interface {
@@ -185,5 +202,5 @@ type WorkPackageOutline struct {
 type IntelligenceEngine interface {
 	Analyze(ctx context.Context, goal string, projectID string) (*IntentAnalysis, []AmbiguityItem, error)
 	ResolveClarification(state *ClarificationState, key string, answer string)
-	CompilePrompt(ctx context.Context, pkg WorkPackageOutline, facts map[string]string, maestroSkills []string) (*PromptCompilationResult, error)
+	CompilePrompt(ctx context.Context, pkg WorkPackageOutline, facts map[string]string, skillIDs []string) (*PromptCompilationResult, error)
 }

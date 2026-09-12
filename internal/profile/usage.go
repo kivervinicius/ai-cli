@@ -21,6 +21,10 @@ import (
 	"github.com/kivervinicius/ai-cli/internal/core/quota"
 )
 
+// codexUsageTTL is how long an official Codex reading may be reused across
+// processes before another app-server probe is worthwhile.
+const codexUsageTTL = 60 * time.Second
+
 type LimitWindow struct {
 	PercentLeft float64 `json:"percent_left"`
 	ResetsIn    string  `json:"resets_in"`
@@ -117,12 +121,13 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 		}
 	}
 
-	// Codex rollouts are local filesystem reads (not a blocking CLI). Always
-	// prefer the adapter so stale quota.json with phantom fields cannot hide
-	// the live primary/secondary used_percent from recent sessions.
 	useCache := !refresh && found && len(snap.Windows) > 0 && snap.Status != model.UsageUnknown && qEng.Trustworthy(snap)
 	if useCache && providerName == "codex" {
-		useCache = false
+		// An official Codex read costs one app-server subprocess, so honor a short
+		// TTL across CLI invocations instead of probing on every render. Snapshots
+		// derived from rollouts are never reused: a stale usage.json must not hide
+		// the used_percent written by a more recent session.
+		useCache = snap.Source == model.SourceOfficialAPI && time.Since(snap.FetchedAt) < codexUsageTTL
 	}
 	if debug {
 		slog.Debug("loadUsageSnapshot: cache decision", "provider", providerName, "profile", name, "useCache", useCache, "trustworthy", qEng.Trustworthy(snap))
@@ -136,7 +141,11 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 	p := model.Profile{Provider: providerName, Name: name, AccountScope: scope}
 	switch providerName {
 	case "codex":
-		snap = codex.New().GetUsage(ctx, p)
+		if refresh {
+			snap = codex.New().RefreshUsage(ctx, p)
+		} else {
+			snap = codex.New().GetUsage(ctx, p)
+		}
 	case "agy":
 		if refresh {
 			snap = agy.New().RefreshUsage(ctx, p)
@@ -173,6 +182,22 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 	// trust window is not evidence of live capacity. Keep processing below so
 	// the last-known fallback can preserve context without treating it as live.
 	if snap.Status != model.UsageUnknown && snap.Status != model.UsageError && len(snap.Windows) > 0 {
+		// An adapter that already labelled its observation ESTIMATED is telling
+		// the truth about freshness. Discarding it would turn real evidence into
+		// SEM DADOS for any observation just past the trust window.
+		if snap.Status == model.UsageEstimated && withinLastKnownWindow(snap.FetchedAt) {
+			if snap.Error == "" {
+				snap.Error = fmt.Sprintf("observação de %s", quota.FormatFreshness(snap.FetchedAt))
+			}
+			if scopeOK {
+				snap.AccountScope = scope
+				_ = qEng.SaveUsageForScope(scope, snap)
+			}
+			if debug {
+				slog.Debug("loadUsageSnapshot: preserving adapter ESTIMATED", "provider", providerName, "profile", name, "fetchedAt", snap.FetchedAt)
+			}
+			return snap
+		}
 		if !qEng.Trustworthy(snap) {
 			if debug {
 				slog.Debug("loadUsageSnapshot: rejecting stale adapter snapshot", "provider", providerName, "profile", name, "fetchedAt", snap.FetchedAt, "age", time.Since(snap.FetchedAt))
@@ -217,11 +242,25 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 	return snap
 }
 
+// withinLastKnownWindow bounds how old an explicitly ESTIMATED observation may
+// be before it stops being useful context at all.
+func withinLastKnownWindow(at time.Time) bool {
+	if at.IsZero() {
+		return false
+	}
+	age := time.Since(at)
+	return age >= -time.Minute && age <= quota.LastKnownTTL
+}
+
 func expectedProfileAccount(providerName, profileName string) string {
 	if providerName == "agy" {
 		return resolveAGYAuthenticatedEmail(profileName)
 	}
-	return strings.TrimSpace(GetAccountInfo(providerName, profileName).Email)
+	info := GetAccountInfo(providerName, profileName)
+	if providerName == "codex" && strings.TrimSpace(info.ExternalAccountID) != "" {
+		return strings.TrimSpace(info.ExternalAccountID)
+	}
+	return strings.TrimSpace(info.Email)
 }
 
 func usageScope(providerName, profileName, identity string) (model.AccountScope, bool) {
@@ -247,10 +286,36 @@ func snapshotBelongsToProfile(snap model.UsageSnapshot, providerName, profileNam
 		// Fresh adapter observations often omit AccountScope. Reject only when
 		// a verifiable scope is present and belongs to a different identity.
 		if snap.AccountScope.Verifiable() && snap.AccountScope.Key() != scope.Key() {
-			return false
+			// Codex may bump IdentityVersion when migrating email → chatgpt_account_id,
+			// but only a persisted historical identity can prove continuity.
+			sameDurable := providerName == "codex" &&
+				snap.AccountScope.AccountID == scope.AccountID &&
+				snap.AccountScope.ProviderID == scope.ProviderID &&
+				snap.AccountScope.ProfileID == scope.ProfileID
+			if !sameDurable || !persistedScopeContainsIdentity(providerName, profileName, scope.AccountID, snap.Account) {
+				return false
+			}
 		}
 	}
-	return expectedAccount == "" || snap.Account == "" || strings.EqualFold(expectedAccount, snap.Account)
+	if expectedAccount == "" || snap.Account == "" {
+		return true
+	}
+	if strings.EqualFold(expectedAccount, snap.Account) {
+		return true
+	}
+	// A current-version snapshot may still carry the previous Codex identity
+	// after it was re-associated with the current durable account scope.
+	if providerName == "codex" {
+		if scope, ok := usageScope(providerName, profileName, expectedAccount); ok &&
+			snap.AccountScope.Verifiable() &&
+			snap.AccountScope.ProviderID == scope.ProviderID &&
+			snap.AccountScope.ProfileID == scope.ProfileID &&
+			snap.AccountScope.AccountID == scope.AccountID &&
+			persistedScopeContainsIdentity(providerName, profileName, scope.AccountID, snap.Account) {
+			return true
+		}
+	}
+	return false
 }
 
 // GetQuotaDetails returns usage and quota metrics without fabricating 100% data.
@@ -340,15 +405,27 @@ func GetQuotaView(providerName, name, plan, email string) quota.QuotaView {
 	}
 
 	// A cached quota can outlive an account switch. Do not show or score data
-	// whose recorded identity differs from the profile's authenticated email.
+	// whose recorded identity differs from the profile's authenticated identity.
 	if snapshotAccount := strings.TrimSpace(snap.Account); snapshotAccount != "" && strings.TrimSpace(email) != "" && !strings.EqualFold(snapshotAccount, strings.TrimSpace(email)) {
-		if debug {
-			slog.Debug("GetQuotaView: account mismatch detected", "provider", providerName, "profile", name, "snapshotAccount", snapshotAccount, "profileEmail", email)
+		mismatch := true
+		if providerName == "codex" {
+			info := GetAccountInfo(providerName, name)
+			if info.ExternalAccountID != "" && strings.EqualFold(snapshotAccount, info.ExternalAccountID) {
+				mismatch = false
+			}
+			if info.Email != "" && strings.EqualFold(snapshotAccount, info.Email) {
+				mismatch = false
+			}
 		}
-		snap.Status = model.UsageUnknown
-		snap.Source = model.SourceNone
-		snap.Windows = nil
-		snap.Error = fmt.Sprintf("quota belongs to %s, profile is authenticated as %s", snapshotAccount, strings.TrimSpace(email))
+		if mismatch {
+			if debug {
+				slog.Debug("GetQuotaView: account mismatch detected", "provider", providerName, "profile", name, "snapshotAccount", snapshotAccount, "profileEmail", email)
+			}
+			snap.Status = model.UsageUnknown
+			snap.Source = model.SourceNone
+			snap.Windows = nil
+			snap.Error = fmt.Sprintf("quota belongs to %s, profile is authenticated as %s", snapshotAccount, strings.TrimSpace(email))
+		}
 	}
 
 	// Stale local files must not score as fresh CACHED (e.g. August quota.json).

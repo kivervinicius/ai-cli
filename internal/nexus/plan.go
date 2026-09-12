@@ -61,7 +61,7 @@ func (n *Nexus) MaterializePromptArtifactAsFlow(ctx context.Context, artifactID 
 	plan, err := n.CreateWorkPlan(ctx, session.ProjectID, title, "Materialized from Composer PromptArtifact", []store.PlanPhase{{
 		ID: phaseID, Title: "Composer Flow", Order: 1, Packages: []store.WorkPackage{{
 			ID: "pkg_" + ids.NewRuntimeID(), Title: title, Goal: brief.Goal, Priority: "HIGH", Status: "READY", Role: "implementer",
-			MaestroSkills: decodeStringArray(artifact.SkillIDsJSON), AcceptanceCriteria: append([]string(nil), brief.Quality.AcceptanceCriteria...), CompiledPrompt: artifact.Content,
+			SkillIDs: decodeStringArray(artifact.SkillIDsJSON), MaestroSkills: decodeStringArray(artifact.SkillIDsJSON), AcceptanceCriteria: append([]string(nil), brief.Quality.AcceptanceCriteria...), CompiledPrompt: artifact.Content,
 		}},
 	}}, facts)
 	if err != nil {
@@ -143,9 +143,8 @@ func (n *Nexus) compilePackagePromptFromPlan(ctx context.Context, plan *store.Wo
 		return nil, fmt.Errorf("work package %s not found in plan %s", packageID, plan.ID)
 	}
 
-	// Maestro remains the sole authority for skill IDs. Explicit gates are part
-	// of the approved contract and must never be silently dropped.
-	validatedSkills, err := n.validateMaestroGatesStrict(uniqueStrings(append(append([]string(nil), targetPkg.MaestroGates...), targetPkg.MaestroSkills...)))
+	requestedSkills := packageSkillIDs(*targetPkg)
+	validatedSkills, err := validateGenericSkillIDs(n, plan.ProjectID, requestedSkills)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +160,7 @@ func compileTargetPackagePromptForAgent(ctx context.Context, plan *store.WorkPla
 		Agent:   agentSpec,
 		Project: intelligence.ProjectContext{Facts: plan.StructuredFacts},
 		Task:    intelligence.WorkPackageContext{Title: targetPkg.Title, Goal: targetPkg.Goal, Priority: targetPkg.Priority, Role: targetPkg.Role, AcceptanceCriteria: targetPkg.AcceptanceCriteria},
-		Maestro: intelligence.MaestroGuidance{Enabled: len(validatedSkills) > 0, Skills: append([]string(nil), validatedSkills...)},
+		Skills:  append([]string(nil), validatedSkills...),
 	})
 	if err != nil {
 		return nil, err
@@ -170,7 +169,7 @@ func compileTargetPackagePromptForAgent(ctx context.Context, plan *store.WorkPla
 		PackageTitle:    targetPkg.Title,
 		SystemPrompt:    compiled.SystemInstructions,
 		UserPrompt:      compiled.TaskInstructions,
-		MaestroRules:    append([]string(nil), validatedSkills...),
+		Skills:          append([]string(nil), validatedSkills...),
 		AcceptanceGates: append([]string(nil), targetPkg.AcceptanceCriteria...),
 		Constraints:     append([]string(nil), compiled.Context...),
 		EstimatedTokens: (len(compiled.SystemInstructions) + len(compiled.TaskInstructions)) / 4,
@@ -192,7 +191,7 @@ func compilePackagePromptFromExecutionSnapshot(ctx context.Context, plan *store.
 		for i := range ph.Packages {
 			pkg := &ph.Packages[i]
 			if pkg.ID == packageID {
-				return compileTargetPackagePrompt(ctx, plan, pkg, uniqueStrings(append(append([]string(nil), pkg.MaestroGates...), pkg.MaestroSkills...)))
+				return compileTargetPackagePrompt(ctx, plan, pkg, packageSkillIDs(*pkg))
 			}
 		}
 	}

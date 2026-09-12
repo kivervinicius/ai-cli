@@ -44,12 +44,13 @@ type ModelGroup struct {
 
 // Window is a display-ready usage window within a model group.
 type Window struct {
-	Kind      string  `json:"kind"`
-	Label     string  `json:"label"`
-	Remaining float64 `json:"remaining"`
-	ResetDesc string  `json:"reset_desc"`
-	Status    string  `json:"status"`
-	Bar       string  `json:"bar"`
+	Kind      string     `json:"kind"`
+	Label     string     `json:"label"`
+	Remaining float64    `json:"remaining"`
+	ResetDesc string     `json:"reset_desc"`
+	ResetTime *time.Time `json:"reset_time,omitempty"`
+	Status    string     `json:"status"`
+	Bar       string     `json:"bar"`
 }
 
 // Bottleneck returns the minimum remaining percentage across ALL windows and groups.
@@ -60,9 +61,10 @@ func (qv *QuotaView) Bottleneck() (float64, string) {
 	minPct := 100.0
 	var bottleneckKind string
 	found := false
+	now := time.Now()
 	for _, g := range qv.ModelGroups {
 		for _, w := range g.Windows {
-			if w.Kind == "unknown" {
+			if w.Kind == "unknown" || windowExpired(w, now) {
 				continue
 			}
 			found = true
@@ -80,12 +82,14 @@ func (qv *QuotaView) Bottleneck() (float64, string) {
 
 // GroupRemaining returns the capacity of one model group: min of its known
 // windows (5h and weekly stack in the same pool). ok is false when the group
-// has no scorable windows.
+// has no scorable windows. Windows whose reset time is already past are ignored
+// (the quota window has rolled over; stale used% must not look like exhaustion).
 func (g ModelGroup) GroupRemaining() (remaining float64, ok bool) {
 	minPct := 100.0
 	found := false
+	now := time.Now()
 	for _, w := range g.Windows {
-		if w.Kind == "unknown" {
+		if w.Kind == "unknown" || windowExpired(w, now) {
 			continue
 		}
 		found = true
@@ -97,6 +101,10 @@ func (g ModelGroup) GroupRemaining() (remaining float64, ok bool) {
 		return 0, false
 	}
 	return minPct, true
+}
+
+func windowExpired(w Window, now time.Time) bool {
+	return w.ResetTime != nil && w.ResetTime.Before(now)
 }
 
 // BestGroupRemaining returns the best usable pool capacity: max of each
@@ -266,6 +274,9 @@ func (qv *QuotaView) IsAvailable() bool {
 
 // AvailabilityLabel returns a human-readable availability status.
 func (qv *QuotaView) AvailabilityLabel() string {
+	if qv.AvailReasons.UnknownQuota {
+		return "SEM DADOS"
+	}
 	if qv.Available {
 		return "DISPONIVEL"
 	}
@@ -313,18 +324,26 @@ func (qv *QuotaView) ComputeAvailability() {
 	// Gemini request even when its Claude/GPT pool is exhausted. The exhausted
 	// group is still exposed in AvailReasons for honest UI feedback.
 	usableGroup := false
+	now := time.Now()
 	for _, g := range qv.ModelGroups {
 		groupExhausted := false
+		hasScorable := false
 		for _, w := range g.Windows {
-			if w.Kind == "unknown" {
+			if w.Kind == "unknown" || windowExpired(w, now) {
 				continue
 			}
+			hasScorable = true
 			if w.Remaining <= 0.0 {
 				exhausted = append(exhausted, w.Kind)
 				groupExhausted = true
 			}
 		}
-		if !groupExhausted {
+		if hasScorable && !groupExhausted {
+			usableGroup = true
+		}
+		// A group whose only windows have rolled over is treated as still usable
+		// (we lack current evidence of exhaustion).
+		if !hasScorable {
 			usableGroup = true
 		}
 	}
@@ -343,7 +362,7 @@ func (qv *QuotaView) ComputeAvailability() {
 // RenderBar renders a progress bar for a given remaining percentage.
 func RenderBar(remaining float64, status string, width int) string {
 	var pctPtr *float64
-	if status == string(model.UsageLive) || status == string(model.UsageCached) || status == string(model.UsageEstimated) {
+	if statusHasMeasuredPercent(status) {
 		pctPtr = &remaining
 	}
 	return RenderProgressBar(model.UsageStatus(status), pctPtr, width)
@@ -352,10 +371,22 @@ func RenderBar(remaining float64, status string, width int) string {
 // RenderBarWithPercent renders a progress bar with a percentage label.
 func RenderBarWithPercent(remaining float64, status string, width int) string {
 	bar := RenderBar(remaining, status, width)
-	if status == string(model.UsageLive) || status == string(model.UsageCached) || status == string(model.UsageEstimated) {
+	if statusHasMeasuredPercent(status) {
 		return fmt.Sprintf("%s %2.0f%%", bar, remaining)
 	}
 	return bar
+}
+
+// statusHasMeasuredPercent reports whether a status is backed by a real
+// measurement. RATE_LIMITED qualifies: the official provider read supplies exact
+// percentages alongside the block.
+func statusHasMeasuredPercent(status string) bool {
+	switch model.UsageStatus(status) {
+	case model.UsageLive, model.UsageCached, model.UsageEstimated, model.UsageRateLimited:
+		return true
+	default:
+		return false
+	}
 }
 
 // WindowLabel returns the display label for a window kind.

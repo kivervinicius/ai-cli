@@ -116,3 +116,12 @@ func TestConfigValidationRejectsInvalidIntelligenceMode(t *testing.T) {
 		t.Fatalf("expected one intelligence validation issue, got %v", issues)
 	}
 }
+
+func TestValidateProfileNameRejectsFlagLikeNames(t *testing.T) {
+	if err := ValidateProfileName("--with"); err == nil {
+		t.Fatal("profile names starting with '-' must be rejected")
+	}
+	if err := ValidateProfileName("kivergmail"); err != nil {
+		t.Fatalf("valid name rejected: %v", err)
+	}
+}

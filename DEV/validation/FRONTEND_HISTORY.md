@@ -285,3 +285,9 @@
 - 2026-09-11T17:31:02Z · FAIL · feat/nexus-maximum-delivery@e28e38c · failed=[format] · DEV/validation/FRONTEND_2026-09-11T17-31-02Z.md
 - 2026-09-11T17:32:44Z · PASS · feat/nexus-maximum-delivery@e28e38c · failed=[-] · DEV/validation/FRONTEND_2026-09-11T17-32-44Z.md
 - 2026-09-11T17:53:45Z · PASS · feat/nexus-maximum-delivery@6d4e5b9 · failed=[-] · DEV/validation/FRONTEND_2026-09-11T17-53-45Z.md
+- 2026-09-11T22:59:39Z · FAIL · feat/nexus-maximum-delivery@2925ca7 · failed=[null-arrays] · DEV/validation/FRONTEND_2026-09-11T22-59-39Z.md
+- 2026-09-11T23:00:30Z · FAIL · feat/nexus-maximum-delivery@2925ca7 · failed=[typecheck,build,embed-sync,ui-markers] · DEV/validation/FRONTEND_2026-09-11T23-00-30Z.md
+- 2026-09-11T23:01:19Z · PASS · feat/nexus-maximum-delivery@2925ca7 · failed=[-] · DEV/validation/FRONTEND_2026-09-11T23-01-19Z.md
+- 2026-09-11T23:23:02Z · PASS · feat/nexus-maximum-delivery@2925ca7 · failed=[-] · DEV/validation/FRONTEND_2026-09-11T23-23-02Z.md
+- 2026-09-12T00:15:21Z · PASS · feat/nexus-maximum-delivery@2925ca7 · failed=[-] · DEV/validation/FRONTEND_2026-09-12T00-15-21Z.md
+- 2026-09-12T00:31:02Z · PASS · feat/nexus-maximum-delivery@2925ca7 · failed=[-] · DEV/validation/FRONTEND_2026-09-12T00-31-02Z.md

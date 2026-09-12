@@ -2,6 +2,7 @@ package profile
 
 import (
 	"context"
+	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/agy"
@@ -38,9 +39,12 @@ func GetAccountInfo(providerName, name string) model.AccountInfo {
 	}
 
 	// Keep the opaque account boundary attached to every account inspection.
-	// An unauthenticated profile may have a stable local profile scope, but it
-	// must not be treated as verified identity by quota persistence/routing.
-	if scope, err := AccountScope(providerName, name, info.Email); err == nil {
+	// Codex scopes by chatgpt_account_id; other providers use email.
+	identity := info.Email
+	if providerName == "codex" && strings.TrimSpace(info.ExternalAccountID) != "" {
+		identity = info.ExternalAccountID
+	}
+	if scope, err := AccountScope(providerName, name, identity); err == nil {
 		info.AccountScope = scope
 	}
 	return info

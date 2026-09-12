@@ -70,10 +70,14 @@ type PackageSpec struct {
 	ResourcePolicy           string   `json:"resource_policy,omitempty"`
 	Provider                 string   `json:"provider,omitempty"`
 	Profile                  string   `json:"profile,omitempty"`
+	DesiredProvider          string   `json:"desired_provider,omitempty"`
+	DesiredProfile           string   `json:"desired_profile,omitempty"`
+	SkillIDs                 []string `json:"skill_ids,omitempty"`
 	MaestroSkills            []string `json:"maestro_skills,omitempty"`
 	RelevantPaths            []string `json:"relevant_paths,omitempty"`
 	AcceptanceCriteria       []string `json:"acceptance_criteria,omitempty"`
 	VerificationRequirements []string `json:"verification_requirements,omitempty"`
+	RoutingDecisionJSON      string   `json:"routing_decision,omitempty"`
 }
 
 // ReviewVerdict records independent evaluation evidence. A verdict without a
@@ -111,6 +115,7 @@ type ContextCapsule struct {
 	RelevantPaths             []string           `json:"relevant_paths,omitempty"`
 	DurableContextRefs        []string           `json:"durable_context_refs,omitempty"`
 	DependencyReceipts        []WorkReceipt      `json:"dependency_receipts,omitempty"`
+	SkillIDs                  []string           `json:"skill_ids,omitempty"`
 	MaestroSkills             []string           `json:"maestro_skills,omitempty"`
 	AcceptanceCriteria        []string           `json:"acceptance_criteria,omitempty"`
 	Constraints               []string           `json:"constraints,omitempty"`
@@ -165,6 +170,9 @@ type PackageRun struct {
 	ResourcePolicy           string               `json:"resource_policy,omitempty"`
 	Provider                 string               `json:"provider,omitempty"`
 	Profile                  string               `json:"profile,omitempty"`
+	DesiredProvider          string               `json:"desired_provider,omitempty"`
+	DesiredProfile           string               `json:"desired_profile,omitempty"`
+	SkillIDs                 []string             `json:"skill_ids,omitempty"`
 	MaestroSkills            []string             `json:"maestro_skills,omitempty"`
 	RelevantPaths            []string             `json:"relevant_paths,omitempty"`
 	AcceptanceCriteria       []string             `json:"acceptance_criteria,omitempty"`
@@ -190,6 +198,7 @@ type PackageRun struct {
 	Verdicts                 []ReviewVerdict      `json:"verdicts,omitempty"`
 	Verifications            []VerificationResult `json:"verifications,omitempty"`
 	ErrorMessage             string               `json:"error_message,omitempty"`
+	RoutingDecisionJSON      string               `json:"routing_decision,omitempty"`
 	StartedAt                time.Time            `json:"started_at"`
 	FinishedAt               *time.Time           `json:"finished_at,omitempty"`
 }

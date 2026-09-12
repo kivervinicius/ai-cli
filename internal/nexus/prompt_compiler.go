@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kivervinicius/ai-cli/internal/nexus/maestrogates"
+	nexusskills "github.com/kivervinicius/ai-cli/internal/nexus/skills"
 )
 
 type PromptVariantKind string
@@ -25,14 +26,18 @@ type CompiledPromptVariant struct {
 	Capabilities []string          `json:"capabilities,omitempty"`
 }
 
-func CompilePromptVariants(brief LivingBrief, skills []MaestroSkillDesc, target string) []CompiledPromptVariant {
+func CompilePromptVariants(brief LivingBrief, skills []nexusskills.Skill, target string) []CompiledPromptVariant {
+	return compilePromptVariantsFromSkills(brief, skills, target)
+}
+
+func compilePromptVariantsFromSkills(brief LivingBrief, skills []nexusskills.Skill, target string) []CompiledPromptVariant {
 	base := renderCanonicalPrompt(brief)
 	manifest := "\n\nSkill provenance manifest:\n"
 	if len(skills) == 0 {
-		manifest += "- No externally validated skills selected.\n"
+		manifest += "- No validated skills selected.\n"
 	} else {
 		for _, skill := range skills {
-			manifest += fmt.Sprintf("- %s (source: Maestro, version: %s)\n", skill.ID, firstNonEmpty(skill.Version, "unknown"))
+			manifest += fmt.Sprintf("- %s (source: %s, version: %s, hash: %s)\n", skill.ID, skill.Source, firstNonEmpty(skill.Version, "unknown"), skill.Hash)
 		}
 	}
 	variants := []CompiledPromptVariant{}
@@ -73,7 +78,7 @@ func CompileAgentPromptWithContracts(userPrompt string, validatedSkills []string
 		var b strings.Builder
 		b.WriteString("Nexus execution context\n")
 		b.WriteString("Scope: next prompt only\n")
-		b.WriteString("Validated Maestro skills:\n")
+		b.WriteString("Validated skills:\n")
 		for _, s := range validatedSkills {
 			b.WriteString("- " + s + "\n")
 		}
@@ -99,6 +104,79 @@ func CompileAgentPromptWithContracts(userPrompt string, validatedSkills []string
 		ValidatedSkills: validatedSkills,
 		SkillContracts:  contractIDs(contracts),
 	}
+}
+
+// CompileAgentPromptWithSkillContracts embeds source-agnostic selected Skills.
+// This is the native path used by Nexus execution; Maestro is only one
+// optional source and is not required for validation or prompt compilation.
+func CompileAgentPromptWithSkillContracts(userPrompt string, selected []nexusskills.Skill) *CompiledAgentPrompt {
+	ids := make([]string, 0, len(selected))
+	var b strings.Builder
+	b.WriteString("Nexus execution context\n")
+	b.WriteString("Scope: next prompt only\n")
+	b.WriteString("Validated Nexus skills:\n")
+	for _, skill := range selected {
+		ids = append(ids, skill.ID)
+		b.WriteString("- ")
+		b.WriteString(skill.ID)
+		b.WriteString(" (source: ")
+		b.WriteString(string(skill.Source))
+		b.WriteString(", version: ")
+		b.WriteString(firstNonEmpty(skill.Version, "unknown"))
+		b.WriteString(")\n")
+		if strings.TrimSpace(skill.Instructions) == "" {
+			continue
+		}
+		b.WriteString("\n--- Skill contract: ")
+		b.WriteString(skill.ID)
+		b.WriteString(" ---\n")
+		b.WriteString(skill.Instructions)
+		b.WriteString("\n--- End skill contract ---\n")
+	}
+	b.WriteString("\nUser request:\n")
+	b.WriteString(strings.TrimSpace(userPrompt))
+	compiled := b.String()
+	h := sha256.Sum256([]byte(compiled))
+	return &CompiledAgentPrompt{
+		CompiledPrompt: compiled, PromptHash: hex.EncodeToString(h[:]),
+		ValidatedSkills: ids, SkillContracts: ids,
+	}
+}
+
+// CompileAgentPromptForProject resolves skills through the source-agnostic
+// Nexus catalog. It is the canonical path for Agent execution; Maestro is
+// only an optional catalog source and is never required for builtin/project
+// skills.
+func (n *Nexus) CompileAgentPromptForProject(projectID, userPrompt string, requestedSkills []string) (*CompiledAgentPrompt, error) {
+	userPrompt = strings.TrimSpace(userPrompt)
+	if userPrompt == "" {
+		return nil, fmt.Errorf("prompt is required")
+	}
+	if len(requestedSkills) == 0 {
+		return CompileAgentPromptWithValidatedSkills(userPrompt, nil), nil
+	}
+	catalog, err := n.skillCatalogForProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve Nexus skill catalog: %w", err)
+	}
+	selected := make([]nexusskills.Skill, 0, len(requestedSkills))
+	seen := make(map[string]struct{}, len(requestedSkills))
+	for _, requested := range requestedSkills {
+		id := strings.TrimSpace(requested)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		skill, ok := catalog.Resolve(id)
+		if !ok || skill.Availability != nexusskills.AvailabilityAvailable {
+			return nil, fmt.Errorf("skill validation failed: skill %q is unavailable", id)
+		}
+		seen[id] = struct{}{}
+		selected = append(selected, skill)
+	}
+	return CompileAgentPromptWithSkillContracts(userPrompt, selected), nil
 }
 
 func contractIDs(skills []CatalogSkill) []string {

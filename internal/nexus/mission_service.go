@@ -12,7 +12,6 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/control/ids"
 	"github.com/kivervinicius/ai-cli/internal/nexus/autonomyguard"
-	"github.com/kivervinicius/ai-cli/internal/nexus/maestrogates"
 	"github.com/kivervinicius/ai-cli/internal/nexus/runner"
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
@@ -50,9 +49,9 @@ func planToRunnerSpec(plan *store.WorkPlan, snapshotID string) (runner.PlanSpec,
 				ID: pkg.ID, PhaseID: phase.ID, Title: pkg.Title, Goal: pkg.Goal, Priority: pkg.Priority,
 				Dependencies: append([]string(nil), pkg.Dependencies...), ParallelGroup: pkg.ParallelGroup,
 				Role: pkg.Role, TaskRequirements: pkg.TaskRequirements, AgentAllocation: pkg.AgentAllocation,
-				AssignmentStrategy: pkg.AssignmentStrategy, ResourcePolicy: pkg.ResourcePolicy, Provider: pkg.Provider, Profile: pkg.Profile,
-				MaestroSkills: append([]string(nil), pkg.MaestroSkills...), RelevantPaths: append([]string(nil), pkg.RelevantPaths...),
-				AcceptanceCriteria: append([]string(nil), pkg.AcceptanceCriteria...), VerificationRequirements: append([]string(nil), pkg.VerificationRequirements...),
+				AssignmentStrategy: pkg.AssignmentStrategy, ResourcePolicy: pkg.ResourcePolicy, Provider: pkg.Provider, Profile: pkg.Profile, DesiredProvider: pkg.DesiredProvider, DesiredProfile: pkg.DesiredProfile,
+				SkillIDs: append([]string(nil), packageSkillIDs(pkg)...), MaestroSkills: append([]string(nil), pkg.MaestroSkills...), RelevantPaths: append([]string(nil), pkg.RelevantPaths...),
+				AcceptanceCriteria: append([]string(nil), pkg.AcceptanceCriteria...), VerificationRequirements: append([]string(nil), pkg.VerificationRequirements...), RoutingDecisionJSON: pkg.RoutingDecisionJSON,
 			})
 		}
 	}
@@ -69,14 +68,15 @@ func freezePlanForExecution(n *Nexus, plan store.WorkPlan) (store.WorkPlan, erro
 	for pi := range plan.Phases {
 		for wi := range plan.Phases[pi].Packages {
 			pkg := &plan.Phases[pi].Packages[wi]
-			requested := uniqueStrings(append(append([]string(nil), pkg.MaestroGates...), pkg.MaestroSkills...))
-			validated, err := n.validateMaestroGatesStrict(requested)
+			requested := packageSkillIDs(*pkg)
+			validated, err := validateGenericSkillIDs(n, plan.ProjectID, requested)
 			if err != nil {
-				return store.WorkPlan{}, fmt.Errorf("freeze Maestro skills for package %s: %w", pkg.ID, err)
+				return store.WorkPlan{}, fmt.Errorf("freeze skills for package %s (%s): %w", pkg.ID, skillIDsErrorContext(requested), err)
 			}
-			// The immutable execution snapshot carries one validated skill set in
-			// both fields so legacy prompt compilation and the Flow façade agree.
-			pkg.MaestroGates = append([]string(nil), validated...)
+			pkg.SkillIDs = append([]string(nil), validated...)
+			// The immutable execution snapshot carries one validated Skill set in
+			// the canonical and legacy Skill fields. Process gates remain separate
+			// metadata and are never reinterpreted as Skills.
 			pkg.MaestroSkills = append([]string(nil), validated...)
 		}
 	}
@@ -119,23 +119,6 @@ func validateFlowExecutionContract(plan store.WorkPlan) error {
 		}
 	}
 	return nil
-}
-
-func (n *Nexus) validateMaestroGatesStrict(gates []string) ([]string, error) {
-	if len(gates) == 0 {
-		return nil, nil
-	}
-	client := NewMaestroClient()
-	status := client.Status()
-	var catalog []string
-	if status.Capabilities != nil {
-		catalog = status.Capabilities.SkillIDs()
-	}
-	var cause error
-	if status.Error != "" {
-		cause = fmt.Errorf("%s", status.Error)
-	}
-	return maestrogates.ValidateStrict(gates, status.Available, catalog, cause)
 }
 
 // StartMissionRun binds an immutable plan revision/snapshot and starts the

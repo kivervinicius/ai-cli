@@ -330,16 +330,22 @@ func (n *Nexus) strictAdmissionForPlan(_ context.Context, plan store.WorkPlan, r
 			}
 		}
 	}
-	requested := make([]string, 0)
+	var skillErr error
 	for _, phase := range plan.Phases {
 		for _, pkg := range phase.Packages {
-			requested = append(requested, pkg.MaestroGates...)
-			requested = append(requested, pkg.MaestroSkills...)
+			requested := packageSkillIDs(pkg)
+			_, skillErr = validateGenericSkillIDs(n, plan.ProjectID, requested)
+			if skillErr != nil {
+				break
+			}
+		}
+		if skillErr != nil {
+			break
 		}
 	}
-	if _, err := n.validateMaestroGatesStrict(uniqueStrings(requested)); err != nil {
+	if skillErr != nil {
 		report.Ready = false
-		report.Checks = append(report.Checks, FlowPreflightCheck{Key: "maestro", Label: "Gates Maestro", Status: "FAIL", Summary: err.Error()})
+		report.Checks = append(report.Checks, FlowPreflightCheck{Key: "skills", Label: "Nexus Skills", Status: "FAIL", Summary: skillErr.Error()})
 	}
 	return report, nil
 }

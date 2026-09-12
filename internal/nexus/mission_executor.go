@@ -108,6 +108,7 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 
 	var selected ProviderAccount
 	var keepCurrent bool
+	routingReason := ""
 	if !isFailover {
 		selected, keepCurrent = selectCurrentResource(candidateAccounts, current, req, policy)
 	}
@@ -117,10 +118,31 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 			return runner.AllocationResult{}, fmt.Errorf("no provider/profile satisfies Flow Step %s requirements: %s", pkg.PackageID, recommendation.Explanation)
 		}
 		selected = recommendation.Recommended.Account
+		routingReason = recommendation.Explanation
 	}
 
+	desiredProvider := strings.TrimSpace(pkg.DesiredProvider)
+	desiredProfile := strings.TrimSpace(pkg.DesiredProfile)
+	if desiredProvider == "" && pkg.Attempt <= 1 {
+		desiredProvider = strings.TrimSpace(pkg.Provider)
+	}
+	if desiredProfile == "" && pkg.Attempt <= 1 {
+		desiredProfile = strings.TrimSpace(pkg.Profile)
+	}
+	pkg.DesiredProvider, pkg.DesiredProfile = desiredProvider, desiredProfile
 	current.Provider, current.Profile = selected.Provider, selected.Profile
 	pkg.Provider, pkg.Profile = selected.Provider, selected.Profile
+	preferenceMode := AffinityAuto
+	if desiredProvider != "" || desiredProfile != "" {
+		preferenceMode = AffinityPrefer
+		if policy == PolicyManual {
+			preferenceMode = AffinityPin
+		}
+	}
+	routingDecision := buildMissionRoutingDecision(pkg, agent, req, selected, current, desiredProvider, desiredProfile, preferenceMode, isFailover, routingReason)
+	if raw, marshalErr := json.Marshal(routingDecision); marshalErr == nil {
+		pkg.RoutingDecisionJSON = string(raw)
+	}
 
 	if isFailover {
 		events.DefaultBus().Publish(events.NewEventWithCorrelation(
@@ -161,6 +183,36 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 		return runner.AllocationResult{}, err
 	}
 	return runner.AllocationResult{AgentID: agent.ID, Workspace: workspace}, nil
+}
+
+// buildMissionRoutingDecision projects the concrete allocation made by the
+// existing resource scheduler into the durable, explainable routing contract.
+// It intentionally does not mutate the desired affinity when a fallback is
+// selected and leaves engine unset when the scheduler has no engine evidence.
+func buildMissionRoutingDecision(pkg *runner.PackageRun, agent store.Agent, req TaskRequirements, selected ProviderAccount, current AgentConfig, desiredProvider, desiredProfile string, preferenceMode AffinityMode, isFailover bool, routingReason string) ExecutionRoutingDecision {
+	affinity := RuntimeAffinityPolicy{
+		Provider: AffinityPreference{Mode: preferenceMode, Value: desiredProvider},
+		Profile:  AffinityPreference{Mode: preferenceMode, Value: desiredProfile},
+		Model:    AffinityPreference{Mode: AffinityAuto},
+	}
+	fallback := isFailover || (desiredProvider != "" && desiredProvider != selected.Provider) || (desiredProfile != "" && desiredProfile != selected.Profile)
+	reason := firstNonEmpty(routingReason, "selected by existing Nexus resource scheduler")
+	return ExecutionRoutingDecision{
+		TaskID:            pkg.PackageID,
+		AgentID:           agent.ID,
+		Requirements:      req,
+		Desired:           affinity,
+		AffinityPolicy:    affinity,
+		Actual:            ModelCandidate{Provider: selected.Provider, Profile: selected.Profile, Model: current.Model, Healthy: selected.Health == "healthy", Authenticated: selected.Authenticated, QuotaAvailable: selected.Available},
+		SelectedProvider:  selected.Provider,
+		SelectedProfile:   selected.Profile,
+		SelectedModel:     current.Model,
+		SelectedReasoning: reason,
+		Fallback:          fallback,
+		Reason:            reason,
+		TaskClass:         req.TaskKind,
+		CreatedAt:         time.Now().UTC(),
+	}
 }
 
 func createMissionAgent(st *store.Store, projectID string, pkg *runner.PackageRun, prefix string) (store.Agent, error) {
@@ -338,7 +390,7 @@ func (e *nexusPackageExecutor) Compile(ctx context.Context, run *runner.MissionR
 		for _, phase := range snapshot.Plan.Phases {
 			for _, target := range phase.Packages {
 				if target.ID == pkg.PackageID {
-					compiledForAgent, compileErr := compileTargetPackagePromptForAgent(ctx, &snapshot.Plan, &target, cfg.AgentSpec, uniqueStrings(append(append([]string(nil), target.MaestroGates...), target.MaestroSkills...)))
+					compiledForAgent, compileErr := compileTargetPackagePromptForAgent(ctx, &snapshot.Plan, &target, cfg.AgentSpec, packageSkillIDs(target))
 					if compileErr != nil {
 						return runner.PromptArtifact{}, compileErr
 					}

@@ -112,6 +112,10 @@ func (p *OpenAIIntelligenceProvider) AnalyzeIntent(ctx context.Context, input st
 }
 
 func (p *OpenAIIntelligenceProvider) EvaluateAmbiguities(ctx context.Context, intent *IntentAnalysis) ([]AmbiguityItem, error) {
+	return p.EvaluateAmbiguitiesWithContext(ctx, intent, nil)
+}
+
+func (p *OpenAIIntelligenceProvider) EvaluateAmbiguitiesWithContext(ctx context.Context, intent *IntentAnalysis, contextData map[string]any) ([]AmbiguityItem, error) {
 	if !p.Available(ctx) {
 		return nil, ErrIntelligenceUnavailable
 	}
@@ -132,7 +136,7 @@ Output ONLY valid JSON matching:
   ]
 }`
 
-	intentBytes, _ := json.Marshal(intent)
+	intentBytes, _ := json.Marshal(map[string]any{"intent": intent, "project_context": contextData})
 	body := map[string]any{
 		"model": p.Model,
 		"messages": []map[string]string{

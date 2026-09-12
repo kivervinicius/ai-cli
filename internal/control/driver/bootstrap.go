@@ -30,8 +30,11 @@ func bootstrapProfile(provider string, p model.Profile) (string, error) {
 	switch provider {
 	case "codex":
 		linkConversationArtifacts(home, filepath.Join(hostHome, ".codex"), []string{
-			"session_index.jsonl", "thread_history_1.sqlite", "thread_history_1.sqlite-wal", "thread_history_1.sqlite-shm", "sessions",
+			"rules", "skills", "customizations",
 		})
+		// Ensure isolated session dirs exist (do not symlink host sessions).
+		_ = os.MkdirAll(filepath.Join(home, "sessions"), 0700)
+		_ = os.MkdirAll(filepath.Join(home, ".codex", "sessions"), 0700)
 	case "agy":
 		linkConversationArtifacts(filepath.Join(home, ".gemini"), filepath.Join(hostHome, ".gemini"), []string{
 			"antigravity-cli/history.jsonl", "antigravity-cli/conversation_summaries.db",

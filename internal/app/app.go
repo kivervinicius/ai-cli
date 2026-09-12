@@ -1024,55 +1024,40 @@ func usageCmd(args []string) error {
 
 	cfg, _ := config.LoadConfig()
 	accs := make(map[string]model.AccountInfo)
-	rows := make([]tui.UsageTableRow, 0, len(ps)*2)
+	rows := make([]tui.UsageTableRow, 0, len(ps))
+	profilesToLoad := make([]model.Profile, 0, len(ps))
 
 	for _, p := range ps {
 		acc := profile.GetAccountInfo(p.Provider, p.Name)
 		accs[p.Provider+":"+p.Name] = acc
-		qv := profile.GetQuotaView(p.Provider, p.Name, acc.Plan, acc.Email)
-		for _, group := range qv.ModelGroups {
-			fiveHour, weekly := quotaWindowDisplay(group.Windows, "5h", qv.Status), quotaWindowDisplay(group.Windows, "weekly", qv.Status)
-			if fiveHour == "-" && weekly == "-" {
-				label := quotaUnknownLabel(qv.Status)
-				fiveHour = label
-				weekly = label
-			}
-			modelName := qv.ModelGroups[0].Name
-			if len(qv.ModelGroups) > 1 {
-				modelName = group.Name
-			}
-			lastUpdated := ""
-			if !qv.FetchedAt.IsZero() {
-				lastUpdated = quota.FormatFreshness(qv.FetchedAt)
-			}
-			rows = append(rows, tui.UsageTableRow{
-				Provider:    p.Provider,
-				Profile:     p.Name,
-				Account:     acc.Email,
-				Plan:        acc.Plan,
-				Group:       group.Name,
-				FiveHour:    fiveHour,
-				Weekly:      weekly,
-				Status:      quotaGroupStatus(group, qv.Status),
-				ModelName:   modelName,
-				LastUpdated: lastUpdated,
-				IsDefault:   cfg.Defaults[p.Provider] == p.Name,
-			})
-		}
+		profilesToLoad = append(profilesToLoad, p)
+		// Placeholder rows so the TUI opens immediately; async load fills quotas.
+		rows = append(rows, tui.UsageTableRow{
+			Provider:  p.Provider,
+			Profile:   p.Name,
+			Account:   acc.Email,
+			Plan:      acc.Plan,
+			FiveHour:  "…",
+			Weekly:    "…",
+			Status:    "carregando",
+			ModelName: "—",
+			IsDefault: cfg.Defaults[p.Provider] == p.Name,
+		})
 	}
 
 	cwd, _ := os.Getwd()
-	convs := conversation.ListRecent(30, cwd)
 
 	opts := tui.UnifiedUsageOptions{
-		Rows:             rows,
-		UnconfiguredCLIs: unconfiguredCLIs,
-		Sessions:         convs,
-		Accounts:         accs,
-		Defaults:         cfg.Defaults,
-		Workspace:        cwd,
-		InitialMode:      initialMode,
-		InitialContinue:  initialContinue,
+		Rows:              rows,
+		UnconfiguredCLIs:  unconfiguredCLIs,
+		Sessions:          nil,
+		Accounts:          accs,
+		Defaults:          cfg.Defaults,
+		Workspace:         cwd,
+		InitialMode:       initialMode,
+		InitialContinue:   initialContinue,
+		ProfilesToLoad:    profilesToLoad,
+		LoadSessionsAsync: true,
 	}
 
 	sel, err := tui.RunUnifiedUsage(opts)
@@ -1095,29 +1080,6 @@ func usageCmd(args []string) error {
 	}
 }
 
-func quotaWindowDisplay(windows []quota.Window, kind, snapshotStatus string) string {
-	for _, window := range windows {
-		matches := kind == "5h" && (window.Kind == "5h" || window.Kind == "daily" || window.Kind == "claude_5h" || window.Kind == "claude_five_hour")
-		if kind == "weekly" {
-			matches = window.Kind == "weekly" || window.Kind == "claude_weekly"
-		}
-		if matches {
-			reset := strings.TrimSpace(window.ResetDesc)
-			if reset == "" {
-				reset = "desconhecido"
-			}
-			if snapshotStatus == string(model.UsageEstimated) {
-				return fmt.Sprintf("~%2.0f%% / %s (ESTIMADA)", window.Remaining, reset)
-			}
-			if snapshotStatus != string(model.UsageLive) && snapshotStatus != string(model.UsageCached) {
-				return quotaUnknownLabel(snapshotStatus)
-			}
-			return fmt.Sprintf("%2.0f%% / %s", window.Remaining, reset)
-		}
-	}
-	return "-"
-}
-
 func quotaGroupStatus(group quota.ModelGroup, snapshotStatus string) string {
 	switch snapshotStatus {
 	case string(model.UsageUnknown), string(model.UsageError), string(model.UsageUnsupported), "":
@@ -1130,12 +1092,14 @@ func quotaGroupStatus(group quota.ModelGroup, snapshotStatus string) string {
 	knownWindows := 0
 	allExhausted := true
 	for _, window := range group.Windows {
-		if window.Kind != "unknown" && window.Remaining <= 0 {
-			knownWindows++
+		if window.Kind == "unknown" {
 			continue
 		}
-		if window.Kind != "unknown" {
-			knownWindows++
+		if window.ResetTime != nil && window.ResetTime.Before(time.Now()) {
+			continue
+		}
+		knownWindows++
+		if window.Remaining > 0 {
 			allExhausted = false
 		}
 	}
@@ -1623,16 +1587,28 @@ func runGoalCmd(args []string) error {
 		return fmt.Errorf("nenhum projeto ativo; registre um projeto primeiro")
 	}
 	project := projects[0]
+	intentDecision, decisionErr := n.DecideIntentForProject(ctx, project.ID, goal)
+	if decisionErr != nil {
+		return fmt.Errorf("decidir intenção: %w", decisionErr)
+	}
+	if intentDecision.Strategy == nexus.IntentClarify {
+		return fmt.Errorf("BLOCKED_NEEDS_USER: %s", strings.Join(intentDecision.BlockingQuestions, "; "))
+	}
 	proposal, err := n.DecomposePromptIntoFlowProposal(ctx, nexus.FlowDecompositionRequest{
 		ProjectID:    project.ID,
 		Goal:         goal,
 		SourcePrompt: goal,
+		Simple:       intentDecision.Strategy == nexus.IntentDirect,
 	})
 	if err != nil {
 		return fmt.Errorf("classificar e decompor tarefa: %w", err)
 	}
 	flowPlan := nexus.WorkPlanFromFlow(proposal.Flow)
-	plan, err := n.CreateWorkPlan(ctx, project.ID, proposal.Title, proposal.Description, flowPlan.Phases, flowPlan.StructuredFacts)
+	structuredFacts, err := nexus.PersistIntentDecisionFacts(flowPlan.StructuredFacts, intentDecision)
+	if err != nil {
+		return fmt.Errorf("persistir decisão de intenção: %w", err)
+	}
+	plan, err := n.CreateWorkPlan(ctx, project.ID, proposal.Title, proposal.Description, flowPlan.Phases, structuredFacts)
 	if err != nil {
 		return fmt.Errorf("persistir plano da tarefa: %w", err)
 	}
@@ -1653,6 +1629,7 @@ func runGoalCmd(args []string) error {
 	requirements := nexus.ClassifyTaskRequirements(goal)
 	out, _ := json.MarshalIndent(map[string]any{
 		"run":                    run,
+		"intent_decision":        intentDecision,
 		"task_requirements":      requirements,
 		"requires_decomposition": requirements.RequiresDecomposition,
 	}, "", "  ")

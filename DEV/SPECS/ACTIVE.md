@@ -78,6 +78,19 @@ Decisões executivas e pendências de promoção: `DEV/DECISIONS/NEXUS_TERMINAL_
 
 ## Nexus Core consolidation status — 2026-09-10
 
+## Final closure campaign — 2026-09-11
+
+The current campaign audit and executable plan are tracked in
+`DEV/validation/FINAL_CLOSURE_REALITY_AUDIT.md`,
+`DEV/validation/FINAL_CLOSURE_CHECKPOINTS.md`, and
+`docs/superpowers/plans/2026-09-11-nexus-final-closure.md`. The first native
+Skill Catalog, bounded intelligence grounding, explicit intent router, runtime
+affinity/routing decision slices, and runner integration with the canonical
+ValidationEvidenceStream are implemented and locally tested. The global
+release verdict remains NO-GO while an authenticated Mission stream instance,
+complete live provider execution, overnight acceptance, and native
+Windows/macOS validation are unavailable.
+
 ## Evolution corrective closure — 2026-09-11
 
 The independent audit and corrective work are tracked in
@@ -95,6 +108,19 @@ provider-level confirmation exists; cross-provider handoff remains
 Local Linux gates are green in isolation, but the final verdict remains
 `NO-GO` until required PTY/failover E2E, authenticated live-provider evidence,
 same-SHA native Windows/macOS evidence and the full race gate are available.
+
+### Final closure implementation continuation — 2026-09-11
+
+The active contract now includes the source-agnostic SkillCatalog in the Agent
+prompt path, generic `ExecutionGuidance` for Intelligence, canonical frontend
+`skill_ids`, separation of legacy process gates from Skills, and persisted
+desired-vs-actual Mission routing explainability. These are locally verified;
+they do not waive the release evidence gates below.
+
+Release remains `NO-GO` until an authenticated Mission produces a durable
+ValidationEvidenceStream instance, live provider failover/PIN/model escalation
+and semantic handoff are proven, native Windows/macOS runs exist for the same
+SHA, and the overnight scenario reaches a verified terminal state.
 
 ## Account isolation slice — 2026-09-10
 

@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Badge, Button, Card } from '../../design-system';
+import { asArray } from '../../lib/safeArray';
 import { nexus } from '../../nexus/api';
-import type { ProjectFact, ProjectIntelligenceView } from '../../types';
+import type { ProjectFact, ProjectFactProvenance, ProjectIntelligenceView } from '../../types';
 import styles from './ProjectIntelligenceInspector.module.scss';
 
 const toneForScan = (state?: string) => {
@@ -48,7 +49,8 @@ export const ProjectIntelligenceInspector: React.FC<{ projectId: string }> = ({ 
 
   const snapshot = view?.current_snapshot;
   const scan = view?.current_scan;
-  const facts = snapshot?.facts ?? [];
+  const facts = asArray<ProjectFact>(snapshot?.facts);
+  const warnings = asArray<string>(snapshot?.warnings);
 
   return (
     <Card className={styles.inspector}>
@@ -97,10 +99,10 @@ export const ProjectIntelligenceInspector: React.FC<{ projectId: string }> = ({ 
               <Badge tone={toneForScan(scan.state)}>{scan.state}</Badge>
             </div>
           )}
-          {snapshot?.warnings?.length ? (
+          {warnings.length ? (
             <p className={styles.warning}>
               {t('work.projectIntelligence.warnings', '{{count}} warnings', {
-                count: snapshot.warnings.length,
+                count: warnings.length,
               })}
             </p>
           ) : null}
@@ -116,7 +118,7 @@ export const ProjectIntelligenceInspector: React.FC<{ projectId: string }> = ({ 
                     <span>
                       {fact.confidence} · {fact.basis}
                     </span>
-                    {fact.provenance.map((source) => (
+                    {asArray<ProjectFactProvenance>(fact.provenance).map((source) => (
                       <span key={`${source.source}:${source.locator || ''}`}>
                         {source.source}
                         {source.locator ? ` · ${source.locator}` : ''}

@@ -106,13 +106,25 @@ func (r *MissionRunner) StartMissionRun(ctx context.Context, plan PlanSpec, work
 		if assignedAgent == "" && spec.AssignmentStrategy == "" && spec.ParallelGroup == "" {
 			assignedAgent = defaultAgentID
 		}
+		desiredProvider, desiredProfile := spec.DesiredProvider, spec.DesiredProfile
+		if desiredProvider == "" {
+			desiredProvider = spec.Provider
+		}
+		if desiredProfile == "" {
+			desiredProfile = spec.Profile
+		}
+		skillIDs := append([]string(nil), spec.SkillIDs...)
+		if len(skillIDs) == 0 {
+			skillIDs = append(skillIDs, spec.MaestroSkills...)
+		}
 		run.PackageRuns = append(run.PackageRuns, PackageRun{
 			ID: "pkgrun_" + ids.NewRuntimeID(), PackageID: spec.ID, PhaseID: spec.PhaseID, Title: spec.Title, Goal: spec.Goal,
 			Priority: spec.Priority, Role: spec.Role, TaskRequirements: spec.TaskRequirements, Dependencies: append([]string(nil), spec.Dependencies...), ParallelGroup: spec.ParallelGroup,
 			AssignmentStrategy: spec.AssignmentStrategy, ResourcePolicy: spec.ResourcePolicy, Provider: spec.Provider, Profile: spec.Profile,
-			MaestroSkills: append([]string(nil), spec.MaestroSkills...), RelevantPaths: append([]string(nil), spec.RelevantPaths...),
+			DesiredProvider: desiredProvider, DesiredProfile: desiredProfile,
+			SkillIDs: skillIDs, MaestroSkills: append([]string(nil), spec.MaestroSkills...), RelevantPaths: append([]string(nil), spec.RelevantPaths...),
 			AcceptanceCriteria: append([]string(nil), spec.AcceptanceCriteria...), VerificationRequirements: append([]string(nil), spec.VerificationRequirements...), State: state, Attempt: 1,
-			AssignedAgent: assignedAgent, StartedAt: now,
+			AssignedAgent: assignedAgent, RoutingDecisionJSON: spec.RoutingDecisionJSON, StartedAt: now,
 		})
 	}
 	if err := validateDependencyGraph(run.PackageRuns); err != nil {
@@ -314,6 +326,16 @@ func (r *MissionRunner) ExecuteNextStep(ctx context.Context, runID string) (*Mis
 		}
 		results := r.verifier.RunVerification(opCtx, pkg.Workspace, verificationCommands)
 		pkg.Verifications = append(pkg.Verifications, results...)
+		if recorder, ok := r.executor.(ValidationEvidenceRecorder); ok {
+			if err := recorder.RecordValidationEvidence(opCtx, run, pkg, results); err != nil {
+				pkg.State = StateFailed
+				pkg.ErrorMessage = "VALIDATION_EVIDENCE_UNAVAILABLE"
+				run.State = StateFailed
+				run.UpdatedAt = time.Now().UTC()
+				_ = r.saveRun(ctx, run)
+				return run, false, fmt.Errorf("persist validation evidence: %w", err)
+			}
+		}
 		if verificationPassed(results, run.Contract.RequireVerification) {
 			pkg.State = StateReviewing
 		} else {
@@ -514,6 +536,15 @@ func (r *MissionRunner) verifyGlobalDefinition(ctx, operationCtx context.Context
 	}
 	results := r.verifier.RunVerification(operationCtx, run.Workspace, commands)
 	run.GlobalVerifications = append(run.GlobalVerifications, results...)
+	if recorder, ok := r.executor.(GlobalValidationEvidenceRecorder); ok {
+		if err := recorder.RecordGlobalValidationEvidence(operationCtx, run, results); err != nil {
+			run.State = StateFailed
+			run.PausedReason = "VALIDATION_EVIDENCE_UNAVAILABLE"
+			run.UpdatedAt = time.Now().UTC()
+			_ = r.saveRun(ctx, run)
+			return run, false, fmt.Errorf("persist global validation evidence: %w", err)
+		}
+	}
 	if verificationPassed(results, true) {
 		return r.completeRun(ctx, run)
 	}

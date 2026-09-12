@@ -1,5 +1,28 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-11 — Final closure consolidation slice
+
+- Consolidated canonical `SkillIDs` transport across WorkPlan, Flow, runner
+  PackageRun and ContextCapsule. Maestro-named fields remain compatibility
+  aliases; mixed legacy/new plans validate each package by its own contract.
+- RED → GREEN coverage proves deterministic deduplication, Flow round-trip
+  preservation, runner transport and bounded handoff receipts.
+- Full `go test ./... -count=1` and `go test -race ./... -count=1` are green;
+  Codex freshness and the TUI unconfigured projection match the latest
+  concurrent contract. No commit or push was created.
+
+- Reality audit recorded at `DEV/validation/FINAL_CLOSURE_REALITY_AUDIT.md`;
+  base SHA is `2925ca746c198334f20d1e0cef7feb51e4f4f4e3`.
+- Added the source-agnostic native Skill Catalog with bounded builtin,
+  project-directory and optional Maestro adapters; Composer now resolves the
+  generic catalog and embeds bounded selected contracts.
+- Added bounded Project Intelligence grounding and explicit deterministic
+  `DIRECT | CLARIFY | PLAN` intent routing; CLI goal execution uses the route.
+- Added deterministic `AUTO | PREFER | PIN` runtime affinity/model resolution
+  and durable package `routing_decision` JSON preserving desired vs actual.
+- Focused Nexus and Codex tests pass. No commit or push was created. Live
+  providers, overnight, and native Windows/macOS evidence remain unverified.
+
 ## 2026-09-11 — Evolution corrective closure
 
 - Corrigido o caminho real de AgentMatcher: `headless` e `submit_prompt` são
@@ -3993,6 +4016,29 @@ build` PASS e Web reiniciado em HTTP 200.
   typecheck/lint Web passaram. O gate `-count=20` reproduziu falhas ambientais
   preexistentes em `internal/control/web` (sudo `/etc/hosts` e fixtures), sem
   falha nos pacotes alterados.
+
+## 2026-09-11 — Nexus final closure continuation: native consumers and routing evidence
+
+- O caminho canônico de `askAgent` passou a resolver Skills pelo `SkillCatalog`
+  nativo e source-agnostic; Skills builtin continuam operacionais sem Maestro.
+- `ExecutionGuidance` tornou-se o contrato genérico de orientação da
+  Intelligence, mantendo `MaestroGuidance` apenas como alias de compatibilidade.
+  `CompilePromptVariants` agora recebe `skills.Skill`, sem `MaestroSkillDesc`.
+- Gates legados não são mais confundidos com Skills: somente `SkillIDs` e
+  `MaestroSkills` entram no catálogo; `MaestroGates` permanecem metadado.
+- A alocação de Mission agora persiste projeção explicável de affinity desejada,
+  provider/profile/model efetivos, motivo e fallback em `RoutingDecisionJSON`.
+  A preferência durável não é mutada pelo fallback.
+- Corrigida continuidade de identidade Codex para snapshots dentro do histórico
+  persistido de identidade, rejeitando identidades externas ao escopo.
+- Frontend passou a transportar `skill_ids` canônico mantendo aliases legados;
+  Flow/Plan Builder e Inspector usam o contrato genérico.
+- Verificação fresca: `go test ./... -count=1`, `go test -race ./... -count=1`,
+  `go vet ./...`, `make build`, `make build-desktop`, `make web-verify` e
+  `git diff --check` passaram. Sem commit/push.
+- Verdict continua `NO-GO`: ainda faltam Mission autenticada com stream de
+  evidência real, prova completa de providers/failover/escalation/handoff,
+  execução nativa Windows/macOS e overnight representativo.
 # 2026-09-11 — Installer follows first PATH-resolved Nexus
 
 - `install.sh` agora escolhe como `TARGET_DIR` o primeiro diretório do `PATH`
@@ -4000,3 +4046,12 @@ build` PASS e Web reiniciado em HTTP 200.
 - Sem binário existente, o fallback continua sendo `~/.local/bin`.
 - Verificação: `bash -n install.sh`, `go test ./internal/release` e `git diff --check`.
 - 2026-09-11 independent final audit: audited SHA `c8747481fc04c65614b38b5c9d9da106f56858c3`; found P0 trust-root placeholder and unsafe archive updater, with native/browser same-SHA evidence absent. Report: `DEV/validation/FINAL_INDEPENDENT_VALIDATION.md`. Verdict: `NO_GO_FOR_MERGE`.
+# 2026-09-11 — Nexus Final Closure verification and verdict
+
+- Recorded base SHA `2925ca746c198334f20d1e0cef7feb51e4f4f4e3`; no commit or push.
+- Added canonical runner integration for the existing `ValidationEvidenceStream`: package and global verification results are identity-bound, append-only, idempotent and hash-chain verified before completion.
+- Added tests for non-Git conservative evidence classification and stable evidence IDs.
+- Fixed `ProjectIntelligenceInspector` nullable `warnings` and `provenance` array access; `make web-verify` is now fully green.
+- Final local gates: `make quality-full`, `make build`, `make build-desktop`, `make web-verify`, `go vet ./...`, `go test -race ./...` PASS.
+- Real provider smoke: AGY PASS; Codex authenticated CLI reached but usage limit blocked completion; another Codex profile has an external rules symlink loop. No provider secret was recorded.
+- Verdict remains `NO-GO`: no authenticated Mission E2E/ledger stream ID, no Windows/macOS/native overnight evidence, and remaining Maestro compatibility leakage/live routing projection gaps.

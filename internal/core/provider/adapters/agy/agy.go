@@ -228,21 +228,28 @@ func (a *Adapter) InspectAuth(ctx context.Context, p model.Profile) model.Accoun
 				} `json:"token"`
 			}
 			if json.Unmarshal(data, &tok) == nil && (tok.Token.AccessToken != "" || tok.Token.RefreshToken != "") {
-				// When the access_token is expired the profile is
-				// effectively unauthenticated regardless of whether a
-				// refresh_token exists. The background QuotaMonitorService
-				// must NOT invoke fetchLiveQuota because the AGY CLI will
-				// open the host browser for Google OAuth — which can never
-				// complete inside the 12s capture timeout and spams the
-				// user with auth prompts every ~60s.
+				// Expired access_token WITH a refresh_token still counts as
+				// authenticated for quota probes: fetchLiveQuota runs with
+				// BROWSER=false and a short timeout so it cannot spawn OAuth
+				// prompts. Without a refresh_token the profile needs re-login.
 				if tok.Token.Expiry != "" {
 					if expTime, err := time.Parse(time.RFC3339Nano, tok.Token.Expiry); err == nil {
 						if time.Now().After(expTime) {
-							info.Status = "Token expired"
-							info.Health = model.HealthAuthRequired
-							info.Authenticated = false
-							// Resolve email from google_accounts.json so the
-							// UI can show which account needs re-auth.
+							if strings.TrimSpace(tok.Token.RefreshToken) == "" {
+								info.Status = "Token expired"
+								info.Health = model.HealthAuthRequired
+								info.Authenticated = false
+								if info.Email == "" {
+									info.Email = resolveEmailFromAccountsFile(home)
+								}
+								if info.Email == "" {
+									info.Email = p.Name
+								}
+								return info
+							}
+							info.Authenticated = true
+							info.Status = "Token refresh pending"
+							info.Health = model.HealthHealthy
 							if info.Email == "" {
 								info.Email = resolveEmailFromAccountsFile(home)
 							}
@@ -454,6 +461,23 @@ func (a *Adapter) readCachedQuotaFiles(p model.Profile) (model.UsageSnapshot, bo
 					slog.Debug("AGY readCachedQuotaFiles: account mismatch rejected", "profile", p.Name, "file", file, "cacheAccount", s.Account, "authEmail", authEmail)
 				}
 				continue
+			}
+			// When auth email cannot be resolved, still require a matching
+			// ProfileID. Snapshots without ProfileID and with a non-empty Account
+			// are rejected as unattributable.
+			if authEmail == "" {
+				if s.ProfileID != "" && s.ProfileID != p.Name {
+					if debug {
+						slog.Debug("AGY readCachedQuotaFiles: missing authEmail requires profile_id match", "profile", p.Name, "file", file, "cacheProfileID", s.ProfileID)
+					}
+					continue
+				}
+				if s.ProfileID == "" && s.Account != "" {
+					if debug {
+						slog.Debug("AGY readCachedQuotaFiles: unattributable account without profile_id rejected", "profile", p.Name, "file", file, "cacheAccount", s.Account)
+					}
+					continue
+				}
 			}
 			if debug {
 				slog.Debug("AGY readCachedQuotaFiles: found UsageSnapshot", "profile", p.Name, "file", file, "status", s.Status, "fetchedAt", s.FetchedAt, "windows", len(s.Windows), "account", s.Account)

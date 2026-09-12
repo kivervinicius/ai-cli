@@ -288,3 +288,55 @@ func TestSelectBestProfileEmptyCandidatesNeverNilResult(t *testing.T) {
 		t.Error("expected no selected profile for empty candidates")
 	}
 }
+
+func TestCodexExhaustedFiveHourLosesToHealthyAccount(t *testing.T) {
+	dataDir := t.TempDir()
+	cfgDir := t.TempDir()
+	stateDir := t.TempDir()
+	t.Setenv("AI_CLI_DATA_DIR", dataDir)
+	t.Setenv("AI_CLI_CONFIG_DIR", cfgDir)
+	t.Setenv("AI_CLI_STATE_DIR", stateDir)
+
+	selector := NewSelector(config.NewDefaultConfig(), quota.NewEngine(5*time.Minute), cooldown.NewTracker())
+	zero, healthy5h, healthyWk := 0.0, 99.0, 63.0
+	denied5h, deniedWk := 0.0, 56.0
+
+	accounts := map[string]model.AccountInfo{
+		"denied": {
+			Authenticated: true,
+			Health:        model.HealthHealthy,
+			Usage: model.UsageSnapshot{
+				ProviderID: "codex", ProfileID: "denied", Status: model.UsageLive,
+				Source: model.SourceObservation, FetchedAt: time.Now(),
+				Windows: []model.UsageWindow{
+					{Kind: "5h", Group: "claude_gpt", RemainingPercent: &denied5h},
+					{Kind: "weekly", Group: "claude_gpt", RemainingPercent: &deniedWk},
+				},
+			},
+		},
+		"healthy": {
+			Authenticated: true,
+			Health:        model.HealthHealthy,
+			Usage: model.UsageSnapshot{
+				ProviderID: "codex", ProfileID: "healthy", Status: model.UsageLive,
+				Source: model.SourceObservation, FetchedAt: time.Now(),
+				Windows: []model.UsageWindow{
+					{Kind: "5h", Group: "claude_gpt", RemainingPercent: &healthy5h},
+					{Kind: "weekly", Group: "claude_gpt", RemainingPercent: &healthyWk},
+				},
+			},
+		},
+	}
+	_ = zero
+	candidates := []model.Profile{
+		{Provider: "codex", Name: "denied"},
+		{Provider: "codex", Name: "healthy"},
+	}
+	res, err := selector.SelectBestProfile(context.Background(), "codex", "/tmp", candidates, accounts, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.SelectedProfile == nil || res.SelectedProfile.Name != "healthy" {
+		t.Fatalf("yolo/auto-select must prefer healthy capacity over exhausted 5h, got %#v", res.SelectedProfile)
+	}
+}
