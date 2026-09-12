@@ -17,7 +17,7 @@ delegated Agent matching and downstream provider/model routing remain separate.
 
 Local verification for this slice: focused app/control/launcher/Nexus tests,
 full `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`,
-and `git diff --check` pass.
+`make build`, `make build-desktop`, and `git diff --check` pass.
 The supervised Lead attachment uses canonical line submission so Nexus can
 route complete prompts while preserving the existing raw PTY path for ordinary
 `control attach`; real authenticated provider E2E and provider-level Mission

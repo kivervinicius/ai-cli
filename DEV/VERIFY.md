@@ -1095,6 +1095,8 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
 - PASS — focused `go test ./internal/app ./internal/control/launcher ./internal/nexus -count=1`.
 - PASS — `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`
   and `git diff --check`.
+- PASS — `make build` and `make build-desktop`; both retain explicit Nexus
+  build metadata while disabling only redundant Go VCS stamping.
 - PASS — canonical workspace lookup/registration, persistent Lead binding and
   runtime generation lifecycle are covered locally; launcher labels preserve
   the interactive policy metadata.

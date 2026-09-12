@@ -17,7 +17,10 @@
 - Added restart/crash coverage proving a dead `WORKING` runtime resolves to the
   same persistent Lead identity instead of creating a duplicate.
 - Focused tests, full Go tests, full race tests, vet and diff-check pass.
-  Authenticated provider E2E remains unverified; no push or merge was performed.
+- The Makefile build targets now disable redundant Go VCS stamping because the
+  build already injects Nexus metadata and Go can resolve the nested worktree's
+  ancestor incorrectly; both canonical builds pass.
+- Authenticated provider E2E remains unverified; no push or merge was performed.
 
 ## 2026-09-12 — Codex CrossAccountResume restore
 
