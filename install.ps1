@@ -423,7 +423,7 @@ Write-Host "`nSetup complete!" -ForegroundColor Green
 Write-Host "Run 'nexus doctor' to verify provider and Maestro dependencies." -ForegroundColor White
 Write-Host "To start the Workspace OS:" -ForegroundColor Cyan
 Write-Host "  nexus web" -ForegroundColor Cyan
-Write-Host "Note: -Version latest uses GitHub tag resolution + checksums.txt integrity only." -ForegroundColor Gray
+Write-Host "Note: -Version latest resolves a GitHub tag, then still requires a signed update-manifest.json + Ed25519 signature." -ForegroundColor Gray
 
 if ($MaestroExit -ne 0) {
     exit $MaestroExit

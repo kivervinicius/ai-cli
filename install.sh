@@ -100,7 +100,7 @@ resolve_latest_version() {
         exit 1
     fi
     # Integrity only: tag is resolved then assets are checksum-verified. Not strong authenticity.
-    echo "Resolved --version=latest to ${tag} (checksum integrity; not a signed pin)." >&2
+    echo "Resolved --version=latest to ${tag} (tag resolve only; install still requires signed update-manifest)." >&2
     printf '%s' "$tag"
 }
 
