@@ -305,3 +305,26 @@ func InternalBinDir() (string, error) {
 
 	return binDir, nil
 }
+
+// NoBrowserBinDir returns a directory of no-op browser helpers for background
+// provider probes. AGY ignores BROWSER=false in some OAuth fallbacks and calls
+// xdg-open directly; putting inert shims first on PATH keeps those probes from
+// opening Google login tabs every monitor tick.
+func NoBrowserBinDir() (string, error) {
+	dataDir, err := config.DataDir()
+	if err != nil {
+		return "", err
+	}
+	binDir := filepath.Join(dataDir, "runtime", "no-browser")
+	if err := os.MkdirAll(binDir, 0700); err != nil {
+		return "", err
+	}
+	script := "#!/bin/sh\n# Nexus no-browser shim: refuse to open URLs from background probes.\nexit 0\n"
+	for _, name := range []string{"ai-browser", "xdg-open", "x-www-browser", "gnome-www-browser", "www-browser", "open"} {
+		path := filepath.Join(binDir, name)
+		if err := os.WriteFile(path, []byte(script), 0700); err != nil {
+			return "", err
+		}
+	}
+	return binDir, nil
+}

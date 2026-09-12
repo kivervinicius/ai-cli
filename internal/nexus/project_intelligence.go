@@ -83,7 +83,8 @@ func (n *Nexus) RequestProjectIntelligenceScan(ctx context.Context, projectID st
 				if candidate.IdentityDigest != identity.IdentityDigest {
 					continue
 				}
-				if candidate.State == store.ScanFailed || candidate.State == store.ScanCanceled {
+				switch candidate.State {
+				case store.ScanFailed, store.ScanCanceled:
 					candidate.State = store.ScanQueued
 					candidate.Error = ""
 					candidate.StartedAt = nil
@@ -92,7 +93,7 @@ func (n *Nexus) RequestProjectIntelligenceScan(ctx context.Context, projectID st
 					if updateErr := st.UpdateProjectIntelligenceScan(candidate); updateErr == nil {
 						go n.executeProjectIntelligenceScan(projectID, candidate.ID)
 					}
-				} else if candidate.State == store.ScanQueued {
+				case store.ScanQueued:
 					go n.executeProjectIntelligenceScan(projectID, candidate.ID)
 				}
 				return &candidate, nil

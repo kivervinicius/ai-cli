@@ -1,5 +1,59 @@
 # Handoff
 
+## Canonical evidence projection — 2026-09-12
+
+The existing append-only `ValidationEvidenceStream` now has a single
+read-model boundary in `RunApplicationService.ValidationEvidence` and the Web
+endpoint `GET /api/v1/runs/{id}/validation-evidence`. The projection verifies
+the hash chain before returning entries and reports missing evidence explicitly
+instead of inferring PASS. Focused Nexus/Web tests pass. No authenticated
+production Mission stream was available; release remains NO-GO.
+
+The Web client now exposes typed `getRunValidationEvidence` against this route;
+its RED → GREEN transport test, typecheck and production build pass.
+
+## Final closure continuation — 2026-09-12
+
+Current commit HEAD is `50fd440cbe42b3a0ac1ed44f0d17c38cb697e282`, matching
+`origin/feat/nexus-maximum-delivery`; follow-up routing/evidence tests,
+AGY/runtime hardening and final documentation remain uncommitted in the
+worktree.
+
+The existing routing contract now carries generic persisted `ExecutionGuidance`
+through task requirements into prompt compilation. Durable routing decisions
+also project deduplicated canonical `skill_refs` and `maestro_guidance_ref`
+only for a real Maestro source/reference, plus candidate/selected Skill
+source/version/hash/reason provenance. Agent identity remains separate from
+provider, profile, account and model. Web types were extended to preserve the
+same projection.
+
+The aggregate `make quality` gate passes after small lint-only corrections;
+the only remaining output is a non-blocking existing ESLint unused-variable
+warning at `web/src/nexus/AgentTerminal.tsx:218`.
+
+The E2E harness now supports `NEXUS_E2E_ROOT` for an empty, stable diagnostic
+directory. A real AGY run reached the provider but reported `not signed in`;
+Codex remained at `model: loading` even after the stable-root retry. Neither
+run produced a provider marker or authenticated Mission evidence.
+
+Canonical Mission evidence now also records bounded toolchain metadata
+(Go/OS/arch and Node/package-manager versions when applicable) via fixed,
+timeout-bounded commands with no shell.
+
+The local E2E harness was corrected and regression-tested for bootstrap token
+exchange, PTY Enter submission and symlink-safe profile isolation. Fresh full
+Go/race/vet/security/build/desktop/frontend gates all pass. This does not turn
+provider availability into Mission evidence.
+
+Latest provider classification is conservative: direct host Codex marker PASS
+only for host availability; Nexus Codex isolated runtime UNVERIFIED at model
+loading (reproduced with the live-quota profile); AGY runtime UNVERIFIED
+because it reported not signed in; OpenCode UNVERIFIED/pending auth. No durable authenticated Mission
+`ValidationEvidenceStream` ID exists.
+
+Release remains `NO-GO` with P1 evidence blockers for authenticated Mission,
+live failover/escalation/handoff, Windows/macOS same-SHA and overnight proof.
+
 ## Final closure consolidation — 2026-09-11
 
 Current working tree contains the final-closure audit/plan and a verified

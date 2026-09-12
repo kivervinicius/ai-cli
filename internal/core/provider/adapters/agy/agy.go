@@ -3,6 +3,7 @@ package agy
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -237,30 +238,23 @@ func (a *Adapter) InspectAuth(ctx context.Context, p model.Profile) model.Accoun
 				} `json:"token"`
 			}
 			if json.Unmarshal(data, &tok) == nil && (tok.Token.AccessToken != "" || tok.Token.RefreshToken != "") {
-				// Expired access_token WITH a refresh_token still counts as
-				// authenticated for quota probes: fetchLiveQuota runs with
-				// BROWSER=false and a short timeout so it cannot spawn OAuth
-				// prompts. Without a refresh_token the profile needs re-login.
+				// An expired access_token must NOT count as authenticated for
+				// background quota probes. fetchLiveQuota used to run with
+				// BROWSER=false, but the AGY CLI still falls through to
+				// xdg-open / its own browser helper and spams Google OAuth
+				// every QuotaMonitor tick (~60s). Interactive re-login remains
+				// available via nexus login / the usage TUI.
 				if tok.Token.Expiry != "" {
 					if expTime, err := time.Parse(time.RFC3339Nano, tok.Token.Expiry); err == nil {
 						if time.Now().After(expTime) {
-							if strings.TrimSpace(tok.Token.RefreshToken) == "" {
-								info.Status = "Token expired"
-								info.Health = model.HealthAuthRequired
-								info.Authenticated = false
-								if info.Email == "" {
-									info.Email = resolveEmailFromAccountsFile(home)
-								}
-								if info.Email == "" {
-									info.Email = p.Name
-								}
-								return info
-							}
-							info.Authenticated = true
-							info.Status = "Token refresh pending"
-							info.Health = model.HealthHealthy
+							info.Status = "Token expired"
+							info.Health = model.HealthAuthRequired
+							info.Authenticated = false
 							if info.Email == "" {
 								info.Email = resolveEmailFromAccountsFile(home)
+							}
+							if info.Email == "" {
+								info.Email = emailFromIDToken(data)
 							}
 							if info.Email == "" {
 								info.Email = p.Name
@@ -272,6 +266,12 @@ func (a *Adapter) InspectAuth(ctx context.Context, p model.Profile) model.Accoun
 				info.Authenticated = true
 				info.Status = "Authenticated"
 				info.Health = model.HealthHealthy
+				if info.Email == "" {
+					info.Email = resolveEmailFromAccountsFile(home)
+				}
+				if info.Email == "" {
+					info.Email = emailFromIDToken(data)
+				}
 				if info.Email == "" {
 					info.Email = p.Name
 				}
@@ -338,6 +338,58 @@ func resolveEmailFromAccountsFile(home string) string {
 		return acc.Active
 	}
 	return ""
+}
+
+func accessTokenExpired(home string) bool {
+	for _, tf := range []string{
+		filepath.Join(home, ".gemini", "antigravity-cli", "antigravity-oauth-token"),
+		filepath.Join(home, ".gemini", "antigravity-oauth-token"),
+	} {
+		data, err := os.ReadFile(tf)
+		if err != nil {
+			continue
+		}
+		var tok struct {
+			Token struct {
+				Expiry string `json:"expiry"`
+			} `json:"token"`
+		}
+		if json.Unmarshal(data, &tok) != nil || tok.Token.Expiry == "" {
+			continue
+		}
+		expTime, err := time.Parse(time.RFC3339Nano, tok.Token.Expiry)
+		if err != nil {
+			continue
+		}
+		return time.Now().After(expTime)
+	}
+	return false
+}
+
+// emailFromIDToken pulls the Google email out of an antigravity oauth blob so
+// expired profiles still show which account needs re-login in the UI.
+func emailFromIDToken(raw []byte) string {
+	var blob struct {
+		IDToken string `json:"id_token"`
+	}
+	if json.Unmarshal(raw, &blob) != nil || strings.Count(blob.IDToken, ".") != 2 {
+		return ""
+	}
+	payload := strings.Split(blob.IDToken, ".")[1]
+	if rem := len(payload) % 4; rem != 0 {
+		payload += strings.Repeat("=", 4-rem)
+	}
+	decoded, err := base64.URLEncoding.DecodeString(payload)
+	if err != nil {
+		return ""
+	}
+	var claims struct {
+		Email string `json:"email"`
+	}
+	if json.Unmarshal(decoded, &claims) != nil {
+		return ""
+	}
+	return strings.TrimSpace(claims.Email)
 }
 
 func (a *Adapter) GetUsage(ctx context.Context, p model.Profile) model.UsageSnapshot {
@@ -684,10 +736,18 @@ func (a *Adapter) fetchLiveQuota(ctx context.Context, p model.Profile) (model.Us
 		return model.UsageSnapshot{}, false
 	}
 	home := filepath.Join(root, "home")
-	internalBin, err := runtime.InternalBinDir()
+	if accessTokenExpired(home) {
+		// Never spawn AGY for an expired access_token: even with BROWSER=false
+		// the CLI may still invoke xdg-open and open a Google OAuth tab.
+		if debug {
+			slog.Debug("AGY fetchLiveQuota: access token expired, refusing live probe", "profile", p.Name)
+		}
+		return model.UsageSnapshot{}, false
+	}
+	probeBin, err := runtime.NoBrowserBinDir()
 	if err != nil {
 		if debug {
-			slog.Debug("AGY fetchLiveQuota: internal bin dir failed", "profile", p.Name, "err", err)
+			slog.Debug("AGY fetchLiveQuota: no-browser bin dir failed", "profile", p.Name, "err", err)
 		}
 		return model.UsageSnapshot{}, false
 	}
@@ -697,26 +757,17 @@ func (a *Adapter) fetchLiveQuota(ctx context.Context, p model.Profile) (model.Us
 		"XDG_CACHE_HOME":  filepath.Join(home, ".cache"),
 		"XDG_DATA_HOME":   filepath.Join(home, ".local", "share"),
 		"XDG_STATE_HOME":  filepath.Join(home, ".local", "state"),
-		"PATH":            runtime.EnhancedPATH(internalBin, filepath.Dir(bin)),
-		// Quota probes are background, non-interactive operations. Setting
-		// BROWSER=false prevents the AGY CLI from opening the host browser for
-		// Google OAuth when the access_token has expired. Without this, an
-		// expired token triggers $BROWSER every ~60s (QuotaMonitorService tick)
-		// because the login can never complete inside the 12s capture timeout.
-		// When the token cannot be silently refreshed, the probe fails closed
-		// and the caller exposes UNKNOWN/last-known data instead.
-		"BROWSER":                "false",
+		// probeBin comes first so both $BROWSER and any xdg-open fallback hit
+		// a no-op that never opens the host browser.
+		"PATH":                   runtime.EnhancedPATH(probeBin, filepath.Dir(bin)),
+		"BROWSER":                filepath.Join(probeBin, "ai-browser"),
 		"PYTHON_KEYRING_BACKEND": "keyring.backends.null.Keyring",
 	}
 	env := runtime.DisableSessionSecretService(runtime.EnvSet(os.Environ(), envOverrides))
 	args := []string{"--output-format", "text", "--print-timeout", "12s", "--print=/quota"}
 	// Quota probes are deliberately non-interactive and must never initialize
-	// Secret Service. The interactive/login path may use the isolated keyring
-	// only when explicitly enabled, but a background quota refresh must not
-	// prompt for a password or create a new keyring daemon. With the session bus
-	// forced to an unreachable address, AGY can use its profile token/file
-	// storage; if that is unavailable the probe fails closed and the caller
-	// exposes UNKNOWN/last-known data instead of blocking the user.
+	// Secret Service or open a browser. Interactive re-login is the only path
+	// allowed to start Google OAuth.
 
 	if debug {
 		slog.Debug("AGY fetchLiveQuota: running agy CLI", "profile", p.Name, "home", home, "bin", bin)

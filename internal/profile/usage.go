@@ -182,7 +182,7 @@ func loadUsageSnapshot(providerName, name string, refresh bool) model.UsageSnaps
 	// trust window is not evidence of live capacity. Keep processing below so
 	// the last-known fallback can preserve context without treating it as live.
 	if snap.Status != model.UsageUnknown && snap.Status != model.UsageError && len(snap.Windows) > 0 {
-		// An adapter that already labelled its observation ESTIMATED is telling
+		// An adapter that already labeled its observation ESTIMATED is telling
 		// the truth about freshness. Discarding it would turn real evidence into
 		// SEM DADOS for any observation just past the trust window.
 		if snap.Status == model.UsageEstimated && withinLastKnownWindow(snap.FetchedAt) {

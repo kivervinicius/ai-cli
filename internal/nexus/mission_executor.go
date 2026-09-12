@@ -168,6 +168,11 @@ func (e *nexusPackageExecutor) Allocate(ctx context.Context, run *runner.Mission
 	pkg.Provider, pkg.Profile = selected.Provider, selected.Profile
 	routingReason = strings.TrimSpace(strings.Join([]string{routingReason, modelReason}, "; "))
 	routingDecision := buildMissionRoutingDecision(pkg, agent, req, selected, current, desiredProvider, desiredProfile, preferenceMode, isFailover || modelFallback, routingReason, agentEvidence)
+	skillResolutions, skillErr := resolveSkillReferences(e.n, run.ProjectID, packageRunSkillIDs(pkg))
+	if skillErr != nil {
+		return runner.AllocationResult{}, fmt.Errorf("persist skill resolution evidence: %w", skillErr)
+	}
+	routingDecision.SkillResolutions = skillResolutions
 	raw, marshalErr := json.Marshal(routingDecision)
 	if marshalErr != nil {
 		return runner.AllocationResult{}, fmt.Errorf("persist routing decision: %w", marshalErr)

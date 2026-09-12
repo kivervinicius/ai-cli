@@ -5,7 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -16,6 +20,56 @@ import (
 )
 
 const missionEvidenceStreamName = "mission-validation"
+
+// ValidationEvidenceReport is a read-only projection of the canonical
+// append-only Mission evidence stream. It never reconstructs claims from
+// provider output or documentation.
+type ValidationEvidenceReport struct {
+	RunID         string                          `json:"run_id"`
+	PlanID        string                          `json:"plan_id,omitempty"`
+	PlanRevision  int                             `json:"plan_revision,omitempty"`
+	Stream        *store.ValidationEvidenceStream `json:"stream,omitempty"`
+	Entries       []store.ValidationEvidenceEntry `json:"entries"`
+	ChainVerified bool                            `json:"chain_verified"`
+}
+
+// ValidationEvidence projects the durable stream for one MissionRun. Missing
+// evidence is represented explicitly rather than synthesized as a PASS.
+func (s *RunApplicationService) ValidationEvidence(ctx context.Context, runID string) (ValidationEvidenceReport, error) {
+	if err := s.ready(ctx); err != nil {
+		return ValidationEvidenceReport{}, err
+	}
+	run, err := s.nexus.Runner().GetRun(ctx, runID)
+	if err != nil {
+		return ValidationEvidenceReport{}, err
+	}
+	report := ValidationEvidenceReport{
+		RunID: run.ID, PlanID: run.PlanID, PlanRevision: run.PlanRevision,
+		Entries: []store.ValidationEvidenceEntry{}, ChainVerified: false,
+	}
+	st, err := s.nexus.OpenProject()
+	if err != nil {
+		return ValidationEvidenceReport{}, err
+	}
+	stream, err := st.GetValidationEvidenceStreamByName(run.ProjectID, missionEvidenceStreamName)
+	if errors.Is(err, store.ErrValidationEvidenceNotFound) {
+		return report, nil
+	}
+	if err != nil {
+		return ValidationEvidenceReport{}, err
+	}
+	if err := st.VerifyValidationEvidenceChain(stream.ID); err != nil {
+		return ValidationEvidenceReport{}, err
+	}
+	entries, err := st.ListValidationEvidenceEntries(stream.ID, 0)
+	if err != nil {
+		return ValidationEvidenceReport{}, err
+	}
+	report.Stream = &stream
+	report.Entries = entries
+	report.ChainVerified = true
+	return report, nil
+}
 
 // recordMissionValidationEvidence binds a concrete verification result to the
 // repository identity observed at the time of the check. It deliberately
@@ -59,7 +113,10 @@ func (n *Nexus) recordMissionValidationEvidence(ctx context.Context, run *runner
 		outcome = store.EvidenceFail
 		confidence = store.EvidenceObserved
 	}
-	environment, _ := json.Marshal(map[string]string{"go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH})
+	environment, err := validationEnvironment(ctx, project.CanonicalPath)
+	if err != nil {
+		return fmt.Errorf("collect validation environment: %w", err)
+	}
 	evidence, err := json.Marshal(map[string]any{"run_id": run.ID, "plan_id": run.PlanID, "plan_revision": run.PlanRevision, "results": results})
 	if err != nil {
 		return fmt.Errorf("encode validation evidence: %w", err)
@@ -81,7 +138,7 @@ func (n *Nexus) recordMissionValidationEvidence(ctx context.Context, run *runner
 	}
 	entry := store.ValidationEvidenceEntry{
 		ID: stableEvidenceID(run.ID, scenario, attempt, len(results)), GitSHA: identity.HeadSHA,
-		IdentityDigest: identity.IdentityDigest, RepositoryState: string(identity.State), EnvironmentJSON: string(environment),
+		IdentityDigest: identity.IdentityDigest, RepositoryState: string(identity.State), EnvironmentJSON: environment,
 		Provider: provider, Profile: profile, Model: model, Scenario: scenario, CommandDisplay: command, Outcome: outcome, Confidence: confidence,
 		ExitCode: exitCode, EvidenceJSON: string(evidence), CreatedAt: time.Now().UTC(),
 	}
@@ -92,6 +149,73 @@ func (n *Nexus) recordMissionValidationEvidence(ctx context.Context, run *runner
 		return err
 	}
 	return nil
+}
+
+// validationEnvironment records bounded toolchain metadata without invoking a
+// shell or reading credential-bearing environment variables. Tool versions
+// are optional when a tool is not installed or cannot answer quickly.
+func validationEnvironment(ctx context.Context, projectRoot string) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	environment := map[string]string{
+		"go":   runtime.Version(),
+		"os":   runtime.GOOS,
+		"arch": runtime.GOARCH,
+	}
+	if version := boundedToolVersion(ctx, "node"); version != "" {
+		environment["node"] = version
+	}
+	if packageManager := detectPackageManager(projectRoot); packageManager != "" {
+		environment["package_manager"] = packageManager
+		if version := boundedToolVersion(ctx, packageManager); version != "" {
+			environment["package_manager_version"] = version
+		}
+	}
+	raw, err := json.Marshal(environment)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+func boundedToolVersion(ctx context.Context, name string) string {
+	path, err := exec.LookPath(name)
+	if err != nil {
+		return ""
+	}
+	versionCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(versionCtx, path, "--version").Output()
+	if err != nil {
+		return ""
+	}
+	value := strings.TrimSpace(string(output))
+	if len(value) > 128 {
+		value = value[:128]
+	}
+	return value
+}
+
+func detectPackageManager(projectRoot string) string {
+	candidates := []struct {
+		manager string
+		files   []string
+	}{
+		{manager: "pnpm", files: []string{"pnpm-lock.yaml"}},
+		{manager: "yarn", files: []string{"yarn.lock"}},
+		{manager: "bun", files: []string{"bun.lock", "bun.lockb"}},
+		{manager: "npm", files: []string{"package-lock.json", "package.json"}},
+	}
+	for _, candidate := range candidates {
+		for _, name := range candidate.files {
+			path := filepath.Join(projectRoot, name)
+			if info, err := os.Stat(path); err == nil && !info.IsDir() {
+				return candidate.manager
+			}
+		}
+	}
+	return ""
 }
 
 func stableEvidenceID(runID, scenario string, iteration, resultCount int) string {

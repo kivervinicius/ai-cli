@@ -12,9 +12,9 @@ after the implementation slices; historical “ADD/EXTEND” actions below are
 the starting characterization, while the resumable result is in
 `FINAL_CLOSURE_CHECKPOINTS.md`.
 
-Continuation observed at HEAD `a58cca4d73bdfd55678649b30c0ca64f73b7d410` with
-additional uncommitted scanner and report-projection changes. The original
-base SHA above remains the campaign baseline.
+Continuation observed at commit HEAD `50fd440cbe42b3a0ac1ed44f0d17c38cb697e282`
+with additional uncommitted scanner, routing and evidence-projection changes.
+The original base SHA above remains the campaign baseline.
 
 ## Capability matrix
 
@@ -32,7 +32,7 @@ base SHA above remains the campaign baseline.
 | Handoff | `ContextCapsule`, `WorkReceipt`, runtime generations, same-provider honest `NATIVE_RESUME_UNVERIFIED`, cross-provider context handoff | `runner/evidence.go`, `continuity.go`, handoff docs/tests | REUSE; add routing provenance to the existing capsule/receipt only where needed |
 | Maestro lifecycle | Advice/status/catalog and optional compiler guidance exist; advice now carries typed `PLAN/TASK/RECOVERY/VERIFY` lifecycle metadata | `maestro.go`, `maestro_test.go`, `handlers_maestro.go`, intelligence context | EXTEND: complete lifecycle matrix and degraded-mode E2E |
 | Attention | Durable MissionRunner intervention, idempotent resolution, global runner attention tests and Web runtime attention surfaces | `runner/intervention_test.go`, `runner/attention_e2e_test.go`, Web attention files | REUSE; verify current integration and do not create a second state machine |
-| Evidence | Existing append-only ledger is now consumed by package/global runner verification and chain-verified before completion | `store/validation_evidence.go`, `validation_evidence.go`, runner optional recorder, tests | EXTEND: produce a real authenticated Mission stream instance and report projections |
+| Evidence | Existing append-only ledger is consumed by package/global runner verification, chain-verified before completion and projected by the run application/API | `store/validation_evidence.go`, `validation_evidence.go`, `run_application.go`, Web route, tests | EXTEND: produce a real authenticated Mission stream instance; external proof remains open |
 
 ## Confirmed invariants
 
@@ -49,8 +49,9 @@ base SHA above remains the campaign baseline.
    payloads and the Maestro catalog adapter; canonical Agent execution and
    prompt compilation are source-agnostic, but complete storage migration is
    not claimed.
-2. Intent and routing decisions now have a typed `/routing` report projection;
-   evidence-ledger projection and full restart reload proof remain open.
+2. Intent, routing and canonical validation evidence now have typed report
+   projections; full restart reload proof for the evidence read model remains
+   open.
 3. The effective Mission path still combines `RecommendResources` with the
    existing scheduler; the unified live allocation contract is not fully
    proven.

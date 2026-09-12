@@ -1,5 +1,69 @@
 # Nexus Final Closure Checkpoints
 
+## Work Package L — canonical validation evidence projection
+
+- `work_package`: L/report projection
+- `status`: GREEN locally; release remains `NO-GO`
+- `base_sha`: `2925ca746c198334f20d1e0cef7feb51e4f4e3`
+- `current_sha`: `50fd440cbe42b3a0ac1ed44f0d17c38cb697e282` plus uncommitted
+  evidence projection, route, tests and documentation
+- `files_changed`: `internal/nexus/validation_evidence.go`, its focused test,
+  `internal/control/web/server.go`, `handlers_planning.go`, typed Web client
+  API/test and closure docs
+- `tests_run`: `go test ./internal/nexus ./internal/control/web -count=1`
+- `test_results`: PASS. The application projection verifies the canonical hash
+  chain before exposing entries; missing streams remain explicit with
+  `chain_verified=false`. Web client transport/typecheck/build also pass.
+- `decisions`: reuse `ValidationEvidenceStream` as the sole source of truth;
+  expose a read-only run projection and do not synthesize validation claims.
+- `evidence`: focused Nexus/Web test output and the canonical stream contract.
+- `known_risks`: no authenticated Mission produced a durable production stream;
+  evidence projection restart reload and external provider/platform proof stay
+  unverified.
+- `remaining_work`: authenticate a real Mission/provider, validate the stream
+  across restart, prove live failover/escalation/handoff, native platforms and
+  overnight acceptance.
+- `unlocked_dependencies`: Web/report consumers can now read canonical Mission
+  evidence without accessing the store or reconstructing claims.
+
+## Work Package E/G + P — final local continuation
+
+- `work_package`: E/G/P
+- `status`: GREEN locally; release remains `NO-GO`
+- `base_sha`: `2925ca746c198334f20d1e0cef7feb51e4f4f4e3`
+- `current_sha`: `50fd440cbe42b3a0ac1ed44f0d17c38cb697e282` plus uncommitted routing/evidence tests, AGY/runtime hardening and documentation
+- `files_changed`: existing routing/prompt contracts, Web routing type,
+  Skill resolution provenance, local E2E/evidence tests and stable-root
+  harness support, bounded toolchain evidence capture, AGY/runtime quota
+  hardening, validation reports and durable project docs.
+- `tests_run`: `go test ./... -count=1`; `go test -race ./... -count=1`;
+  `go vet ./...`; `git diff --check`; `make security`; `make build`;
+  `make build-desktop`; `make web-verify`; `make quality`.
+- `test_results`: PASS. Focused routing/guidance tests and scripts tests also
+  PASS. Frontend verification is 10/10 PASS. Local autopilot also emits and
+  verifies package/global canonical evidence entries with a Git SHA. AGY and
+  runtime focused tests pass, including expired-token/no-browser behavior.
+  The aggregate quality gate also passes; one existing ESLint unused-variable
+  warning remains non-blocking. The stable-root E2E smoke was retried against
+  Codex and remained `model: loading`; AGY reported `not signed in`.
+- `decisions`: generic guidance is persisted only as task input; routing now
+  persists canonical Skill resolution provenance from the same catalog; Maestro
+  guidance is source-labeled and reference-based; provider/account/model remain
+  allocation data, not Agent identity. Direct host Codex evidence is not
+  promoted to Nexus Mission evidence.
+- `evidence`: `DEV/validation/FINAL_CLOSURE_REPORT.md`,
+  `DEV/validation/FINAL_PROVIDER_MATRIX.md`, `DEV/VERIFY.md`, and the current
+  frontend report `DEV/validation/FRONTEND_LATEST.md`; focused test output
+  records the ephemeral stream head and sequence.
+- `known_risks`: no authenticated Mission emitted a durable stream ID; live
+  failover/escalation/handoff, native Windows/macOS and overnight remain
+  unverified; Linux desktop shell launch remains skipped.
+- `remaining_work`: obtain external authenticated Mission/provider evidence,
+  native platform runs and overnight run, then append stream evidence and rerun
+  the GO gate.
+- `unlocked_dependencies`: none for release GO; implementation gates are green
+  but external evidence remains blocking.
+
 ## Work Package B — Native Skills foundation
 
 - `work_package`: B

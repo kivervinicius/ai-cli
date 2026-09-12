@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/core/model"
+	nexusskills "github.com/kivervinicius/ai-cli/internal/nexus/skills"
 )
 
 type AffinityMode string
@@ -43,31 +44,32 @@ type ModelCandidate struct {
 }
 
 type RuntimeRoutingDecision struct {
-	TaskID               string                `json:"task_id,omitempty"`
-	PlanRevision         int                   `json:"work_plan_revision,omitempty"`
-	AgentID              string                `json:"agent_id,omitempty"`
-	AgentScore           float64               `json:"agent_score,omitempty"`
-	AgentConfidence      string                `json:"agent_confidence,omitempty"`
-	AgentReason          string                `json:"agent_reason,omitempty"`
-	Requirements         TaskRequirements      `json:"task_requirements"`
-	Desired              RuntimeAffinityPolicy `json:"desired"`
-	AffinityPolicy       RuntimeAffinityPolicy `json:"affinity_policy"`
-	Actual               ModelCandidate        `json:"actual"`
-	SelectedEngine       string                `json:"selected_engine,omitempty"`
-	SelectedProvider     string                `json:"selected_provider,omitempty"`
-	SelectedProfile      string                `json:"selected_profile,omitempty"`
-	SelectedAccountScope model.AccountScope    `json:"selected_account_scope,omitempty"`
-	SelectedModel        string                `json:"selected_model,omitempty"`
-	SelectedReasoning    string                `json:"selected_reasoning,omitempty"`
-	SkillRefs            []string              `json:"skill_refs,omitempty"`
-	MaestroGuidanceRef   string                `json:"maestro_guidance_ref,omitempty"`
-	Alternatives         []ModelCandidate      `json:"alternatives,omitempty"`
-	Fallback             bool                  `json:"fallback"`
-	Reason               string                `json:"reason"`
-	Rejected             []string              `json:"rejected,omitempty"`
-	RejectedCandidates   []string              `json:"rejected_candidates,omitempty"`
-	TaskClass            string                `json:"task_class,omitempty"`
-	CreatedAt            time.Time             `json:"created_at"`
+	TaskID               string                   `json:"task_id,omitempty"`
+	PlanRevision         int                      `json:"work_plan_revision,omitempty"`
+	AgentID              string                   `json:"agent_id,omitempty"`
+	AgentScore           float64                  `json:"agent_score,omitempty"`
+	AgentConfidence      string                   `json:"agent_confidence,omitempty"`
+	AgentReason          string                   `json:"agent_reason,omitempty"`
+	Requirements         TaskRequirements         `json:"task_requirements"`
+	Desired              RuntimeAffinityPolicy    `json:"desired"`
+	AffinityPolicy       RuntimeAffinityPolicy    `json:"affinity_policy"`
+	Actual               ModelCandidate           `json:"actual"`
+	SelectedEngine       string                   `json:"selected_engine,omitempty"`
+	SelectedProvider     string                   `json:"selected_provider,omitempty"`
+	SelectedProfile      string                   `json:"selected_profile,omitempty"`
+	SelectedAccountScope model.AccountScope       `json:"selected_account_scope,omitempty"`
+	SelectedModel        string                   `json:"selected_model,omitempty"`
+	SelectedReasoning    string                   `json:"selected_reasoning,omitempty"`
+	SkillRefs            []string                 `json:"skill_refs,omitempty"`
+	SkillResolutions     []nexusskills.Resolution `json:"skill_resolutions,omitempty"`
+	MaestroGuidanceRef   string                   `json:"maestro_guidance_ref,omitempty"`
+	Alternatives         []ModelCandidate         `json:"alternatives,omitempty"`
+	Fallback             bool                     `json:"fallback"`
+	Reason               string                   `json:"reason"`
+	Rejected             []string                 `json:"rejected,omitempty"`
+	RejectedCandidates   []string                 `json:"rejected_candidates,omitempty"`
+	TaskClass            string                   `json:"task_class,omitempty"`
+	CreatedAt            time.Time                `json:"created_at"`
 }
 
 type ExecutionRoutingDecision = RuntimeRoutingDecision
@@ -161,12 +163,13 @@ func resolveTaskModelPool(req TaskRequirements, preference AffinityPreference, a
 	preferredPool := filterModels(models, account, RuntimeAffinityPolicy{Model: preference})
 	pool := allPool
 	fallback := false
-	if preference.Mode == AffinityPin {
+	switch preference.Mode {
+	case AffinityPin:
 		if len(preferredPool) == 0 || !hasTaskCapableModel(preferredPool, req) {
 			return nil, false, "", fmt.Errorf("%w: pinned model %q unavailable or incapable for task", ErrBlockedResource, preference.Value)
 		}
 		pool = preferredPool
-	} else if preference.Mode == AffinityPrefer {
+	case AffinityPrefer:
 		if len(preferredPool) > 0 && hasTaskCapableModel(preferredPool, req) {
 			pool = preferredPool
 		} else {

@@ -1,5 +1,21 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-12 — Canonical validation evidence read model
+
+- Added `ValidationEvidenceReport` to the existing `RunApplicationService`;
+  it projects the mission stream only after `VerifyValidationEvidenceChain` and
+  preserves explicit no-evidence state.
+- Added `GET /api/v1/runs/{id}/validation-evidence` to the existing run route;
+  no parallel ledger/report subsystem was created.
+- Added typed Web client consumption through `getRunValidationEvidence` with a
+  RED → GREEN transport test; the client does not reinterpret evidence.
+- RED → GREEN test covers a real persisted WorkPlan/MissionRun, canonical
+  stream entry, chain verification and projection. Focused Nexus/Web tests
+  pass.
+- This closes the local evidence-projection gap but not the external release
+  gate: no authenticated Mission stream ID, live provider failover, native
+  Windows/macOS or overnight proof exists.
+
 ## 2026-09-12 — Final closure routing/guidance and provider-proof correction
 
 - Extended the existing `TaskRequirements` and `ExecutionGuidance` contracts
@@ -9,21 +25,50 @@
   canonical `skill_refs` and an optional `maestro_guidance_ref` only when an
   actual Maestro-sourced reference is present. Web projection types carry the
   same fields; no new API/store was introduced.
+- Added canonical `skill_resolutions` to that same decision, preserving the
+  catalog-selected candidate, source, version, hash and deterministic reason.
+  Resolution uses the existing SkillCatalog boundary and does not expose a
+  Maestro-specific consumer contract.
+- Extended the existing Mission evidence recorder to capture bounded toolchain
+  metadata (Go, OS, architecture, Node and detected package-manager version)
+  without shell execution or credential-bearing environment reads; focused
+  evidence tests pass.
 - Added focused RED → GREEN coverage for guidance propagation and routing
   explainability. `go test ./internal/nexus/... ./scripts/... -count=1` PASS.
+- Upgraded the local autopilot contract so its fake executor implements the
+  real validation recorder boundary. The test now creates a temporary Git
+  repository, writes package/global entries to the canonical stream, verifies
+  the hash chain and asserts SHA-bound `VERIFIED` entries. Latest run emitted
+  an ephemeral sequence-2 stream; it is not production evidence.
 - Fixed and tested the local E2E harness bootstrap POST/token exchange,
   carriage-return PTY submission, and symlink/cycle-safe isolated profile copy.
-  These fixes do not count as provider Mission proof.
+  Added an explicit empty stable-root mode for providers that reject temporary
+  credential homes; root creation/reuse safety is regression-tested. These
+  harness fixes do not count as provider Mission proof.
 - Fresh gates PASS: `go test ./... -count=1`, `go test -race ./... -count=1`,
   `go vet ./...`, `git diff --check`, `make security`, `make build`,
-  `make build-desktop`, and `make web-verify`.
+  `make build-desktop`, `make web-verify`, and `make quality`. The aggregate
+  quality gate required only a diagnostic-comment spelling correction and two
+  staticcheck-recommended switches; its one ESLint unused-variable warning is
+  existing and non-blocking.
 - Provider evidence was corrected conservatively: direct host Codex marker is
   provider-availability evidence only; Nexus Codex isolated runtime stayed at
-  `model: loading`; AGY runtime reported not signed in; OpenCode remains
-  pending auth. No durable authenticated Mission stream ID exists.
+  `model: loading` even after stable-root retry; AGY runtime reported not
+  signed in; OpenCode remains pending auth. No durable authenticated Mission
+  stream ID exists.
+- A repeated Codex Direct Work attempt with the currently live-quota profile
+  reproduced the same `model: loading` boundary and lacked sudo authentication
+  for `/etc/hosts`; it remains `UNVERIFIED`, with no secret or credential
+  material persisted in the repository/evidence.
+- Current AGY/runtime worktree changes additionally harden background quota
+  probes against expired-token browser launches and preserve safe account
+  email attribution; focused provider/runtime tests and full quality gates pass.
 - Release verdict remains `NO-GO`; Windows/macOS, live failover/escalation/
   handoff, native desktop launch and overnight acceptance remain UNVERIFIED or
-  SKIPPED. No commit or push was created.
+  SKIPPED. The target branch advanced concurrently to
+  `50fd440cbe42b3a0ac1ed44f0d17c38cb697e282`; follow-up routing/evidence
+  tests, AGY/runtime hardening and final evidence-document updates remain
+  uncommitted.
 
 ## 2026-09-11 — Final closure consolidation slice
 

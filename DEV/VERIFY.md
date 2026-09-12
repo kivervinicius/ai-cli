@@ -1,16 +1,49 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-12 — Canonical validation evidence projection
+
+- PASS — `go test ./internal/nexus ./internal/control/web -count=1`.
+- PASS — `RunApplicationService.ValidationEvidence` reads the existing
+  append-only Mission stream, verifies its hash chain before projection and
+  returns explicit empty/no-chain state when no stream exists.
+- PASS — Web route `GET /api/v1/runs/{id}/validation-evidence` exposes that same
+  projection; no second ledger or report store was introduced.
+- PASS — Web client typed method `getRunValidationEvidence` and its transport
+  test are green; frontend typecheck and build pass.
+- UNVERIFIED — no authenticated Mission produced a durable production stream
+  in this campaign, so this verifies the projection contract only.
+
 ## 2026-09-12 — Final closure continuation after routing/guidance integration
 
 - PASS — `go test ./... -count=1`.
 - PASS — `go test -race ./... -count=1`.
 - PASS — `go vet ./...` and `git diff --check`.
 - PASS — `make security`, `make build`, `make build-desktop`.
+- PASS — `make quality` (aggregated formatting, lint, staticcheck, Go tests,
+  frontend tests and version consistency). One existing ESLint warning at
+  `web/src/nexus/AgentTerminal.tsx:218` is non-blocking.
 - PASS — `make web-verify` (format, typecheck, lint, stylelint, null-array,
   tests, i18n, build, embed-sync and UI markers).
+- PASS — `./nexus doctor --json` at `2026-09-12T03:02:22Z`; desktop shell is
+  correctly reported as `SKIPPED`, not PASS.
+- PASS — focused AGY/runtime hardening tests: expired-token quota probes fail
+  closed and no-browser helper paths do not open external OAuth routes.
 - PASS — task requirements now carry bounded generic `ExecutionGuidance` into
   prompt compilation; persisted routing decisions project canonical Skill refs
-  and Maestro guidance refs only when an actual source/reference is present.
+  and Maestro guidance refs only when an actual source/reference is present,
+  including selected Skill source/version/hash/reason provenance.
+- PASS — the local autopilot contract now exercises package/global recorder
+  integration into `ValidationEvidenceStream`, chain verification and
+  Git-SHA-bound `VERIFIED` entries. Latest ephemeral test stream was sequence 2;
+  it is not a production Mission stream.
+- PASS — Mission evidence captures bounded Go/OS/arch metadata and Node plus
+  package-manager versions when applicable, using fixed no-shell probes with
+  a two-second timeout.
+- PASS — E2E harness now supports an explicit empty stable root for providers
+  that reject temporary credential homes; focused root-safety tests pass.
+- UNVERIFIED — Codex remained at `model: loading` even with stable root;
+  AGY reached the runtime but reported `not signed in`. No real provider
+  marker or authenticated Mission evidence was promoted.
 - UNVERIFIED — authenticated Nexus provider Mission, durable production
   evidence stream, live failover/escalation/handoff, Windows/macOS and
   overnight acceptance remain unavailable.
@@ -1011,6 +1044,6 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
   [`DEV/AI_CONTROL_DEFERRED.md`](AI_CONTROL_DEFERRED.md), item 6.
 
 <!-- frontend-verify:latest -->
-## Frontend gate — 2026-09-12T02:02:48Z
+## Frontend gate — 2026-09-12T03:02:41Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).

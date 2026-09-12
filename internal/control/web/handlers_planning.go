@@ -672,6 +672,26 @@ func (h *NexusHandler) handleRunRouting(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusOK, report)
 }
 
+// handleRunValidationEvidence exposes the canonical append-only validation
+// evidence projection for one run. A missing stream is returned as an empty
+// report with chain_verified=false; the API never manufactures a PASS claim.
+func (h *NexusHandler) handleRunValidationEvidence(w http.ResponseWriter, r *http.Request, runID string) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if _, err := h.runs.Get(r.Context(), runID); err != nil {
+		writeError(w, http.StatusNotFound, "run not found")
+		return
+	}
+	report, err := h.runs.ValidationEvidence(r.Context(), runID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, report)
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {

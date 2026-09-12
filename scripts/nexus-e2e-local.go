@@ -8,6 +8,10 @@
 //	NEXUS_E2E_PROVIDER=claude \
 //	NEXUS_E2E_PROFILE=default \
 //	go run ./scripts/nexus-e2e-local.go
+//
+// Set NEXUS_E2E_ROOT to an explicitly provisioned empty non-temporary
+// directory when a provider refuses temporary credential homes. The harness
+// never removes an explicit root; remove it only after reviewing diagnostics.
 package main
 
 import (
@@ -455,21 +459,76 @@ func transcriptExcerpt(transcript string) string {
 	return transcript
 }
 
+// resolveE2ERoot keeps the default harness isolated and disposable, while
+// allowing providers that reject temporary homes (for example Codex's helper
+// binary policy) to run from an explicitly provisioned, empty directory.
+// Explicit roots are never removed by the harness.
+func resolveE2ERoot() (string, bool, error) {
+	configured := strings.TrimSpace(os.Getenv("NEXUS_E2E_ROOT"))
+	if configured == "" {
+		root, err := os.MkdirTemp("", "nexus-e2e-")
+		return root, true, err
+	}
+
+	root, err := filepath.Abs(configured)
+	if err != nil {
+		return "", false, fmt.Errorf("resolve explicit E2E root: %w", err)
+	}
+	if root == filepath.VolumeName(root)+string(filepath.Separator) {
+		return "", false, fmt.Errorf("refusing filesystem root as explicit E2E root")
+	}
+	info, err := os.Lstat(root)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		if err := os.MkdirAll(root, 0700); err != nil {
+			return "", false, fmt.Errorf("create explicit E2E root: %w", err)
+		}
+		info, err = os.Lstat(root)
+		if err != nil {
+			return "", false, fmt.Errorf("inspect created E2E root: %w", err)
+		}
+	case err != nil:
+		return "", false, fmt.Errorf("inspect explicit E2E root: %w", err)
+	case info.Mode()&os.ModeSymlink != 0:
+		return "", false, fmt.Errorf("explicit E2E root must not be a symlink: %s", root)
+	case !info.IsDir():
+		return "", false, fmt.Errorf("explicit E2E root is not a directory: %s", root)
+	}
+	if info.Mode().Perm()&0077 != 0 {
+		return "", false, fmt.Errorf("explicit E2E root must be owner-only (0700): %s", root)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return "", false, fmt.Errorf("read explicit E2E root: %w", err)
+	}
+	if len(entries) != 0 {
+		return "", false, fmt.Errorf("explicit E2E root must be empty: %s", root)
+	}
+	return root, false, nil
+}
+
 func startLocalNexus(ctx context.Context, port int, keep bool, browser bool) (func(), error) {
 	if port < 1 || port > 65535 {
 		return nil, fmt.Errorf("invalid port %d", port)
 	}
-	root, err := os.MkdirTemp("", "nexus-e2e-")
+	root, removeRoot, err := resolveE2ERoot()
 	if err != nil {
 		return nil, err
 	}
+	cleanupRoot := func() {
+		if removeRoot && !keep {
+			_ = os.RemoveAll(root)
+		}
+	}
 	project := filepath.Join(root, "project")
 	if err := os.MkdirAll(project, 0700); err != nil {
+		cleanupRoot()
 		return nil, err
 	}
 	for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "e2e@example.invalid"}, {"config", "user.name", "Nexus E2E"}} {
 		cmd := exec.CommandContext(ctx, "git", append([]string{"-C", project}, args...)...)
 		if out, e := cmd.CombinedOutput(); e != nil {
+			cleanupRoot()
 			return nil, fmt.Errorf("temporary git project: %w (%s)", e, strings.TrimSpace(string(out)))
 		}
 	}
@@ -486,9 +545,7 @@ func startLocalNexus(ctx context.Context, port int, keep bool, browser bool) (fu
 			source = filepath.Join(os.Getenv("HOME"), ".local", "share", "ai-manager")
 		}
 		if err := copyProfileTree(filepath.Join(source, "profiles"), filepath.Join(dataDir, "profiles")); err != nil {
-			if !keep {
-				_ = os.RemoveAll(root)
-			}
+			cleanupRoot()
 			return nil, fmt.Errorf("copy authenticated profiles to isolated data: %w", err)
 		}
 	}
@@ -499,6 +556,7 @@ func startLocalNexus(ctx context.Context, port int, keep bool, browser bool) (fu
 	}
 	cmd.Stderr = redactWriter{dst: os.Stderr}
 	if err := cmd.Start(); err != nil {
+		cleanupRoot()
 		return nil, fmt.Errorf("start Nexus: %w (build ./nexus first or set NEXUS_E2E_NEXUS_BIN)", err)
 	}
 
@@ -549,9 +607,7 @@ func startLocalNexus(ctx context.Context, port int, keep bool, browser bool) (fu
 				} else {
 					_ = cmd.Process.Kill()
 					_ = cmd.Wait()
-					if !keep {
-						_ = os.RemoveAll(root)
-					}
+					cleanupRoot()
 					return nil, fmt.Errorf("browser smoke: %w", err)
 				}
 			}
@@ -559,23 +615,17 @@ func startLocalNexus(ctx context.Context, port int, keep bool, browser bool) (fu
 		return func() {
 			_ = cmd.Process.Signal(os.Interrupt)
 			_ = cmd.Wait()
-			if !keep {
-				_ = os.RemoveAll(root)
-			}
+			cleanupRoot()
 		}, nil
 	case <-time.After(15 * time.Second):
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
-		if !keep {
-			_ = os.RemoveAll(root)
-		}
+		cleanupRoot()
 		return nil, fmt.Errorf("timed out waiting for Nexus bootstrap URL")
 	case <-ctx.Done():
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
-		if !keep {
-			_ = os.RemoveAll(root)
-		}
+		cleanupRoot()
 		return nil, ctx.Err()
 	}
 }

@@ -167,6 +167,27 @@ describe('mission routing explainability API', () => {
   });
 });
 
+describe('mission validation evidence API', () => {
+  it('uses the canonical validation evidence projection', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          run_id: 'run-1',
+          chain_verified: true,
+          entries: [{ scenario: 'mission/global-definition', confidence: 'VERIFIED' }],
+        }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(nexusApi.getRunValidationEvidence('run-1')).resolves.toMatchObject({
+      run_id: 'run-1',
+      chain_verified: true,
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/v1/runs/run-1/validation-evidence');
+  });
+});
+
 describe('mission CRUD API contracts', () => {
   it('keeps mission list and detail payloads typed at the client boundary', async () => {
     const fetchMock = vi

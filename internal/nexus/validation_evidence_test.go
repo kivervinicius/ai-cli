@@ -107,3 +107,90 @@ func TestMissionValidationEvidenceRecordsFailedResultsAsFail(t *testing.T) {
 		t.Fatalf("failed verification must record FAIL: %+v", entries)
 	}
 }
+
+func TestMissionValidationEvidenceCapturesBoundedToolchainEnvironment(t *testing.T) {
+	n := openTestNexus(t)
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"name":"evidence-fixture"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	project, err := st.CreateProject(store.Project{Name: "toolchain-evidence", CanonicalPath: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := &runner.MissionRun{ID: "run-toolchain", PlanID: "plan", PlanRevision: 1, ProjectID: project.ID}
+	result := runner.VerificationResult{Command: "true", Passed: true, ExitCode: 0}
+	if err := n.recordMissionValidationEvidence(context.Background(), run, "mission/toolchain", result.Command, []runner.VerificationResult{result}, "local", "test", "economy", 1); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := st.GetValidationEvidenceStreamByName(project.ID, missionEvidenceStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := st.ListValidationEvidenceEntries(stream.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected one evidence entry, got %d", len(entries))
+	}
+	var environment map[string]string
+	if err := json.Unmarshal([]byte(entries[0].EnvironmentJSON), &environment); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"go", "os", "arch"} {
+		if environment[key] == "" {
+			t.Fatalf("environment missing %q: %#v", key, environment)
+		}
+	}
+	if environment["package_manager"] != "npm" {
+		t.Fatalf("package manager = %q, want npm: %#v", environment["package_manager"], environment)
+	}
+	if _, err := exec.LookPath("node"); err == nil && environment["node"] == "" {
+		t.Fatalf("node is available but version was not captured: %#v", environment)
+	}
+	if _, err := exec.LookPath("npm"); err == nil && environment["package_manager_version"] == "" {
+		t.Fatalf("npm is available but version was not captured: %#v", environment)
+	}
+}
+
+func TestRunApplicationProjectsCanonicalValidationEvidence(t *testing.T) {
+	n := openTestNexus(t)
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	project, err := st.CreateProject(store.Project{Name: "evidence-report", CanonicalPath: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateWorkPlan(store.WorkPlan{ID: "evidence-report-plan", ProjectID: project.ID, Title: "Evidence report"}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := n.Runner().StartMissionRun(context.Background(), runner.PlanSpec{
+		ID: "evidence-report-plan", ProjectID: project.ID, Revision: 1,
+		Packages: []runner.PackageSpec{{ID: "package-1", Title: "Evidence"}},
+	}, root, runner.DefaultAutonomyContract(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := runner.VerificationResult{Command: "true", Passed: true, ExitCode: 0}
+	if err := n.recordMissionValidationEvidence(context.Background(), run, "mission/report", result.Command, []runner.VerificationResult{result}, "local", "test", "economy", 1); err != nil {
+		t.Fatal(err)
+	}
+	report, err := NewRunApplicationService(n).ValidationEvidence(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.RunID != run.ID || report.Stream == nil || !report.ChainVerified || len(report.Entries) != 1 {
+		t.Fatalf("canonical evidence report = %+v", report)
+	}
+	if report.Entries[0].Scenario != "mission/report" || report.Entries[0].Outcome != store.EvidenceNotVerified {
+		t.Fatalf("unexpected projected evidence entry: %+v", report.Entries[0])
+	}
+}

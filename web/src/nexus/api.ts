@@ -519,6 +519,10 @@ export const nexus = {
     request<import('../types').FlowRunEvidence>(`/api/v1/runs/${runId}/evidence`),
   getRunRouting: (runId: string) =>
     request<import('../types').RoutingDecisionReport>(`/api/v1/runs/${runId}/routing`),
+  getRunValidationEvidence: (runId: string) =>
+    request<import('../types').ValidationEvidenceReport>(
+      `/api/v1/runs/${runId}/validation-evidence`,
+    ),
   stepRun: (runId: string) =>
     request<{ run: import('../types').MissionRun; completed: boolean }>(
       `/api/v1/runs/${runId}/step`,

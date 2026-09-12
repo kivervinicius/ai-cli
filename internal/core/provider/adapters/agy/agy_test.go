@@ -2,6 +2,8 @@ package agy
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +11,24 @@ import (
 
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 )
+
+func TestEmailFromIDTokenReadsURLSafeClaimsWithoutExposingToken(t *testing.T) {
+	claims, err := json.Marshal(map[string]string{"email": "user@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := "header." + base64.RawURLEncoding.EncodeToString(claims) + ".signature"
+	raw, err := json.Marshal(map[string]string{"id_token": token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := emailFromIDToken(raw); got != "user@example.com" {
+		t.Fatalf("emailFromIDToken=%q, want user@example.com", got)
+	}
+	if got := emailFromIDToken([]byte(`{"id_token":"not-a-jwt"}`)); got != "" {
+		t.Fatalf("malformed token must return empty email, got %q", got)
+	}
+}
 
 func TestAGYSecretServiceIsOptIn(t *testing.T) {
 	t.Setenv("NEXUS_AGY_ENABLE_SECRET_SERVICE", "")
@@ -99,14 +119,11 @@ func TestInspectAuthExpiredTokenWithRefreshToken(t *testing.T) {
 	}
 
 	info := New().InspectAuth(context.Background(), model.Profile{Provider: "agy", Name: "expired-with-refresh"})
-	if !info.Authenticated {
-		t.Fatal("expired token with refresh_token must remain authenticated so quota probes can run")
+	if info.Authenticated {
+		t.Fatal("expired token must NOT be authenticated — live quota probes open Google OAuth in the browser")
 	}
-	if info.Status != "Token refresh pending" {
-		t.Fatalf("status=%q want 'Token refresh pending'", info.Status)
-	}
-	if info.Health != model.HealthHealthy {
-		t.Fatalf("health=%q want HEALTHY", info.Health)
+	if info.Status != "Token expired" {
+		t.Fatalf("status=%q want 'Token expired'", info.Status)
 	}
 }
 
@@ -140,8 +157,8 @@ func TestInspectAuthExpiredTokenResolvesEmailFromGoogleAccounts(t *testing.T) {
 	}
 
 	info := New().InspectAuth(context.Background(), model.Profile{Provider: "agy", Name: "expired-with-email"})
-	if !info.Authenticated {
-		t.Fatal("expired token with refresh_token must remain authenticated for probes")
+	if info.Authenticated {
+		t.Fatal("expired token must NOT be authenticated even when email can be resolved")
 	}
 	if info.Email != "user@gmail.com" {
 		t.Fatalf("email=%q want 'user@gmail.com' (must resolve even when expired)", info.Email)
@@ -173,6 +190,30 @@ func TestInspectAuthValidTokenWithRefreshToken(t *testing.T) {
 	}
 	if info.Status != "Authenticated" {
 		t.Fatalf("status=%q want 'Authenticated'", info.Status)
+	}
+}
+
+func TestFetchLiveQuotaRefusesExpiredAccessToken(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("NEXUS_DATA_DIR", dataDir)
+	t.Setenv("AI_MANAGER_DATA_DIR", dataDir)
+	t.Setenv("AI_CLI_DATA_DIR", dataDir)
+	t.Setenv("AI_CLI_CONFIG_DIR", t.TempDir())
+
+	home := filepath.Join(dataDir, "profiles", "agy", "expired-probe", "home")
+	tokenDir := filepath.Join(home, ".gemini", "antigravity-cli")
+	if err := os.MkdirAll(tokenDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	expiredTime := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano)
+	tokenContent := `{"token":{"access_token":"ya29.expired","refresh_token":"1//0hRefresh","expiry":"` + expiredTime + `"}}`
+	if err := os.WriteFile(filepath.Join(tokenDir, "antigravity-oauth-token"), []byte(tokenContent), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Even if InspectAuth were wrong, the live probe itself must refuse to spawn.
+	if _, ok := New().fetchLiveQuota(context.Background(), model.Profile{Provider: "agy", Name: "expired-probe"}); ok {
+		t.Fatal("fetchLiveQuota must refuse to spawn AGY when the access token is expired")
 	}
 }
 

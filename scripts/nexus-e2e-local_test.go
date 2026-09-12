@@ -94,6 +94,81 @@ func TestNotAuthenticatedIsMachineClassifiable(t *testing.T) {
 	}
 }
 
+func TestResolveE2ERootUsesExplicitNonTemporaryDirectory(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NEXUS_E2E_ROOT", root)
+
+	got, remove, err := resolveE2ERoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != root || remove {
+		t.Fatalf("explicit root = %q, remove=%t; want %q, false", got, remove, root)
+	}
+}
+
+func TestResolveE2ERootRejectsNonEmptyExplicitDirectory(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "sentinel"), []byte("preserve"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NEXUS_E2E_ROOT", root)
+
+	if _, _, err := resolveE2ERoot(); err == nil {
+		t.Fatal("accepted a non-empty explicit E2E root")
+	}
+}
+
+func TestResolveE2ERootRejectsSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires platform privileges on Windows")
+	}
+	target := t.TempDir()
+	parent := t.TempDir()
+	root := filepath.Join(parent, "root-link")
+	if err := os.Symlink(target, root); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NEXUS_E2E_ROOT", root)
+
+	if _, _, err := resolveE2ERoot(); err == nil {
+		t.Fatal("accepted a symlink as explicit E2E root")
+	}
+}
+
+func TestResolveE2ERootRejectsOpenPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits are not enforced on Windows")
+	}
+	root := t.TempDir()
+	if err := os.Chmod(root, 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NEXUS_E2E_ROOT", root)
+
+	if _, _, err := resolveE2ERoot(); err == nil {
+		t.Fatal("accepted an explicit E2E root with open permissions")
+	}
+}
+
+func TestResolveE2ERootCreatesDisposableTemporaryDirectory(t *testing.T) {
+	t.Setenv("NEXUS_E2E_ROOT", "")
+
+	root, remove, err := resolveE2ERoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !remove {
+		t.Fatal("temporary E2E root was not marked disposable")
+	}
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestProviderMarkerRequiresLiteralMarkerAndSanitizesANSI(t *testing.T) {
 	if providerMarkerSeen("banner only\nNEXUS_E2E_O") {
 		t.Fatal("accepted partial provider marker")

@@ -982,6 +982,47 @@ export interface FlowRunEvidence {
   receipts: WorkReceipt[];
 }
 
+export interface ValidationEvidenceStream {
+  id: string;
+  project_id?: string;
+  name: string;
+  created_at: string;
+  last_sequence: number;
+  last_hash?: string;
+}
+
+export interface ValidationEvidenceEntry {
+  id: string;
+  stream_id: string;
+  sequence: number;
+  git_sha?: string;
+  identity_digest?: string;
+  repository_state?: string;
+  environment_json?: string;
+  provider?: string;
+  profile?: string;
+  model?: string;
+  scenario: string;
+  command_display?: string;
+  outcome: string;
+  confidence: string;
+  exit_code?: number;
+  duration_ms?: number;
+  evidence_json?: string;
+  previous_hash?: string;
+  entry_hash: string;
+  created_at: string;
+}
+
+export interface ValidationEvidenceReport {
+  run_id: string;
+  plan_id?: string;
+  plan_revision?: number;
+  stream?: ValidationEvidenceStream;
+  entries: ValidationEvidenceEntry[];
+  chain_verified: boolean;
+}
+
 export interface RoutingAffinityPreference {
   mode: string;
   value?: string;
@@ -1006,6 +1047,16 @@ export interface RoutingModelCandidate {
   reasoning_rank: number;
 }
 
+export interface RoutingSkillResolution {
+  requested_capability: string;
+  candidate_skills?: string[];
+  selected_skill?: string;
+  source?: string;
+  version?: string;
+  hash?: string;
+  reason?: string;
+}
+
 export interface RoutingDecision {
   task_id?: string;
   work_plan_revision?: number;
@@ -1024,6 +1075,7 @@ export interface RoutingDecision {
   selected_model?: string;
   selected_reasoning?: string;
   skill_refs?: string[];
+  skill_resolutions?: RoutingSkillResolution[];
   maestro_guidance_ref?: string;
   alternatives?: RoutingModelCandidate[];
   fallback: boolean;

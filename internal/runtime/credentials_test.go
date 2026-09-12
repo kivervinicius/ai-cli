@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -36,6 +38,28 @@ func TestCredentialCapabilityIsTruthfulOnUnsupportedPlatforms(t *testing.T) {
 	}
 	if (runtime.GOOS == "windows" || runtime.GOOS == "darwin") && capability.Status == CredentialSupported {
 		t.Fatalf("unsupported native integration must not claim support: %+v", capability)
+	}
+}
+
+func TestNoBrowserBinDirInstallsInertHelpers(t *testing.T) {
+	data := t.TempDir()
+	t.Setenv("NEXUS_DATA_DIR", data)
+	t.Setenv("AI_MANAGER_DATA_DIR", data)
+	t.Setenv("AI_CLI_DATA_DIR", data)
+
+	dir, err := NoBrowserBinDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"ai-browser", "xdg-open", "open"} {
+		path := filepath.Join(dir, name)
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if info.Mode()&0111 == 0 {
+			t.Fatalf("%s must be executable", name)
+		}
 	}
 }
 

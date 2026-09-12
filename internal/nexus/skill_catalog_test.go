@@ -25,6 +25,23 @@ func TestGenericSkillIDsResolveWithoutMaestro(t *testing.T) {
 	}
 }
 
+func TestResolveSkillReferencesPreservesSelectionProvenance(t *testing.T) {
+	n := openTestNexus(t)
+	n.maestroStatus = func() MaestroStatus { return MaestroStatus{Available: false, Mode: MaestroOff} }
+
+	resolutions, err := resolveSkillReferences(n, "", []string{"testing", "testing"})
+	if err != nil {
+		t.Fatalf("resolve skill references: %v", err)
+	}
+	if len(resolutions) != 1 {
+		t.Fatalf("expected deterministic deduplicated resolution, got %+v", resolutions)
+	}
+	resolution := resolutions[0]
+	if resolution.RequestedCapability != "testing" || len(resolution.Candidates) != 1 || resolution.Selected != "testing" || resolution.Source != nexusskills.SourceBuiltin || resolution.Version == "" || resolution.Hash == "" || resolution.Reason == "" {
+		t.Fatalf("skill provenance is incomplete: %+v", resolution)
+	}
+}
+
 func TestBuiltinCatalogCoversCoreExecutionSkillsWithoutMaestro(t *testing.T) {
 	n := openTestNexus(t)
 	n.maestroStatus = func() MaestroStatus { return MaestroStatus{Available: false, Mode: MaestroOff} }

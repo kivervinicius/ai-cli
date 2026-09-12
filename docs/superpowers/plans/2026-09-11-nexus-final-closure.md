@@ -127,12 +127,12 @@
 
 - [x] **Step 1: Add failing tests** for PLAN/TASK/RECOVERY/VERIFY lifecycle advice, degraded Maestro mode, generic skill refs in capsules and evidence-chain projection.
 - [x] **Step 2: Implement additive lifecycle metadata and generic skill provenance without changing Maestro ownership.**
-- [ ] **Step 3: Append closure scenario evidence to the existing `ValidationEvidenceStream`; verify the hash chain before projecting reports.**
+- [x] **Step 3: Append closure scenario evidence to the existing `ValidationEvidenceStream`; verify the hash chain before projecting reports.** The local autopilot integration proves this with an ephemeral Git-bound stream; production authenticated Mission evidence remains required for GO.
 - [x] **Step 4: Run the adversarial code review and classify every finding using technical verification before changes.**
 
 ### Task 7: Global Verification and Release Verdict
 
 - [x] Run fresh `go test ./...`, `go test -race ./...`, `go vet ./...`, Go build, `git diff --check`, Web format/lint/style/typecheck/test/build and repository canonical gates.
 - [x] Run deterministic local autopilot scenarios and mark live/native/platform scenarios `UNVERIFIED` where no runner/credential exists.
-- [ ] Verify the evidence chain and record BASE SHA, FINAL SHA, stream ID, head hash, commands, results, risks and remaining work in `DEV/WORKLOG.md`, `DEV/VERIFY.md`, `DEV/HANDOFF.md` and the final report.
-- [ ] Emit `GO` only if zero P0/P1 central blockers and all required core scenarios have concrete evidence; otherwise emit `NO-GO` with specific blockers.
+- [x] Verify the local evidence chain and record BASE SHA, FINAL SHA, ephemeral stream ID/head hash, commands, results, risks and remaining work in `DEV/WORKLOG.md`, `DEV/VERIFY.md`, `DEV/HANDOFF.md` and the final report. Production authenticated stream remains unavailable and is explicitly `UNVERIFIED`.
+- [x] Emit `NO-GO` with specific blockers because authenticated Mission/provider, native platform and overnight evidence are still unavailable; `GO` remains forbidden until the central P1 evidence gates are cleared.
