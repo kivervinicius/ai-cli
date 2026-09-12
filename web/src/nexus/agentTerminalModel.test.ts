@@ -29,6 +29,10 @@ describe('Agent terminal model', () => {
     expect(agentTerminalWebSocketURL('http:', 'localhost:3000', 'agt_1', 'rt_9', 'sess_abc')).toBe(
       'ws://localhost:3000/api/v1/agents/agt_1/terminal?runtime_id=rt_9&token=sess_abc',
     ));
+  it('omits auth token on Cloudflare Quick Tunnel hosts (cookie-only)', () =>
+    expect(
+      agentTerminalWebSocketURL('https:', 'abc.trycloudflare.com', 'agt_1', 'rt_9', 'sess_abc'),
+    ).toBe('wss://abc.trycloudflare.com/api/v1/agents/agt_1/terminal?runtime_id=rt_9'));
   it('supports agent-scoped reattachment after a runtime generation changes', () =>
     expect(agentTerminalWebSocketURL('http:', 'localhost:3000', 'agt_1')).toBe(
       'ws://localhost:3000/api/v1/agents/agt_1/terminal',

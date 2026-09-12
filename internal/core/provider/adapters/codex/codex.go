@@ -234,9 +234,22 @@ func (a *Adapter) InspectAuth(ctx context.Context, p model.Profile) model.Accoun
 		return info
 	}
 
-	accountID, email, plan := parseCodexAuthBytes(data)
+	accountID, email, plan, activeUntil := parseCodexAuthBytes(data)
 	if accountID == "" && email == "" {
 		return info
+	}
+	if activeUntil != "" {
+		if until, err := time.Parse(time.RFC3339, activeUntil); err == nil && time.Now().After(until) {
+			info.Status = "Subscription expired"
+			info.Health = model.HealthAuthRequired
+			info.Authenticated = false
+			info.Email = email
+			info.ExternalAccountID = accountID
+			if plan != "" {
+				info.Plan = plan
+			}
+			return info
+		}
 	}
 
 	info.Authenticated = true
@@ -726,11 +739,11 @@ func readCodexAuthAccountID(authPath string) string {
 	if err != nil {
 		return ""
 	}
-	accountID, _, _ := parseCodexAuthBytes(data)
+	accountID, _, _, _ := parseCodexAuthBytes(data)
 	return accountID
 }
 
-func parseCodexAuthBytes(data []byte) (accountID, email, plan string) {
+func parseCodexAuthBytes(data []byte) (accountID, email, plan, activeUntil string) {
 	var auth struct {
 		Tokens struct {
 			IDToken   string `json:"id_token"`
@@ -738,22 +751,22 @@ func parseCodexAuthBytes(data []byte) (accountID, email, plan string) {
 		} `json:"tokens"`
 	}
 	if json.Unmarshal(data, &auth) != nil {
-		return "", "", ""
+		return "", "", "", ""
 	}
 	accountID = strings.TrimSpace(auth.Tokens.AccountID)
 
 	if auth.Tokens.IDToken == "" {
-		return accountID, "", ""
+		return accountID, "", "", ""
 	}
 	parts := strings.Split(auth.Tokens.IDToken, ".")
 	if len(parts) < 2 {
-		return accountID, "", ""
+		return accountID, "", "", ""
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		payload, err = base64.URLEncoding.DecodeString(parts[1])
 		if err != nil {
-			return accountID, "", ""
+			return accountID, "", "", ""
 		}
 	}
 	var claims struct {
@@ -765,7 +778,7 @@ func parseCodexAuthBytes(data []byte) (accountID, email, plan string) {
 		} `json:"https://api.openai.com/auth"`
 	}
 	if json.Unmarshal(payload, &claims) != nil {
-		return accountID, "", ""
+		return accountID, "", "", ""
 	}
 	email = strings.TrimSpace(claims.Email)
 	if accountID == "" {
@@ -778,7 +791,8 @@ func parseCodexAuthBytes(data []byte) (accountID, email, plan string) {
 			plan = "ChatGPT " + titlePlan(claims.OpenAIAuth.PlanType)
 		}
 	}
-	return accountID, email, plan
+	activeUntil = strings.TrimSpace(claims.OpenAIAuth.ActiveUntil)
+	return accountID, email, plan, activeUntil
 }
 
 func formatCodexResetTime(epochSec int64) string {

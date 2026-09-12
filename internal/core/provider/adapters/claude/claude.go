@@ -165,12 +165,33 @@ func (a *Adapter) InspectAuth(ctx context.Context, p model.Profile) model.Accoun
 		}
 	}
 
-	// 2. Check credentials.json in .claude/
+	// 2. Check credentials.json in .claude/ — require parseable identity, not
+	// merely a non-empty file (empty/corrupt stubs must not look authenticated).
 	credFile := filepath.Join(home, ".claude", "credentials.json")
-	if st, err := os.Stat(credFile); err == nil && st.Size() > 0 {
-		info.Authenticated = true
-		info.Status = "Authenticated"
-		info.Health = model.HealthHealthy
+	if data, err := os.ReadFile(credFile); err == nil && len(data) > 0 {
+		var cred struct {
+			OAuthAccount struct {
+				Email string `json:"email"`
+			} `json:"oauthAccount"`
+			AccessToken  string `json:"accessToken"`
+			RefreshToken string `json:"refreshToken"`
+			Email        string `json:"email"`
+		}
+		if json.Unmarshal(data, &cred) == nil {
+			email := strings.TrimSpace(cred.OAuthAccount.Email)
+			if email == "" {
+				email = strings.TrimSpace(cred.Email)
+			}
+			hasToken := strings.TrimSpace(cred.AccessToken) != "" || strings.TrimSpace(cred.RefreshToken) != ""
+			if email != "" || hasToken {
+				if email != "" {
+					info.Email = email
+				}
+				info.Authenticated = true
+				info.Status = "Authenticated"
+				info.Health = model.HealthHealthy
+			}
+		}
 	}
 
 	return info

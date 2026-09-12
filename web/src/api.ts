@@ -77,6 +77,13 @@ export function getWebSocketEndpoint(path: string): string {
   const url = `${proto}//${host}${cleanPath}`;
   if (!token) return url;
 
+  // Public tunnels must authenticate via HttpOnly cookie only — never put the
+  // session ID in the WebSocket URL (proxies and access logs retain query strings).
+  const hostName = host.split(':')[0]?.toLowerCase() ?? '';
+  if (hostName.endsWith('.trycloudflare.com')) {
+    return url;
+  }
+
   const delimiter = url.includes('?') ? '&' : '?';
   return `${url}${delimiter}token=${encodeURIComponent(token)}`;
 }

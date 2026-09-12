@@ -15,8 +15,11 @@ export function agentTerminalWebSocketURL(
   const params = new URLSearchParams();
   const trimmedRuntime = (runtimeId || '').trim();
   if (trimmedRuntime) params.set('runtime_id', trimmedRuntime);
+  const hostName = host.split(':')[0]?.toLowerCase() ?? '';
+  const tunnelHost = hostName.endsWith('.trycloudflare.com');
   const trimmedToken = (token || '').trim();
-  if (trimmedToken) params.set('token', trimmedToken);
+  // Public tunnels authenticate via HttpOnly cookie; do not put session IDs in URLs.
+  if (trimmedToken && !tunnelHost) params.set('token', trimmedToken);
   const qs = params.toString();
   return qs ? `${base}?${qs}` : base;
 }

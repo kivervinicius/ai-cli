@@ -280,45 +280,9 @@ func (a *Adapter) InspectAuth(ctx context.Context, p model.Profile) model.Accoun
 		}
 	}
 
-	// 2. Check google_accounts.json in profile home
-	accountsFile := filepath.Join(home, ".gemini", "google_accounts.json")
-	if data, err := os.ReadFile(accountsFile); err == nil {
-		var acc struct {
-			Active string `json:"active"`
-		}
-		if json.Unmarshal(data, &acc) == nil && acc.Active != "" {
-			info.Email = acc.Active
-			info.Authenticated = true
-			info.Status = "Authenticated"
-			info.Health = model.HealthHealthy
-			return info
-		}
-	}
-
-	// 3. Check jetski_state.pbtxt
-	jetskiFile := filepath.Join(home, ".gemini", "antigravity-cli", "jetski_state.pbtxt")
-	if data, err := os.ReadFile(jetskiFile); err == nil && len(data) > 0 {
-		matches := emailRegex.FindAllString(string(data), -1)
-		if len(matches) > 0 {
-			info.Email = matches[0]
-			info.Authenticated = true
-			info.Status = "Authenticated"
-			info.Health = model.HealthHealthy
-			return info
-		}
-	}
-
-	// 4. Check keyring files (if login.keyring exists, credentials are stored)
-	keyringsDir := filepath.Join(home, ".local", "share", "keyrings")
-	if _, err := os.Stat(filepath.Join(keyringsDir, "login.keyring")); err == nil {
-		info.Authenticated = true
-		info.Status = "Authenticated"
-		info.Health = model.HealthHealthy
-		if info.Email == "" {
-			info.Email = p.Name
-		}
-		return info
-	}
+	// 2-3. google_accounts.json / jetski_state may help resolve email after a
+	// valid OAuth token is found, but they are not authentication evidence on
+	// their own (stale leftovers previously fail-opened as Authenticated).
 
 	return info
 }

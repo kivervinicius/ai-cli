@@ -116,14 +116,23 @@ func TestDesktopSessionRevocationAndExpiry(t *testing.T) {
 	}
 	auth.SetDesktopSession(sess)
 
-	// Verify desktop request authenticates
+	// Origin alone must NOT authenticate (spoofable from any local process).
+	reqOriginOnly := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces", nil)
+	reqOriginOnly.Host = "127.0.0.1:13000"
+	reqOriginOnly.Header.Set("Origin", "wails://wails")
+	if got := auth.AuthenticateRequest(reqOriginOnly); got != nil {
+		t.Fatalf("expected Origin-only desktop request to be rejected, got %v", got)
+	}
+
+	// Explicit Bearer from CreateDesktopSession / bootstrap must authenticate.
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces", nil)
 	req.Host = "127.0.0.1:13000"
 	req.Header.Set("Origin", "wails://wails")
+	req.Header.Set("Authorization", "Bearer "+sess.ID)
 
 	authed := auth.AuthenticateRequest(req)
 	if authed == nil || authed.ID != sess.ID {
-		t.Fatalf("expected request to authenticate with desktop session, got %v", authed)
+		t.Fatalf("expected request to authenticate with desktop session bearer, got %v", authed)
 	}
 
 	// Revoke the session
@@ -149,8 +158,45 @@ func TestDesktopSessionRevocationAndExpiry(t *testing.T) {
 	if got := auth.GetDesktopSession(); got != nil {
 		t.Fatalf("expected expired desktop session to be nil, got %v", got)
 	}
-	if got := auth.AuthenticateRequest(req); got != nil {
+	reqExpired := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces", nil)
+	reqExpired.Host = "127.0.0.1:13000"
+	reqExpired.Header.Set("Authorization", "Bearer "+sess2.ID)
+	if got := auth.AuthenticateRequest(reqExpired); got != nil {
 		t.Fatalf("expected AuthenticateRequest to reject expired desktop session, got %v", got)
+	}
+}
+
+func TestWebSocketQueryTokenRejectedWhenTunnelActive(t *testing.T) {
+	auth, _, err := NewAuthManager("127.0.0.1", "13000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := auth.CreateSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/runtimes/rt/terminal?token="+sess.ID, nil)
+	req.Host = "127.0.0.1:13000"
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+
+	if got := auth.AuthenticateRequest(req); got == nil || got.ID != sess.ID {
+		t.Fatalf("expected WS query token on loopback without tunnel, got %v", got)
+	}
+
+	auth.SetTunnelActive(true)
+	if got := auth.AuthenticateRequest(req); got != nil {
+		t.Fatalf("expected WS query token rejected while tunnel active, got %v", got)
+	}
+
+	reqCookie := httptest.NewRequest(http.MethodGet, "/api/v1/runtimes/rt/terminal", nil)
+	reqCookie.Host = "127.0.0.1:13000"
+	reqCookie.Header.Set("Connection", "Upgrade")
+	reqCookie.Header.Set("Upgrade", "websocket")
+	reqCookie.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sess.ID})
+	if got := auth.AuthenticateRequest(reqCookie); got == nil || got.ID != sess.ID {
+		t.Fatalf("expected WS cookie auth while tunnel active, got %v", got)
 	}
 }
 

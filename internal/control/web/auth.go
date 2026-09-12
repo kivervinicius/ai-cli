@@ -172,41 +172,28 @@ func (a *AuthManager) AuthenticateRequest(r *http.Request) *Session {
 	if token == "" {
 		token = strings.TrimSpace(r.Header.Get("X-Nexus-Session"))
 	}
-	if token == "" && (websocket.IsWebSocketUpgrade(r) || strings.EqualFold(r.Header.Get("Upgrade"), "websocket")) {
-		token = strings.TrimSpace(r.URL.Query().Get("token"))
-		if token == "" {
-			token = strings.TrimSpace(r.URL.Query().Get("session"))
-		}
-	}
+	wsUpgrade := websocket.IsWebSocketUpgrade(r) || strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
+
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	// If no explicit token or cookie was provided, check if this request originates from the local native desktop shell
-	if token == "" && a.desktopSession != nil {
-		origin := r.Header.Get("Origin")
-		referer := r.Header.Get("Referer")
-
-		if originpolicy.IsTrustedDesktopRequest(r.Host, origin, referer) {
-			// Ensure desktop session still exists and has not expired or idled out
-			if _, exists := a.sessions[a.desktopSession.ID]; !exists {
-				a.desktopSession = nil
-				return nil
+	if token == "" && wsUpgrade {
+		// Browser WebSocket cannot set Authorization; query tokens remain the
+		// transport on loopback. Reject them when a Quick Tunnel is exposing the
+		// server so session IDs are not forwarded through public intermediaries.
+		if !a.tunnelActive {
+			token = strings.TrimSpace(r.URL.Query().Get("token"))
+			if token == "" {
+				token = strings.TrimSpace(r.URL.Query().Get("session"))
 			}
-			now := time.Now()
-			if now.After(a.desktopSession.ExpiresAt) || now.Sub(a.desktopSession.LastActiveAt) > sessionIdleTTL {
-				delete(a.sessions, a.desktopSession.ID)
-				a.desktopSession = nil
-				_ = a.persistLocked()
-				return nil
-			}
-			a.desktopSession.LastActiveAt = now
-			if a.storeDir != "" && now.Sub(a.lastPersist) >= sessionPersistMinGap {
-				_ = a.persistLocked()
-			}
-			return a.desktopSession
 		}
 	}
 
+	// Desktop sessions are provisioned by CreateDesktopSession and handed to the
+	// Wails shell via GetBootstrapInfo / /api/v1/desktop/bootstrap. Callers must
+	// present that session as cookie, Bearer, or X-Nexus-Session. Origin/Referer
+	// alone must never grant authentication — those headers are trivial to spoof
+	// from any local process talking to loopback.
 	if token == "" {
 		return nil
 	}

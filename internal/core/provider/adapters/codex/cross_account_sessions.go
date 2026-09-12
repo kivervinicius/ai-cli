@@ -119,7 +119,7 @@ func adoptSessionIntoProfile(profileName, sessionID string) error {
 		for _, root := range sessionCandidateRoots(home) {
 			idxs = append(idxs, indexCandidatesForSessionsRoot(root)...)
 		}
-		_ = mergeSessionIndexEntry(home, sessionID, idxs...)
+		mergeSessionIndexEntry(home, sessionID, idxs...)
 		return nil
 	}
 	// Legacy dual-tree: treat as already present for resume, but prefer canonical.
@@ -153,7 +153,7 @@ func adoptSessionIntoProfile(profileName, sessionID string) error {
 	}
 	sourceProfile := profileNameFromSessionsPath(src)
 	_ = recordCrossAccountSession(home, sessionID, sourceProfile, src)
-	_ = mergeSessionIndexEntry(home, sessionID, indexCandidatesForSessionsRoot(srcRoot)...)
+	mergeSessionIndexEntry(home, sessionID, indexCandidatesForSessionsRoot(srcRoot)...)
 	return nil
 }
 
@@ -337,13 +337,12 @@ func shortSessionTitle(id string) string {
 	return id
 }
 
-func mergeSessionIndexEntry(home, sessionID string, indexPaths ...string) error {
+func mergeSessionIndexEntry(home, sessionID string, indexPaths ...string) {
 	for _, p := range indexPaths {
 		if mergeSessionIndexFromFile(home, sessionID, p) {
-			return nil
+			return
 		}
 	}
-	return nil
 }
 
 func mergeSessionIndexFromFile(home, sessionID, indexPath string) bool {

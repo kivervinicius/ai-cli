@@ -233,3 +233,23 @@ func TestInspectAuthNoTokenFile(t *testing.T) {
 		t.Fatal("no token file must NOT be authenticated")
 	}
 }
+
+func TestInspectAuthLoginKeyringAloneIsNotAuthenticated(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("AI_CLI_DATA_DIR", dataDir)
+	t.Setenv("AI_CLI_CONFIG_DIR", t.TempDir())
+
+	profileDir := filepath.Join(dataDir, "profiles", "agy", "keyring-only")
+	keyringsDir := filepath.Join(profileDir, "home", ".local", "share", "keyrings")
+	if err := os.MkdirAll(keyringsDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(keyringsDir, "login.keyring"), []byte("not-agy-oauth"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	info := New().InspectAuth(context.Background(), model.Profile{Provider: "agy", Name: "keyring-only"})
+	if info.Authenticated {
+		t.Fatal("desktop login.keyring alone must NOT count as AGY authentication")
+	}
+}
