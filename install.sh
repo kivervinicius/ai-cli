@@ -228,20 +228,28 @@ pub.verify(sig, data)
 extract_sha_from_manifest() {
     local manifest_path="$1"
     local artifact_name="$2"
-    # Convert archive name to manifest key: lowercase, replace - with _, strip extension
-    local key
-    key="$(echo "$artifact_name" | tr '[:upper:]' '[:lower:]' | sed 's/-/_/g; s/\.[^.]*$//')"
-    # Try exact key first, then fuzzy match
     python3 -c "
 import json, sys
-m = json.load(open('$manifest_path'))
+from urllib.parse import unquote, urlparse
+m = json.load(open(sys.argv[1]))
+want = sys.argv[2]
 arts = m.get('artifacts', {})
 for k, v in arts.items():
-    if k == '$key' or '$key' in k or k in '$key':
+    url = unquote(urlparse(v.get('url', '')).path)
+    if url.endswith('/' + want) or url.endswith(want):
+        print(v.get('sha256', ''))
+        sys.exit(0)
+key = want.lower().replace('-', '_')
+if key.endswith('.tar.gz'):
+    key = key[:-7]
+elif '.' in key:
+    key = key.rsplit('.', 1)[0]
+for k, v in arts.items():
+    if k == key or key in k or k in key:
         print(v.get('sha256', ''))
         sys.exit(0)
 print('', end='')
-" 2>/dev/null
+" "$manifest_path" "$artifact_name" 2>/dev/null
 }
 
 download_and_verify_archive() {

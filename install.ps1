@@ -185,19 +185,33 @@ pub.verify(sig, data)
 
 function Extract-ShaFromManifest {
     param([string]$ManifestPath, [string]$ArtifactName)
-    $Key = ($ArtifactName -replace '-','_').ToLower() -replace '\.[^.]+$',''
+    $env:NEXUS_MANIFEST_PATH = $ManifestPath
+    $env:NEXUS_ARTIFACT_NAME = $ArtifactName
     $result = python3 -c @"
-import json, sys
-m = json.load(open('$ManifestPath'))
+import json, os, sys
+from urllib.parse import unquote, urlparse
+m = json.load(open(os.environ['NEXUS_MANIFEST_PATH']))
+want = os.environ['NEXUS_ARTIFACT_NAME']
 arts = m.get('artifacts', {})
 for k, v in arts.items():
-    if k == '$Key' or '$Key' in k or k in '$Key':
+    url = unquote(urlparse(v.get('url', '')).path)
+    if url.endswith('/' + want) or url.endswith(want):
+        print(v.get('sha256', ''), end='')
+        sys.exit(0)
+key = want.lower().replace('-', '_')
+if key.endswith('.tar.gz'):
+    key = key[:-7]
+elif '.' in key:
+    key = key.rsplit('.', 1)[0]
+for k, v in arts.items():
+    if k == key or key in k or k in key:
         print(v.get('sha256', ''), end='')
         sys.exit(0)
 print('', end='')
 "@ 2>&1
     return $result.Trim()
 }
+
 
 $Arch = if ([System.Environment]::Is64BitOperatingSystem) {
     if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq [System.Runtime.InteropServices.Architecture]::Arm64) {

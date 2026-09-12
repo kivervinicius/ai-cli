@@ -2,6 +2,8 @@ package update
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -74,7 +77,11 @@ func NewService(cfg ServiceConfig) *Service {
 	}
 	ch := cfg.Channel
 	if ch == "" {
-		ch = "stable"
+		if strings.Contains(strings.ToLower(ver), "beta") {
+			ch = "beta"
+		} else {
+			ch = "stable"
+		}
 	}
 	execP := cfg.ExecPath
 	if execP == "" {
@@ -218,6 +225,14 @@ func (s *Service) Apply(ctx context.Context) (*Receipt, error) {
 		return nil, err
 	}
 
+	// Manifest size/sha256 bind the downloaded blob (archive or raw binary).
+	if art.Size != int64(len(data)) {
+		return nil, fmt.Errorf("artifact size mismatch: expected %d, got %d", art.Size, len(data))
+	}
+	if err := NewUpdater(s.execPath, "").VerifyArtifactChecksum(data, art.SHA256); err != nil {
+		return nil, err
+	}
+
 	// Extract binary if archive format
 	var binaryData []byte
 	if art.Target == TargetTarGz || art.Target == TargetZip {
@@ -230,8 +245,9 @@ func (s *Service) Apply(ctx context.Context) (*Receipt, error) {
 		binaryData = data
 	}
 
-	updater := NewUpdater(s.execPath, os.Getenv("HOME"))
-	return updater.ApplyManifest(*manifest, policy, binaryData)
+	updater := NewUpdater(s.execPath, dataDirForUpdates())
+	sum := sha256.Sum256(binaryData)
+	return updater.ApplyUpdate(s.currentVer, manifest.Version, binaryData, hex.EncodeToString(sum[:]))
 }
 
 // downloadArtifact streams the artifact to disk without loading entire body into memory.
@@ -346,4 +362,14 @@ func (s *Service) fetchDetachedSignature(ctx context.Context, signatureURL strin
 		return "", err
 	}
 	return strings.TrimSpace(string(body)), nil
+}
+
+func dataDirForUpdates() string {
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return home
+	}
+	if dir, err := os.UserConfigDir(); err == nil && dir != "" {
+		return dir
+	}
+	return filepath.Join(os.TempDir(), "nexus-update")
 }

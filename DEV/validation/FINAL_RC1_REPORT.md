@@ -9,36 +9,36 @@ Final SHA: see `git rev-parse HEAD`
 
 | Item | Status |
 |------|--------|
-| EffectiveExposure | PASS (local) |
-| Tunnel → PUBLIC_REMOTE | PASS |
-| Remote bootstrap one-time + TTL | PASS |
-| Secure cookies under tunnel | PASS |
-| Remote sessions not restored | PASS |
-| cloudflared pin + SHA256 | PASS |
-| Embedded Ed25519 trust root | PASS |
-| Private signing key in CI | BLOCKED_EXTERNAL |
+| EffectiveExposure + tunnel PUBLIC_REMOTE | PASS (local) |
+| Remote bootstrap one-time + TTL + Secure cookies | PASS (local) |
+| cloudflared pin + SHA256 | PASS (local) |
+| Embedded Ed25519 trust root | PASS (local) |
+| Private signing key in CI (`NEXUS_UPDATE_PRIVATE_KEY`) | BLOCKED_EXTERNAL |
 
 ## RC-STABILITY
 
 | Item | Status |
 |------|--------|
-| E2E `/tmp` → TempDir | PASS (local) |
+| TempDir fixtures / non-Windows `/tmp` gate | PASS (local) |
 | SessionHost QA readiness (no fixed sleep) | PASS (local) |
-| SQLite Close() error checks on reopen | PASS (local) |
-| `/tmp` allowlist gated non-Windows | PASS (local) |
-| VERSION ↔ package.json ↔ wails.json in `make quality` | PASS |
-| E2E localStorage reset + waitForFunction | PASS (code); browser CI PENDING |
-| macOS CFBundleShortVersionString CI assert | PASS (workflow); native run PENDING |
-| Native Windows/macOS runners green on this SHA | PENDING |
+| SQLite Close() error checks | PASS (local) |
+| VERSION ↔ package.json ↔ wails in `make quality` | PASS |
+| E2E storage reset + waitForFunction | PASS (code) |
+| macOS plist version/XML CI assert | PASS (workflow) |
+| Native Windows/macOS CI green on this SHA | PENDING |
 
 ## RC-RELEASE
 
 | Item | Status |
 |------|--------|
-| install.sh/ps1 require signed update-manifest | PASS (local) |
-| Desktop artifacts in signed manifest | PENDING |
+| Promote native → then signed manifest | PASS (workflow) |
+| Manifest keys `linux_amd64` + desktop/NSIS + `target` | PASS (local tests) |
+| Apply verifies archive SHA before extract | PASS (local) |
+| Package-manager markers (NSIS/deb/rpm) + path heuristics | PASS (code) |
+| Windows in-use replace via MoveFileEx delay | PASS (code; native PENDING) |
 | Authenticode / notarization | BLOCKED_EXTERNAL |
+| Same-SHA multiplatform CI green | PENDING |
 
 ## Verdict (interim)
 
-**NO_GO** — security + stability slices landed locally; multi-platform CI + signing secret + desktop manifest still open.
+**NO_GO** — local RC-SECURITY/STABILITY/RELEASE slices advanced; still blocked on CI green across platforms, signing secret in Actions, and Authenticode/notarization.
