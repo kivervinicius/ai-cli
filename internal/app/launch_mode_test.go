@@ -49,6 +49,25 @@ func TestLaunchModeResolver_PrintForcesDirect(t *testing.T) {
 	}
 }
 
+func TestLaunchModeResolver_AgyShortPrintForcesDirect(t *testing.T) {
+	r := NewLaunchModeResolver(LaunchModeInput{
+		Args:       []string{"-p", "hello"},
+		StdinIsTTY: true,
+		Provider:   "agy",
+	})
+	if r.Resolve() != LaunchModeDirect {
+		t.Fatal("agy -p must force DIRECT like --print")
+	}
+	codex := NewLaunchModeResolver(LaunchModeInput{
+		Args:       []string{"-p", "work"},
+		StdinIsTTY: true,
+		Provider:   "codex",
+	})
+	if codex.Resolve() != LaunchModeSupervised {
+		t.Fatal("codex -p is native --profile and must stay SUPERVISED on TTY")
+	}
+}
+
 func TestLaunchModeResolver_PipedInputForcesDirect(t *testing.T) {
 	r := NewLaunchModeResolver(LaunchModeInput{
 		Args:       []string{},

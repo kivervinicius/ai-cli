@@ -1,5 +1,19 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-12 — Capability review + honesty fixes
+
+- Ran multi-mode review: `nexus doctor/security/control doctor/providers/profiles/usage/version --json`,
+  `make security`, Bugbot, security-review, cavecrew-reviewer, gsd-code-reviewer, Codex CLI.
+  Claude/Gemini CLI SKIPPED (auth/client).
+- CRITICAL fixes: `TunnelHost` now calls `SetTunnelActive(true)`; CrossAccountResume copies
+  (no hardlink) and fails closed if marker write fails.
+- HIGH fixes: OpenCode/AGY `CrossAccountResume:false`; Gemini `Conversations:false`;
+  help documents Codex `-c`/`-p` native exception; managed cloudflared preferred over PATH;
+  session cookie Secure under tunnel.
+- Gates: staticcheck S1009 in intent_router + duplicate `sha256Hex` in update tests fixed.
+- Artifacts: `DEV/validation/current/capability-review/`, canvas
+  `nexus-capability-review.canvas.tsx`. Live TUI resume remains UNVERIFIED.
+
 ## 2026-09-12 — Codex CrossAccountResume restore
 
 - Restored CrossAccountResume without re-sharing the whole `sessions` tree:

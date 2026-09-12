@@ -1,11 +1,13 @@
 package driver
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 
 	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
+	"github.com/kivervinicius/ai-cli/internal/core/provider/adapters/codex"
 	"github.com/kivervinicius/ai-cli/internal/core/security"
 )
 
@@ -25,6 +27,11 @@ func bootstrapProfile(provider string, p model.Profile) (string, error) {
 	}
 	hostHome := security.FindHostHome()
 	if hostHome == "" {
+		if provider == "codex" {
+			// Still run Prepare for CrossAccountResume seed across Nexus profiles.
+			_ = codex.New().Prepare(context.Background(), p)
+			home, _ = config.ProfileHome(provider, p.Name)
+		}
 		return home, nil
 	}
 	switch provider {
@@ -34,6 +41,15 @@ func bootstrapProfile(provider string, p model.Profile) (string, error) {
 		})
 		// Ensure isolated session dirs exist (do not symlink host sessions).
 		_ = os.MkdirAll(filepath.Join(home, "sessions"), 0700)
+		// Supervised launches previously skipped adapter.Prepare, so
+		// CrossAccountResume never seeded into CODEX_HOME. Mirror the direct path.
+		if err := codex.New().Prepare(context.Background(), p); err != nil {
+			return "", err
+		}
+		home, err = config.ProfileHome(provider, p.Name)
+		if err != nil {
+			return "", err
+		}
 	case "agy":
 		linkConversationArtifacts(filepath.Join(home, ".gemini"), filepath.Join(hostHome, ".gemini"), []string{
 			"antigravity-cli/history.jsonl", "antigravity-cli/conversation_summaries.db",

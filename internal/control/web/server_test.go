@@ -26,6 +26,25 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+func TestTunnelHostArmsTunnelAuthMode(t *testing.T) {
+	srv, err := NewServer(ServerOptions{
+		Host:       "127.0.0.1",
+		Port:       0,
+		NoOpen:     true,
+		TunnelHost: "example.trycloudflare.com",
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	t.Cleanup(func() { _ = srv.Shutdown(context.Background()) })
+	if !srv.auth.IsTunnelActive() {
+		t.Fatal("TunnelHost must call SetTunnelActive(true) so CLI tunnel matches API auth policy")
+	}
+	if !srv.cookieSecure() {
+		t.Fatal("tunnel-active loopback cookies must be Secure")
+	}
+}
+
 func TestServer_BootstrapAndAuth(t *testing.T) {
 	srv, err := NewServer(ServerOptions{
 		Host: "127.0.0.1",

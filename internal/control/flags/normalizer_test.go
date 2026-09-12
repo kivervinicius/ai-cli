@@ -99,8 +99,8 @@ func TestNormalizeYolo(t *testing.T) {
 		},
 		{
 			provider: "codex",
-			args:     []string{"--effort", "high"},
-			expected: []string{"-c", `model_reasoning_effort="high"`},
+			args:     []string{"--effort", "high", "-c", "foo.toml"},
+			expected: []string{"-c", `model_reasoning_effort="high"`, "-c", "foo.toml"},
 		},
 	}
 

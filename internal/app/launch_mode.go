@@ -44,6 +44,7 @@ type LaunchModeResult struct {
 type LaunchModeInput struct {
 	Args       []string
 	StdinIsTTY bool
+	Provider   string // optional; used so AGY/Claude -p means --print
 }
 
 // LaunchModeResolver centralizes the decision of whether a provider launch
@@ -97,6 +98,11 @@ func (r *LaunchModeResolver) ResolveWithReason() LaunchModeResult {
 	// 4. --print flag → DIRECT (headless single-shot, never supervise)
 	if hasProviderLaunchFlag(r.input.Args, "--print") {
 		return LaunchModeResult{Mode: LaunchModeDirect, Reason: "--print flag implies non-interactive", Source: "print-flag"}
+	}
+	// AGY/Claude short -p is --print; Codex -p is native --profile and must not force direct.
+	prov := strings.ToLower(strings.TrimSpace(r.input.Provider))
+	if (prov == "agy" || prov == "claude") && hasProviderLaunchFlag(r.input.Args, "-p") {
+		return LaunchModeResult{Mode: LaunchModeDirect, Reason: "provider -p alias for --print", Source: "print-flag"}
 	}
 
 	// 5. TTY heuristic: interactive terminal → SUPERVISED by default

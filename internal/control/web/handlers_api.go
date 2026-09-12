@@ -182,6 +182,7 @@ func (h *APIHandler) handleSession(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
+		Secure:   h.auth != nil && (h.auth.IsTunnelActive() || !isLoopbackHost(h.auth.listenHost)),
 	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"authenticated": true,

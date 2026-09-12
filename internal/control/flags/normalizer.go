@@ -159,12 +159,18 @@ func Normalize(provider string, args []string, userAliases map[string]map[string
 					expanded = append(expanded, resolved)
 				}
 
-				// Avoid repeating identical already-emitted flags
+				// Avoid repeating identical already-emitted flags. Do not mark
+				// bare -c/-p as seen: Codex --effort expands to -c <kv> and must
+				// not suppress a later native -c/--config argument.
 				for _, exp := range expanded {
-					if !seenEmitted[exp] {
-						result = append(result, exp)
-						seenEmitted[exp] = true
+					if seenEmitted[exp] {
+						continue
 					}
+					result = append(result, exp)
+					if exp == "-c" || exp == "-p" {
+						continue
+					}
+					seenEmitted[exp] = true
 				}
 				continue
 			}

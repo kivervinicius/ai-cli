@@ -177,10 +177,13 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		s.hostname = nexusHostname
 	}
 
-	// Register Cloudflare tunnel host for origin validation.
+	// Register Cloudflare tunnel host for origin validation and arm tunnel
+	// auth mode so CLI `nexus tunnel` matches API StartTunnel (one-time
+	// bootstrap, no query-token WS, Secure cookies).
 	if opts.TunnelHost != "" {
 		s.tunnelHost = opts.TunnelHost
 		originpolicy.RegisterTunnelHost(opts.TunnelHost)
+		s.auth.SetTunnelActive(true)
 	}
 
 	return s, nil
@@ -517,9 +520,17 @@ func (s *Server) handleDesktopBootstrap(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	sess := s.auth.GetDesktopSession()
-	if sess == nil {
+	desktopSess := s.auth.GetDesktopSession()
+	if desktopSess == nil {
 		writeError(w, http.StatusNotFound, "desktop session not available")
+		return
+	}
+	// Origin/Referer identify the Wails document but are forgeable by any local
+	// process talking to loopback. Require the pre-provisioned desktop bearer as
+	// a second factor before returning session material.
+	sess := s.auth.AuthenticateRequest(r)
+	if sess == nil || sess.ID != desktopSess.ID {
+		writeError(w, http.StatusUnauthorized, "desktop session authentication required")
 		return
 	}
 	http.SetCookie(w, &http.Cookie{

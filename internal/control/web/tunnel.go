@@ -1,12 +1,15 @@
 package web
 
 import (
+	"archive/tar"
 	"bufio"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -35,12 +38,12 @@ const (
 // Update when cloudflared releases a new version.
 // Source: https://github.com/cloudflare/cloudflared/releases
 var cloudflaredChecksums = map[string]string{
-	// Fetched from GitHub releases (run: fetch_cloudflared_checksums.sh)
-	"cloudflared-linux-amd64":       "53b7a7a5420d188758d24341294acb0d1bca54296548ac05e38811a694ac6134",
-	"cloudflared-linux-arm64":       "98aca3173f73248fad6180fc75dade2d186a6e54fa807e088108cb4345de8efe",
-	"cloudflared-darwin-amd64":      "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5",
-	"cloudflared-darwin-arm64":      "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5",
-	"cloudflared-windows-amd64.exe": "547057326266f0e1c7d50d102dbd22ff283d740c055bd61e94f10e2c606f89af",
+	// Official SHA-256 from https://github.com/cloudflare/cloudflared/releases/tag/2026.8.2
+	"cloudflared-linux-amd64":       "fcfb02b575a52ca1af2e3267af4e1517bcdeb30ac48c834c69abaed3c0576ad2",
+	"cloudflared-linux-arm64":       "7747d94570fb390cf47dcb4f9555c193c6355cda9793f0d878d9049e5d6a7790",
+	"cloudflared-darwin-amd64.tgz":  "b0f770e1e0b281399a57219b840fd8eef1cc25387a404124248157ea2073727a",
+	"cloudflared-darwin-arm64.tgz":  "b61054d3d6326ea558cb49826eebf5676e0d0a36d51b546975096ca3e0e3c89d",
+	"cloudflared-windows-amd64.exe": "c29eee2b121f5436a642eed69fd9767da7e7b8c510fa50aaa130337f931357b5",
 }
 
 // Tunnel represents a running Cloudflare Quick Tunnel.
@@ -50,6 +53,9 @@ type Tunnel struct {
 	cancel  context.CancelFunc
 	mu      sync.Mutex
 	stopped bool
+	// OnExit runs once after the cloudflared process exits (including crashes).
+	// Callers use it to disarm tunnel auth mode when the public URL dies.
+	OnExit func()
 }
 
 // Stop terminates the cloudflared process and waits for it to exit.
@@ -108,32 +114,50 @@ func cloudflaredPath() (string, error) {
 func cloudflaredDownloadURL() string {
 	osName := runtime.GOOS
 	arch := runtime.GOARCH
-
-	// Normalize cloudflared naming conventions
 	switch arch {
-	case "amd64":
-		arch = "amd64"
-	case "arm64":
-		arch = "arm64"
+	case "amd64", "arm64":
+	default:
+		arch = runtime.GOARCH
 	}
-
+	if osName == "darwin" {
+		// Official macOS assets are gzip tarballs, not bare binaries.
+		return fmt.Sprintf("%s/cloudflared-darwin-%s.tgz", cloudflaredBase, arch)
+	}
 	suffix := ""
-	if runtime.GOOS == "windows" {
+	if osName == "windows" {
 		suffix = ".exe"
 	}
-
 	return fmt.Sprintf("%s/cloudflared-%s-%s%s", cloudflaredBase, osName, arch, suffix)
+}
+
+func cloudflaredChecksumKey() string {
+	osName := runtime.GOOS
+	arch := runtime.GOARCH
+	switch arch {
+	case "amd64", "arm64":
+	default:
+		return ""
+	}
+	if osName == "darwin" {
+		return fmt.Sprintf("cloudflared-darwin-%s.tgz", arch)
+	}
+	name := fmt.Sprintf("cloudflared-%s-%s", osName, arch)
+	if osName == "windows" {
+		name += ".exe"
+	}
+	return name
+}
+
+func cloudflaredBinarySidecar(binPath string) string {
+	return binPath + ".sha256"
 }
 
 // EnsureCloudflared checks if cloudflared is available and downloads it if not.
 // Returns the path to the binary.
 func EnsureCloudflared(ctx context.Context) (string, error) {
-	// 1. Check PATH — cannot verify integrity of system-installed binary
-	if path, err := exec.LookPath(cloudflaredBinaryName()); err == nil {
-		return path, nil
-	}
-
-	// 2. Check local install with SHA-256 verification
+	// Prefer the Nexus-managed binary with SHA-256 verification. Unverified PATH
+	// installs require an explicit opt-in (compromised cloudflared would own the
+	// control-plane tunnel endpoint).
 	binPath, err := cloudflaredPath()
 	if err != nil {
 		return "", err
@@ -150,7 +174,14 @@ func EnsureCloudflared(ctx context.Context) (string, error) {
 		_ = os.Rename(binPath, quarantine)
 	}
 
-	// 3. Download
+	if os.Getenv("NEXUS_CLOUDFLARED_ALLOW_PATH") == "1" {
+		if path, err := exec.LookPath(cloudflaredBinaryName()); err == nil {
+			slog.Warn("using PATH cloudflared without integrity check (NEXUS_CLOUDFLARED_ALLOW_PATH=1)", "path", path)
+			return path, nil
+		}
+	}
+
+	// Download managed binary
 	fmt.Fprintf(os.Stderr, "Baixando cloudflared %s (%s/%s)...\n", cloudflaredVersion, runtime.GOOS, runtime.GOARCH)
 	if err := downloadCloudflared(ctx, binPath); err != nil {
 		return "", fmt.Errorf("failed to download cloudflared: %w", err)
@@ -160,29 +191,50 @@ func EnsureCloudflared(ctx context.Context) (string, error) {
 }
 
 // verifyCloudflaredChecksum checks the SHA-256 of a cached cloudflared binary
-// against the pinned checksums. Returns nil if the binary is not in the
-// checksum table (e.g. PATH-installed binary).
+// against the pinned checksums for this GOOS/GOARCH (or a Darwin install sidecar).
 func verifyCloudflaredChecksum(path string) error {
-	name := filepath.Base(path)
-	expected, ok := cloudflaredChecksums[name]
-	if !ok {
-		// Binary not in pinned table — cannot verify, allow it
+	if runtime.GOOS == "darwin" {
+		// Darwin releases pin the .tgz digest, not the extracted binary. After
+		// install we persist the extracted binary digest beside the file.
+		raw, err := os.ReadFile(cloudflaredBinarySidecar(path))
+		if err != nil {
+			return fmt.Errorf("darwin cloudflared missing integrity sidecar: %w", err)
+		}
+		expected := strings.TrimSpace(string(raw))
+		actual, err := fileSHA256(path)
+		if err != nil {
+			return err
+		}
+		if !strings.EqualFold(actual, expected) {
+			return fmt.Errorf("cloudflared checksum mismatch: expected %s, got %s", expected, actual)
+		}
 		return nil
 	}
-	f, err := os.Open(path)
+	expected, ok := cloudflaredChecksums[cloudflaredChecksumKey()]
+	if !ok {
+		return fmt.Errorf("no checksum pinned for %s/%s; cannot verify integrity", runtime.GOOS, runtime.GOARCH)
+	}
+	actual, err := fileSHA256(path)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return err
-	}
-	actual := hex.EncodeToString(h.Sum(nil))
 	if !strings.EqualFold(actual, expected) {
 		return fmt.Errorf("cloudflared checksum mismatch: expected %s, got %s", expected, actual)
 	}
 	return nil
+}
+
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func downloadCloudflared(ctx context.Context, destPath string) error {
@@ -203,6 +255,19 @@ func downloadCloudflared(ctx context.Context, destPath string) error {
 		return fmt.Errorf("download returned HTTP %d", resp.StatusCode)
 	}
 
+	mapKey := cloudflaredChecksumKey()
+	if mapKey == "" {
+		return fmt.Errorf("no checksum pinned for %s/%s; cannot verify integrity", runtime.GOOS, runtime.GOARCH)
+	}
+	expected, ok := cloudflaredChecksums[mapKey]
+	if !ok {
+		return fmt.Errorf("no checksum pinned for %s; cannot verify integrity. Update cloudflaredChecksums map", mapKey)
+	}
+
+	if runtime.GOOS == "darwin" {
+		return downloadAndExtractDarwinCloudflared(resp.Body, destPath, expected)
+	}
+
 	tmpPath := destPath + ".tmp"
 	f, err := os.Create(tmpPath)
 	if err != nil {
@@ -214,34 +279,103 @@ func downloadCloudflared(ctx context.Context, destPath string) error {
 	}()
 
 	h := sha256.New()
-	writer := io.MultiWriter(f, h)
-
-	if _, err := io.Copy(writer, resp.Body); err != nil {
+	if _, err := io.Copy(io.MultiWriter(f, h), resp.Body); err != nil {
 		return fmt.Errorf("failed to write binary: %w", err)
 	}
 	if err := f.Close(); err != nil {
 		return err
 	}
-
-	// Verify checksum - fail if no known hash for this binary (fail-closed).
-	mapKey := fmt.Sprintf("cloudflared-%s-%s", runtime.GOOS, runtime.GOARCH)
-	if runtime.GOOS == "windows" {
-		mapKey += ".exe"
-	}
-	expected, ok := cloudflaredChecksums[mapKey]
-	if !ok {
-		return fmt.Errorf("no checksum pinned for %s; cannot verify integrity. Update cloudflaredChecksums map", mapKey)
-	}
 	actual := hex.EncodeToString(h.Sum(nil))
 	if !strings.EqualFold(actual, expected) {
 		return fmt.Errorf("cloudflared checksum mismatch: expected %s, got %s", expected, actual)
 	}
-
 	if err := os.Chmod(tmpPath, 0755); err != nil {
 		return fmt.Errorf("failed to set permissions: %w", err)
 	}
-
 	return os.Rename(tmpPath, destPath)
+}
+
+func downloadAndExtractDarwinCloudflared(r io.Reader, destPath, expectedTGZ string) error {
+	tmpTGZ := destPath + ".tgz.tmp"
+	f, err := os.Create(tmpTGZ)
+	if err != nil {
+		return fmt.Errorf("failed to create temp archive: %w", err)
+	}
+	defer func() {
+		f.Close()
+		os.Remove(tmpTGZ)
+	}()
+
+	h := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(f, h), r); err != nil {
+		return fmt.Errorf("failed to write archive: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	actual := hex.EncodeToString(h.Sum(nil))
+	if !strings.EqualFold(actual, expectedTGZ) {
+		return fmt.Errorf("cloudflared tgz checksum mismatch: expected %s, got %s", expectedTGZ, actual)
+	}
+
+	af, err := os.Open(tmpTGZ)
+	if err != nil {
+		return err
+	}
+	defer af.Close()
+	gz, err := gzip.NewReader(af)
+	if err != nil {
+		return fmt.Errorf("invalid cloudflared tgz: %w", err)
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	tmpBin := destPath + ".bin.tmp"
+	found := false
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("corrupt cloudflared tgz: %w", err)
+		}
+		name := filepath.Base(hdr.Name)
+		if hdr.Typeflag != tar.TypeReg || name != "cloudflared" {
+			continue
+		}
+		out, err := os.OpenFile(tmpBin, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(out, tr); err != nil {
+			out.Close()
+			os.Remove(tmpBin)
+			return err
+		}
+		if err := out.Close(); err != nil {
+			os.Remove(tmpBin)
+			return err
+		}
+		found = true
+		break
+	}
+	if !found {
+		return fmt.Errorf("cloudflared binary not found inside darwin tgz")
+	}
+	sum, err := fileSHA256(tmpBin)
+	if err != nil {
+		os.Remove(tmpBin)
+		return err
+	}
+	if err := os.WriteFile(cloudflaredBinarySidecar(destPath), []byte(sum+"\n"), 0600); err != nil {
+		os.Remove(tmpBin)
+		return err
+	}
+	if err := os.Rename(tmpBin, destPath); err != nil {
+		os.Remove(tmpBin)
+		return err
+	}
+	return nil
 }
 
 // waitForTunnelReady polls the tunnel URL until DNS propagates and it's reachable.
@@ -380,8 +514,13 @@ func StartTunnel(ctx context.Context, localPort int) (*Tunnel, error) {
 		_ = cmd.Wait()
 		stderr.Close()
 		tunnel.mu.Lock()
+		already := tunnel.stopped
 		tunnel.stopped = true
+		onExit := tunnel.OnExit
 		tunnel.mu.Unlock()
+		if !already && onExit != nil {
+			onExit()
+		}
 	}()
 
 	return tunnel, nil
@@ -389,15 +528,17 @@ func StartTunnel(ctx context.Context, localPort int) (*Tunnel, error) {
 
 // IsCloudflaredInstalled returns true if cloudflared is available.
 func IsCloudflaredInstalled() bool {
-	if _, err := exec.LookPath(cloudflaredBinaryName()); err == nil {
-		return true
+	if path, err := exec.LookPath(cloudflaredBinaryName()); err == nil {
+		return verifyCloudflaredChecksum(path) == nil
 	}
 	binPath, err := cloudflaredPath()
 	if err != nil {
 		return false
 	}
-	_, err = os.Stat(binPath)
-	return err == nil
+	if _, err := os.Stat(binPath); err != nil {
+		return false
+	}
+	return verifyCloudflaredChecksum(binPath) == nil
 }
 
 // CloudflaredVersion returns the version string if available.

@@ -269,6 +269,7 @@ func executeProviderWithSmartSelection(provName, explicitProfile string, args []
 	resolver := NewLaunchModeResolver(LaunchModeInput{
 		Args:       args,
 		StdinIsTTY: IsTerminal(),
+		Provider:   provName,
 	})
 	result := resolver.ResolveWithReason()
 
@@ -504,13 +505,14 @@ func usage() {
   %s version [--json]             Display build and platform information
   %s release                      Interactively bump, build, install and validate Nexus
 
-Universal Canonical Aliases (translated to native options for all providers):
+Canonical Aliases (translated to native options; Codex keeps short -c/-p native):
   --yolo / -y                     Bypass approval prompts and permissions
-  --continue / -c                 Continue most recent session
+  --continue                      Continue most recent session (AGY/Claude also accept -c)
   --resume <id> / -r <id>         Resume session by ID
-  --print / -p                    Run non-interactively
+  --print                         Run non-interactively (AGY/Claude also accept -p)
   --effort <low|med|high>         Set model reasoning effort
   --plan                          Start session in planning mode
+  Codex note: -c is --config, -p is --profile; use --continue / --print for Nexus aliases
 
 Merged Help:
   %s <provider> --help            Show Nexus canonical aliases merged with official CLI help

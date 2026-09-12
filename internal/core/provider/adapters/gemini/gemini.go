@@ -30,7 +30,7 @@ func (a *Adapter) Capabilities() model.Capabilities {
 		Login:              true,
 		Logout:             true,
 		Usage:              true,
-		Conversations:      true,
+		Conversations:      false, // ListConversations is not implemented yet
 		Resume:             true,
 		CrossAccountResume: false,
 		HotAccountSwitch:   false,

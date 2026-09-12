@@ -94,9 +94,8 @@ func hardlinkOrCopy(src, dst string) error {
 	if _, err := os.Lstat(dst); err == nil {
 		return nil
 	}
-	if err := os.Link(src, dst); err == nil {
-		return nil
-	}
+	// Copy only: hardlinking would share an inode across accounts so a resume
+	// in one profile could mutate/truncate another account's rollout history.
 	return copyFile(src, dst)
 }
 
@@ -114,16 +113,24 @@ func adoptSessionIntoProfile(profileName, sessionID string) error {
 		return err
 	}
 
-	if findRolloutInTree(destRoot, sessionID) != "" {
+	if existing := findRolloutInTree(destRoot, sessionID); existing != "" {
 		var idxs []string
 		for _, root := range sessionCandidateRoots(home) {
 			idxs = append(idxs, indexCandidatesForSessionsRoot(root)...)
 		}
 		mergeSessionIndexEntry(home, sessionID, idxs...)
+		if shouldMarkCrossAccount(home, existing, "") {
+			if err := recordCrossAccountSession(home, sessionID, profileNameFromSessionsPath(existing), existing); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 	// Legacy dual-tree: treat as already present for resume, but prefer canonical.
-	if findRolloutInTree(filepath.Join(home, ".codex", "sessions"), sessionID) != "" {
+	if existing := findRolloutInTree(filepath.Join(home, ".codex", "sessions"), sessionID); existing != "" {
+		if shouldMarkCrossAccount(home, existing, "") {
+			_ = recordCrossAccountSession(home, sessionID, profileNameFromSessionsPath(existing), existing)
+		}
 		return nil
 	}
 
@@ -152,7 +159,12 @@ func adoptSessionIntoProfile(profileName, sessionID string) error {
 		return err
 	}
 	sourceProfile := profileNameFromSessionsPath(src)
-	_ = recordCrossAccountSession(home, sessionID, sourceProfile, src)
+	if shouldMarkCrossAccount(home, src, sourceProfile) {
+		if err := recordCrossAccountSession(home, sessionID, sourceProfile, src); err != nil {
+			_ = os.Remove(dst)
+			return fmt.Errorf("cross-account marker required after adopt: %w", err)
+		}
+	}
 	mergeSessionIndexEntry(home, sessionID, indexCandidatesForSessionsRoot(srcRoot)...)
 	return nil
 }
@@ -257,7 +269,13 @@ func seedCrossAccountSessions(profileName string) error {
 		if err := hardlinkOrCopy(item.path, dst); err != nil {
 			continue
 		}
-		_ = recordCrossAccountSession(home, item.sessionID, profileNameFromSessionsPath(item.path), item.path)
+		sourceProfile := profileNameFromSessionsPath(item.path)
+		if shouldMarkCrossAccount(home, item.path, sourceProfile) {
+			if err := recordCrossAccountSession(home, item.sessionID, sourceProfile, item.path); err != nil {
+				_ = os.Remove(dst)
+				continue
+			}
+		}
 		merged := false
 		for _, idxPath := range indexCandidatesForSessionsRoot(item.root) {
 			if mergeSessionIndexFromFile(home, item.sessionID, idxPath) {
@@ -270,6 +288,40 @@ func seedCrossAccountSessions(profileName string) error {
 		}
 	}
 	return nil
+}
+
+// shouldMarkCrossAccount reports whether an imported rollout must be excluded
+// from GetUsage for this profile. Same chatgpt_account_id keeps quota attribution.
+func shouldMarkCrossAccount(destHome, sourcePath, sourceProfile string) bool {
+	destAcct := readCodexAuthAccountID(filepath.Join(destHome, "auth.json"))
+	if rolloutAcct := readRolloutAccountID(sourcePath); destAcct != "" && rolloutAcct != "" {
+		return !strings.EqualFold(destAcct, rolloutAcct)
+	}
+	if sourceProfile == "host" {
+		return true
+	}
+	if sourceProfile == "" {
+		// Destination-local path without a verifiable foreign account id:
+		// do not suppress quota for native sessions.
+		return false
+	}
+	srcHome := ""
+	parts := strings.Split(filepath.ToSlash(sourcePath), "/")
+	for i := 0; i < len(parts)-1; i++ {
+		if parts[i] == "codex" && i+1 < len(parts) && parts[i+1] != "home" && parts[i+1] != "sessions" {
+			srcHome = filepath.Join(strings.Join(parts[:i+2], "/"), "home")
+			break
+		}
+	}
+	if srcHome == "" {
+		return true
+	}
+	srcAcct := readCodexAuthAccountID(filepath.Join(srcHome, "auth.json"))
+	if destAcct != "" && srcAcct != "" && strings.EqualFold(destAcct, srcAcct) {
+		return false
+	}
+	// Unverifiable or mismatched sibling accounts: fail closed for quota.
+	return true
 }
 
 func isHostSessionsRoot(root string) bool {

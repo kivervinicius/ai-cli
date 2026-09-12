@@ -111,19 +111,36 @@ func (s *Server) handleTunnelStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Register tunnel host for origin validation
+	// Arm tunnel auth fail-closed as soon as the public URL exists — before
+	// WaitForTunnel — so bootstrap/query-token cannot stay reusable while the
+	// hostname is already world-reachable.
 	if tunnelHost := extractTunnelHost(tunnel.URL); tunnelHost != "" {
 		originpolicy.RegisterTunnelHost(tunnelHost)
 		s.tunnelHost = tunnelHost
 	}
+	s.auth.SetTunnelActive(true)
 
-	// Wait for tunnel connectivity
+	tunnel.OnExit = func() {
+		if host := extractTunnelHost(tunnel.URL); host != "" {
+			originpolicy.UnregisterTunnelHost(host)
+		}
+		s.auth.SetTunnelActive(false)
+		tm := s.tunnelManager()
+		tm.mu.Lock()
+		if tm.tunnel == tunnel {
+			tm.tunnel = nil
+			tm.cancel = nil
+		}
+		tm.mu.Unlock()
+	}
+
 	readyCtx, readyCancel := context.WithTimeout(ctx, 60*time.Second)
 	defer readyCancel()
 	if err := tunnel.WaitForTunnel(readyCtx); err != nil {
 		if tunnelHost := extractTunnelHost(tunnel.URL); tunnelHost != "" {
 			originpolicy.UnregisterTunnelHost(tunnelHost)
 		}
+		s.auth.SetTunnelActive(false)
 		_ = tunnel.Stop()
 		tm.mu.Lock()
 		tm.starting = false
@@ -141,10 +158,6 @@ func (s *Server) handleTunnelStart(w http.ResponseWriter, r *http.Request) {
 	tm.cancel = tunnel.cancel
 	tm.starting = false
 	tm.mu.Unlock()
-
-	// Inform auth manager that tunnel is active so bootstrap becomes one-time
-	// and cookies are set Secure even on loopback.
-	s.auth.SetTunnelActive(true)
 
 	bURL := s.remoteBootstrapURL(tunnel.URL)
 

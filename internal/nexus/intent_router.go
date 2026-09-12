@@ -80,7 +80,7 @@ func DecideIntent(goal string, snapshot *contextsnapshot.ProjectContextSnapshot)
 				break
 			}
 			decision.KnownFacts = append(decision.KnownFacts, fact.Key)
-			if fact.Provenance != nil && len(decision.Evidence) < 32 {
+			if len(fact.Provenance) > 0 && len(decision.Evidence) < 32 {
 				decision.Evidence = append(decision.Evidence, fact.Provenance[0].SourcePath+":"+fact.Key)
 			}
 		}

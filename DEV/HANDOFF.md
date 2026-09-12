@@ -1,5 +1,14 @@
 # Handoff
 
+## Capability review intensive — 2026-09-12
+
+Multi-reviewer pass (CLI JSON, make gates, Bugbot, security-review, cavecrew, GSD,
+Codex) found tunnel auth not armed for CLI tunnels, CrossAccountResume hardlink/marker
+fail-open, and capability lies on OpenCode/AGY/Gemini. Safe CRITICAL/HIGH/MEDIUM fixes
+are in the worktree; canvas report at
+`canvases/nexus-capability-review.canvas.tsx`. Claude/Gemini CLIs were SKIPPED.
+Do not claim live CrossAccountResume PASS without TUI evidence.
+
 ## Codex CrossAccountResume — 2026-09-12
 
 Cross-account Codex resume is restored without re-symlinking `sessions` to the

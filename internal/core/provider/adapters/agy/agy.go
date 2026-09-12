@@ -49,12 +49,14 @@ func (a *Adapter) Name() string {
 
 func (a *Adapter) Capabilities() model.Capabilities {
 	return model.Capabilities{
-		Login:              true,
-		Logout:             true,
-		Usage:              true,
-		Conversations:      true,
-		Resume:             true,
-		CrossAccountResume: true,
+		Login:         true,
+		Logout:        true,
+		Usage:         true,
+		Conversations: true,
+		Resume:        true,
+		// Host history may be linked, but there is no sibling-profile adopt/seed
+		// path equivalent to Codex CrossAccountResume.
+		CrossAccountResume: false,
 		HotAccountSwitch:   false,
 		IsolatedRuntime:    true,
 		ProjectBinding:     true,
@@ -746,17 +748,17 @@ func (a *Adapter) fetchLiveQuota(ctx context.Context, p model.Profile) (model.Us
 	out, err := runtime.RunCommandCapture(fetchCtx, bin, args, env, home)
 	if err != nil {
 		if debug {
-			slog.Debug("AGY fetchLiveQuota: agy CLI failed", "profile", p.Name, "err", err, "output", out)
+			slog.Debug("AGY fetchLiveQuota: agy CLI failed", "profile", p.Name, "err", err, "output", security.Redact(out))
 		}
 		return model.UsageSnapshot{}, false
 	}
 	if debug {
-		slog.Debug("AGY fetchLiveQuota: agy CLI output", "profile", p.Name, "output", out)
+		slog.Debug("AGY fetchLiveQuota: agy CLI output", "profile", p.Name, "output", security.Redact(out))
 	}
 	windows, ok := parseAgyQuotaOutput(out)
 	if !ok {
 		if debug {
-			slog.Debug("AGY fetchLiveQuota: parseAgyQuotaOutput failed", "profile", p.Name, "output", out)
+			slog.Debug("AGY fetchLiveQuota: parseAgyQuotaOutput failed", "profile", p.Name, "output", security.Redact(out))
 		}
 		return model.UsageSnapshot{}, false
 	}

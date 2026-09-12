@@ -29,12 +29,13 @@ func (a *Adapter) Name() string         { return "OpenCode" }
 func (a *Adapter) Capabilities() model.Capabilities {
 	return model.Capabilities{
 		// OpenCode delegates authentication to its configured model provider.
-		Login:              false,
-		Logout:             false,
-		Usage:              true,
-		Conversations:      true,
-		Resume:             true,
-		CrossAccountResume: true,
+		Login:         false,
+		Logout:        false,
+		Usage:         true,
+		Conversations: true,
+		Resume:        true,
+		// Isolated per-profile session dir only — no sibling/host import path.
+		CrossAccountResume: false,
 		HotAccountSwitch:   false,
 		IsolatedRuntime:    true,
 		ProjectBinding:     true,

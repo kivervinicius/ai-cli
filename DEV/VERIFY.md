@@ -1,5 +1,21 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-12 — Capability review intensive
+
+- PASS — CLI JSON: doctor, security, control doctor, providers, profiles, version.
+- PASS — `make security` (govulncheck clean).
+- PASS — focused tests after fixes: web, codex, nexus, flags, update; `make lint-go` clean.
+- PASS — TunnelHost ⇒ `IsTunnelActive` regression test.
+- PASS — providers advertise CrossAccountResume only for Codex after honesty fix.
+- PASS — follow-up: official cloudflared 2026.8.2 checksums, Darwin `.tgz` extract,
+  tunnel `OnExit` disarms auth, `--effort` preserves native `-c`, AGY `-p`→DIRECT,
+  supervised Codex bootstrap calls `Prepare` (CrossAccountResume seed).
+  Retest: `go test ./internal/control/web ./internal/control/flags ./internal/app ./internal/control/driver ./internal/core/provider/adapters/codex -count=1`.
+- SKIPPED — Claude CLI OAuth expired; Gemini CLI client unsupported.
+- UNVERIFIED — interactive `/resume` cross-account and live mid-turn Codex TUI.
+- DEFERRED — Claude/OpenCode Usage file-stub honesty; developer-preset credential exposures;
+  desktop bootstrap Origin binding; WS query tokens on private `--remote`.
+
 ## 2026-09-12 — Codex CrossAccountResume
 
 - PASS — `go test ./internal/core/provider/adapters/codex ./internal/conversation ./internal/control/flags -count=1`.
