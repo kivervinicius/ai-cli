@@ -1,5 +1,19 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-12 — Codex CrossAccountResume
+
+- PASS — `go test ./internal/core/provider/adapters/codex ./internal/conversation ./internal/control/flags -count=1`.
+- PASS — `TestAdoptSessionFromSiblingProfile` copies sibling rollout + index
+  into destination canonical sessions and marks cross-account.
+- PASS — `TestPrepareSeedsSiblingSessionsForPicker` seeds sibling IDs into
+  destination `session_index.jsonl` during Prepare.
+- PASS — `TestForeignAccountRolloutIgnoredForQuota` and
+  `TestRolloutBelongsRejectsMismatchedAccountID` keep GetUsage from inheriting
+  foreign resume artifacts.
+- UNVERIFIED — interactive `nexus codex:kivergmail` `/resume` listing of
+  omegasistemas threads and live `nexus usage` attribution on account
+  `9cba8371-...` (requires local authenticated Codex TUI).
+
 ## 2026-09-12 — Mission evidence isolation
 
 - PASS — two persisted Missions in the same project receive only their own

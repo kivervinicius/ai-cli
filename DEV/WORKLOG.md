@@ -1,5 +1,22 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-12 — Codex CrossAccountResume restore
+
+- Restored CrossAccountResume without re-sharing the whole `sessions` tree:
+  `adoptSessionIntoProfile` now searches sibling `profiles/codex/*/home/sessions`
+  (plus legacy `.codex/sessions`) and host `~/.codex/sessions`, then hardlinks
+  or copies into the active profile's canonical `home/sessions` only.
+- `Prepare` calls `seedCrossAccountSessions` so the native Codex `/resume`
+  picker sees recent sibling threads (host capped at 40, CWD preferred).
+- Imported sessions are marked in `nexus-cross-account-sessions.jsonl`;
+  `rolloutBelongsToProfile` ignores those markers and rejects rollouts whose
+  `chatgpt_account_id` does not match the profile when present.
+- Focused tests: adopt from sibling, Prepare seed for picker, foreign rollout
+  ignored for quota, account-id mismatch rejection.
+  `go test ./internal/core/provider/adapters/codex ./internal/conversation
+  ./internal/control/flags -count=1` PASS. Live kivergmail `/resume` of
+  omegasistemas threads remains UNVERIFIED in this environment.
+
 ## 2026-09-12 — Mission evidence projection isolation
 
 - Fixed a concrete read-model boundary bug: the validation endpoint selected a

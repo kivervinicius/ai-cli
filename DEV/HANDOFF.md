@@ -1,5 +1,14 @@
 # Handoff
 
+## Codex CrossAccountResume — 2026-09-12
+
+Cross-account Codex resume is restored without re-symlinking `sessions` to the
+host. On Prepare/Resume, Nexus hardlinks or copies recent rollouts from sibling
+Codex profiles (and a capped host set) into the active profile's canonical
+`CODEX_HOME/sessions`, merges `session_index.jsonl`, and marks imports so
+GetUsage never attributes foreign quota. Unit coverage is green; live omegaedu
+picker verification against omegasistemas threads is still UNVERIFIED.
+
 ## Mission evidence isolation — 2026-09-12
 
 The canonical `RunApplicationService.ValidationEvidence` projection now

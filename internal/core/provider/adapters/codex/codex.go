@@ -141,6 +141,9 @@ func (a *Adapter) Prepare(ctx context.Context, p model.Profile) error {
 		}
 	}
 	_ = os.MkdirAll(filepath.Join(home, "sessions"), 0700)
+	// CrossAccountResume: import sibling/host conversation artifacts so the
+	// native Codex resume picker can see threads from other Codex accounts.
+	_ = seedCrossAccountSessions(p.Name)
 
 	return nil
 }
@@ -503,8 +506,23 @@ func realNonSharedDir(dir, hostSessions string) (string, bool) {
 }
 
 func rolloutBelongsToProfile(path string, modTime time.Time, sharedHost bool, profileHome string, profileSessionRoots []string, profileAccountID, hostAccountID string) bool {
+	// Resume-only imports from other accounts must never feed quota.
+	if profileHome != "" && isCrossAccountResumeSession(profileHome, path) {
+		return false
+	}
+	if rolloutAccountID := readRolloutAccountID(path); rolloutAccountID != "" && profileAccountID != "" {
+		if !strings.EqualFold(rolloutAccountID, profileAccountID) {
+			return false
+		}
+		// Verifiable account match wins regardless of path locality.
+		if !sharedHost {
+			return true
+		}
+	}
 	for _, root := range profileSessionRoots {
 		if config.FilesystemPathWithin(root, path) {
+			// Path under this profile is enough only when the rollout has no
+			// foreign account id (already checked above).
 			return true
 		}
 	}
@@ -953,62 +971,7 @@ func migrateAwayFromSharedSessions(profileHome string) {
 	}
 }
 
-// adoptSessionIntoProfile copies a rollout (and index entry when possible) from
-// the host or another location into the profile's isolated sessions store.
-func adoptSessionIntoProfile(profileName, sessionID string) error {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return fmt.Errorf("empty session id")
-	}
-	home, err := config.ProfileHome("codex", profileName)
-	if err != nil {
-		return err
-	}
-	destRoots := []string{filepath.Join(home, "sessions"), filepath.Join(home, ".codex", "sessions")}
-	for _, d := range destRoots {
-		_ = os.MkdirAll(d, 0700)
-	}
-	destRoot := destRoots[0]
-
-	// Already present?
-	if findRolloutInTree(destRoot, sessionID) != "" {
-		return nil
-	}
-	if findRolloutInTree(destRoots[1], sessionID) != "" {
-		return nil
-	}
-
-	candidates := []string{}
-	if host := security.FindHostHome(); host != "" {
-		candidates = append(candidates, filepath.Join(host, ".codex", "sessions"))
-	}
-	src := ""
-	for _, c := range candidates {
-		if p := findRolloutInTree(c, sessionID); p != "" {
-			src = p
-			break
-		}
-	}
-	if src == "" {
-		return fmt.Errorf("session %s not found for adoption", sessionID)
-	}
-
-	rel := ""
-	for _, c := range candidates {
-		if strings.HasPrefix(src, c+string(os.PathSeparator)) || src == c {
-			rel, _ = filepath.Rel(c, src)
-			break
-		}
-	}
-	if rel == "" || strings.HasPrefix(rel, "..") {
-		rel = filepath.Base(src)
-	}
-	dst := filepath.Join(destRoot, rel)
-	if err := os.MkdirAll(filepath.Dir(dst), 0700); err != nil {
-		return err
-	}
-	return copyFile(src, dst)
-}
+// adoptSessionIntoProfile is defined in cross_account_sessions.go.
 
 // tryAdoptLatestHostRollout copies the newest host rollout that belongs to this
 // profile's chatgpt_account_id into the isolated sessions store. Returns true
