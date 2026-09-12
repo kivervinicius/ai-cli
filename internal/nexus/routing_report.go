@@ -17,6 +17,7 @@ type RoutingDecisionReport struct {
 	PlanID       string                       `json:"plan_id,omitempty"`
 	PlanRevision int                          `json:"work_plan_revision,omitempty"`
 	Intent       *IntentDecision              `json:"intent,omitempty"`
+	Delegation   *DelegationDecision          `json:"delegation,omitempty"`
 	Decisions    []RoutingDecisionReportEntry `json:"decisions"`
 }
 
@@ -50,6 +51,13 @@ func BuildRoutingDecisionReportWithPlan(run *runner.MissionRun, plan *store.Work
 				return RoutingDecisionReport{}, fmt.Errorf("decode persisted intent decision: %w", err)
 			}
 			report.Intent = &decision
+		}
+		if raw := strings.TrimSpace(plan.StructuredFacts[DelegationDecisionFactKey]); raw != "" {
+			var decision DelegationDecision
+			if err := json.Unmarshal([]byte(raw), &decision); err != nil {
+				return RoutingDecisionReport{}, fmt.Errorf("decode persisted delegation decision: %w", err)
+			}
+			report.Delegation = &decision
 		}
 	}
 	for _, pkg := range run.PackageRuns {

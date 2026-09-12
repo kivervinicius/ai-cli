@@ -178,7 +178,7 @@ func (n *Nexus) processMissionSchedules(ctx context.Context) error {
 			// was read. It owns responsibility for creating this run.
 			continue
 		}
-		run, startErr := n.StartMissionRun(ctx, schedule.PlanID, payload.AgentID, payload.Contract, true)
+		run, startErr := n.StartMissionRunApproved(ctx, schedule.PlanID, payload.PlanRevision, payload.AgentID, payload.Contract, true)
 		if startErr != nil {
 			// Resource/transient failures remain pending for WHEN_RESOURCES; fixed
 			// time/dependency schedules become FAILED and are visible to the user.

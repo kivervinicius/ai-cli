@@ -324,6 +324,8 @@ func (s *Server) routePlan(h *NexusHandler) http.HandlerFunc {
 			}
 		}
 		switch {
+		case strings.HasSuffix(r.URL.Path, "/delegation/approve"):
+			h.handlePlanDelegationApprove(w, r)
 		case strings.HasSuffix(r.URL.Path, "/compile"):
 			h.handlePlanCompile(w, r)
 		case strings.HasSuffix(r.URL.Path, "/run"):

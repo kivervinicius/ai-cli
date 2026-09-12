@@ -1569,3 +1569,21 @@ Candidate `c8747481fc04c65614b38b5c9d9da106f56858c3` terminou em
 archive/health-check, browser visual não independente e ausência de evidência
 nativa/release same-SHA. Próxima ação: corrigir blockers e repetir CI nativo e
 esta auditoria no mesmo SHA.
+
+## Handoff — 2026-09-12 automatic delegation
+
+Worktree dedicado: `/projetos/tools/IAPro-Nexus-Workspace-OS-Handoff-2026-08-29/nexus-auto-delegation`.
+Base: `37b9ddec49ce72d869bbeb2ad402a1d4dd2bc674`; branch
+`feat/nexus-auto-delegation`; sem commit/push.
+
+Implementado o policy slice em `internal/nexus/delegation.go` e integrado aos
+boundaries existentes: WorkPlan facts, Flow decomposition, MissionRunner,
+`MatchAgents`, rich `AgentSpec` para Agents criados e routing report. A suíte
+Nexus e os gates completos passaram. `make build` e `make build-desktop`
+continuam limitados pelo stamping VCS do ambiente; os binários compilam com
+`go build -buildvcs=false`. O passthrough PTY provider-interativo de
+`nexus agy` permanece fora do E2E de delegação; o caminho Flow → WorkPlan →
+Mission está verificado. Próximo passo: commitar esta branch e aguardar o
+fim do hardening antes de qualquer rebase/merge.
+
+Base SHA: `37b9ddec49ce72d869bbeb2ad402a1d4dd2bc674`.

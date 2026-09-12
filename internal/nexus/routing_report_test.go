@@ -63,3 +63,18 @@ func TestBuildRoutingDecisionReportRejectsCorruptPersistedIntent(t *testing.T) {
 		t.Fatal("corrupt persisted intent must not be silently hidden")
 	}
 }
+
+func TestBuildRoutingDecisionReportProjectsPersistedDelegation(t *testing.T) {
+	decision := DecideDelegation("backend frontend e2e", DelegationAuto)
+	facts, err := PersistDelegationDecisionFacts(nil, decision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := BuildRoutingDecisionReportWithPlan(&runner.MissionRun{ID: "run-delegation", PlanID: "plan-delegation"}, &store.WorkPlan{ID: "plan-delegation", StructuredFacts: facts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Delegation == nil || !report.Delegation.Delegate || len(report.Delegation.Workstreams) != 3 {
+		t.Fatalf("persisted delegation was not projected: %+v", report.Delegation)
+	}
+}

@@ -1109,7 +1109,39 @@ export interface RoutingDecisionReport {
     snapshot_identity?: string;
     snapshot_completeness?: string;
   };
+  delegation?: DelegationDecision;
   decisions: RoutingDecisionReportEntry[];
+}
+
+export interface DelegationDecision {
+  version: number;
+  mode: 'AUTO' | 'ASK' | 'OFF';
+  delegate: boolean;
+  pending_approval?: boolean;
+  reason: string;
+  expected_benefit: string;
+  parallelizable: boolean;
+  coordination_cost: string;
+  context_transfer_cost: string;
+  write_collision_risk: string;
+  shared_contract_risk: string;
+  workstreams?: Array<{
+    id: string;
+    goal: string;
+    preferred_roles?: string[];
+    acceptable_roles?: string[];
+    required_capabilities?: string[];
+    preferred_capabilities?: string[];
+    domains?: string[];
+    dependencies?: string[];
+    owned_paths?: string[];
+    shared_contracts?: string[];
+    parallel_group?: string;
+  }>;
+  verification_strategy: string;
+  lead_agent_id?: string;
+  max_fan_out: number;
+  created_at: string;
 }
 
 export interface PackageRun {
@@ -1229,6 +1261,7 @@ export interface FlowDecompositionRequest {
   skill_ids?: string[];
   maestro_skills?: string[];
   simple?: boolean;
+  delegation_mode?: 'AUTO' | 'ASK' | 'OFF';
 }
 
 export interface FlowDecompositionProposal {

@@ -14,13 +14,14 @@ import (
 
 // FlowDecompositionRequest defines the contract for decomposing a prompt or artifact into a Flow proposal (PLAN 04).
 type FlowDecompositionRequest struct {
-	ProjectID     string   `json:"project_id"`
-	ArtifactID    string   `json:"artifact_id,omitempty"`
-	Goal          string   `json:"goal"`
-	SourcePrompt  string   `json:"source_prompt,omitempty"`
-	SkillIDs      []string `json:"skill_ids,omitempty"`
-	MaestroSkills []string `json:"maestro_skills,omitempty"`
-	Simple        bool     `json:"simple,omitempty"`
+	ProjectID      string         `json:"project_id"`
+	ArtifactID     string         `json:"artifact_id,omitempty"`
+	Goal           string         `json:"goal"`
+	SourcePrompt   string         `json:"source_prompt,omitempty"`
+	SkillIDs       []string       `json:"skill_ids,omitempty"`
+	MaestroSkills  []string       `json:"maestro_skills,omitempty"`
+	Simple         bool           `json:"simple,omitempty"`
+	DelegationMode DelegationMode `json:"delegation_mode,omitempty"`
 }
 
 // resolvedSkillIDs prefers the canonical skill_ids field and falls back to the
@@ -125,6 +126,10 @@ func (n *Nexus) DecomposePromptIntoFlowProposal(ctx context.Context, req FlowDec
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}
+	delegation := DecideDelegation(goal, req.DelegationMode)
+	if facts, factErr := PersistDelegationDecisionFacts(nil, delegation); factErr == nil {
+		flow.StructuredFacts = facts
+	}
 
 	if isAtomic {
 		skills := req.resolvedSkillIDs()
@@ -147,6 +152,8 @@ func (n *Nexus) DecomposePromptIntoFlowProposal(ctx context.Context, req FlowDec
 				CompiledPrompt:           sourcePrompt,
 			},
 		}
+	} else if delegation.Delegate {
+		flow.Steps = delegatedFlowSteps(delegation.Workstreams, phaseID, title, verification, req.resolvedSkillIDs())
 	} else {
 		// Multi-step structured decomposition (Implementer -> Tester/Reviewer)
 		skills := req.resolvedSkillIDs()
@@ -198,6 +205,45 @@ func (n *Nexus) DecomposePromptIntoFlowProposal(ctx context.Context, req FlowDec
 		Reasoning:              fmt.Sprintf("Decomposição baseada no arquétipo %s com %d passos.", archetype, len(flow.Steps)),
 	}
 	return proposal, nil
+}
+
+func delegatedFlowSteps(workstreams []DelegatedWorkstream, phaseID, title string, verification, skills []string) []FlowStep {
+	steps := make([]FlowStep, 0, len(workstreams))
+	stepIDs := make(map[string]string, len(workstreams))
+	for _, workstream := range workstreams {
+		stepIDs[workstream.ID] = "step_" + ids.NewRuntimeID()
+	}
+	for order, workstream := range workstreams {
+		dependencies := make([]string, 0, len(workstream.Dependencies))
+		for _, dependency := range workstream.Dependencies {
+			if id := stepIDs[dependency]; id != "" {
+				dependencies = append(dependencies, id)
+			}
+		}
+		role := "implementer"
+		if len(workstream.PreferredRoles) > 0 {
+			role = workstream.PreferredRoles[0]
+		}
+		status := "READY"
+		if len(dependencies) > 0 {
+			status = "PENDING"
+		}
+		label := workstream.ID
+		if len(label) > 0 {
+			label = strings.ToUpper(label[:1]) + label[1:]
+		}
+		steps = append(steps, FlowStep{
+			ID: stepIDs[workstream.ID], PhaseID: phaseID, Order: order + 1,
+			Title: label + " · " + title, Goal: workstream.Goal,
+			Priority: "HIGH", Status: status, Dependencies: dependencies,
+			ParallelGroup: workstream.ParallelGroup, Role: role,
+			TaskRequirements: taskRequirementsForWorkstream(workstream), AssignmentStrategy: FlowAssignmentAuto,
+			AcceptanceCriteria: []string{"Workstream concluído sem regressões"}, VerificationRequirements: verification,
+			SkillIDs: append([]string(nil), skills...), MaestroSkills: append([]string(nil), skills...),
+			RelevantPaths: append([]string(nil), workstream.OwnedPaths...), SharedArtifacts: append([]string(nil), workstream.SharedContracts...),
+		})
+	}
+	return steps
 }
 
 func projectVerificationCommands(root string) []string {

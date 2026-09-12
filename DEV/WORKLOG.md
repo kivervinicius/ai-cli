@@ -4252,6 +4252,35 @@ build` PASS e Web reiniciado em HTTP 200.
 - Sem binário existente, o fallback continua sendo `~/.local/bin`.
 - Verificação: `bash -n install.sh`, `go test ./internal/release` e `git diff --check`.
 - 2026-09-11 independent final audit: audited SHA `c8747481fc04c65614b38b5c9d9da106f56858c3`; found P0 trust-root placeholder and unsafe archive updater, with native/browser same-SHA evidence absent. Report: `DEV/validation/FINAL_INDEPENDENT_VALIDATION.md`. Verdict: `NO_GO_FOR_MERGE`.
+
+## 2026-09-12 — Nexus automatic delegation feature branch
+
+- Criado worktree/branch dedicado `feat/nexus-auto-delegation` sobre
+  `37b9ddec49ce72d869bbeb2ad402a1d4dd2bc674`, sem alterar o worktree de
+  hardening.
+- Adicionado contrato determinístico `DelegationMode`/`DelegationDecision`/
+  `DelegatedWorkstream`, persistido em `WorkPlan.StructuredFacts`, com AUTO,
+  ASK/OFF, dispatch brake, ownership e dependências backend/frontend/QA.
+- O caminho existente Flow → WorkPlan → Mission mantém `MatchAgents` e o
+  scheduler como autoridades; Agents criados automaticamente agora recebem
+  revisão `AgentSpec` rica e provider-independent. `LeadAgentID` foi
+  transportado no `MissionRun` existente.
+- `RoutingDecisionReport` projeta a decisão de delegação persistida; ASK só
+  despacha após `ApproveDelegation`.
+- Verificação inicial: testes focados e `go test ./internal/nexus/... -count=1`
+  PASS. Próximo contexto: race/vet/full gates e revisão adversarial.
+
+## 2026-09-12 — automatic delegation closure
+
+- Adicionadas as proteções finais: aprovação ASK preservada em updates de plano,
+  scheduling usa a revisão aprovada, cleanup de Agent criado quando a revisão
+  falha e `CreatedAt` só é atribuído na persistência.
+- Cobertura adicionada para decisão determinística, aprovação pendente e
+  projeção da delegação no routing report.
+- Gates finais: `go test ./... -count=1`, `go test -race ./internal/nexus/... -count=1`,
+  `go vet ./...`, `make quality`, `make security`, `make web-verify` e
+  `git diff --check` PASS. Build normal/desktop ficou UNVERIFIED somente no
+  stamping VCS; `go build -buildvcs=false` para ambos PASS.
 # 2026-09-11 — Nexus Final Closure verification and verdict
 
 - Recorded base SHA `2925ca746c198334f20d1e0cef7feb51e4f4f4e3`; no commit or push.

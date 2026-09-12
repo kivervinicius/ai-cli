@@ -451,6 +451,24 @@ func (h *NexusHandler) handleFlowDecompose(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, proposal)
 }
 
+func (h *NexusHandler) handlePlanDelegationApprove(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	planID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/v1/plans/"), "/delegation/approve")
+	if planID == "" {
+		writeError(w, http.StatusBadRequest, "plan id is required")
+		return
+	}
+	plan, err := h.nexus.ApproveDelegation(r.Context(), planID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, plan)
+}
+
 // handlePlanRun POST /api/v1/plans/{id}/run
 func (h *NexusHandler) handlePlanRun(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
