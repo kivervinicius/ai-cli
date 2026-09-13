@@ -37,6 +37,7 @@ type LaunchOptions struct {
 	Environment       map[string]string `json:"environment,omitempty"`
 	Isolation         string            `json:"isolation,omitempty"`
 	Options           map[string]any    `json:"options,omitempty"`
+	Labels            map[string]string `json:"labels,omitempty"`
 	PathPrepend       []string          `json:"path_prepend,omitempty"`
 }
 
@@ -155,6 +156,7 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 		MachineID:         registry.LocalMachineID(),
 		Location:          "local",
 		Transport:         "ipc",
+		Labels:            cloneLabels(opts.Labels),
 	}
 
 	if err := l.reg.Register(sess); err != nil {
@@ -227,4 +229,15 @@ func (l *Launcher) Launch(ctx context.Context, opts LaunchOptions) (*registry.Ru
 	_ = l.reg.Register(sess)
 
 	return &sess, nil
+}
+
+func cloneLabels(labels map[string]string) map[string]string {
+	if len(labels) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(labels))
+	for key, value := range labels {
+		out[key] = value
+	}
+	return out
 }

@@ -2,17 +2,22 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/kivervinicius/ai-cli/internal/control/launcher"
+	"github.com/kivervinicius/ai-cli/internal/control/protocol"
 	"github.com/kivervinicius/ai-cli/internal/core/config"
 	"github.com/kivervinicius/ai-cli/internal/core/cooldown"
 	"github.com/kivervinicius/ai-cli/internal/core/model"
 	"github.com/kivervinicius/ai-cli/internal/core/quota"
 	"github.com/kivervinicius/ai-cli/internal/core/scheduler"
+	"github.com/kivervinicius/ai-cli/internal/nexus"
+	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 	"github.com/kivervinicius/ai-cli/internal/profile"
 )
 
@@ -90,19 +95,57 @@ func executeProviderSupervised(provName, explicitProfile string, args []string) 
 	}
 
 	workspace := mustWorkingDirectory()
+	lead := nexus.InteractiveLeadBinding{}
+	n := nexus.Default()
+	if st, projectErr := n.OpenProject(); projectErr == nil {
+		if canonical, canonicalErr := store.CanonicalPath(workspace); canonicalErr == nil {
+			project, lookupErr := st.GetProjectByPath(canonical)
+			if errors.Is(lookupErr, store.ErrNotFound) {
+				project, lookupErr = st.CreateProject(store.Project{
+					Name:          filepath.Base(canonical),
+					CanonicalPath: canonical,
+				})
+			}
+			if lookupErr == nil {
+				_ = st.TouchProject(project.ID)
+				if agent, leadErr := n.PrepareInteractiveLead(context.Background(), project.ID, provName, selected); leadErr == nil {
+					lead = nexus.InteractiveLeadBinding{AgentID: agent.ID, ProjectID: project.ID, ProjectName: project.Name}
+				}
+			}
+		}
+	}
 	session, err := launcher.Default().Launch(context.Background(), launcher.LaunchOptions{
-		ProviderID: provName,
-		ProfileID:  selected,
-		Workspace:  workspace,
-		Args:       args,
-		Standalone: false,
-		Timeout:    15 * time.Second,
+		ProviderID:  provName,
+		ProfileID:   selected,
+		Workspace:   workspace,
+		AgentID:     lead.AgentID,
+		ProjectID:   lead.ProjectID,
+		ProjectName: lead.ProjectName,
+		Args:        args,
+		Standalone:  false,
+		Timeout:     15 * time.Second,
+		Labels: map[string]string{
+			"nexus.interactive_lead": fmt.Sprintf("%t", lead.AgentID != ""),
+			"nexus.delegation_mode":  string(nexus.DelegationAuto),
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("supervised %s launch failed: %w", provName, err)
 	}
+	if lead.AgentID != "" {
+		if err := n.BindInteractiveLeadRuntime(context.Background(), lead.AgentID, session); err != nil {
+			if client, clientErr := protocol.NewClient(session.RuntimeID); clientErr == nil {
+				_ = client.Stop()
+				_ = client.Close()
+			}
+			return fmt.Errorf("bind interactive Lead Agent: %w", err)
+		}
+	}
 	fmt.Fprintf(os.Stderr, "⚡ [nexus] supervised %s:%s runtime=%s\n", provName, selected, session.RuntimeID)
-	return attachRuntime(session.RuntimeID)
+	if lead.AgentID == "" {
+		return attachRuntime(session.RuntimeID)
+	}
+	return attachInteractiveLeadRuntime(session.RuntimeID, n, *session, lead.AgentID)
 }
 
 func profileInCandidates(candidates []model.Profile, name string) bool {

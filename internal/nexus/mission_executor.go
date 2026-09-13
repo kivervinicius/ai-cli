@@ -279,7 +279,35 @@ func createMissionAgent(st *store.Store, projectID string, pkg *runner.PackageRu
 	if name == "" {
 		name = pkg.PackageID
 	}
-	return st.CreateAgent(store.Agent{ProjectID: projectID, Name: prefix + name, Role: defaultRole(pkg.Role, "implementer")})
+	requirements := missionTaskRequirements(pkg)
+	role := defaultRole(requirements.Role, defaultRole(pkg.Role, "implementer"))
+	if len(requirements.PreferredRoles) > 0 {
+		role = requirements.PreferredRoles[0]
+	}
+	spec := intelligence.AgentSpec{
+		Role:               role,
+		Responsibilities:   []string{fmt.Sprintf("Executar o workstream especializado %s dentro dos artefatos atribuídos", role)},
+		Capabilities:       appendUniqueStrings(agentRequiredCapabilities(requirements.RequiredCapabilities), requirements.PreferredCapabilities...),
+		Domains:            append([]string(nil), requirements.Domains...),
+		Strengths:          append([]string(nil), requirements.DesiredStrengths...),
+		Constraints:        append([]string(nil), requirements.Constraints...),
+		VerificationPolicy: intelligence.VerificationPolicy{RequireEvidence: true, RequireTests: true},
+	}
+	agent, err := st.CreateAgent(store.Agent{ProjectID: projectID, Name: prefix + name, Role: role})
+	if err != nil {
+		return store.Agent{}, err
+	}
+	revision, err := st.AddRevision(agent.ID, (AgentConfig{AgentSpec: spec}).ConfigJSON())
+	if err != nil {
+		_ = st.DeleteAgent(agent.ID, projectID)
+		return store.Agent{}, fmt.Errorf("persist AgentSpec revision: %w", err)
+	}
+	agent.CurrentRevisionID = revision.ID
+	if err := st.UpdateAgent(agent); err != nil {
+		_ = st.DeleteAgent(agent.ID, projectID)
+		return store.Agent{}, fmt.Errorf("link AgentSpec revision: %w", err)
+	}
+	return agent, nil
 }
 
 type agentSelectionEvidence struct {

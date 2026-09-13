@@ -64,9 +64,7 @@ func (s *PlanApplicationService) ensureIntentDecisionFacts(ctx context.Context, 
 	if out == nil {
 		out = map[string]string{}
 	}
-	if _, ok := out[IntentDecisionFactKey]; ok {
-		return out
-	}
+	_, hasIntentDecision := out[IntentDecisionFactKey]
 	goal := strings.TrimSpace(description)
 	if goal == "" {
 		goal = strings.TrimSpace(title)
@@ -82,19 +80,34 @@ func (s *PlanApplicationService) ensureIntentDecisionFacts(ctx context.Context, 
 			break
 		}
 	}
+	if hasIntentDecision {
+		return ensureDelegationFacts(out, goal)
+	}
 	decision, err := s.nexus.DecideIntentForProject(ctx, projectID, goal)
 	if err != nil {
 		out["intent_decision_status"] = "error"
 		out["intent_decision_error"] = err.Error()
-		return out
+		return ensureDelegationFacts(out, goal)
 	}
 	enriched, err := PersistIntentDecisionFacts(out, decision)
 	if err != nil {
 		out["intent_decision_status"] = "error"
 		out["intent_decision_error"] = err.Error()
-		return out
+		return ensureDelegationFacts(out, goal)
 	}
 	enriched["intent_decision_status"] = "ok"
+	return ensureDelegationFacts(enriched, goal)
+}
+
+func ensureDelegationFacts(facts map[string]string, goal string) map[string]string {
+	if _, ok := facts[DelegationDecisionFactKey]; ok {
+		return facts
+	}
+	decision := DecideDelegation(goal, DelegationMode(facts[DelegationModeFactKey]))
+	enriched, err := PersistDelegationDecisionFacts(facts, decision)
+	if err != nil {
+		return facts
+	}
 	return enriched
 }
 
@@ -118,6 +131,24 @@ func (s *PlanApplicationService) Update(ctx context.Context, plan store.WorkPlan
 	st, err := s.store(ctx)
 	if err != nil {
 		return nil, nil, err
+	}
+	current, currentErr := st.GetWorkPlan(plan.ID)
+	if currentErr == nil {
+		if plan.StructuredFacts == nil {
+			plan.StructuredFacts = map[string]string{}
+		}
+		for _, key := range []string{DelegationDecisionFactKey, DelegationModeFactKey, LeadAgentFactKey} {
+			if _, present := plan.StructuredFacts[key]; !present {
+				if value := current.StructuredFacts[key]; value != "" {
+					plan.StructuredFacts[key] = value
+				}
+			}
+		}
+		if raw := plan.StructuredFacts[DelegationDecisionFactKey]; raw != "" {
+			if _, decodeErr := ReadDelegationDecisionFacts(plan.StructuredFacts); decodeErr != nil {
+				return nil, nil, decodeErr
+			}
+		}
 	}
 	return st.UpdateWorkPlan(plan, changeSummary)
 }

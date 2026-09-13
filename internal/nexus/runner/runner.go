@@ -92,7 +92,11 @@ func (r *MissionRunner) StartMissionRun(ctx context.Context, plan PlanSpec, work
 	}
 
 	now := time.Now().UTC()
-	run := &MissionRun{ID: "run_" + ids.NewRuntimeID(), PlanID: plan.ID, PlanRevision: plan.Revision, ExecutionSnapshotID: plan.ExecutionSnapshotID, ProjectID: plan.ProjectID,
+	leadAgentID := plan.LeadAgentID
+	if leadAgentID == "" {
+		leadAgentID = defaultAgentID
+	}
+	run := &MissionRun{ID: "run_" + ids.NewRuntimeID(), PlanID: plan.ID, PlanRevision: plan.Revision, ExecutionSnapshotID: plan.ExecutionSnapshotID, ProjectID: plan.ProjectID, LeadAgentID: leadAgentID,
 		Workspace: workspace, State: StateExecuting, Contract: contract, Autonomous: plan.Autonomous, StartedAt: now, LastProgressAt: now, UpdatedAt: now}
 	for _, spec := range plan.Packages {
 		state := StatePending

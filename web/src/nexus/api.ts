@@ -498,6 +498,10 @@ export const nexus = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  approvePlanDelegation: (planId: string) =>
+    request<import('../types').WorkPlan>(`/api/v1/plans/${planId}/delegation/approve`, {
+      method: 'POST',
+    }),
   compilePackagePrompt: (planId: string, packageId: string, phaseId?: string) =>
     request<{ compiled_prompt: string; package_id: string }>(`/api/v1/plans/${planId}/compile`, {
       method: 'POST',

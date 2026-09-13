@@ -1,5 +1,13 @@
 # Especificação ativa: IAPro Nexus — Implementação Completa Web + Desktop Multiplataforma
 
+## Slice da branch `feat/nexus-auto-delegation` — 2026-09-12
+
+O contrato específico desta branch está em
+[`docs/superpowers/specs/2026-09-12-nexus-auto-delegation.md`](../../docs/superpowers/specs/2026-09-12-nexus-auto-delegation.md).
+O objetivo é adicionar a política AUTO/ASK/OFF para o Lead Agent usar os
+contratos existentes de Flow, WorkPlan, MatchAgents, scheduler e MissionRunner.
+Não altera o veredito de release/hardening desta especificação.
+
 ## Slice ativo — registry progressivo de CLIs (2026-09-10)
 
 O Core agora separa descoberta de instalação (`InstallationRegistry`) do

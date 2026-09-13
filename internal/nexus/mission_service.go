@@ -35,6 +35,9 @@ func planToRunnerSpec(plan *store.WorkPlan, snapshotID string) (runner.PlanSpec,
 		return runner.PlanSpec{}, fmt.Errorf("valid work plan is required")
 	}
 	spec := runner.PlanSpec{ID: plan.ID, ProjectID: plan.ProjectID, Revision: plan.CurrentRevision, ExecutionSnapshotID: snapshotID}
+	if decision, err := ReadDelegationDecisionFacts(plan.StructuredFacts); err == nil {
+		spec.LeadAgentID = decision.LeadAgentID
+	}
 	seen := map[string]bool{}
 	for _, phase := range plan.Phases {
 		for _, pkg := range phase.Packages {
@@ -132,6 +135,9 @@ func (n *Nexus) StartMissionRun(ctx context.Context, planID, defaultAgentID stri
 	if err != nil {
 		return nil, err
 	}
+	if err := ensureDelegationApproved(plan); err != nil {
+		return nil, err
+	}
 	project, err := st.GetProject(plan.ProjectID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve mission project: %w", err)
@@ -163,6 +169,7 @@ func (n *Nexus) StartMissionRun(ctx context.Context, planID, defaultAgentID stri
 	if err != nil {
 		return nil, err
 	}
+	bindLeadAgent(&frozenPlan, defaultAgentID)
 	envelope, err := json.Marshal(missionExecutionSnapshot{Plan: frozenPlan, Contract: contract, Preflight: preflight})
 	if err != nil {
 		return nil, fmt.Errorf("encode mission execution snapshot: %w", err)
@@ -195,6 +202,9 @@ func (n *Nexus) StartMissionRunApproved(ctx context.Context, planID string, appr
 	if err != nil {
 		return nil, err
 	}
+	if err := ensureDelegationApproved(plan); err != nil {
+		return nil, err
+	}
 	if plan.CurrentRevision != approvedRevision {
 		return nil, fmt.Errorf("approved plan revision %d is stale; current is %d", approvedRevision, plan.CurrentRevision)
 	}
@@ -225,6 +235,7 @@ func (n *Nexus) startMissionRunAtRevision(ctx context.Context, plan *store.WorkP
 	if err := json.Unmarshal([]byte(rev.SnapshotJSON), &frozen); err != nil {
 		return nil, err
 	}
+	bindLeadAgent(&frozen, defaultAgentID)
 	contract = normalizeAutonomyContract(contract, project.CanonicalPath)
 	var preflight *FlowPreflightReport
 	if len(admission) > 0 {
@@ -251,6 +262,20 @@ func (n *Nexus) startMissionRunAtRevision(ctx context.Context, plan *store.WorkP
 		n.StartMissionWorker(run.ID)
 	}
 	return run, nil
+}
+
+func bindLeadAgent(plan *store.WorkPlan, leadAgentID string) {
+	if plan == nil || strings.TrimSpace(leadAgentID) == "" {
+		return
+	}
+	decision, err := ReadDelegationDecisionFacts(plan.StructuredFacts)
+	if err != nil {
+		return
+	}
+	decision = WithLeadAgent(decision, leadAgentID)
+	if facts, factErr := PersistDelegationDecisionFacts(plan.StructuredFacts, decision); factErr == nil {
+		plan.StructuredFacts = facts
+	}
 }
 
 func normalizeAutonomyContract(contract runner.AutonomyContract, workspace string) runner.AutonomyContract {

@@ -9,6 +9,34 @@ are in the worktree; canvas report at
 `canvases/nexus-capability-review.canvas.tsx`. Claude/Gemini CLIs were SKIPPED.
 Do not claim live CrossAccountResume PASS without TUI evidence.
 
+## Handoff — 2026-09-12 automatic delegation interactive Lead closure
+
+The dedicated branch now connects the real supervised provider entrypoint to
+the existing delegation policy. `nexus agy`/`nexus codex` keep the foreground
+runtime as a persistent Lead Agent; complete input lines are evaluated by the
+deterministic AUTO/ASK/OFF policy, compound AUTO requests create the existing
+Flow → WorkPlan → MissionRunner topology, and the Lead receives the final
+integration prompt. No second scheduler or anonymous worker pool was added.
+
+The Lead is resolved by the canonical current workspace path. If the workspace
+has not been registered yet, the supervised interactive path creates the
+normal Nexus Project record, then reuses or creates the persistent Lead in that
+project. Provider/profile remain the Lead's current resource preference;
+delegated Agent matching and downstream provider/model routing remain separate.
+
+Local verification for this slice: focused app/control/launcher/Nexus tests,
+full `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`,
+`make build`, `make build-desktop`, and `git diff --check` pass.
+The supervised Lead attachment uses canonical line submission so Nexus can
+route complete prompts while preserving the existing raw PTY path for ordinary
+`control attach`; real authenticated provider E2E and provider-level Mission
+evidence remain `UNVERIFIED` in this environment.
+
+The attempted real Codex smoke with the reported authenticated profile ended
+at the supervised IPC handshake timeout; `nexus ps --json` was empty afterward,
+so no orphan runtime remained. This is recorded as `UNVERIFIED`, not provider
+success or Mission evidence.
+
 ## Codex CrossAccountResume — 2026-09-12
 
 Cross-account Codex resume is restored without re-symlinking `sessions` to the
@@ -1578,3 +1606,21 @@ Candidate `c8747481fc04c65614b38b5c9d9da106f56858c3` terminou em
 archive/health-check, browser visual não independente e ausência de evidência
 nativa/release same-SHA. Próxima ação: corrigir blockers e repetir CI nativo e
 esta auditoria no mesmo SHA.
+
+## Handoff — 2026-09-12 automatic delegation
+
+Worktree dedicado: `/projetos/tools/IAPro-Nexus-Workspace-OS-Handoff-2026-08-29/nexus-auto-delegation`.
+Base: `37b9ddec49ce72d869bbeb2ad402a1d4dd2bc674`; branch
+`feat/nexus-auto-delegation`; sem commit/push.
+
+Implementado o policy slice em `internal/nexus/delegation.go` e integrado aos
+boundaries existentes: WorkPlan facts, Flow decomposition, MissionRunner,
+`MatchAgents`, rich `AgentSpec` para Agents criados e routing report. A suíte
+Nexus e os gates completos passaram. `make build` e `make build-desktop`
+continuam limitados pelo stamping VCS do ambiente; os binários compilam com
+`go build -buildvcs=false`. O passthrough PTY provider-interativo de
+`nexus agy` permanece fora do E2E de delegação; o caminho Flow → WorkPlan →
+Mission está verificado. Próximo passo: commitar esta branch e aguardar o
+fim do hardening antes de qualquer rebase/merge.
+
+Base SHA: `37b9ddec49ce72d869bbeb2ad402a1d4dd2bc674`.
