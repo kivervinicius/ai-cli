@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ func TestWeb_FullE2E(t *testing.T) {
 		RuntimeID:       "e2e-fake-1",
 		ProviderID:      "fake",
 		ProfileID:       "default",
-		Workspace:       "/tmp",
+		Workspace:       testDir,
 		PID:             99999,
 		HostPID:         99999,
 		HostGeneration:  time.Now().UnixNano(),
@@ -35,7 +36,7 @@ func TestWeb_FullE2E(t *testing.T) {
 		Env:             []string{"DATABASE_PASSWORD=s3cr3tP@ssword", "SECRET_KEY=supersecretkey"},
 		State:           registry.StateRunning,
 		ControlLevel:    registry.ControlLevelTerminal,
-		ControlEndpoint: "/tmp/fake.sock",
+		ControlEndpoint: filepath.Join(testDir, "fake.sock"),
 		StartedAt:       time.Now(),
 	}
 	if err := reg.Register(fakeSession); err != nil {

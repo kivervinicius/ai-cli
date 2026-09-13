@@ -61,6 +61,12 @@ nfpms:
         dst: /usr/share/doc/nexus/LICENSE
       - src: ./README.md
         dst: /usr/share/doc/nexus/README.md
+      - src: ./packaging/linux/.nexus-deb
+        dst: /usr/local/bin/.nexus-deb
+        packager: deb
+      - src: ./packaging/linux/.nexus-rpm
+        dst: /usr/local/bin/.nexus-rpm
+        packager: rpm
 
 snapshot:
   name_template: "{{ incpatch .Version }}-next"

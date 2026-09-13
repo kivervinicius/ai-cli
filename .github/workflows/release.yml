@@ -146,16 +146,6 @@ jobs:
           version: v2.18.0
           args: release --clean
 
-      - name: Generate update manifest
-        env:
-          NEXUS_UPDATE_PRIVATE_KEY: ${{ secrets.NEXUS_UPDATE_PRIVATE_KEY }}
-          NEXUS_UPDATE_KEY_ID: ${{ secrets.NEXUS_UPDATE_KEY_ID }}
-          RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
-        run: |
-          test -n "$NEXUS_UPDATE_PRIVATE_KEY"
-          test -n "$NEXUS_UPDATE_KEY_ID"
-          go run ./scripts/sign-update-manifest --dist dist --version "$RELEASE_VERSION" --key-id "$NEXUS_UPDATE_KEY_ID" --private-key "$NEXUS_UPDATE_PRIVATE_KEY" --base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_VERSION}"
-
       - name: Promote native Desktop artifacts from same-SHA CI
         env:
           GH_TOKEN: ${{ github.token }}
@@ -173,15 +163,40 @@ jobs:
             exit 1
           }
 
-      - name: Generate native Desktop checksums
+      - name: Generate signed update manifest (CLI + desktop + NSIS)
+        env:
+          NEXUS_UPDATE_PRIVATE_KEY: ${{ secrets.NEXUS_UPDATE_PRIVATE_KEY }}
+          NEXUS_UPDATE_KEY_ID: ${{ secrets.NEXUS_UPDATE_KEY_ID }}
+          RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
         run: |
-          set -euo pipefail
-          (cd native-artifacts && sha256sum nexus-desktop_* > desktop-checksums.txt)
+          test -n "$NEXUS_UPDATE_PRIVATE_KEY"
+          test -n "$NEXUS_UPDATE_KEY_ID"
+          go run ./scripts/sign-update-manifest \
+            --dist dist \
+            --dist native-artifacts \
+            --version "$RELEASE_VERSION" \
+            --key-id "$NEXUS_UPDATE_KEY_ID" \
+            --private-key "$NEXUS_UPDATE_PRIVATE_KEY" \
+            --base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_VERSION}"
+          test -f dist/update-manifest.json
+          test -f dist/update-manifest.sig
+          python3 - <<'PY'
+          import json
+          m = json.load(open("dist/update-manifest.json"))
+          arts = m.get("artifacts", {})
+          required = ("linux_amd64", "desktop_linux_amd64", "windows_amd64_nsis")
+          missing = [k for k in required if k not in arts]
+          if missing:
+              raise SystemExit(f"signed manifest missing keys: {missing}")
+          print(f"signed manifest covers {len(arts)} artifact keys")
+          PY
 
       - name: Attest release artifacts
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: 'dist/*'
+          subject-path: |
+            dist/*
+            native-artifacts/*
 
       - name: Publish release
         uses: softprops/action-gh-release@v2

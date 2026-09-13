@@ -533,7 +533,22 @@ jobs:
             exit 1
           }
           /usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Contents/Info.plist" | grep -Fx 'IAPro Nexus'
-          printf 'Validated macOS bundle: %s\n' "$app"
+          expected_version="$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/VERSION")"
+          short_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          # Wails may strip prerelease suffix from CFBundleShortVersionString; accept exact or numeric prefix.
+          case "$short_version" in
+            "$expected_version"|"${expected_version%%-*}") ;;
+            *)
+              printf 'CFBundleShortVersionString=%s does not match VERSION=%s\n' "$short_version" "$expected_version" >&2
+              exit 1
+              ;;
+          esac
+          # Fail closed on unescaped XML ampersands in plist string values.
+          if grep -E '<string>[^<]*&[^a]' "$app/Contents/Info.plist" >/dev/null; then
+            printf 'Info.plist contains unescaped ampersand in string value\n' >&2
+            exit 1
+          fi
+          printf 'Validated macOS bundle: %s (version %s)\n' "$app" "$short_version"
 
       - name: Upload macOS desktop build diagnostics
         if: always()

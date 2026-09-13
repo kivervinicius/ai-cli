@@ -69,6 +69,8 @@ FunctionEnd
 Section "IAPro Nexus" SecMain
   SetOutPath "$INSTDIR"
   File "payload\nexus.exe"
+  FileOpen $0 "$INSTDIR\.nexus-nsis" w
+  FileClose $0
   File /nonfatal "payload\ai.exe"
   File /nonfatal "payload\nexus-desktop.exe"
 
@@ -83,6 +85,7 @@ SectionEnd
 
 Section "Uninstall"
   Delete "$INSTDIR\nexus.exe"
+  Delete "$INSTDIR\.nexus-nsis"
   Delete "$INSTDIR\ai.exe"
   Delete "$INSTDIR\nexus-desktop.exe"
   Delete "$INSTDIR\Uninstall.exe"

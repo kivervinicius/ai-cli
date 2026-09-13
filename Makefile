@@ -17,15 +17,7 @@ bump:
 # ─── Version Consistency ────────────────────────────────────────────
 
 version-check:
-	@VERSION=$$(cat VERSION 2>/dev/null); \
-	WEB_VER=$$(node -p "require('./web/package.json').version" 2>/dev/null); \
-	if [ -z "$$VERSION" ]; then echo "VERSION file missing or empty" >&2; exit 1; fi; \
-	if [ -z "$$WEB_VER" ]; then echo "web/package.json version missing" >&2; exit 1; fi; \
-	if [ "$$VERSION" != "$$WEB_VER" ]; then \
-		echo "Version drift detected: VERSION=$$VERSION web/package.json=$$WEB_VER" >&2; \
-		exit 1; \
-	fi; \
-	echo "Version consistency PASS: $$VERSION"
+	@go run ./scripts/verify-version-contract.go .
 
 # ─── Frontend ───────────────────────────────────────────────────────
 
