@@ -1,31 +1,40 @@
 package main
 
-import "testing"
+import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/hex"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
-func TestReleaseArtifactMetadataCanonicalizesGoReleaserNames(t *testing.T) {
-	tests := []struct {
-		name   string
-		key    string
-		target string
-	}{
-		{"nexus_Linux_x86_64.tar.gz", "linux_amd64", "tar.gz"},
-		{"nexus_Windows_arm64.zip", "windows_arm64", "zip"},
-		{"nexus_0.5.0-beta.23_Darwin_amd64.deb", "darwin_amd64_deb", "deb"},
-		{"nexus_0.5.0-beta.23_linux_arm64.rpm", "linux_arm64_rpm", "rpm"},
+func TestWriteSignedManifestSignsPublishedBytes(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, test := range tests {
-		key, target, ok := releaseArtifactMetadata(test.name)
-		if !ok || key != test.key || target != test.target {
-			t.Errorf("releaseArtifactMetadata(%q) = (%q, %q, %t), want (%q, %q, true)", test.name, key, target, ok, test.key, test.target)
-		}
-	}
-}
+	dist := t.TempDir()
+	jsonBytes := []byte(`{"schema_version":1,"channel":"stable","version":"1.0.0"}`)
 
-func TestReleaseArtifactMetadataRejectsUnpublishableFiles(t *testing.T) {
-	for _, name := range []string{"checksums.txt", "nexus_linux_386.tar.gz", "nexus_unknown_amd64.zip"} {
-		if _, _, ok := releaseArtifactMetadata(name); ok {
-			t.Errorf("releaseArtifactMetadata(%q) accepted an unsupported artifact", name)
-		}
+	if err := writeSignedManifest(dist, jsonBytes, privateKey); err != nil {
+		t.Fatal(err)
+	}
+	manifestBytes, err := os.ReadFile(filepath.Join(dist, "update-manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	signatureText, err := os.ReadFile(filepath.Join(dist, "update-manifest.sig"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature, err := hex.DecodeString(strings.TrimSpace(string(signatureText)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ed25519.Verify(publicKey, manifestBytes, signature) {
+		t.Fatal("signature does not cover the published manifest bytes")
 	}
 }
 
