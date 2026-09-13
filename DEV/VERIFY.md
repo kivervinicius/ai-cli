@@ -14,7 +14,16 @@
 - SKIPPED — Claude CLI OAuth expired; Gemini CLI client unsupported.
 - UNVERIFIED — interactive `/resume` cross-account and live mid-turn Codex TUI.
 - DEFERRED — Claude/OpenCode Usage file-stub honesty; developer-preset credential exposures;
-  desktop bootstrap Origin binding; WS query tokens on private `--remote`.
+  TLS on private `--remote`.
+
+## 2026-09-12 — Auth follow-up (desktop + WS query tokens)
+
+- PASS — `/api/v1/desktop/bootstrap` requires pre-provisioned desktop bearer (Origin alone → 401).
+- PASS — WS `?token`/`?session` accepted only on loopback listen; rejected on private `--remote`
+  and while tunnel active (`TestWebSocketQueryTokenRejectedOnPrivateRemote`).
+- PASS — frontend omits WS query token outside loopback (`shouldAttachWebSocketQueryToken`).
+- PASS — `go test ./internal/control/web -count=1`; focused web vitest for agent terminal + networkHost.
+- PASS — `TestVerifyCloudflaredChecksumUsesPlatformPin` (Darwin sidecar path covered).
 
 ## 2026-09-12 — Codex CrossAccountResume
 
@@ -1110,3 +1119,4 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
 ## Frontend gate — 2026-09-12T03:43:44Z
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
+

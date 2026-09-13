@@ -179,9 +179,10 @@ func (a *AuthManager) AuthenticateRequest(r *http.Request) *Session {
 
 	if token == "" && wsUpgrade {
 		// Browser WebSocket cannot set Authorization; query tokens remain the
-		// transport on loopback. Reject them when a Quick Tunnel is exposing the
-		// server so session IDs are not forwarded through public intermediaries.
-		if !a.tunnelActive {
+		// transport on loopback only. Reject them on private --remote binds and
+		// when a Quick Tunnel is active so session IDs are not forwarded through
+		// LAN sniffers or public intermediaries.
+		if isLoopbackHost(a.listenHost) && !a.tunnelActive {
 			token = strings.TrimSpace(r.URL.Query().Get("token"))
 			if token == "" {
 				token = strings.TrimSpace(r.URL.Query().Get("session"))

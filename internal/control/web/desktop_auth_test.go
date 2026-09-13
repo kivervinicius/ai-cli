@@ -65,21 +65,29 @@ func TestDesktopBootstrapRequiresDesktopOrigin(t *testing.T) {
 		}
 	}
 
-	// 3. Request with Origin wails://wails -> Must succeed
+	// 3. Origin is not an authentication factor; a local process can spoof it.
 	reqDesktop := httptest.NewRequest(http.MethodGet, "/api/v1/desktop/bootstrap", nil)
 	reqDesktop.Host = "127.0.0.1:13000"
 	reqDesktop.Header.Set("Origin", "wails://wails")
 	recDesktop := httptest.NewRecorder()
 
 	srv.handleDesktopBootstrap(recDesktop, reqDesktop)
+	if recDesktop.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for origin-only desktop request, got %d", recDesktop.Code)
+	}
+
+	// 4. A provisioned desktop session must be presented explicitly.
+	reqDesktop.Header.Set("Authorization", "Bearer "+sess.ID)
+	recDesktop = httptest.NewRecorder()
+	srv.handleDesktopBootstrap(recDesktop, reqDesktop)
 	if recDesktop.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK for desktop request, got %d", recDesktop.Code)
+		t.Fatalf("expected 200 OK for authenticated desktop request, got %d", recDesktop.Code)
 	}
 	if !strings.Contains(recDesktop.Body.String(), sess.ID) {
 		t.Fatalf("expected response to contain session ID %s, got %s", sess.ID, recDesktop.Body.String())
 	}
 
-	// 4. Request with invalid Origin and valid Referer -> Must be rejected with 403 Forbidden (Origin takes precedence)
+	// 5. Request with invalid Origin and valid Referer -> Must be rejected with 403 Forbidden (Origin takes precedence)
 	reqConflict := httptest.NewRequest(http.MethodGet, "/api/v1/desktop/bootstrap", nil)
 	reqConflict.Host = "127.0.0.1:13000"
 	reqConflict.Header.Set("Origin", "wails://evil.com")
@@ -90,17 +98,14 @@ func TestDesktopBootstrapRequiresDesktopOrigin(t *testing.T) {
 		t.Fatalf("expected 403 Forbidden when Origin is invalid despite valid Referer, got %d", recConflict.Code)
 	}
 
-	// 5. Request with valid Referer and no Origin -> Must succeed (positive fallback path)
+	// 6. A valid Referer without the explicit session must not bootstrap.
 	reqRefererOnly := httptest.NewRequest(http.MethodGet, "/api/v1/desktop/bootstrap", nil)
 	reqRefererOnly.Host = "127.0.0.1:13000"
 	reqRefererOnly.Header.Set("Referer", "wails://wails/index.html")
 	recRefererOnly := httptest.NewRecorder()
 	srv.handleDesktopBootstrap(recRefererOnly, reqRefererOnly)
-	if recRefererOnly.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK for desktop request with Referer only, got %d", recRefererOnly.Code)
-	}
-	if !strings.Contains(recRefererOnly.Body.String(), sess.ID) {
-		t.Fatalf("expected response to contain session ID %s, got %s", sess.ID, recRefererOnly.Body.String())
+	if recRefererOnly.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for referer-only desktop request, got %d", recRefererOnly.Code)
 	}
 }
 
@@ -197,6 +202,34 @@ func TestWebSocketQueryTokenRejectedWhenTunnelActive(t *testing.T) {
 	reqCookie.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sess.ID})
 	if got := auth.AuthenticateRequest(reqCookie); got == nil || got.ID != sess.ID {
 		t.Fatalf("expected WS cookie auth while tunnel active, got %v", got)
+	}
+}
+
+func TestWebSocketQueryTokenRejectedOnPrivateRemote(t *testing.T) {
+	auth, _, err := NewAuthManager("192.168.1.10", "13000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := auth.CreateSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/runtimes/rt/terminal?token="+sess.ID, nil)
+	req.Host = "192.168.1.10:13000"
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+	if got := auth.AuthenticateRequest(req); got != nil {
+		t.Fatalf("expected WS query token rejected on private --remote bind, got %v", got)
+	}
+
+	reqCookie := httptest.NewRequest(http.MethodGet, "/api/v1/runtimes/rt/terminal", nil)
+	reqCookie.Host = "192.168.1.10:13000"
+	reqCookie.Header.Set("Connection", "Upgrade")
+	reqCookie.Header.Set("Upgrade", "websocket")
+	reqCookie.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sess.ID})
+	if got := auth.AuthenticateRequest(reqCookie); got == nil || got.ID != sess.ID {
+		t.Fatalf("expected WS cookie auth on private remote, got %v", got)
 	}
 }
 

@@ -6,6 +6,7 @@ import {
   EventRecord,
   EffectiveCapabilities,
 } from './types';
+import { shouldAttachWebSocketQueryToken } from './lib/networkHost';
 import { isDesktopApp, getPlatformBridge } from './platform';
 
 let csrfToken = '';
@@ -77,10 +78,9 @@ export function getWebSocketEndpoint(path: string): string {
   const url = `${proto}//${host}${cleanPath}`;
   if (!token) return url;
 
-  // Public tunnels must authenticate via HttpOnly cookie only — never put the
-  // session ID in the WebSocket URL (proxies and access logs retain query strings).
-  const hostName = host.split(':')[0]?.toLowerCase() ?? '';
-  if (hostName.endsWith('.trycloudflare.com')) {
+  // Loopback only: private --remote and Quick Tunnel use HttpOnly cookie so the
+  // session ID is not retained in proxy/access logs or LAN sniffers.
+  if (!shouldAttachWebSocketQueryToken(host)) {
     return url;
   }
 

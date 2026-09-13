@@ -1,3 +1,5 @@
+import { shouldAttachWebSocketQueryToken } from '../lib/networkHost';
+
 export type TerminalRole = 'CONTROL' | 'VIEW_ONLY';
 
 /** Hard stop after this many failed reconnects so the UI is not stuck on "connecting". */
@@ -15,11 +17,11 @@ export function agentTerminalWebSocketURL(
   const params = new URLSearchParams();
   const trimmedRuntime = (runtimeId || '').trim();
   if (trimmedRuntime) params.set('runtime_id', trimmedRuntime);
-  const hostName = host.split(':')[0]?.toLowerCase() ?? '';
-  const tunnelHost = hostName.endsWith('.trycloudflare.com');
   const trimmedToken = (token || '').trim();
-  // Public tunnels authenticate via HttpOnly cookie; do not put session IDs in URLs.
-  if (trimmedToken && !tunnelHost) params.set('token', trimmedToken);
+  // Loopback only; tunnel and private --remote authenticate via HttpOnly cookie.
+  if (trimmedToken && shouldAttachWebSocketQueryToken(host)) {
+    params.set('token', trimmedToken);
+  }
   const qs = params.toString();
   return qs ? `${base}?${qs}` : base;
 }
