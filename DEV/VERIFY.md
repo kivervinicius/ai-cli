@@ -1,5 +1,17 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-13 — Production GO/NO-GO red team
+
+- Verdict: `PRODUCTION_NO_GO` / `CERTIFICATION_INVALID_FOR_CURRENT_HEAD`.
+- Candidate executable SHA: `e53f8352e4c3647632ebac7877cf0a6a3bd62647`.
+- PASS (local, this session): `make quality`, `go vet`, `make security`,
+  `make docs-verify`, `make build`, `go test -race ./...` (1079/65).
+- PASS-but-not-soak: `make overnight-smoke` 0.243s.
+- FAIL: overnight 0h abort; no same-SHA CI; ancestor CI E2E failures;
+  Windows/macOS native; updater trust root; authenticated Mission;
+  Maestro default ASSIST; UNKNOWN quota allocation; Mission PATCH complete.
+- Evidence: `DEV/validation/production-go-no-go/FINAL_REPORT.md`.
+
 ## 2026-09-13 — Overnight production certification
 
 - FAIL / ABORT — precondition `production-finalization/FINAL_REPORT.md` missing.

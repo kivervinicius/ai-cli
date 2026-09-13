@@ -1,21 +1,28 @@
 # Handoff
 
+## Production GO/NO-GO red team — 2026-09-13
+
+Verdict: `PRODUCTION_NO_GO`. Also `CERTIFICATION_INVALID_FOR_CURRENT_HEAD`.
+
+Executable candidate `e53f8352e4c3647632ebac7877cf0a6a3bd62647` was never frozen:
+HEAD moved to `019dc585…` during the audit. Overnight is
+`ABORTED_PRECONDITION_FAILED` (0h). Production finalization is
+`NOT_READY_FOR_OVERNIGHT_CERTIFICATION`. No same-SHA hosted CI. Last completed
+branch CI failed Linux/Windows/macOS E2E and Browser. Native Windows/macOS,
+signed updater, and authenticated Mission `COMPLETED_VERIFIED` are unproven.
+Public `nexus run` aborted in 0.2s. Maestro default remains ASSIST.
+
+Evidence: `DEV/validation/production-go-no-go/FINAL_REPORT.md`.
+Do not merge, release, or treat local `make quality` as production GO.
+
 ## Overnight production certification — 2026-09-13
 
-Aborted before any Mission/soak work.
-
-Required gate `DEV/validation/production-finalization/FINAL_REPORT.md` with
-verdict `READY_FOR_OVERNIGHT_CERTIFICATION` is missing. Repo search finds no
-such verdict. Production-finalization is still Phase 0 (`checkpoint.md`);
-`BASELINE.md` still lists native Win/macOS, same-SHA CI, authenticated Mission
-evidence and updater public key as unverified. HEAD at abort
-`e53f8352e4c3647632ebac7877cf0a6a3bd62647` does not match the intake SHA
-`3985908244cc01c9e08c5ad4da0854622673a3d7`.
+Aborted before any Mission/soak work (`ABORTED_PRECONDITION_FAILED`, 0h).
+Production finalization later published
+`NOT_READY_FOR_OVERNIGHT_CERTIFICATION` for executable SHA `e53f835…`.
+That still does not authorize overnight or production GO.
 
 Evidence: `DEV/validation/overnight-production-certification/FINAL_REPORT.md`.
-Verdict: `ABORTED_PRECONDITION_FAILED`. Do not treat this folder as overnight
-PASS. Next action is to finish production finalization, then re-run overnight
-against that exact candidate SHA.
 
 ## Capability review intensive — 2026-09-12
 
