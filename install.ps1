@@ -82,7 +82,7 @@ function Resolve-LatestVersion {
             if (-not $resp.tag_name) {
                 throw "GitHub API response did not contain tag_name."
             }
-            Write-Host "Resolved -Version latest to $($resp.tag_name); detached manifest authenticity and checksum integrity are still required." -ForegroundColor Yellow
+            Write-Host "Resolved -Version latest to $($resp.tag_name) (checksum integrity; not a signed pin)." -ForegroundColor Yellow
             return [string]$resp.tag_name
         } catch {
             if ($attempt -ge 3) { throw }
@@ -150,91 +150,68 @@ if ($IsWindowsOS -and (Test-Path $LegacyTargetDir)) {
 $TargetPath = Join-Path $TargetDir $BinaryName
 $Installed = $false
 
-# Ed25519 public key for manifest signature verification. The placeholder
-# deliberately fails closed until the production trust root is configured.
-$NexusPubKey = if ($env:NEXUS_UPDATE_PUBLIC_KEY) { $env:NEXUS_UPDATE_PUBLIC_KEY } else { "REPLACE_WITH_GENERATED_HEX_PUBLIC_KEY" }
+# Ed25519 public key for manifest signature verification (matches internal/update ProductionTrustRoot).
+$NexusPubKey = "8284672c22f6179ec76ea2c7c5007d5742e719a55de0b7dfff96a3560e0cd7b2"
 
 function Verify-ManifestSignature {
     param([string]$ManifestPath, [string]$SigPath)
     if (-not (Test-Path $SigPath)) {
-        Write-Host "Manifest signature file is missing; refusing to install an unverifiable release." -ForegroundColor Red
+        Write-Host "ERROR: update-manifest.sig missing — refusing unsigned install" -ForegroundColor Red
         return $false
     }
     $SigHex = (Get-Content $SigPath -Raw).Trim().Replace("`n","").Replace("`r","")
     if ([string]::IsNullOrWhiteSpace($SigHex)) {
-        Write-Host "Manifest signature is empty; refusing to install an unverifiable release." -ForegroundColor Red
+        Write-Host "ERROR: update-manifest.sig is empty — refusing unsigned install" -ForegroundColor Red
         return $false
     }
-    if ($NexusPubKey -notmatch '^[0-9a-fA-F]{64}$') {
-        Write-Host "NEXUS_UPDATE_PUBLIC_KEY is not a valid 32-byte Ed25519 public key." -ForegroundColor Red
-        return $false
-    }
-    if ($SigHex -notmatch '^[0-9a-fA-F]{128}$') {
-        Write-Host "Manifest signature is not a valid Ed25519 signature." -ForegroundColor Red
-        return $false
-    }
-    # Try Python for Ed25519 verification
     if (Get-Command python3 -ErrorAction SilentlyContinue) {
-        $pyResult = python3 -c @"
-import sys
-try:
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-    pub_bytes = bytes.fromhex('$NexusPubKey')
-    pub = Ed25519PublicKey.from_public_bytes(pub_bytes)
-    sig = bytes.fromhex('$SigHex')
-    data = open('$ManifestPath', 'rb').read()
-    pub.verify(sig, data)
-except Exception as e:
-    print(f'Verification failed: {e}', file=sys.stderr)
-    sys.exit(1)
-"@ 2>&1
+        python3 -c @"
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+pub = Ed25519PublicKey.from_public_bytes(bytes.fromhex('$NexusPubKey'))
+sig = bytes.fromhex('$SigHex')
+data = open(r'$ManifestPath', 'rb').read()
+pub.verify(sig, data)
+"@ 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Write-Host "Manifest signature VERIFIED (Ed25519)" -ForegroundColor Green
             return $true
         }
+        Write-Host "ERROR: manifest signature verification failed" -ForegroundColor Red
+        return $false
     }
-    $openssl = Get-Command openssl -ErrorAction SilentlyContinue
-    if ($openssl) {
-        $PubKeyPath = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
-        $SigFilePath = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
-        try {
-            $PubDer = [Convert]::FromHexString("302a300506032b6570032100$NexusPubKey")
-            $SigBytes = [Convert]::FromHexString($SigHex)
-            [System.IO.File]::WriteAllBytes($PubKeyPath, $PubDer)
-            [System.IO.File]::WriteAllBytes($SigFilePath, $SigBytes)
-            & $openssl.Source pkeyutl -verify -pubin -inform DER -inkey $PubKeyPath -sigfile $SigFilePath -rawin -in $ManifestPath 2>$null
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "Manifest signature VERIFIED (openssl)" -ForegroundColor Green
-                return $true
-            }
-        } finally {
-            Remove-Item -Path $PubKeyPath, $SigFilePath -Force -ErrorAction SilentlyContinue
-        }
-    }
-    Write-Host "No usable Ed25519 verifier is available; refusing to install an unverifiable release." -ForegroundColor Red
+    Write-Host "ERROR: python3+cryptography required to verify Ed25519 release manifests" -ForegroundColor Red
     return $false
 }
 
 function Extract-ShaFromManifest {
     param([string]$ManifestPath, [string]$ArtifactName)
-    $result = python3 - "$ManifestPath" "$ArtifactName" @"
-import json, sys
-import os
-
-manifest_path, artifact_name = sys.argv[1:]
-name = os.path.basename(artifact_name).lower()
-target = None
-if 'linux' in name:
-    target = 'linux_arm64' if 'arm64' in name else 'linux_amd64' if ('x86_64' in name or 'amd64' in name) else None
-elif 'darwin' in name or 'macos' in name:
-    target = 'darwin_arm64' if 'arm64' in name else 'darwin_amd64' if ('x86_64' in name or 'amd64' in name) else None
-elif 'windows' in name:
-    target = 'windows_arm64' if 'arm64' in name else 'windows_amd64' if ('x86_64' in name or 'amd64' in name) else None
-artifact = json.load(open(manifest_path)).get('artifacts', {}).get(target, {}) if target else {}
-print(artifact.get('sha256', ''), end='')
+    $env:NEXUS_MANIFEST_PATH = $ManifestPath
+    $env:NEXUS_ARTIFACT_NAME = $ArtifactName
+    $result = python3 -c @"
+import json, os, sys
+from urllib.parse import unquote, urlparse
+m = json.load(open(os.environ['NEXUS_MANIFEST_PATH']))
+want = os.environ['NEXUS_ARTIFACT_NAME']
+arts = m.get('artifacts', {})
+for k, v in arts.items():
+    url = unquote(urlparse(v.get('url', '')).path)
+    if url.endswith('/' + want) or url.endswith(want):
+        print(v.get('sha256', ''), end='')
+        sys.exit(0)
+key = want.lower().replace('-', '_')
+if key.endswith('.tar.gz'):
+    key = key[:-7]
+elif '.' in key:
+    key = key.rsplit('.', 1)[0]
+for k, v in arts.items():
+    if k == key or key in k or k in key:
+        print(v.get('sha256', ''), end='')
+        sys.exit(0)
+print('', end='')
 "@ 2>&1
     return $result.Trim()
 }
+
 
 $Arch = if ([System.Environment]::Is64BitOperatingSystem) {
     if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq [System.Runtime.InteropServices.Architecture]::Arm64) {
@@ -258,23 +235,25 @@ New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
 try {
     if (-not $BuildFromSource -and -not [string]::IsNullOrWhiteSpace($Version)) {
         Write-Host "Attempting to download Nexus v${Version}: $ArchiveName..." -ForegroundColor Yellow
-        $ZipPath = Join-Path $TempDir $ArchiveName
-        # Fetch and verify the signed manifest before downloading any artifact.
+        # 1) Fetch and verify signed manifest before downloading the artifact.
         $ManifestPath = Join-Path $TempDir "update-manifest.json"
         $SigPath = Join-Path $TempDir "update-manifest.sig"
         $ManifestUrl = "$GithubUrl/releases/download/v$Version/update-manifest.json"
         $SigUrl = "$GithubUrl/releases/download/v$Version/update-manifest.sig"
         Invoke-WebRequest -Uri $ManifestUrl -OutFile $ManifestPath -UseBasicParsing
+        Write-Host "Signed manifest downloaded" -ForegroundColor Green
         Invoke-WebRequest -Uri $SigUrl -OutFile $SigPath -UseBasicParsing
         if (-not (Verify-ManifestSignature -ManifestPath $ManifestPath -SigPath $SigPath)) {
-            throw "Release manifest signature verification failed."
+            throw "Refusing unsigned or invalid release manifest"
         }
         $Expected = Extract-ShaFromManifest -ManifestPath $ManifestPath -ArtifactName $ArchiveName
-        if ($Expected -notmatch '^[0-9a-fA-F]{64}$') {
-            throw "Signed manifest has no digest for $ArchiveName; refusing to install."
+        if ([string]::IsNullOrWhiteSpace($Expected)) {
+            throw "Artifact $ArchiveName missing from signed manifest"
         }
         Write-Host "Using SHA-256 from signed manifest" -ForegroundColor Green
 
+        # 2) Download artifact
+        $ZipPath = Join-Path $TempDir $ArchiveName
         $attempt = 0
         $downloaded = $false
         while ($attempt -lt 3 -and -not $downloaded) {
@@ -288,7 +267,7 @@ try {
             }
         }
 
-        # Verify SHA-256
+        # 3) Verify SHA-256 from signed manifest only
         $Actual = (Get-FileHash -Path $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($Expected.ToLowerInvariant() -ne $Actual) {
             throw "Release checksum verification failed for $ArchiveName."
@@ -458,7 +437,7 @@ Write-Host "`nSetup complete!" -ForegroundColor Green
 Write-Host "Run 'nexus doctor' to verify provider and Maestro dependencies." -ForegroundColor White
 Write-Host "To start the Workspace OS:" -ForegroundColor Cyan
 Write-Host "  nexus web" -ForegroundColor Cyan
-Write-Host "Note: -Version latest uses GitHub tag resolution plus detached signed manifest and checksum verification." -ForegroundColor Gray
+Write-Host "Note: -Version latest resolves a GitHub tag, then still requires a signed update-manifest.json + Ed25519 signature." -ForegroundColor Gray
 
 if ($MaestroExit -ne 0) {
     exit $MaestroExit

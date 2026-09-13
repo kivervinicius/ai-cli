@@ -105,25 +105,16 @@ func (u *Updater) ApplyUpdate(prevVersion, newVersion string, newBinaryData []by
 	if err := os.MkdirAll(filepath.Dir(u.BinaryPath), 0755); err != nil {
 		return nil, fmt.Errorf("failed to prepare binary directory: %w", err)
 	}
-	if _, err := os.Stat(u.BinaryPath); err == nil {
-		if err := os.Remove(backupPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("failed to remove stale backup: %w", err)
-		}
-		if err := os.Rename(u.BinaryPath, backupPath); err != nil {
-			return nil, fmt.Errorf("failed to backup current binary: %w", err)
-		}
-	}
 
 	tempFile := u.BinaryPath + ".tmp"
 	_ = os.Remove(tempFile)
 	if err := os.WriteFile(tempFile, newBinaryData, 0755); err != nil {
-		_ = os.Rename(backupPath, u.BinaryPath)
 		return nil, fmt.Errorf("failed to write new binary: %w", err)
 	}
 
-	if err := os.Rename(tempFile, u.BinaryPath); err != nil {
-		_ = os.Rename(backupPath, u.BinaryPath)
-		return nil, fmt.Errorf("failed to replace binary: %w", err)
+	if err := replaceExecutable(u.BinaryPath, tempFile, backupPath); err != nil {
+		_ = os.Remove(tempFile)
+		return nil, err
 	}
 
 	receipt := &Receipt{

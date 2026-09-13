@@ -28,3 +28,34 @@ func TestReleaseArtifactMetadataRejectsUnpublishableFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestArtifactKeysMapGoReleaserAndDesktopNames(t *testing.T) {
+	cases := map[string][]string{
+		"nexus_Linux_x86_64.tar.gz":           {"linux_amd64"},
+		"nexus_Darwin_arm64.tar.gz":           {"darwin_arm64"},
+		"nexus_Windows_x86_64.zip":            {"windows_amd64"},
+		"nexus-desktop_Linux_x86_64.tar.gz":   {"desktop_linux_amd64"},
+		"nexus-desktop_Darwin_arm64.zip":      {"desktop_darwin_arm64"},
+		"nexus-setup-Windows_x86_64.exe":      {"windows_amd64_nsis"},
+		"nexus_0.5.0-beta.23_linux_amd64.deb": {"linux_amd64_deb"},
+		"nexus_0.5.0-beta.23_linux_amd64.rpm": {"linux_amd64_rpm"},
+	}
+	for name, mustContain := range cases {
+		keys := artifactKeys(name)
+		for _, want := range mustContain {
+			found := false
+			for _, got := range keys {
+				if got == want {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("%s keys=%v missing %s", name, keys, want)
+			}
+		}
+		if artifactTarget(name) == "" {
+			t.Fatalf("%s missing target", name)
+		}
+	}
+}

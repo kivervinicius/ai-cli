@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 )
 
 var (
@@ -22,32 +21,21 @@ const (
 )
 
 var (
-	// ProductionTrustRootHex is injected into release binaries with -ldflags.
-	// A release build must provide the public key that corresponds to the signing
-	// key kept in the protected release environment. Empty values intentionally
-	// leave the default keyring without a production trust root.
-	ProductionTrustRootHex string
-	// ProductionTrustRoot is the decoded Ed25519 public key used for production signing.
+	// ProductionTrustRoot is the hex-encoded Ed25519 public key used for production signing.
+	// This key must be embedded at build time and cannot be overridden without recompilation.
+	// To rotate: generate a new key pair, update this constant, rebuild, and sign the new manifest.
 	ProductionTrustRoot ed25519.PublicKey
 )
 
 func init() {
-	ProductionTrustRoot, _ = decodePublicKey(ProductionTrustRootHex)
-}
-
-func decodePublicKey(value string) (ed25519.PublicKey, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil, nil
+	// Embed the production trust root at compile time.
+	// Private key lives only in release CI (GitHub secret); never commit it.
+	const hexKey = "8284672c22f6179ec76ea2c7c5007d5742e719a55de0b7dfff96a3560e0cd7b2"
+	pub, err := hex.DecodeString(hexKey)
+	if err != nil || len(pub) != ed25519.PublicKeySize {
+		panic("nexus update: production trust root is invalid — refuse to build an unverifiable updater")
 	}
-	decoded, err := hex.DecodeString(value)
-	if err != nil {
-		return nil, fmt.Errorf("production trust root is not valid hex: %w", err)
-	}
-	if len(decoded) != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("production trust root must be %d bytes", ed25519.PublicKeySize)
-	}
-	return ed25519.PublicKey(decoded), nil
+	ProductionTrustRoot = ed25519.PublicKey(pub)
 }
 
 type KeyRing struct {

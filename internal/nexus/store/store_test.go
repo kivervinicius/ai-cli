@@ -30,7 +30,9 @@ func TestStoreOpenMigratesIdempotently(t *testing.T) {
 	if v1 < 1 {
 		t.Fatalf("expected schema version >= 1, got %d", v1)
 	}
-	_ = s1.Close()
+	if err := s1.Close(); err != nil {
+		t.Fatalf("close after first open: %v", err)
+	}
 
 	// Re-open must not re-apply migrations or fail.
 	s2, err := Open(path)
@@ -64,7 +66,9 @@ func TestEventCorrelationMigrationIsIdempotent(t *testing.T) {
 	if columnCount != 1 {
 		t.Fatalf("expected one correlation column, got %d", columnCount)
 	}
-	_ = s1.Close()
+	if err := s1.Close(); err != nil {
+		t.Fatalf("close after correlation migration: %v", err)
+	}
 
 	s2, err := Open(path)
 	if err != nil {

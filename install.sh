@@ -100,7 +100,7 @@ resolve_latest_version() {
         exit 1
     fi
     # Integrity only: tag is resolved then assets are checksum-verified. Not strong authenticity.
-    echo "Resolved --version=latest to ${tag} (detached signed manifest and checksum verification required)." >&2
+    echo "Resolved --version=latest to ${tag} (tag resolve only; install still requires signed update-manifest)." >&2
     printf '%s' "$tag"
 }
 
@@ -187,90 +187,69 @@ install_cli_from_dir() {
     fi
 }
 
-# Ed25519 public key for manifest signature verification. Release automation
-# may inject the public value through NEXUS_UPDATE_PUBLIC_KEY; the placeholder
-# deliberately fails closed until the production trust root is configured.
-NEXUS_PUBKEY="${NEXUS_UPDATE_PUBLIC_KEY:-REPLACE_WITH_GENERATED_HEX_PUBLIC_KEY}"
+# Ed25519 public key for manifest signature verification (matches internal/update ProductionTrustRoot).
+# Only the corresponding private key (release CI secret) can produce valid signatures.
+NEXUS_PUBKEY="8284672c22f6179ec76ea2c7c5007d5742e719a55de0b7dfff96a3560e0cd7b2"
 
 verify_manifest_signature() {
     local manifest_path="$1"
     local sig_path="$2"
     if [ ! -f "$sig_path" ]; then
-        echo "Manifest signature file is missing; refusing to install an unverifiable release." >&2
+        echo "ERROR: update-manifest.sig missing — refusing unsigned install" >&2
         return 1
     fi
     local sig_hex
     sig_hex="$(tr -d '[:space:]' < "$sig_path")"
     if [ -z "$sig_hex" ]; then
-        echo "Manifest signature is empty; refusing to install an unverifiable release." >&2
-        return 1
-    fi
-    if ! printf '%s' "$NEXUS_PUBKEY" | grep -Eq '^[0-9a-fA-F]{64}$'; then
-        echo "NEXUS_UPDATE_PUBLIC_KEY is not a valid 32-byte Ed25519 public key." >&2
-        return 1
-    fi
-    if ! printf '%s' "$sig_hex" | grep -Eq '^[0-9a-fA-F]{128}$'; then
-        echo "Manifest signature is not a valid Ed25519 signature." >&2
+        echo "ERROR: update-manifest.sig is empty — refusing unsigned install" >&2
         return 1
     fi
 
-    # Try Python (most portable Ed25519 implementation)
     if command -v python3 >/dev/null 2>&1; then
-        if python3 - "$manifest_path" "$sig_hex" "$NEXUS_PUBKEY" <<'PY'
+        if python3 -c "
 import sys
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-
-manifest_path, sig_hex, pub_hex = sys.argv[1:]
-pub = Ed25519PublicKey.from_public_bytes(bytes.fromhex(pub_hex))
-pub.verify(bytes.fromhex(sig_hex), open(manifest_path, 'rb').read())
-PY
-        then
+pub = Ed25519PublicKey.from_public_bytes(bytes.fromhex('$NEXUS_PUBKEY'))
+sig = bytes.fromhex('$sig_hex')
+data = open('$manifest_path', 'rb').read()
+pub.verify(sig, data)
+" 2>/dev/null; then
             echo "Manifest signature VERIFIED (Ed25519)"
             return 0
         fi
+        echo "ERROR: manifest signature verification failed" >&2
+        return 1
     fi
 
-    # Try openssl (if compiled with Ed25519 support)
-    if command -v openssl >/dev/null 2>&1; then
-        local pubkey_file sig_file
-        pubkey_file="$(mktemp)"
-        sig_file="$(mktemp)"
-        # Ed25519 SubjectPublicKeyInfo DER prefix + raw 32-byte key.
-        if printf '302a300506032b6570032100%s' "$NEXUS_PUBKEY" | xxd -r -p > "$pubkey_file" 2>/dev/null \
-            && printf '%s' "$sig_hex" | xxd -r -p > "$sig_file" 2>/dev/null; then
-            if openssl pkeyutl -verify -pubin -inform DER -inkey "$pubkey_file" -sigfile "$sig_file" -rawin -in "$manifest_path" 2>/dev/null; then
-                rm -f "$pubkey_file"
-                rm -f "$sig_file"
-                echo "Manifest signature VERIFIED (openssl)"
-                return 0
-            fi
-        fi
-        rm -f "$pubkey_file"
-        rm -f "$sig_file"
-    fi
-
-    echo "No usable Ed25519 verifier is available; refusing to install an unverifiable release." >&2
+    echo "ERROR: python3+cryptography required to verify Ed25519 release manifests" >&2
     return 1
 }
 
 extract_sha_from_manifest() {
     local manifest_path="$1"
     local artifact_name="$2"
-    python3 - "$manifest_path" "$artifact_name" <<'PY'
-import json, os, re, sys
-
-manifest_path, artifact_name = sys.argv[1:]
-name = os.path.basename(artifact_name).lower()
-target = None
-if 'linux' in name:
-    target = 'linux_arm64' if 'arm64' in name else 'linux_amd64' if ('x86_64' in name or 'amd64' in name) else None
-elif 'darwin' in name or 'macos' in name:
-    target = 'darwin_arm64' if 'arm64' in name else 'darwin_amd64' if ('x86_64' in name or 'amd64' in name) else None
-elif 'windows' in name:
-    target = 'windows_arm64' if 'arm64' in name else 'windows_amd64' if ('x86_64' in name or 'amd64' in name) else None
-artifact = json.load(open(manifest_path)).get('artifacts', {}).get(target, {}) if target else {}
-print(artifact.get('sha256', ''))
-PY
+    python3 -c "
+import json, sys
+from urllib.parse import unquote, urlparse
+m = json.load(open(sys.argv[1]))
+want = sys.argv[2]
+arts = m.get('artifacts', {})
+for k, v in arts.items():
+    url = unquote(urlparse(v.get('url', '')).path)
+    if url.endswith('/' + want) or url.endswith(want):
+        print(v.get('sha256', ''))
+        sys.exit(0)
+key = want.lower().replace('-', '_')
+if key.endswith('.tar.gz'):
+    key = key[:-7]
+elif '.' in key:
+    key = key.rsplit('.', 1)[0]
+for k, v in arts.items():
+    if k == key or key in k or k in key:
+        print(v.get('sha256', ''))
+        sys.exit(0)
+print('', end='')
+" "$manifest_path" "$artifact_name" 2>/dev/null
 }
 
 download_and_verify_archive() {
@@ -283,33 +262,35 @@ download_and_verify_archive() {
 
     echo "Downloading Nexus v${version_plain}: ${archive_name}..."
 
-    # A release is installable only when its detached signature and checksum integrity
-    # are verified from the signed manifest; checksums.txt is retained as a release
-    # artifact, never as an authenticity fallback.
-    if ! http_get "${release_url}/update-manifest.json" "$manifest_path" 2>/dev/null; then
-        echo "Signed update manifest unavailable; refusing to install." >&2
+    local expected=""
+
+    # 1. Fetch signed manifest (required)
+    if ! http_get "${release_url}/update-manifest.json" "$manifest_path"; then
+        echo "ERROR: signed update-manifest.json unavailable — refusing install" >&2
         return 1
     fi
-    if ! http_get "${release_url}/update-manifest.sig" "$sig_path" 2>/dev/null; then
-        echo "Signed update manifest signature unavailable; refusing to install." >&2
+    echo "Signed manifest downloaded"
+    if ! http_get "${release_url}/update-manifest.sig" "$sig_path"; then
+        echo "ERROR: update-manifest.sig unavailable — refusing install" >&2
         return 1
     fi
-    verify_manifest_signature "$manifest_path" "$sig_path" || return 1
-    local expected
+    if ! verify_manifest_signature "$manifest_path" "$sig_path"; then
+        return 1
+    fi
     expected="$(extract_sha_from_manifest "$manifest_path" "$archive_name")"
-    if ! printf '%s' "$expected" | grep -Eq '^[0-9a-fA-F]{64}$'; then
-        echo "Signed manifest has no digest for ${archive_name}; refusing to install." >&2
+    if [ -z "$expected" ]; then
+        echo "ERROR: artifact ${archive_name} missing from signed manifest" >&2
         return 1
     fi
     echo "Using SHA-256 from signed manifest"
 
-    # Download artifact
+    # 2. Download artifact
     if ! http_get "${release_url}/${archive_name}" "$archive_path"; then
         echo "Failed to download ${archive_name}" >&2
         return 1
     fi
 
-    # Verify SHA-256 from the signed manifest.
+    # 3. Verify SHA-256 from signed manifest only
     local actual
     actual="$(sha256_file "$archive_path")"
     if [ "$expected" != "$actual" ]; then
@@ -584,7 +565,6 @@ echo "Quick Start:"
 echo "  nexus doctor            # Check provider & platform dependencies"
 echo "  nexus web               # Launch IAPro Nexus Workspace OS (Web UI)"
 echo ""
-echo "Note: --version=latest uses GitHub tag resolution plus detached signed manifest and checksum verification."
-echo "it is not a cryptographically signed pin until the update manifest is wired here."
+echo "Note: --version=latest resolves a GitHub tag, then still requires a signed update-manifest.json + Ed25519 signature."
 
 exit "$MAESTRO_EXIT"

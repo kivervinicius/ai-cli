@@ -38,7 +38,7 @@ func TestQA_RapidAttachDetachSpam(t *testing.T) {
 	}
 	defer sh.Stop()
 
-	time.Sleep(50 * time.Millisecond)
+	waitForHostEndpoint(t, runtimeID)
 
 	// Concurrently connect and disconnect 20 clients rapidly
 	var wg sync.WaitGroup
@@ -55,7 +55,6 @@ func TestQA_RapidAttachDetachSpam(t *testing.T) {
 			_ = client.Ping()
 			_, _ = client.Status()
 			_, _ = client.Send(protocol.CmdAttach, nil)
-			time.Sleep(5 * time.Millisecond)
 			_, _ = client.Send(protocol.CmdDetach, nil)
 		}(i)
 	}
@@ -101,7 +100,7 @@ func TestQA_TwoWritersLeaseHandover(t *testing.T) {
 	}
 	defer sh.Stop()
 
-	time.Sleep(50 * time.Millisecond)
+	waitForHostEndpoint(t, runtimeID)
 
 	// Writer A attaches and acquires lease
 	writerA, err := protocol.NewClient(runtimeID)
@@ -124,9 +123,18 @@ func TestQA_TwoWritersLeaseHandover(t *testing.T) {
 		t.Fatalf("Writer B attach failed: %v", err)
 	}
 
-	// Disconnect Writer A
+	// Disconnect Writer A, then wait for host responsiveness before Writer B input.
 	writerA.Close()
-	time.Sleep(50 * time.Millisecond)
+	readyDeadline := time.Now().Add(2 * time.Second)
+	for {
+		if err := writerB.Ping(); err == nil {
+			break
+		}
+		if time.Now().After(readyDeadline) {
+			t.Fatal("host not responsive after Writer A disconnect")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 
 	// Now Writer B should be able to send input without panic or deadlock
 	writeDone := make(chan error, 1)
@@ -172,7 +180,7 @@ func TestQA_LargeThroughputStreaming(t *testing.T) {
 	}
 	defer sh.Stop()
 
-	time.Sleep(50 * time.Millisecond)
+	waitForHostEndpoint(t, runtimeID)
 
 	client, err := protocol.NewClient(runtimeID)
 	if err != nil {

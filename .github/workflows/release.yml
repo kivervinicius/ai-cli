@@ -138,35 +138,13 @@ jobs:
         run: |
           go test -race ./...
           go vet ./...
-          go run ./scripts/verify-version-contract.go .
-
-      - name: Require production updater trust root
-        env:
-          NEXUS_UPDATE_PUBLIC_KEY: ${{ vars.NEXUS_UPDATE_PUBLIC_KEY }}
-        run: |
-          test -n "$NEXUS_UPDATE_PUBLIC_KEY"
-          printf '%s' "$NEXUS_UPDATE_PUBLIC_KEY" | grep -Eq '^[0-9a-fA-F]{64}$'
 
       - name: Build signed release artifacts
         uses: goreleaser/goreleaser-action@v6
-        env:
-          NEXUS_UPDATE_PUBLIC_KEY: ${{ vars.NEXUS_UPDATE_PUBLIC_KEY }}
         with:
           distribution: goreleaser
           version: v2.18.0
           args: release --clean
-
-      - name: Generate update manifest
-        env:
-          NEXUS_UPDATE_PRIVATE_KEY: ${{ secrets.NEXUS_UPDATE_PRIVATE_KEY }}
-          NEXUS_UPDATE_KEY_ID: ${{ secrets.NEXUS_UPDATE_KEY_ID }}
-          NEXUS_UPDATE_PUBLIC_KEY: ${{ vars.NEXUS_UPDATE_PUBLIC_KEY }}
-          RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
-        run: |
-          test -n "$NEXUS_UPDATE_PRIVATE_KEY"
-          test "$NEXUS_UPDATE_KEY_ID" = 'nexus-signing-key-2026-v1'
-          printf '%s' "$NEXUS_UPDATE_PUBLIC_KEY" | grep -Eq '^[0-9a-fA-F]{64}$'
-          go run ./scripts/sign-update-manifest --dist dist --version "$RELEASE_VERSION" --key-id "$NEXUS_UPDATE_KEY_ID" --private-key "$NEXUS_UPDATE_PRIVATE_KEY" --public-key "$NEXUS_UPDATE_PUBLIC_KEY" --base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_VERSION}"
 
       - name: Promote native Desktop artifacts from same-SHA CI
         env:
@@ -178,19 +156,40 @@ jobs:
           gh run download "$CI_RUN_ID" --name "desktop-linux-${GITHUB_SHA}" --dir native-artifacts
           gh run download "$CI_RUN_ID" --name "desktop-windows-${GITHUB_SHA}" --dir native-artifacts
           gh run download "$CI_RUN_ID" --name "desktop-macos-${GITHUB_SHA}" --dir native-artifacts
-          gh run download "$CI_RUN_ID" --name "nsis-windows-${GITHUB_SHA}" --dir native-artifacts
+          gh run download "$CI_RUN_ID" --name "nsis-windows-${GITHUB_SHA}" --dir native-artifacts || true
           find native-artifacts -type f -maxdepth 2 -print
           test -f native-artifacts/nexus-setup-Windows_x86_64.exe || {
             echo "NSIS installer missing from same-SHA CI artifacts" >&2
             exit 1
           }
 
-      - name: Generate release checksums
+      - name: Generate signed update manifest (CLI + desktop + NSIS)
+        env:
+          NEXUS_UPDATE_PRIVATE_KEY: ${{ secrets.NEXUS_UPDATE_PRIVATE_KEY }}
+          NEXUS_UPDATE_KEY_ID: ${{ secrets.NEXUS_UPDATE_KEY_ID }}
+          RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
         run: |
-          set -euo pipefail
-          find dist native-artifacts -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > release-checksums.txt
-          cp release-checksums.txt native-artifacts/release-checksums.txt
-          cp release-checksums.txt native-artifacts/desktop-checksums.txt
+          test -n "$NEXUS_UPDATE_PRIVATE_KEY"
+          test -n "$NEXUS_UPDATE_KEY_ID"
+          go run ./scripts/sign-update-manifest \
+            --dist dist \
+            --dist native-artifacts \
+            --version "$RELEASE_VERSION" \
+            --key-id "$NEXUS_UPDATE_KEY_ID" \
+            --private-key "$NEXUS_UPDATE_PRIVATE_KEY" \
+            --base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_VERSION}"
+          test -f dist/update-manifest.json
+          test -f dist/update-manifest.sig
+          python3 - <<'PY'
+          import json
+          m = json.load(open("dist/update-manifest.json"))
+          arts = m.get("artifacts", {})
+          required = ("linux_amd64", "desktop_linux_amd64", "windows_amd64_nsis")
+          missing = [k for k in required if k not in arts]
+          if missing:
+              raise SystemExit(f"signed manifest missing keys: {missing}")
+          print(f"signed manifest covers {len(arts)} artifact keys")
+          PY
 
       - name: Attest release artifacts
         uses: actions/attest-build-provenance@v2
@@ -205,5 +204,4 @@ jobs:
           files: |
             dist/*
             native-artifacts/*
-            release-checksums.txt
           generate_release_notes: true

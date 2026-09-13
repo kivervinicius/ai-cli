@@ -534,9 +534,9 @@ func (h *NexusHandler) handleFSScan(w http.ResponseWriter, r *http.Request) {
 }
 
 // isWithinAllowedRoots checks whether path falls inside a safe directory.
-// Allowed roots are: user home dir, the OS temporary directory, /tmp for
-// compatibility, and any ancestor containing .git or AGENTS.md (project
-// workspace markers).
+// Allowed roots are: user home dir, the OS temporary directory, /tmp on
+// non-Windows hosts for compatibility, and any ancestor containing .git or
+// AGENTS.md (project workspace markers).
 func isWithinAllowedRoots(path string) bool {
 	abs, err := filepath.Abs(filepath.Clean(path))
 	if err != nil {
@@ -558,7 +558,9 @@ func isWithinAllowedRoots(path string) bool {
 	if tempDir := os.TempDir(); pathWithin(tempDir, abs) {
 		return true
 	}
-	if pathWithin("/tmp", abs) {
+	// On Unix, /tmp may differ from os.TempDir() (e.g. macOS /var/folders).
+	// Never hard-require a Unix-only path on Windows.
+	if runtime.GOOS != "windows" && pathWithin("/tmp", abs) {
 		return true
 	}
 

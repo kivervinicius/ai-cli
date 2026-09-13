@@ -19,7 +19,7 @@ type artifact struct {
 	URL    string `json:"url"`
 	Size   int64  `json:"size"`
 	SHA256 string `json:"sha256"`
-	Target string `json:"target"`
+	Target string `json:"target,omitempty"`
 }
 
 type manifest struct {
@@ -32,17 +32,28 @@ type manifest struct {
 	Artifacts     map[string]artifact `json:"artifacts"`
 }
 
+type stringList []string
+
+func (s *stringList) String() string { return strings.Join(*s, ",") }
+func (s *stringList) Set(v string) error {
+	*s = append(*s, v)
+	return nil
+}
+
 func main() {
-	dist := flag.String("dist", "dist", "GoReleaser dist directory")
+	var dirs stringList
+	flag.Var(&dirs, "dist", "artifact directory (repeatable; default: dist)")
 	version := flag.String("version", "", "release version")
 	keyID := flag.String("key-id", "", "trusted public-key identifier")
 	privateKey := flag.String("private-key", "", "base64 or hex Ed25519 private key")
-	publicKey := flag.String("public-key", "", "hex Ed25519 public key corresponding to the private key")
 	baseURL := flag.String("base-url", "", "absolute release artifact base URL")
 	flag.Parse()
 	if *version == "" || *keyID == "" || *privateKey == "" {
 		fmt.Fprintln(os.Stderr, "version, key-id and private-key are required")
 		os.Exit(2)
+	}
+	if len(dirs) == 0 {
+		dirs = stringList{"dist"}
 	}
 	if *baseURL == "" {
 		*baseURL = "https://github.com/kivervinicius/ai-cli/releases/download/v" + strings.TrimPrefix(*version, "v")
@@ -56,89 +67,56 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	if *publicKey != "" {
-		pub, err := decodePublicKey(*publicKey)
-		if err != nil {
-			panic(err)
-		}
-		if !key.Public().(ed25519.PublicKey).Equal(pub) {
-			panic("public key does not match private signing key")
-		}
+	m := manifest{
+		SchemaVersion: 1,
+		Channel:       channel(*version),
+		Version:       strings.TrimPrefix(*version, "v"),
+		ReleaseDate:   time.Now().UTC().Format(time.RFC3339),
+		ExpiresAt:     time.Now().UTC().Add(30 * 24 * time.Hour).Format(time.RFC3339),
+		KeyID:         *keyID,
+		Artifacts:     map[string]artifact{},
 	}
-	m := manifest{SchemaVersion: 1, Channel: channel(*version), Version: strings.TrimPrefix(*version, "v"), ReleaseDate: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().UTC().Add(30 * 24 * time.Hour).Format(time.RFC3339), KeyID: *keyID, Artifacts: map[string]artifact{}}
-	entries, err := os.ReadDir(*dist)
-	if err != nil {
-		panic(err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || strings.HasSuffix(entry.Name(), ".txt") || strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-		keyName, target, ok := releaseArtifactMetadata(entry.Name())
-		if !ok {
-			continue
-		}
-		path := filepath.Join(*dist, entry.Name())
-		info, err := entry.Info()
+	outDir := dirs[0]
+	for _, dist := range dirs {
+		entries, err := os.ReadDir(dist)
 		if err != nil {
 			panic(err)
 		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			panic(err)
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			name := entry.Name()
+			lower := strings.ToLower(name)
+			if strings.HasSuffix(lower, ".txt") || strings.HasSuffix(lower, ".json") || strings.HasSuffix(lower, ".sig") {
+				continue
+			}
+			path := filepath.Join(dist, name)
+			info, err := entry.Info()
+			if err != nil {
+				panic(err)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				panic(err)
+			}
+			art := artifact{
+				URL:    base + "/" + url.PathEscape(name),
+				Size:   info.Size(),
+				SHA256: fmt.Sprintf("%x", sha256.Sum256(data)),
+				Target: artifactTarget(name),
+			}
+			for _, keyName := range artifactKeys(name) {
+				m.Artifacts[keyName] = art
+			}
 		}
-		m.Artifacts[keyName] = artifact{URL: base + "/" + url.PathEscape(entry.Name()), Size: info.Size(), SHA256: fmt.Sprintf("%x", sha256.Sum256(data)), Target: target}
 	}
 	bytes, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		panic(err)
 	}
-	if err := writeSignedManifest(*dist, bytes, key); err != nil {
+	if err := writeSignedManifest(outDir, bytes, key); err != nil {
 		panic(err)
-	}
-}
-
-func decodePublicKey(value string) (ed25519.PublicKey, error) {
-	decoded, err := hex.DecodeString(strings.TrimSpace(value))
-	if err != nil || len(decoded) != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("public key must be 64 hex characters")
-	}
-	return ed25519.PublicKey(decoded), nil
-}
-
-func releaseArtifactMetadata(name string) (string, string, bool) {
-	lower := strings.ToLower(name)
-	if !strings.HasPrefix(lower, "nexus_") {
-		return "", "", false
-	}
-	osName := ""
-	for _, candidate := range []string{"linux", "darwin", "windows"} {
-		if strings.Contains(lower, "_"+candidate+"_") {
-			osName = candidate
-			break
-		}
-	}
-	arch := ""
-	switch {
-	case strings.Contains(lower, "_x86_64") || strings.Contains(lower, "_amd64"):
-		arch = "amd64"
-	case strings.Contains(lower, "_arm64"):
-		arch = "arm64"
-	}
-	if osName == "" || arch == "" {
-		return "", "", false
-	}
-	switch {
-	case strings.HasSuffix(lower, ".tar.gz"):
-		return osName + "_" + arch, "tar.gz", true
-	case strings.HasSuffix(lower, ".zip"):
-		return osName + "_" + arch, "zip", true
-	case strings.HasSuffix(lower, ".deb"):
-		return osName + "_" + arch + "_deb", "deb", true
-	case strings.HasSuffix(lower, ".rpm"):
-		return osName + "_" + arch + "_rpm", "rpm", true
-	default:
-		return "", "", false
 	}
 }
 
@@ -169,4 +147,106 @@ func channel(version string) string {
 		return "beta"
 	}
 	return "stable"
+}
+
+func artifactTarget(name string) string {
+	lower := strings.ToLower(name)
+	switch {
+	case strings.HasSuffix(lower, ".tar.gz"):
+		return "tar.gz"
+	case strings.HasSuffix(lower, ".zip"):
+		return "zip"
+	case strings.HasSuffix(lower, ".exe") && strings.Contains(lower, "setup"):
+		return "nsis"
+	case strings.HasSuffix(lower, ".deb"):
+		return "deb"
+	case strings.HasSuffix(lower, ".rpm"):
+		return "rpm"
+	default:
+		return "binary"
+	}
+}
+
+// artifactKeys returns stable lookup keys for installers and nexus update.
+// Primary key is goos_goarch (or desktop_/package variants). A filename slug is
+// also registered so install.sh can resolve by archive basename.
+func artifactKeys(name string) []string {
+	lower := strings.ToLower(name)
+	slug := strings.ReplaceAll(strings.TrimSuffix(strings.TrimSuffix(lower, ".tar.gz"), filepath.Ext(lower)), "-", "_")
+	keys := []string{slug}
+
+	osArch, kind := classifyArtifact(lower)
+	if osArch == "" {
+		return uniqueKeys(keys)
+	}
+	switch kind {
+	case "cli":
+		keys = append(keys, osArch)
+	case "desktop":
+		keys = append(keys, "desktop_"+osArch)
+	case "nsis":
+		keys = append(keys, osArch+"_nsis", "windows_amd64_nsis")
+	case "deb":
+		keys = append(keys, osArch+"_deb")
+	case "rpm":
+		keys = append(keys, osArch+"_rpm")
+	}
+	return uniqueKeys(keys)
+}
+
+func classifyArtifact(lowerName string) (osArch string, kind string) {
+	osName, arch := detectOSArch(lowerName)
+	if osName == "" || arch == "" {
+		return "", ""
+	}
+	osArch = osName + "_" + arch
+	switch {
+	case strings.Contains(lowerName, "nexus-setup") || (strings.HasSuffix(lowerName, ".exe") && strings.Contains(lowerName, "setup")):
+		return osArch, "nsis"
+	case strings.HasSuffix(lowerName, ".deb"):
+		return osArch, "deb"
+	case strings.HasSuffix(lowerName, ".rpm"):
+		return osArch, "rpm"
+	case strings.Contains(lowerName, "nexus-desktop"):
+		return osArch, "desktop"
+	default:
+		return osArch, "cli"
+	}
+}
+
+func detectOSArch(lowerName string) (osName, arch string) {
+	switch {
+	case strings.Contains(lowerName, "linux"):
+		osName = "linux"
+	case strings.Contains(lowerName, "darwin") || strings.Contains(lowerName, "macos"):
+		osName = "darwin"
+	case strings.Contains(lowerName, "windows") || strings.Contains(lowerName, "win64") || strings.Contains(lowerName, "win32"):
+		osName = "windows"
+	}
+	switch {
+	case strings.Contains(lowerName, "x86_64") || strings.Contains(lowerName, "amd64") || strings.Contains(lowerName, "x64"):
+		arch = "amd64"
+	case strings.Contains(lowerName, "arm64") || strings.Contains(lowerName, "aarch64"):
+		arch = "arm64"
+	case strings.Contains(lowerName, "i386") || strings.Contains(lowerName, "386"):
+		arch = "386"
+	}
+	return osName, arch
+}
+
+func uniqueKeys(in []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(in))
+	for _, k := range in {
+		k = strings.TrimSpace(k)
+		if k == "" {
+			continue
+		}
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		out = append(out, k)
+	}
+	return out
 }
