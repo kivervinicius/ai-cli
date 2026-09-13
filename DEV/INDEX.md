@@ -65,6 +65,8 @@ O código canônico utiliza o binário `nexus`, mantendo `ai` como alias transpa
 
 - [`FINAL_RELEASE_REPORT.md`](FINAL_RELEASE_REPORT.md): Relatório de fechamento de releases estáveis.
 - [`NEXUS_V0_FINAL_AUDIT.md`](NEXUS_V0_FINAL_AUDIT.md) & [`NEXUS_V1_FINAL_ENGINEERING_REPORT.md`](NEXUS_V1_FINAL_ENGINEERING_REPORT.md): Auditorias técnicas de consolidação.
+- [`validation/overnight-production-certification/FINAL_REPORT.md`](validation/overnight-production-certification/FINAL_REPORT.md): aborto `ABORTED_PRECONDITION_FAILED` da certificação overnight (pré-condição de finalização ausente).
+- [`validation/production-finalization/FINAL_REPORT.md`](validation/production-finalization/FINAL_REPORT.md): evidência da campanha de fechamento do release candidate.
 - [`DEV/validation/`](validation/): Logs brutos, capturas de tela e artefatos de testes automatizados e manuais.
 Decision record: [`DEV/DECISIONS/NEXUS_TERMINAL_CONTINUITY.md`](DECISIONS/NEXUS_TERMINAL_CONTINUITY.md)
 - [Nexus 1.0 delivery meta](NEXUS_1_DELIVERY_META.md)
