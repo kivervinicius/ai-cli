@@ -21,6 +21,7 @@ builds:
         -X github.com/kivervinicius/ai-cli/internal/buildinfo.Version={{.Version}}
         -X github.com/kivervinicius/ai-cli/internal/buildinfo.Commit={{.Commit}}
         -X github.com/kivervinicius/ai-cli/internal/buildinfo.BuildDate={{.Date}}
+        -X github.com/kivervinicius/ai-cli/internal/update.ProductionTrustRootHex={{.Env.NEXUS_UPDATE_PUBLIC_KEY}}
 
 archives:
   - format: tar.gz

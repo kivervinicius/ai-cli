@@ -2,6 +2,7 @@ package nexus
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/kivervinicius/ai-cli/internal/nexus/store"
 )
@@ -148,6 +149,23 @@ func (s *MissionApplicationService) Assign(ctx context.Context, assignment *stor
 	st, err := s.store(ctx)
 	if err != nil {
 		return err
+	}
+	if assignment == nil {
+		return fmt.Errorf("assignment is required")
+	}
+	mission, err := st.GetMission(assignment.MissionID)
+	if err != nil {
+		return fmt.Errorf("validate assignment mission: %w", err)
+	}
+	task, err := st.GetTask(assignment.TaskID)
+	if err != nil {
+		return fmt.Errorf("validate assignment task: %w", err)
+	}
+	if task.MissionID != mission.ID {
+		return fmt.Errorf("task %s does not belong to mission %s", task.ID, mission.ID)
+	}
+	if _, err := st.GetAgent(assignment.AgentID, mission.ProjectID); err != nil {
+		return fmt.Errorf("validate assignment agent: %w", err)
 	}
 	return st.CreateAssignment(assignment)
 }

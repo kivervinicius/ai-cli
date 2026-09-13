@@ -51,6 +51,11 @@
 }
 
 .attention-center__item {
+  appearance: none;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
   display: flex;
   align-items: flex-start;
   gap: var(--nx-space-2);

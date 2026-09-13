@@ -12,25 +12,20 @@ function formatAge(seconds: number): string {
   return `${Math.round(seconds / 3600)}h`;
 }
 
-function stateLabel(state: string): string {
-  switch (state) {
-    case 'BLOCKED_NEEDS_USER':
-      return 'Needs decision';
-    case 'FAILED_NO_PROGRESS':
-      return 'No progress';
-    case 'FAILED_VERIFICATION':
-      return 'Verification failed';
-    case 'FAILED_BUDGET_EXCEEDED':
-      return 'Budget exceeded';
-    case 'FAILED':
-      return 'Failed';
-    case 'COMPLETED_VERIFIED':
-      return 'Completed';
-    case 'PAUSED':
-      return 'Paused';
-    default:
-      return state;
-  }
+const STATE_LABEL_KEYS: Record<string, string> = {
+  BLOCKED_NEEDS_USER: 'attention.state.blockedNeedsUser',
+  FAILED_NO_PROGRESS: 'attention.state.failedNoProgress',
+  FAILED_VERIFICATION: 'attention.state.failedVerification',
+  FAILED_BUDGET_EXCEEDED: 'attention.state.failedBudgetExceeded',
+  FAILED: 'attention.state.failed',
+  COMPLETED_VERIFIED: 'attention.state.completedVerified',
+  PAUSED: 'attention.state.paused',
+};
+
+function stateLabel(state: string, t: (key: string) => string): string {
+  const key = STATE_LABEL_KEYS[state];
+  if (key) return t(key);
+  return state;
 }
 
 function InterventionCard({
@@ -47,7 +42,10 @@ function InterventionCard({
   return (
     <div className={styles['attention-center__resolve']} role="article">
       <div className={styles['attention-center__resolve-question']}>
-        {sanitizeAttentionText(intervention.question, 'Decision required')}
+        {sanitizeAttentionText(
+          intervention.question,
+          t('attention.center.decisionRequired', 'Decision required'),
+        )}
       </div>
       {intervention.context && (
         <div className={styles['attention-center__resolve-context']}>
@@ -56,7 +54,8 @@ function InterventionCard({
       )}
       {intervention.impact && (
         <div className={styles['attention-center__resolve-context']}>
-          Impact: {sanitizeAttentionText(intervention.impact, '')}
+          {t('attention.center.impactLabel', 'Impact:') + ' '}
+          {sanitizeAttentionText(intervention.impact, '')}
         </div>
       )}
       <div className={styles['attention-center__resolve-actions']}>
@@ -93,11 +92,15 @@ export const AttentionCenter: React.FC<{
       setGroup(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load attention');
+      setError(
+        err instanceof Error
+          ? err.message
+          : t('attention.center.fetchError', 'Failed to load attention'),
+      );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void fetchAttention();
@@ -112,12 +115,16 @@ export const AttentionCenter: React.FC<{
         await nexus.resolveIntervention(runId, intervention.id, intervention.version, optionId);
         await fetchAttention();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to resolve');
+        setError(
+          err instanceof Error
+            ? err.message
+            : t('attention.center.resolveError', 'Failed to resolve'),
+        );
       } finally {
         setResolving(null);
       }
     },
-    [fetchAttention],
+    [fetchAttention, t],
   );
 
   const handleClickItem = useCallback(
@@ -182,7 +189,10 @@ export const AttentionCenter: React.FC<{
         {needsYou.length > 0 && (
           <span
             className={styles['attention-center__badge']}
-            aria-label={`${needsYou.length} decisions pending`}
+            aria-label={t('attention.center.decisionCount', {
+              count: needsYou.length,
+              defaultValue: `${needsYou.length} decisions pending`,
+            })}
           >
             {needsYou.length}
           </span>
@@ -196,14 +206,10 @@ export const AttentionCenter: React.FC<{
           </div>
           {needsYou.map((item) => (
             <div key={item.mission_id}>
-              <div
+              <button
+                type="button"
                 className={styles['attention-center__item']}
                 onClick={() => handleClickItem(item)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') handleClickItem(item);
-                }}
               >
                 <div
                   className={`${styles['attention-center__item-icon']} ${styles['attention-center__item-icon--needs-you']}`}
@@ -212,7 +218,7 @@ export const AttentionCenter: React.FC<{
                 </div>
                 <div className={styles['attention-center__item-body']}>
                   <div className={styles['attention-center__item-title']}>
-                    {sanitizeAttentionText(item.summary, stateLabel(item.state))}
+                    {sanitizeAttentionText(item.summary, stateLabel(item.state, t))}
                   </div>
                   <div className={styles['attention-center__item-meta']}>
                     {item.reason_code && `${item.reason_code} · `}
@@ -222,7 +228,7 @@ export const AttentionCenter: React.FC<{
                 <div className={styles['attention-center__item-age']}>
                   {formatAge(item.age_seconds)}
                 </div>
-              </div>
+              </button>
               {item.intervention &&
                 !item.intervention.resolved &&
                 resolving !== item.mission_id && (
@@ -244,15 +250,11 @@ export const AttentionCenter: React.FC<{
             {t('attention.center.completed', 'Completed')}
           </div>
           {completed.map((item) => (
-            <div
+            <button
+              type="button"
               key={item.mission_id}
               className={styles['attention-center__item']}
               onClick={() => handleClickItem(item)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') handleClickItem(item);
-              }}
             >
               <div
                 className={`${styles['attention-center__item-icon']} ${styles['attention-center__item-icon--completed']}`}
@@ -261,7 +263,7 @@ export const AttentionCenter: React.FC<{
               </div>
               <div className={styles['attention-center__item-body']}>
                 <div className={styles['attention-center__item-title']}>
-                  {sanitizeAttentionText(item.summary, stateLabel(item.state))}
+                  {sanitizeAttentionText(item.summary, stateLabel(item.state, t))}
                 </div>
                 <div className={styles['attention-center__item-meta']}>
                   {item.mission_id.slice(0, 12)}
@@ -270,7 +272,7 @@ export const AttentionCenter: React.FC<{
               <div className={styles['attention-center__item-age']}>
                 {formatAge(item.age_seconds)}
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}
@@ -281,15 +283,11 @@ export const AttentionCenter: React.FC<{
             {t('attention.center.failed', 'Failed / No Progress')}
           </div>
           {failed.map((item) => (
-            <div
+            <button
+              type="button"
               key={item.mission_id}
               className={styles['attention-center__item']}
               onClick={() => handleClickItem(item)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') handleClickItem(item);
-              }}
             >
               <div
                 className={`${styles['attention-center__item-icon']} ${styles['attention-center__item-icon--failed']}`}
@@ -298,7 +296,7 @@ export const AttentionCenter: React.FC<{
               </div>
               <div className={styles['attention-center__item-body']}>
                 <div className={styles['attention-center__item-title']}>
-                  {sanitizeAttentionText(item.summary, stateLabel(item.state))}
+                  {sanitizeAttentionText(item.summary, stateLabel(item.state, t))}
                 </div>
                 <div className={styles['attention-center__item-meta']}>
                   {item.reason_code && `${item.reason_code} · `}
@@ -308,7 +306,7 @@ export const AttentionCenter: React.FC<{
               <div className={styles['attention-center__item-age']}>
                 {formatAge(item.age_seconds)}
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}

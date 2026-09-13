@@ -122,6 +122,23 @@ func TestNegative_MissingArtifactTarget(t *testing.T) {
 	}
 }
 
+func TestNegative_UnknownArtifactTarget(t *testing.T) {
+	manifest := Manifest{
+		SchemaVersion: 1,
+		Channel:       "stable",
+		Version:       "1.0.0",
+		ReleaseDate:   time.Now().UTC().Format(time.RFC3339),
+		KeyID:         "test",
+		Artifacts: map[string]Artifact{"linux_amd64": {
+			SHA256: strings.Repeat("a", 64), Size: 3, Target: "shell-script",
+		}},
+	}
+	err := manifest.Validate(ManifestPolicy{Channel: "stable", CurrentVersion: "0.9.0", Target: "linux_amd64"})
+	if err == nil || !strings.Contains(err.Error(), "unsupported artifact target") {
+		t.Fatalf("expected unknown artifact target error, got: %v", err)
+	}
+}
+
 func TestNegative_ChannelMismatch(t *testing.T) {
 	manifest := Manifest{
 		SchemaVersion: 1,

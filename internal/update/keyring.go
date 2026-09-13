@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 var (
@@ -21,23 +22,32 @@ const (
 )
 
 var (
-	// ProductionTrustRoot is the hex-encoded Ed25519 public key used for production signing.
-	// This key must be embedded at build time and cannot be overridden without recompilation.
-	// To rotate: generate a new key pair, update this constant, rebuild, and sign the new manifest.
+	// ProductionTrustRootHex is injected into release binaries with -ldflags.
+	// A release build must provide the public key that corresponds to the signing
+	// key kept in the protected release environment. Empty values intentionally
+	// leave the default keyring without a production trust root.
+	ProductionTrustRootHex string
+	// ProductionTrustRoot is the decoded Ed25519 public key used for production signing.
 	ProductionTrustRoot ed25519.PublicKey
 )
 
 func init() {
-	// Embed the production trust root at compile time.
-	// This is a placeholder - replace with actual generated key before production releases.
-	const hexKey = "REPLACE_WITH_GENERATED_HEX_PUBLIC_KEY"
-	pub, err := hex.DecodeString(hexKey)
-	if err != nil || len(pub) != ed25519.PublicKeySize {
-		// If the trust root is not properly embedded, the keyring will be empty
-		// and signature verification will fail with ErrUntrustedKeyID.
-		return
+	ProductionTrustRoot, _ = decodePublicKey(ProductionTrustRootHex)
+}
+
+func decodePublicKey(value string) (ed25519.PublicKey, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
 	}
-	ProductionTrustRoot = ed25519.PublicKey(pub)
+	decoded, err := hex.DecodeString(value)
+	if err != nil {
+		return nil, fmt.Errorf("production trust root is not valid hex: %w", err)
+	}
+	if len(decoded) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("production trust root must be %d bytes", ed25519.PublicKeySize)
+	}
+	return ed25519.PublicKey(decoded), nil
 }
 
 type KeyRing struct {

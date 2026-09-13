@@ -101,12 +101,12 @@ fi
 # Test 6: Archive Extraction Safety
 echo ""
 echo -e "${YELLOW}Test 6: Archive Extraction Safety${NC}"
-echo "Path traversal test cases:"
-echo "  ✓ ../etc/passwd → rejected"
-echo "  ✓ /etc/passwd → rejected"
-echo "  ✓ ../../tmp/evil → rejected"
-echo "  ✓ valid/path/nexus → accepted"
-echo -e "${GREEN}✓ Path validation logic verified${NC}"
+if go test ./internal/update -run 'TestNegative_(PathTraversal|CorruptArchive|TooLargeArchive)$' -count=1; then
+    echo -e "${GREEN}✓ Native archive traversal/corruption tests passed${NC}"
+else
+    echo -e "${RED}✗ Native archive safety tests failed${NC}"
+    exit 1
+fi
 
 echo ""
 echo "=== All Update Verification Tests Passed ==="

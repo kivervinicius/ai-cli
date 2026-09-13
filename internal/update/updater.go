@@ -42,10 +42,33 @@ func (u *Updater) ApplyManifest(manifest Manifest, policy ManifestPolicy, data [
 		return nil, err
 	}
 	artifact := manifest.Artifacts[policy.Target]
+	if artifact.Target == "" {
+		lowerURL := strings.ToLower(artifact.URL)
+		if strings.HasSuffix(lowerURL, ".tar.gz") || strings.HasSuffix(lowerURL, ".zip") {
+			return nil, fmt.Errorf("%w: archive artifact is missing an extraction target", ErrManifestArtifact)
+		}
+	}
+	if err := u.VerifyArtifactChecksum(data, artifact.SHA256); err != nil {
+		return nil, fmt.Errorf("downloaded artifact failed manifest checksum: %w", err)
+	}
 	if artifact.Size != int64(len(data)) {
 		return nil, fmt.Errorf("artifact size mismatch: expected %d, got %d", artifact.Size, len(data))
 	}
-	return u.ApplyUpdate(policy.CurrentVersion, manifest.Version, data, artifact.SHA256)
+
+	binaryData := data
+	if artifact.Target == TargetTarGz || artifact.Target == TargetZip {
+		extracted, err := ExtractBinary(data, artifact.Target)
+		if err != nil {
+			return nil, fmt.Errorf("archive extraction failed: %w", err)
+		}
+		binaryData = extracted.Data
+	}
+	return u.ApplyUpdate(policy.CurrentVersion, manifest.Version, binaryData, sha256Hex(binaryData))
+}
+
+func sha256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 func NewUpdater(binaryPath, dataDir string) *Updater {

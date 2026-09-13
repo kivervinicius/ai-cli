@@ -1,30 +1,50 @@
 # Frontend verification report
 
-- Generated: `2026-09-12T05:53:08Z`
-- Branch: `feat/nexus-auto-delegation` @ `609c285`
-- Verdict: **PASS** (10 pass / 0 fail)
-- Dirty web/dist tree: no
+- Generated: `2026-09-12T17:14:31Z`
+- Branch: `feat/nexus-maximum-delivery` @ `b142171`
+- Verdict: **FAIL** (9 pass / 1 fail)
+- Dirty web/dist tree: **yes**
 
 ## Gates
 
 | Gate | Hard | Status | Duration | Detail |
 | --- | --- | --- | --- | --- |
-| Prettier (`prettier --check`) | yes | PASS | 4380ms | Checking formatting...<br>All matched files use Prettier code style! |
-| TypeScript (`tsc --noEmit`) | yes | PASS | 7610ms | ok |
-| ESLint (`eslint src`) | yes | PASS | 5346ms | ok |
-| Stylelint (`stylelint "src/**/*.css"`) | yes | PASS | 1129ms | ok |
-| Null-safe API array access | yes | PASS | 88ms | sem .length/.map direto em campos nullable conhecidos |
-| Vitest (`vitest run`) | yes | PASS | 6716ms | ✓ src/app/workspaceSurfaceStyles.test.ts (2 tests) 4ms<br> ✓ src/features/work/flowRunModel.test.ts (3 tests) 8ms<br> ✓ src/notifications/inAppNotificationModel.test.ts (7 tests) 8ms<br> ✓ src/workspace/arrangePresets.test.ts (9 tests) 13ms<br> ✓ src/nexus/agentRecover.test.ts (4 tests) 13ms<br> ✓ src/features/work/planBuilderModel.test.ts (5 tests) 7ms<br> ✓ src/components/attentionText.test.ts (2 tests) 3ms<br> ✓ src/app/documentTitle.test.ts (6 tests) 5ms<br> ✓ src/features/work/missionAutono |
-| i18n catalog parity | yes | PASS | 1076ms | RUN  v3.2.7 /projetos/tools/IAPro-Nexus-Workspace-OS-Handoff-2026-08-29/nexus-auto-delegation/web<br><br> ✓ src/i18n/i18n.test.ts (7 tests) 9ms<br><br> Test Files  1 passed (1)<br>      Tests  7 passed (7)<br>   Start at  01:53:34<br>   Duration  614ms (transform 211ms, setup 0ms, collect 215ms, tests 9ms, environment 0ms, prepare 192ms) |
-| Build + embed (`node scripts/build.mjs`) | yes | PASS | 1158ms | Nexus web build complete: /projetos/tools/IAPro-Nexus-Workspace-OS-Handoff-2026-08-29/nexus-auto-delegation/web/dist<br>≈ tailwindcss v4.3.3<br><br>Done in 189ms<br><br>  dist/bundle.js                                   343.3kb<br>  dist/chunks/chunk-OI6WT6YE.js                    277.9kb<br>  dist/chunks/FlowRunsHistorySurface-ZUESEDAB.js   228.3kb<br>  dist/bundle.css                                  157.2kb<br>  dist/chunks/chunk-BG7XIWCZ.js                    156.8kb<br>  dist/chunks/chunk-5 |
-| Embed sync (web/dist ≡ internal/.../embedded) | yes | PASS | 1ms | bundles idênticos (351563 bytes) |
-| Critical UI markers in bundle | yes | PASS | 5ms | marcadores críticos presentes (7) |
+| Prettier (`prettier --check`) | yes | FAIL | 6481ms | exit 1<br>Checking formatting...<br>[warn] src/wailsjs/wailsjs/go/desktop/App.d.ts<br>[warn] src/wailsjs/wailsjs/go/models.ts<br>[warn] src/wailsjs/wailsjs/runtime/package.json<br>[warn] src/wailsjs/wailsjs/runtime/runtime.d.ts<br>[warn] Code style issues found in 4 files. Run Prettier with --write to fix. |
+| TypeScript (`tsc --noEmit`) | yes | PASS | 9779ms | ok |
+| ESLint (`eslint src`) | yes | PASS | 5338ms | ok |
+| Stylelint (`stylelint "src/**/*.css"`) | yes | PASS | 1197ms | ok |
+| Null-safe API array access | yes | PASS | 95ms | sem .length/.map direto em campos nullable conhecidos |
+| Vitest (`vitest run`) | yes | PASS | 9514ms | ✓ src/features/work/missionAutonomyModel.test.ts (1 test) 11ms<br> ✓ src/workspace/model.test.ts (14 tests) 19ms<br> ✓ src/workspace/arrange.test.ts (12 tests) 24ms<br> ✓ src/features/work/clarificationModel.test.ts (2 tests) 9ms<br> ✓ src/app/workspaceMissionRoute.test.ts (3 tests) 10ms<br> ✓ src/features/projects/projectRail.test.ts (4 tests) 25ms<br> ✓ src/lib/safeArray.test.ts (3 tests) 19ms<br> ✓ src/app/workspaceSurfaceStyles.test.ts (2 tests) 4ms<br> ✓ src/lib/networkHost.test.ts (3 tests |
+| i18n catalog parity | yes | PASS | 1941ms | RUN  v3.2.7 /projetos/tools/IAPro-Nexus-Workspace-OS-Handoff-2026-08-29/ai-manager/web<br><br> ✓ src/i18n/i18n.test.ts (7 tests) 20ms<br><br> Test Files  1 passed (1)<br>      Tests  7 passed (7)<br>   Start at  13:15:04<br>   Duration  1.12s (transform 443ms, setup 0ms, collect 550ms, tests 20ms, environment 0ms, prepare 166ms) |
+| Build + embed (`node scripts/build.mjs`) | yes | PASS | 1579ms | Nexus web build complete: /projetos/tools/IAPro-Nexus-Workspace-OS-Handoff-2026-08-29/ai-manager/web/dist<br>≈ tailwindcss v4.3.3<br><br>Done in 236ms<br><br>  dist/bundle.js                                   343.4kb<br>  dist/chunks/chunk-OI6WT6YE.js                    277.9kb<br>  dist/chunks/FlowRunsHistorySurface-KU4XRBOS.js   228.3kb<br>  dist/chunks/chunk-KTQEXYIX.js                    159.0kb<br>  dist/bundle.css                                  157.2kb<br>  dist/chunks/chunk-5KKHRYCG.js  |
+| Embed sync (web/dist ≡ internal/.../embedded) | yes | PASS | 0ms | bundles idênticos (351677 bytes) |
+| Critical UI markers in bundle | yes | PASS | 2ms | marcadores críticos presentes (7) |
 
 ## Residual risks / next operator steps
 
-- Automated gates green.
-- If UI still looks broken in the browser: restart `nexus web` so the new embedded bundle is loaded (`make build`).
-- Manual smoke (not automated here): open Project Overview, Radar, one Agent terminal, and a second Project focus switch.
+- Hard gates failed — do not claim frontend delivery until green.
+  - Fix `format` then re-run `make web-verify`.
+
+### Dirty paths
+
+```
+M web/scripts/e2e-hardening-verify.mjs
+ M web/src/api.ts
+ M web/src/components/ErrorBoundary.tsx
+ M web/src/features/work/AttentionCenter.module.scss
+ M web/src/features/work/AttentionCenter.tsx
+ M web/src/i18n/resources.ts
+ M web/src/nexus/agentTerminalModel.test.ts
+ M web/src/nexus/agentTerminalModel.ts
+ M web/src/platform/desktopBridge.ts
+ M web/src/wailsjs/wailsjs/go/desktop/App.d.ts
+ M web/src/wailsjs/wailsjs/go/models.ts
+ M web/src/wailsjs/wailsjs/runtime/package.json
+ M web/src/wailsjs/wailsjs/runtime/runtime.d.ts
+?? web/src/components/ErrorBoundary.module.scss
+?? web/src/lib/networkHost.test.ts
+?? web/src/lib/networkHost.ts
+```
 
 ## How to regenerate
 

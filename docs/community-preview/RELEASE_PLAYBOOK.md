@@ -75,12 +75,15 @@ uma cadeia de supply chain assinada.
 | --- | --- | --- |
 | `NEXUS_UPDATE_PRIVATE_KEY` | GitHub Environment protegido | Assinar manifestos |
 | `NEXUS_UPDATE_KEY_ID` | GitHub Environment | Selecionar chave pública |
+| `NEXUS_UPDATE_PUBLIC_KEY` | GitHub Environment variable, não secreta | Trust root Ed25519 embutido nos builds |
 | Authenticode | Secret/certificado externo | Assinar Windows |
 | Apple Developer ID/notarization | Secrets macOS | Assinar/notarizar Apple |
 | `contents: write` | Apenas workflow de release | Criar publicação |
 | `id-token: write` | Apenas provenance | Attestation OIDC |
 
 Nunca coloque private key, token ou certificado no Git, README, issue ou log.
+O workflow de release deve falhar fechado quando `NEXUS_UPDATE_PUBLIC_KEY` não
+estiver configurada ou não corresponder à chave privada de assinatura.
 
 ## Componentes e version skew
 
@@ -111,4 +114,3 @@ revogada no registry, interrompa o rollout, mantenha o artefato para auditoria
 e publique uma versão corrigida com novo manifesto e checksum. Em instalação
 local, o updater só retorna à versão anterior se sua integridade e sua política
 de downgrade permitirem.
-

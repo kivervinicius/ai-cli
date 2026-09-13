@@ -108,9 +108,26 @@ func TestUpdaterApplyManifestBindsTargetChecksum(t *testing.T) {
 	}
 }
 
-func sha256Hex(data []byte) string {
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
+func TestUpdaterApplyManifestRejectsArchiveWithoutExtractionTarget(t *testing.T) {
+	data := []byte("archive bytes")
+	manifest := Manifest{
+		SchemaVersion: 1,
+		Channel:       "stable",
+		Version:       "1.1.0",
+		ReleaseDate:   time.Now().UTC().Format(time.RFC3339),
+		KeyID:         "test",
+		Artifacts: map[string]Artifact{"linux_amd64": {
+			URL:    "https://example.invalid/releases/nexus_Linux_x86_64.tar.gz",
+			Size:   int64(len(data)),
+			SHA256: sha256Hex(data),
+		}},
+	}
+	updater := NewUpdater(filepath.Join(t.TempDir(), "nexus"), t.TempDir())
+	if _, err := updater.ApplyManifest(manifest, ManifestPolicy{
+		Channel: "stable", CurrentVersion: "1.0.0", Target: "linux_amd64",
+	}, data); err == nil || !strings.Contains(err.Error(), "extraction target") {
+		t.Fatalf("expected archive without target to be rejected, got: %v", err)
+	}
 }
 
 func generateTestKeyPair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {

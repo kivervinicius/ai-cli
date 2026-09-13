@@ -19,6 +19,7 @@ type artifact struct {
 	URL    string `json:"url"`
 	Size   int64  `json:"size"`
 	SHA256 string `json:"sha256"`
+	Target string `json:"target"`
 }
 
 type manifest struct {
@@ -36,6 +37,7 @@ func main() {
 	version := flag.String("version", "", "release version")
 	keyID := flag.String("key-id", "", "trusted public-key identifier")
 	privateKey := flag.String("private-key", "", "base64 or hex Ed25519 private key")
+	publicKey := flag.String("public-key", "", "hex Ed25519 public key corresponding to the private key")
 	baseURL := flag.String("base-url", "", "absolute release artifact base URL")
 	flag.Parse()
 	if *version == "" || *keyID == "" || *privateKey == "" {
@@ -54,6 +56,15 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	if *publicKey != "" {
+		pub, err := decodePublicKey(*publicKey)
+		if err != nil {
+			panic(err)
+		}
+		if !key.Public().(ed25519.PublicKey).Equal(pub) {
+			panic("public key does not match private signing key")
+		}
+	}
 	m := manifest{SchemaVersion: 1, Channel: channel(*version), Version: strings.TrimPrefix(*version, "v"), ReleaseDate: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().UTC().Add(30 * 24 * time.Hour).Format(time.RFC3339), KeyID: *keyID, Artifacts: map[string]artifact{}}
 	entries, err := os.ReadDir(*dist)
 	if err != nil {
@@ -61,6 +72,10 @@ func main() {
 	}
 	for _, entry := range entries {
 		if entry.IsDir() || strings.HasSuffix(entry.Name(), ".txt") || strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		keyName, target, ok := releaseArtifactMetadata(entry.Name())
+		if !ok {
 			continue
 		}
 		path := filepath.Join(*dist, entry.Name())
@@ -72,8 +87,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		keyName := strings.ToLower(strings.ReplaceAll(strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name())), "-", "_"))
-		m.Artifacts[keyName] = artifact{URL: base + "/" + url.PathEscape(entry.Name()), Size: info.Size(), SHA256: fmt.Sprintf("%x", sha256.Sum256(data))}
+		m.Artifacts[keyName] = artifact{URL: base + "/" + url.PathEscape(entry.Name()), Size: info.Size(), SHA256: fmt.Sprintf("%x", sha256.Sum256(data)), Target: target}
 	}
 	bytes, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
@@ -81,6 +95,50 @@ func main() {
 	}
 	if err := writeSignedManifest(*dist, bytes, key); err != nil {
 		panic(err)
+	}
+}
+
+func decodePublicKey(value string) (ed25519.PublicKey, error) {
+	decoded, err := hex.DecodeString(strings.TrimSpace(value))
+	if err != nil || len(decoded) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("public key must be 64 hex characters")
+	}
+	return ed25519.PublicKey(decoded), nil
+}
+
+func releaseArtifactMetadata(name string) (string, string, bool) {
+	lower := strings.ToLower(name)
+	if !strings.HasPrefix(lower, "nexus_") {
+		return "", "", false
+	}
+	osName := ""
+	for _, candidate := range []string{"linux", "darwin", "windows"} {
+		if strings.Contains(lower, "_"+candidate+"_") {
+			osName = candidate
+			break
+		}
+	}
+	arch := ""
+	switch {
+	case strings.Contains(lower, "_x86_64") || strings.Contains(lower, "_amd64"):
+		arch = "amd64"
+	case strings.Contains(lower, "_arm64"):
+		arch = "arm64"
+	}
+	if osName == "" || arch == "" {
+		return "", "", false
+	}
+	switch {
+	case strings.HasSuffix(lower, ".tar.gz"):
+		return osName + "_" + arch, "tar.gz", true
+	case strings.HasSuffix(lower, ".zip"):
+		return osName + "_" + arch, "zip", true
+	case strings.HasSuffix(lower, ".deb"):
+		return osName + "_" + arch + "_deb", "deb", true
+	case strings.HasSuffix(lower, ".rpm"):
+		return osName + "_" + arch + "_rpm", "rpm", true
+	default:
+		return "", "", false
 	}
 }
 

@@ -218,20 +218,8 @@ func (s *Service) Apply(ctx context.Context) (*Receipt, error) {
 		return nil, err
 	}
 
-	// Extract binary if archive format
-	var binaryData []byte
-	if art.Target == TargetTarGz || art.Target == TargetZip {
-		extracted, err := ExtractBinary(data, art.Target)
-		if err != nil {
-			return nil, fmt.Errorf("archive extraction failed: %w", err)
-		}
-		binaryData = extracted.Data
-	} else {
-		binaryData = data
-	}
-
 	updater := NewUpdater(s.execPath, os.Getenv("HOME"))
-	return updater.ApplyManifest(*manifest, policy, binaryData)
+	return updater.ApplyManifest(*manifest, policy, data)
 }
 
 // downloadArtifact streams the artifact to disk without loading entire body into memory.

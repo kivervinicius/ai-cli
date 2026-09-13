@@ -69,8 +69,8 @@ FunctionEnd
 Section "IAPro Nexus" SecMain
   SetOutPath "$INSTDIR"
   File "payload\nexus.exe"
-  File /nonfatal "payload\ai.exe"
-  File /nonfatal "payload\nexus-desktop.exe"
+  File "payload\ai.exe"
+  File "payload\nexus-desktop.exe"
 
   Call AddToUserPath
 

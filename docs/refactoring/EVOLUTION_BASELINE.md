@@ -112,7 +112,7 @@
 | Secret redaction | VERIFIED |
 | Cookie Secure (tunnel-aware) | VERIFIED |
 | Cloudflared pinned + SHA-256 verified | VERIFIED |
-| Installer signed manifest | VERIFIED |
+| Installer signed manifest | PARTIAL — implementação e testes locais verificados; chave pública de produção e execução do release nativo ainda pendentes |
 
 ---
 

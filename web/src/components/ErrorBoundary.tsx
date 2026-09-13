@@ -1,4 +1,6 @@
 import React from 'react';
+import i18n from 'i18next';
+import styles from './ErrorBoundary.module.scss';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -32,11 +34,11 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     if (this.state.hasError) {
       return (
         this.props.fallback || (
-          <div style={{ padding: '2rem', textAlign: 'center' }}>
-            <h2>Something went wrong</h2>
+          <div className={styles.errorBoundary}>
+            <h2>{i18n.t('common.errorBoundaryTitle', 'Something went wrong')}</h2>
             <p>{this.state.error?.message}</p>
             <button type="button" onClick={this.handleReset}>
-              Try again
+              {i18n.t('common.errorBoundaryTryAgain', 'Try again')}
             </button>
           </div>
         )

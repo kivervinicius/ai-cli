@@ -123,6 +123,9 @@ func (m Manifest) Validate(policy ManifestPolicy) error {
 		if artifact.Size < 0 || len(artifact.SHA256) != 64 {
 			return fmt.Errorf("%w: %s", ErrManifestArtifact, policy.Target)
 		}
+		if artifact.Target != "" && artifact.Target != TargetBinary && artifact.Target != TargetTarGz && artifact.Target != TargetZip && artifact.Target != TargetNSIS && artifact.Target != TargetDEB && artifact.Target != TargetRPM {
+			return fmt.Errorf("%w: %s has unsupported artifact target %q", ErrManifestArtifact, policy.Target, artifact.Target)
+		}
 		if _, err := hex.DecodeString(artifact.SHA256); err != nil {
 			return fmt.Errorf("%w: %s checksum: %v", ErrManifestArtifact, policy.Target, err)
 		}

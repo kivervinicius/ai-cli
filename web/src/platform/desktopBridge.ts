@@ -105,23 +105,9 @@ export class DesktopBridge implements PlatformBridge {
       }
     }
 
-    // 2. Fallback: query desktop bootstrap endpoint directly via HTTP
-    try {
-      const res = await fetch('/api/v1/desktop/bootstrap', {
-        headers: { Accept: 'application/json' },
-      });
-      if (res.ok) {
-        const info = (await res.json()) as DesktopBootstrapInfo;
-        if (info && info.serverUrl) {
-          await this.loadCapabilities();
-          this.cachedBootstrap = info;
-          return info;
-        }
-      }
-    } catch (fetchErr) {
-      console.warn('HTTP desktop bootstrap endpoint probe error:', fetchErr);
-    }
-
+    // The HTTP endpoint intentionally requires an existing desktop bearer and
+    // is not a bootstrap fallback. Only the native Wails binding can safely
+    // deliver the pre-provisioned session to this document.
     return null;
   }
 

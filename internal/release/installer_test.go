@@ -214,6 +214,48 @@ func TestInstallerSupportsLatestIntegrityAndPathControls(t *testing.T) {
 	}
 }
 
+func TestInstallersFailClosedWhenSignedManifestCannotBeVerified(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	shBytes, err := os.ReadFile(filepath.Join(root, "install.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	psBytes, err := os.ReadFile(filepath.Join(root, "install.ps1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sh, ps := string(shBytes), string(psBytes)
+
+	for _, forbidden := range []string{
+		"skipping signature verification",
+		"skipping verification",
+		"no Ed25519 verification tool available, skipping",
+		"falling back to unsigned checksums",
+		"Warning: no checksum available, skipping hash verification",
+	} {
+		if strings.Contains(sh, forbidden) {
+			t.Errorf("install.sh must not accept unverifiable releases: found %q", forbidden)
+		}
+		if strings.Contains(ps, forbidden) {
+			t.Errorf("install.ps1 must not accept unverifiable releases: found %q", forbidden)
+		}
+	}
+
+	for _, required := range []string{
+		"return 1",
+		"verify_manifest_signature",
+		"update-manifest.sig",
+		"throw \"Release manifest signature verification failed.\"",
+	} {
+		if !strings.Contains(sh+ps, required) {
+			t.Errorf("installers missing fail-closed signature guard %q", required)
+		}
+	}
+}
+
 func TestPowerShellInstallerUsesNexusPathAndPreservesLegacyPath(t *testing.T) {
 	root, err := filepath.Abs("../..")
 	if err != nil {

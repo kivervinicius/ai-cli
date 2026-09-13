@@ -69,3 +69,66 @@ func TestMissionApplicationServiceRejectsCanceledContext(t *testing.T) {
 		t.Fatalf("list error = %v, want context canceled", err)
 	}
 }
+
+func TestMissionApplicationServiceRejectsCrossProjectAssignments(t *testing.T) {
+	n := openTestNexus(t)
+	st, err := n.OpenProject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectA, err := st.CreateProject(store.Project{Name: "Mission A", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectB, err := st.CreateProject(store.Project{Name: "Mission B", CanonicalPath: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewMissionApplicationService(n)
+	missionA, err := service.Create(context.Background(), &store.Mission{ProjectID: projectA.ID, Name: "A"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	missionB, err := service.Create(context.Background(), &store.Mission{ProjectID: projectB.ID, Name: "B"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.CreateTask(context.Background(), &store.MissionTask{MissionID: missionA.ID, Name: "A task"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.CreateTask(context.Background(), &store.MissionTask{MissionID: missionB.ID, Name: "B task"}); err != nil {
+		t.Fatal(err)
+	}
+	agentA, err := st.CreateAgent(store.Agent{ProjectID: projectA.ID, Name: "A agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentB, err := st.CreateAgent(store.Agent{ProjectID: projectB.ID, Name: "B agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasksA, err := st.ListTasks(missionA.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasksB, err := st.ListTasks(missionB.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := service.Assign(context.Background(), &store.MissionAssignment{
+		MissionID: missionA.ID,
+		TaskID:    tasksB[0].ID,
+		AgentID:   agentA.ID,
+	}); err == nil {
+		t.Fatal("expected task from another mission/project to be rejected")
+	}
+	if err := service.Assign(context.Background(), &store.MissionAssignment{
+		MissionID: missionA.ID,
+		TaskID:    tasksA[0].ID,
+		AgentID:   agentB.ID,
+	}); err == nil {
+		t.Fatal("expected agent from another project to be rejected")
+	}
+}

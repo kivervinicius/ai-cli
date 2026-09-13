@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import AxeBuilder from '@axe-core/playwright';
@@ -52,11 +53,28 @@ async function terminateProcess(proc) {
 
 async function main() {
   console.log('2. Starting Nexus Web Server on ephemeral port (--port 0)...');
+  const isolatedDataDir =
+    process.env.NEXUS_E2E_DATA_DIR || path.join(tmpdir(), `nexus-browser-e2e-${process.pid}`);
+  const isolatedProjectPath =
+    process.env.NEXUS_E2E_PROJECT_PATH || path.join(isolatedDataDir, 'project');
+  if (!process.env.NEXUS_E2E_DATA_DIR) rmSync(isolatedDataDir, { recursive: true, force: true });
+  mkdirSync(isolatedProjectPath, { recursive: true });
+  if (!existsSync(path.join(isolatedProjectPath, '.git'))) {
+    const gitInit = spawnSync('git', ['init', '-q', isolatedProjectPath], { encoding: 'utf8' });
+    assert.equal(gitInit.status, 0, `browser E2E fixture git init failed: ${gitInit.stderr || ''}`);
+  }
+  const serverEnv = {
+    ...process.env,
+    NEXUS_DATA_DIR: isolatedDataDir,
+    AI_MANAGER_DATA_DIR: isolatedDataDir,
+    NEXUS_E2E_PROJECT_PATH: isolatedProjectPath,
+  };
   let serverOutput = '';
   const server = spawn(binPath, ['web', '--port', '0', '--listen', '127.0.0.1', '--no-open'], {
     cwd: repoRoot,
     detached: true,
     stdio: ['ignore', 'pipe', 'pipe'],
+    env: serverEnv,
   });
 
   let bootstrapUrl = '';
@@ -76,6 +94,7 @@ async function main() {
         cwd: repoRoot,
         encoding: 'utf8',
         timeout: 1000,
+        env: serverEnv,
       });
       const candidate = String(result.stdout || '').trim();
       if (!/#nexus_bootstrap=[a-f0-9]+$/i.test(candidate)) return false;
@@ -170,6 +189,28 @@ async function main() {
     await page.waitForFunction(
       () => document.readyState === 'interactive' || document.readyState === 'complete',
     );
+    // A clean data directory legitimately opens the global Project Hub. Seed
+    // one project through the authenticated API, then exercise the real shell.
+    const apiOrigin = new URL(bootstrapUrl).origin;
+    const projectsResponse = await context.request.get(`${apiOrigin}/api/v1/projects`);
+    assert.equal(projectsResponse.status(), 200, 'project list must be available after bootstrap');
+    let projects = await projectsResponse.json();
+    if (!Array.isArray(projects) || projects.length === 0) {
+      const sessionResponse = await context.request.get(`${apiOrigin}/api/v1/session`);
+      assert.equal(sessionResponse.status(), 200, 'session must be available after bootstrap');
+      const session = await sessionResponse.json();
+      assert.ok(session.csrf_token, 'browser E2E fixture needs a CSRF token');
+      const createResponse = await context.request.post(`${apiOrigin}/api/v1/projects`, {
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrf_token },
+        data: { name: 'Browser E2E Fixture', path: isolatedProjectPath },
+      });
+      assert.equal(createResponse.status(), 201, 'browser E2E fixture project must be created');
+      projects = [await createResponse.json()];
+    }
+    const project = projects[0];
+    assert.ok(project?.id, 'browser E2E fixture project must have an id');
+    const shellUrl = new URL(`/p/${encodeURIComponent(project.id)}/overview`, apiOrigin);
+    await page.goto(shellUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForSelector('.nx-os-shell', { timeout: 10000 });
 
     console.log('3.1. Testing Overview → Terminal tab persistence...');

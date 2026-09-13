@@ -162,7 +162,8 @@ func (h *NexusHandler) handleProjectGitCheckout(w http.ResponseWriter, r *http.R
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		writeError(w, http.StatusBadRequest, fmt.Sprintf("git checkout failed: %s (%s)", strings.TrimSpace(string(out)), err.Error()))
+		sanitizedOut := strings.ReplaceAll(strings.TrimSpace(string(out)), "\n", " ")
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("git checkout failed: %s", sanitizedOut))
 		return
 	}
 
