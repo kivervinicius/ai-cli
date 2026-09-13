@@ -117,11 +117,13 @@ func (s RuntimeSession) IsActive() bool {
 // still usable. After a machine or service restart, runtimes.json still lists
 // the previous generation; the PID and host-generation checks reject those
 // zombies so the terminal WS can 404 instead of upgrading into a black screen.
+//
+// STARTING without a PID is not treated as live: callers must wait for the
+// control endpoint (named pipe / unix socket) before advertising attachability.
+// A live PID alone is still not proof the endpoint exists — HandleWebSocket
+// dials before upgrade.
 func (s RuntimeSession) HostLive() bool {
 	if s.Transport == "mock" {
-		return true
-	}
-	if s.State == StateStarting && s.PID <= 0 {
 		return true
 	}
 	if s.PID <= 0 {

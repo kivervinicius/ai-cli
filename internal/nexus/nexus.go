@@ -513,6 +513,18 @@ func (n *Nexus) StartAgent(ctx context.Context, agentID, provider, profile strin
 		return nil, fmt.Errorf("start agent runtime: %w", err)
 	}
 
+	// Launcher already waits for the endpoint; re-ping so Start never returns a
+	// session that looks live while the named pipe / socket is gone (Windows P0).
+	if sess.Transport != "mock" {
+		if err := protocol.WaitForEndpoint(ctx, sess.RuntimeID, 8*time.Second); err != nil || !n.runtimeHostReachable(sess.RuntimeID) {
+			n.stopRuntime(sess.RuntimeID)
+			if err == nil {
+				err = fmt.Errorf("started runtime host did not accept attach")
+			}
+			return nil, fmt.Errorf("start agent runtime: %w", err)
+		}
+	}
+
 	gen := store.RuntimeGeneration{
 		AgentID:         agentID,
 		RevisionID:      revisionID,

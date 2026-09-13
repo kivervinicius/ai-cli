@@ -327,8 +327,8 @@ func TestRuntimeSessionHostLive(t *testing.T) {
 	}
 
 	starting := RuntimeSession{State: StateStarting, PID: 0}
-	if !starting.HostLive() {
-		t.Fatal("STARTING without PID is still coming up")
+	if starting.HostLive() {
+		t.Fatal("STARTING without PID must not look attachable before the control endpoint exists")
 	}
 
 	dead := RuntimeSession{State: StateRunning, PID: 1 << 30, HostGeneration: time.Now().UnixNano()}

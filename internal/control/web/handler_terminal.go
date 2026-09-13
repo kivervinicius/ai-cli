@@ -61,11 +61,22 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 		return
 	}
 
+	// Dial the control endpoint before upgrading. A live PID/STARTING row is
+	// not enough on Windows when the named pipe was never created; prefer HTTP
+	// 404 over a WebSocket error overlay ("Runtime do Agente desconectado").
+	client, err := protocol.NewClient(runtimeID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "runtime host is not running ("+err.Error()+")")
+		return
+	}
+
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		_ = client.Close()
 		return
 	}
 	defer ws.Close()
+	defer client.Close()
 
 	var wsMu sync.Mutex
 	safeWriteJSON := func(v any) error {
@@ -78,19 +89,6 @@ func (h *TerminalHub) HandleWebSocket(w http.ResponseWriter, r *http.Request, ag
 	hasRuntime := runtimeID != ""
 	role := broker.Attach(agentID, ws, hasRuntime, &wsMu)
 	defer broker.Detach(agentID, ws)
-
-	// Connect to runtime SessionHost via local IPC
-	client, err := protocol.NewClient(runtimeID)
-	if err != nil {
-		// Do not mark STOPPED: a transient socket miss must not race Recover/Start
-		// into tearing down a still-running project agent.
-		_ = safeWriteJSON(TerminalMessage{
-			Type: "error",
-			Data: "Runtime host is not running (" + err.Error() + "). The process has exited or the socket was closed.",
-		})
-		return
-	}
-	defer client.Close()
 
 	stopChan := make(chan struct{})
 	var stopOnce sync.Once
