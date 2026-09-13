@@ -196,9 +196,7 @@ func (a *App) OpenExternal(url string) error {
 		cmd = "open"
 		args = []string{url}
 	default:
-		// Route through browser.Open to avoid xdg-open symlink recursion
-		// when running as a browser-helper shim (ai-browser/xdg-open).
-		return browser.Open([]string{url})
+		return browser.OpenAppWindow(url)
 	}
 	return exec.Command(cmd, args...).Start()
 }

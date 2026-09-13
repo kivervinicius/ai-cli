@@ -101,3 +101,57 @@ func startBrowser(path, url string) error {
 	c.Stderr = os.Stderr
 	return c.Start()
 }
+
+// OpenAppWindow opens the URL in a dedicated Chromium-style app window when
+// available, falling back to the normal browser open path.
+func OpenAppWindow(url string) error {
+	if url == "" {
+		return nil
+	}
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		return fmt.Errorf("invalid URL %q", url)
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		home = os.Getenv("HOME")
+	}
+	userDataDir := filepath.Join(home, ".local", "share", "ai-manager", "desktop-profile")
+	_ = os.MkdirAll(userDataDir, 0755)
+
+	chromeCandidates := []string{
+		"/usr/bin/google-chrome",
+		"/usr/bin/chromium",
+		"/usr/bin/chromium-browser",
+		"/usr/bin/brave-browser",
+		"google-chrome",
+		"chromium",
+		"brave",
+	}
+
+	for _, cmd := range chromeCandidates {
+		path := cmd
+		if _, err := os.Stat(cmd); err != nil {
+			looked, lookErr := exec.LookPath(cmd)
+			if lookErr != nil {
+				continue
+			}
+			path = looked
+		}
+		args := []string{
+			fmt.Sprintf("--app=%s", url),
+			fmt.Sprintf("--user-data-dir=%s", userDataDir),
+			"--class=iapro-nexus",
+			"--name=iapro-nexus",
+		}
+		c := exec.Command(path, args...)
+		if hostBus := os.Getenv("AI_HOST_DBUS_SESSION_BUS_ADDRESS"); hostBus != "" {
+			c.Env = append(os.Environ(), "DBUS_SESSION_BUS_ADDRESS="+hostBus)
+		}
+		if err := c.Start(); err == nil {
+			return nil
+		}
+	}
+
+	return Open([]string{url})
+}

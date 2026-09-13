@@ -84,19 +84,22 @@ func (c *Client) SendContext(ctx context.Context, cmd CommandType, payload any) 
 		return Response{}, errors.New("protocol client is closed")
 	}
 
-	watchStop := make(chan struct{})
-	watchDone := make(chan struct{})
-	go func() {
-		defer close(watchDone)
-		select {
-		case <-ctx.Done():
-			_ = c.conn.SetDeadline(time.Now())
-		case <-watchStop:
-		}
-	}()
+	conn := c.conn
+	closeDone := make(chan struct{})
+	stopClose := context.AfterFunc(ctx, func() {
+		// Closing is the only portable way to interrupt both socket and Windows
+		// named-pipe I/O. go-winio deadlines do not reliably cancel an in-flight
+		// ReadFile/WriteFile, so a canceled RPC consumes its connection.
+		_ = conn.Close()
+		close(closeDone)
+	})
 	defer func() {
-		close(watchStop)
-		<-watchDone
+		if !stopClose() {
+			<-closeDone
+			if c.conn == conn {
+				c.conn = nil
+			}
+		}
 	}()
 
 	req, err := NewRequest(cmd, payload)
@@ -113,8 +116,8 @@ func (c *Client) SendContext(ctx context.Context, cmd CommandType, payload any) 
 	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
 		deadline = ctxDeadline
 	}
-	_ = c.conn.SetDeadline(deadline)
-	if _, err := c.conn.Write(append(data, '\n')); err != nil {
+	_ = conn.SetDeadline(deadline)
+	if _, err := conn.Write(append(data, '\n')); err != nil {
 		if ctx.Err() != nil {
 			return Response{}, ctx.Err()
 		}
@@ -122,7 +125,7 @@ func (c *Client) SendContext(ctx context.Context, cmd CommandType, payload any) 
 	}
 
 	line, err := readBounded(c.reader, MaxRPCResponseSize)
-	_ = c.conn.SetDeadline(time.Time{}) // Disable deadline after RPC completes
+	_ = conn.SetDeadline(time.Time{}) // Disable deadline after RPC completes
 	if err != nil {
 		if ctx.Err() != nil {
 			return Response{}, ctx.Err()

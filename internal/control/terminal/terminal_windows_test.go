@@ -21,3 +21,9 @@ func TestUTF16EnvBlockIsDoubleNullTerminated(t *testing.T) {
 		t.Fatalf("environment entries were not encoded contiguously: %q", decoded)
 	}
 }
+
+func TestConPTYUsesOnlyPseudoConsoleProcessAttribute(t *testing.T) {
+	if numAttributesForConPTY != 1 {
+		t.Fatalf("ConPTY attribute count = %d, want 1; inherited pipe handles make CreateProcessW reject bInheritHandles=false", numAttributesForConPTY)
+	}
+}

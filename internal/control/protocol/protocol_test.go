@@ -77,6 +77,9 @@ func TestSendContextInterruptsBlockedConnection(t *testing.T) {
 	if elapsed := time.Since(started); elapsed >= time.Second {
 		t.Fatalf("cancellation took %s", elapsed)
 	}
+	if client.conn != nil {
+		t.Fatal("canceled transport remained reusable after an interrupted RPC")
+	}
 }
 
 func TestClientServerCommunication(t *testing.T) {

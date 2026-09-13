@@ -142,7 +142,6 @@ func TestAgentsCommandUsesSinglePositionalProjectArgument(t *testing.T) {
 func setupTestEnvironment(t *testing.T) (binDir, testOut string) {
 	t.Helper()
 	nexus.ResetDefaultForTest()
-	t.Cleanup(nexus.ResetDefaultForTest)
 	data := t.TempDir()
 	cfg := t.TempDir()
 	state := t.TempDir()
@@ -209,6 +208,10 @@ exec "$@"`)
 exit 0`)
 
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	// Cleanup callbacks run in LIFO order. Register singleton shutdown after
+	// TempDir and environment cleanups so SQLite closes before Windows tries to
+	// remove nexus.db and while the configured data directory is still active.
+	t.Cleanup(nexus.ResetDefaultForTest)
 	return binDir, testOut
 }
 

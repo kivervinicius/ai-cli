@@ -28,11 +28,10 @@ import (
 
 const (
 	procThreadAttributePseudoConsole = 0x00020016
-	procThreadAttributeHandleList    = 0x00020002
 	extendedStartupInfoPresent       = 0x00080000
 	createUnicodeEnvironment         = 0x00000400
 	stillActive                      = 0x00000103 // 259
-	numAttributesForConPTY           = 2
+	numAttributesForConPTY           = 1
 )
 
 var (
@@ -184,10 +183,10 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 	// handles passed to CreatePseudoConsole to remain valid while the child is
 	// attached to the pseudo console.
 
-	// 4. Build the PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE and
-	// PROC_THREAD_ATTRIBUTE_HANDLE_LIST attribute lists. The handle list
-	// restricts the child to inheriting only the two pipe ends it needs,
-	// preventing leaked parent handles from attaching to the child's console.
+	// 4. Build the PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE attribute list. The
+	// child communicates through HPCON and must not inherit the transport pipe
+	// handles. Adding PROC_THREAD_ATTRIBUTE_HANDLE_LIST while passing
+	// bInheritHandles=FALSE makes CreateProcessW fail with ERROR_INVALID_PARAMETER.
 	var attrSize uintptr
 	procInitializeProcThreadAttributeList.Call(0, numAttributesForConPTY, 0, uintptr(unsafe.Pointer(&attrSize)))
 	if attrSize == 0 {
@@ -229,24 +228,6 @@ func (b *windowsBackend) Start(cmd *exec.Cmd, initialRows, initialCols int) erro
 		_ = closeHandle(hOutRead)
 		_ = closePseudoConsole(hPC)
 		return fmt.Errorf("UpdateProcThreadAttribute (pseudo console) failed: %v", e)
-	}
-
-	// Restrict handle inheritance to exactly the two pipe ends the child needs.
-	handleList := [2]uintptr{hInRead, hOutWrite}
-	r, _, e = procUpdateProcThreadAttribute.Call(
-		uintptr(unsafe.Pointer(&attrBuf[0])),
-		0,
-		procThreadAttributeHandleList,
-		uintptr(unsafe.Pointer(&handleList[0])),
-		unsafe.Sizeof(handleList[0])*uintptr(len(handleList)),
-		0, 0)
-	if r == 0 {
-		_ = closeHandle(hInRead)
-		_ = closeHandle(hOutWrite)
-		_ = closeHandle(hInWrite)
-		_ = closeHandle(hOutRead)
-		_ = closePseudoConsole(hPC)
-		return fmt.Errorf("UpdateProcThreadAttribute (handle list) failed: %v", e)
 	}
 
 	// 5. Launch the child attached to the pseudo console.

@@ -37,6 +37,10 @@ type Config struct {
 	Cwd         string
 	InitialRows int
 	InitialCols int
+
+	// terminalBackend is an internal lifecycle test seam. Production callers
+	// leave it nil and receive the platform backend from terminal.NewBackend.
+	terminalBackend terminal.Backend
 }
 
 // SessionHost manages a single supervised process runtime and its IPC listener.
@@ -56,6 +60,7 @@ type SessionHost struct {
 	doneChan     chan struct{}
 	detector     *AttentionDetector
 	stopOnce     sync.Once
+	doneOnce     sync.Once
 	codexTUILock interface{ Release() error }
 }
 
@@ -72,7 +77,10 @@ func NewSessionHost(cfg Config) (*SessionHost, error) {
 	cmd.Dir = cfg.Cwd
 	cmd.Env = cfg.Env
 
-	termBackend := terminal.NewBackend()
+	termBackend := cfg.terminalBackend
+	if termBackend == nil {
+		termBackend = terminal.NewBackend()
+	}
 
 	sh := &SessionHost{
 		session:     cfg.Session,
@@ -135,13 +143,12 @@ func (sh *SessionHost) Start() error {
 	l, err := protocol.Listen(sh.session.RuntimeID)
 	if err != nil {
 		setStage(registry.StartupIPCBinding, registry.StartupFaultIPCBindFailed)
-		sh.session.State = registry.StateFailed
-		_ = sh.registry.UpdateState(sh.session.RuntimeID, registry.StateFailed)
+		sh.completeStartFailureLocked()
 		return fmt.Errorf("failed to create control endpoint: %w", err)
 	}
 	sh.listener = l
 	setStage(registry.StartupIPCBound, "")
-	go sh.serveIPC()
+	go sh.serveIPC(l)
 	setStage(registry.StartupProtocolReady, "")
 
 	// 1. Start process with terminal backend
@@ -173,19 +180,16 @@ func (sh *SessionHost) Start() error {
 
 	if err := sh.termBackend.Start(sh.cmd, rows, cols); err != nil {
 		setStage(registry.StartupProviderStarting, registry.StartupFaultConPTYStartFailed)
-		sh.releaseCodexTUILock()
-		_ = sh.listener.Close()
-		sh.listener = nil
+		sh.releaseCodexTUILockLocked()
+		sh.completeStartFailureLocked()
 		return fmt.Errorf("failed to start terminal backend: %w", err)
 	}
 	if err := sh.termBackend.Supervise(); err != nil {
 		setStage(registry.StartupProviderStarting, registry.StartupFaultProcessSupervision)
 		_ = sh.termBackend.Kill()
 		_ = sh.termBackend.Wait()
-		_ = sh.termBackend.Close()
-		sh.releaseCodexTUILock()
-		_ = sh.listener.Close()
-		sh.listener = nil
+		sh.releaseCodexTUILockLocked()
+		sh.completeStartFailureLocked()
 		return fmt.Errorf("failed to supervise provider process: %w", err)
 	}
 	setStage(registry.StartupTerminalReady, "")
@@ -231,6 +235,22 @@ func (sh *SessionHost) Start() error {
 	go sh.waitProcess()
 
 	return nil
+}
+
+// completeStartFailureLocked leaves a failed startup in the same terminal
+// lifecycle shape as an exited child: resources are closed, Wait unblocks and
+// later Stop/Terminate calls remain idempotent. The caller holds sh.mu.
+func (sh *SessionHost) completeStartFailureLocked() {
+	sh.session.State = registry.StateFailed
+	_ = sh.registry.UpdateState(sh.session.RuntimeID, registry.StateFailed)
+	sh.stopOnce.Do(func() { close(sh.stopChan) })
+	if sh.listener != nil {
+		_ = sh.listener.Close()
+		sh.listener = nil
+	}
+	sh.fanout.Close()
+	_ = sh.termBackend.Close()
+	sh.doneOnce.Do(func() { close(sh.doneChan) })
 }
 
 func (sh *SessionHost) streamReader(r io.Reader) {
@@ -312,9 +332,9 @@ func (sh *SessionHost) broadcast(data []byte) {
 	sh.fanout.Broadcast(data)
 }
 
-func (sh *SessionHost) serveIPC() {
+func (sh *SessionHost) serveIPC(listener net.Listener) {
 	for {
-		conn, err := sh.listener.Accept()
+		conn, err := listener.Accept()
 		if err != nil {
 			select {
 			case <-sh.stopChan:
@@ -850,7 +870,7 @@ func (sh *SessionHost) waitProcess() {
 		eventData,
 	))
 
-	close(sh.doneChan)
+	sh.doneOnce.Do(func() { close(sh.doneChan) })
 }
 
 func (sh *SessionHost) releaseCodexTUILock() {

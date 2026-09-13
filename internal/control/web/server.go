@@ -596,10 +596,10 @@ func OpenBrowser(url string) error {
 	case "windows":
 		return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
 	case "darwin":
-		return exec.Command("open", url).Start()
+		return exec.Command("open", "-n", "-a", "Google Chrome", "--args", "--app="+url).Start()
 	default:
-		// Route through browser.Open to avoid xdg-open symlink recursion
-		// when running as a browser-helper shim (ai-browser/xdg-open).
-		return browser.Open([]string{url})
+		// Prefer a dedicated Chromium app window; falls back to browser.Open
+		// which already avoids xdg-open shim recursion.
+		return browser.OpenAppWindow(url)
 	}
 }

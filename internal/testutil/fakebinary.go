@@ -49,7 +49,35 @@ func writeWindowsStub(t *testing.T, dir, name string) string {
 	t.Helper()
 	src := filepath.Join(t.TempDir(), "main.go")
 	if err := os.WriteFile(src, []byte(`package main
-func main() {}
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+func main() {
+	out := os.Getenv("AI_TEST_OUT")
+	if out == "" {
+		return
+	}
+	provider := strings.TrimSuffix(filepath.Base(os.Args[0]), filepath.Ext(os.Args[0]))
+	homeKey := "HOME"
+	if strings.EqualFold(provider, "codex") {
+		homeKey = "CODEX_HOME"
+	}
+	cwd, _ := os.Getwd()
+	f, err := os.Create(out)
+	if err != nil {
+		os.Exit(1)
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "provider=%s\nhome=%s\ncwd=%s\n", provider, os.Getenv(homeKey), cwd)
+	for _, arg := range os.Args[1:] {
+		fmt.Fprintf(f, "arg=%s\n", arg)
+	}
+}
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
