@@ -122,6 +122,16 @@ Maestro is optional. Existing no-Maestro tests and capability-degraded behavior 
 
 A full authenticated provider-backed Mission run producing a durable evidence stream was not available in this environment. Therefore the following remain NOT VERIFIED: authenticated Mission execution, live provider failover/handoff/escalation, and hosted evidence correlation. No Maestro dependency was added to runtime.
 
+## Independent review
+
+Four reject-oriented reviews were completed for backend/core, frontend/browser,
+security and Windows/release/CI. They identified and drove the fixes recorded
+above, including unsafe updater archive handling, installer fail-open behavior,
+cloudflared pin handling, cross-project Mission assignment and non-hermetic
+browser bootstrap. A requested final red-team agent could not run because the
+agent service rejected its model and then reached the account usage limit; this
+limitation is not treated as a positive review result.
+
 ## Remaining debt
 
 ### BLOCKER
@@ -155,7 +165,12 @@ A full authenticated provider-backed Mission run producing a durable evidence st
 ## Commits
 
 - `e53f8352e4c3647632ebac7877cf0a6a3bd62647` — `fix(release): close production certification blockers`
-- A separate documentation/evidence commit is created after this report; it does not alter the candidate executable code SHA.
+- `37f970b` — `docs(release): publish production finalization evidence`
+- `d22c293` — `docs(release): anchor visual evidence to candidate`
+- `61a9531` — `docs(release): update finalization checkpoint`
+- `49af5d3` — `docs(release): index certification evidence`
+
+The documentation commits do not alter the candidate executable code SHA.
 
 ## Final recommendation
 
