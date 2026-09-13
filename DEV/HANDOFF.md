@@ -1,5 +1,22 @@
 # Handoff
 
+## Overnight production certification — 2026-09-13
+
+Aborted before any Mission/soak work.
+
+Required gate `DEV/validation/production-finalization/FINAL_REPORT.md` with
+verdict `READY_FOR_OVERNIGHT_CERTIFICATION` is missing. Repo search finds no
+such verdict. Production-finalization is still Phase 0 (`checkpoint.md`);
+`BASELINE.md` still lists native Win/macOS, same-SHA CI, authenticated Mission
+evidence and updater public key as unverified. HEAD at abort
+`e53f8352e4c3647632ebac7877cf0a6a3bd62647` does not match the intake SHA
+`3985908244cc01c9e08c5ad4da0854622673a3d7`.
+
+Evidence: `DEV/validation/overnight-production-certification/FINAL_REPORT.md`.
+Verdict: `ABORTED_PRECONDITION_FAILED`. Do not treat this folder as overnight
+PASS. Next action is to finish production finalization, then re-run overnight
+against that exact candidate SHA.
+
 ## Capability review intensive — 2026-09-12
 
 Multi-reviewer pass (CLI JSON, make gates, Bugbot, security-review, cavecrew, GSD,
@@ -1624,3 +1641,18 @@ Mission está verificado. Próximo passo: commitar esta branch e aguardar o
 fim do hardening antes de qualquer rebase/merge.
 
 Base SHA: `37b9ddec49ce72d869bbeb2ad402a1d4dd2bc674`.
+
+## Handoff — production finalization candidate
+
+Candidate code SHA: `e53f8352e4c3647632ebac7877cf0a6a3bd62647` on
+`feat/nexus-maximum-delivery`. The release hardening commit covers updater
+signatures/trust-root injection, installer fail-closed behavior, stricter CI
+gates, native installer smoke definitions, browser isolation, Mission project
+authorization, cloudflared pin verification and frontend contract fixes.
+
+Local Linux quality/build/security/race/browser/update-gate evidence is fresh.
+Do not describe the branch as release-ready: production trust-root
+configuration, native Windows/macOS and hosted same-SHA CI, PowerShell/native
+terminal gates, and authenticated Mission evidence still require execution in
+the appropriate environments. No push, merge, deploy or production secret was
+performed by this campaign. See `DEV/validation/production-finalization/FINAL_REPORT.md`.

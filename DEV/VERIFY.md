@@ -1,5 +1,13 @@
 # Verification: Nexus V1 (post-pending-issues)
 
+## 2026-09-13 — Overnight production certification
+
+- FAIL / ABORT — precondition `production-finalization/FINAL_REPORT.md` missing.
+- FAIL / ABORT — verdict `READY_FOR_OVERNIGHT_CERTIFICATION` not present in repo.
+- FAIL / ABORT — HEAD `e53f8352e4c3647632ebac7877cf0a6a3bd62647` is not a certified overnight candidate.
+- NOT RUN — campaigns A–F, 8h soak, recovery, provider failover, red team.
+- Evidence: `DEV/validation/overnight-production-certification/FINAL_REPORT.md`.
+
 ## 2026-09-12 — Capability review intensive
 
 - PASS — CLI JSON: doctor, security, control doctor, providers, profiles, version.
@@ -1135,3 +1143,19 @@ Parecer e limitações: [`DEV/validation/CURRENT_CODE_REVIEW.md`](validation/CUR
 
 Verdict: **PASS**. Relatório completo: [`DEV/validation/FRONTEND_LATEST.md`](validation/FRONTEND_LATEST.md).
 
+## Production finalization evidence — 2026-09-12/13
+
+- `make quality`: executed successfully after the release hardening changes;
+  frontend suite reported 68 files and 350 tests passing.
+- `make build`, `make build-desktop-wails`, `go vet ./...`,
+  `go test -race ./...`, `make security`, `bash scripts/verify-update-gate.sh`
+  and `npm --prefix web run test:e2e`, `test:a11y`, `test:visual` executed
+  successfully on Linux/amd64.
+- `pwsh`, `actionlint`, `yamllint`, gitleaks, semgrep and trivy were not
+  available locally. Native Windows/macOS runners, same-SHA hosted CI,
+  PowerShell runtime, ConPTY/Named Pipe native E2E and authenticated Mission
+  provider execution are `NOT VERIFIED`.
+- `npm --prefix web audit --audit-level=high` reported two moderate
+  `@vitest/mocker` advisories requiring a breaking Vitest upgrade; this is
+  recorded as dependency debt and was not changed in this certification pass.
+- Detailed evidence and verdict: `DEV/validation/production-finalization/FINAL_REPORT.md`.

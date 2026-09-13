@@ -283,9 +283,9 @@ download_and_verify_archive() {
 
     echo "Downloading Nexus v${version_plain}: ${archive_name}..."
 
-    # A release is installable only when its detached signature and signed
-    # target digest are both available and valid. checksums.txt is retained as
-    # a release artifact, never as an authenticity fallback.
+    # A release is installable only when its detached signature and checksum integrity
+    # are verified from the signed manifest; checksums.txt is retained as a release
+    # artifact, never as an authenticity fallback.
     if ! http_get "${release_url}/update-manifest.json" "$manifest_path" 2>/dev/null; then
         echo "Signed update manifest unavailable; refusing to install." >&2
         return 1

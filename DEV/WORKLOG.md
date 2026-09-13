@@ -1,5 +1,14 @@
 # Worklog: IAPro Nexus Evolution & Project Alignment
 
+## 2026-09-13 — Overnight production certification aborted
+
+- Checked `DEV/validation/production-finalization/FINAL_REPORT.md`: absent.
+- Searched for `READY_FOR_OVERNIGHT_CERTIFICATION`: zero matches.
+- Recorded SHA mismatch: intake `39859082…` vs HEAD `e53f8352…`.
+- Did not start campaigns A–F, soak, or red team.
+- Wrote abort evidence under `DEV/validation/overnight-production-certification/`.
+- Verdict: `ABORTED_PRECONDITION_FAILED`.
+
 ## 2026-09-12 — Capability review + honesty fixes
 
 - Ran multi-mode review: `nexus doctor/security/control doctor/providers/profiles/usage/version --json`,
@@ -4319,6 +4328,25 @@ build` PASS e Web reiniciado em HTTP 200.
   `go vet ./...`, `make quality`, `make security`, `make web-verify` e
   `git diff --check` PASS. Build normal/desktop ficou UNVERIFIED somente no
   stamping VCS; `go build -buildvcs=false` para ambos PASS.
+
+## 2026-09-12/13 — Production finalization campaign
+
+- Revalidated the current branch instead of accepting historical reports. The
+  updater now binds downloaded archive/binary bytes to the signed manifest,
+  rejects unknown targets and unsafe archives, and keeps an empty production
+  trust root fail-closed. Installers require a detached Ed25519 signature and
+  signed artifact digest; no production key was created or committed.
+- Removed soft-failure behavior from the required browser, Windows, macOS and
+  desktop CI gates, added native NSIS install/uninstall smoke coverage, and
+  propagated the build-time trust root into GoReleaser/Wails builds.
+- Fixed browser E2E isolation and project bootstrap, cross-project Mission
+  assignment validation, cloudflared checksum handling, and raw AGY debug
+  output redaction. Maestro remains optional and the no-Maestro contracts pass.
+- Executed `make quality`, `make build`, Linux Wails packaging, `go vet ./...`,
+  `go test -race ./...`, `make security`, browser E2E/a11y/visual smoke and
+  `scripts/verify-update-gate.sh`. Hosted same-SHA CI, native Windows/macOS,
+  PowerShell parsing and authenticated Mission execution remain unverified.
+- Production finalization report: `DEV/validation/production-finalization/FINAL_REPORT.md`.
 # 2026-09-11 — Nexus Final Closure verification and verdict
 
 - Recorded base SHA `2925ca746c198334f20d1e0cef7feb51e4f4f4e3`; no commit or push.
